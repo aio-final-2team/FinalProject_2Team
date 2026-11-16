@@ -1,3 +1,3 @@
 # apps/web
 
-React ?숇?紐㉱룰탳吏곸썝 ?깆엯?덈떎. T74?먯꽌 ??Dockerfile???대?吏瑜?PR留덈떎 鍮뚮뱶?⑸땲??
+React 학부모·교직원 앱입니다. T74에서 이 Dockerfile의 이미지를 PR마다 빌드합니다.

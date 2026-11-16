@@ -1,3 +1,3 @@
 # Docs/Step2
 
-API ?ㅺ퀎?쑣텱B ?ㅽ궎留댟텽penAPI 怨꾩빟쨌紐⑥쓽 API ?덈궡瑜??〓땲??
+API 설계서·DB 스키마·OpenAPI 계약·모의 API 안내를 둡니다.

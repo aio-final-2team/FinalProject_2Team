@@ -1,3 +1,3 @@
 # infra/recovery
 
-Auto-Healing ?댁쁺 ?덉감? ?μ븷 ???runbook???〓땲??
+Auto-Healing 운영 절차와 장애 대응 runbook을 둡니다.

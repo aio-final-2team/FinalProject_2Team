@@ -1,3 +1,3 @@
 # tests/integration
 
-API쨌DB쨌MCP 寃쎄퀎???듯빀 寃利앹쓣 ?〓땲??
+API·DB·MCP 경계의 통합 검증을 둡니다.

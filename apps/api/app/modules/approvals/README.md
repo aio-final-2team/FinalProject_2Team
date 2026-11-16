@@ -1,3 +1,3 @@
 # apps/api/app/modules/approvals
 
-援먯쭅???뱀씤 ?湲걔룹옱媛?API瑜??〓땲??
+교직원 승인 대기·재개 API를 둡니다.

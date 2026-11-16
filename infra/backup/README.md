@@ -1,3 +1,3 @@
 # infra/backup
 
-PostgreSQL 諛깆뾽쨌蹂닿?쨌蹂듭썝 ?덉감? ?ㅽ겕由쏀듃瑜??〓땲??
+PostgreSQL 백업·보관·복원 절차와 스크립트를 둡니다.

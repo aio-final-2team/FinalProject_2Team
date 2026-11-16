@@ -1,3 +1,3 @@
 # apps/api/app/api
 
-HTTP ?쇱슦?곗? ?붿껌쨌?묐떟 紐⑤뜽???〓땲?? ?낆텧??湲곗?? contracts/openapi.yaml怨?留욎땅?덈떎.
+HTTP 라우터와 요청·응답 모델을 둡니다. 입출력 기준은 contracts/openapi.yaml과 맞춥니다.
