@@ -1,0 +1,3 @@
+# Add team GitHub handles to the matching paths after repository members are confirmed.
+# Example: /apps/api/ @github-handle
+# Example: /agents/ @github-handle

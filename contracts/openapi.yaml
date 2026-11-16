@@ -1,0 +1,22 @@
+openapi: 3.1.0
+info:
+  title: 유치온 API
+  version: 0.1.0
+  description: >-
+    T10 입출력 계약의 기준 파일입니다. 업무 API는 팀 합의 후 여기에 추가합니다.
+paths:
+  /health:
+    get:
+      summary: 서비스 상태 확인
+      responses:
+        '200':
+          description: 서비스가 응답 중입니다.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    example: ok

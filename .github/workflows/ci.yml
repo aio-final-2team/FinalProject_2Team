@@ -1,0 +1,29 @@
+name: Pull Request Image Builds
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-images:
+    name: Build ${{ matrix.name }} image
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: api
+            context: .
+            dockerfile: apps/api/Dockerfile
+          - name: web
+            context: apps/web
+            dockerfile: apps/web/Dockerfile
+          - name: dashboard
+            context: apps/dashboard
+            dockerfile: apps/dashboard/Dockerfile
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build image
+        run: docker build --file "${{ matrix.dockerfile }}" --tag "yuchion/${{ matrix.name }}:${{ github.sha }}" "${{ matrix.context }}"
