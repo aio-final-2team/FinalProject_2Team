@@ -4,10 +4,10 @@
 | --- | --- |
 | 작업 | T09 데이터베이스 스키마 설계서 (#166) |
 | 작성 | 태웅 · 검토 영민 |
-| 판 | 초안 1 · 2026-11-17 |
+| 판 | 초안 2 · 2026-11-17 (T04 팀 합의 반영) |
 | 대상 DB | PostgreSQL 16 + pgvector (`compose.yaml`의 `pgvector/pgvector:pg16`) |
 | DDL | [`db_schema_draft.sql`](db_schema_draft.sql) — 설계 검토용. 실제 적용은 T19 마이그레이션(`apps/api/migrations`)으로 옮김 |
-| 기준 문서 | 기획서 1116판 3장 FR-01~FR-13, 4장 NFR, 6장 공통 상태, 7장 기술과 데이터 |
+| 기준 문서 | 기획서 1116판 3장 FR-01~FR-13, 4장 NFR, 6장 공통 상태, 7장 기술과 데이터 · T04 흐름·권한 명세(11/17 팀 합의, PR #234) |
 
 ## 1. 범위
 
@@ -47,6 +47,9 @@ erDiagram
     rooms ||--o{ consultation_bookings : "상담실"
     users ||--o{ memories : "기억"
     users ||--o{ memory_rules : "개인 규칙"
+    cards ||--o{ saved_answers : "원에 남은 답"
+    saved_answers ||--o{ saved_answer_sources : "근거 문서"
+    documents ||--o{ saved_answer_sources : ""
     classrooms ||--o{ daily_note_inputs : "반 입력"
     daily_note_inputs ||--o{ daily_notes : "아이별 알림장"
     requests ||--o{ events : "처리 이력"
@@ -62,22 +65,25 @@ erDiagram
 | `organizations` | 유치원 | `name`, `kind`, `region`, `is_virtual` | FR-01 |
 | `classrooms` | 반 | `org_id`, `name`, `age_group`, `school_year` | FR-01 |
 | `users` | 계정(학부모·교사·원장) | `role`, `login_id`, `password_hash`, `token_version` | FR-01, NFR-01 |
-| `classroom_staff` | 반 담당 교사 | `classroom_id`, `user_id`, `is_homeroom` | FR-01, FR-05 |
+| `classroom_staff` | 반 담당 교사(대체 담임 기간 포함) | `classroom_id`, `user_id`, `is_homeroom`, `valid_from`, `valid_to` | FR-01, FR-05 |
 | `children` | 원아(가상) | `classroom_id`, `display_name` | FR-02, FR-10 |
 | `child_guardians` | 원아와 보호자 계정 연결 | `child_id`, `user_id`, `relation` | FR-01, FR-02 |
 
-원감은 `role = 'director'`에 `title = '원감'`으로 둔다. 권한은 원장과 같다(바뀌면 T04 권한표를 따름).
+원감은 `role = 'director'`에 `title = '원감'`으로 둔다. T04 7장 권한표도 원장·원감을 한 칸으로 본다. 대체 담임은 `classroom_staff`에 기간(`valid_from`~`valid_to`)을 넣어 그 기간에만 그 반 자료를 본다(T04 7.1). 기간이 비어 있으면 계속 담당한다.
 
 ### 4.2 요청·대화
 
 | 표 | 무엇 | 핵심 칸 | 요구사항 |
 | --- | --- | --- | --- |
-| `requests` | 학부모 요청 한 건 | `type`, `status`, `urgency`, `topic_key`, `missing_fields`, `client_request_id` | FR-02, FR-03, FR-07 |
+| `requests` | 학부모 요청 한 건 | `type`, `status`, `urgency`, `risk_level`, `topic_key`, `parent_confirmed_at`, `missing_fields`, `client_request_id` | FR-02, FR-03, FR-07 |
 | `request_messages` | 요청 화면 오른쪽 대화 | `sender_type`(사람·AI·시스템), `body` | FR-02, FR-04 |
 
 - `type`: `inquiry`(안내 문의) · `consultation`(상담) · `complaint`(민원) · `medication`(투약) · `pickup`(귀가). 투약·귀가는 값만 미리 두고 세부 칸은 T46에서 더한다.
 - `client_request_id`: 화면이 제출할 때 만드는 키다. 같은 사람이 같은 키로 다시 보내면 DB가 거부하므로, 네트워크 재시도로 요청이 두 번 생기지 않는다.
-- `topic_key`: 감독 AI가 민원에 붙이는 주제 값이다. "같은 내용 3번째 민원이면 원장 보고"(FR-07)는 같은 기관·같은 `topic_key`의 기간 안 건수로 센다. 기간은 T10에서 정한다(제안: 30일).
+- `urgency`: 모든 요청의 급한 정도(`low`·`normal`·`high`·`urgent`). 받은함 정렬에 쓴다.
+- `risk_level`: 민원에만 붙이는 위험 등급이다. `normal`(일반) · `urgent`(긴급) · `uncertain`(판단 필요)(T04 2.3, 합의 4). 긴급이면 `risk_category`에 네 가지 중 무엇인지 넣어야 저장된다: `child_safety`(아이 안전) · `staff_attack`(교직원 비난·위협) · `legal_external`(법적 조치·외부 기관) · `privacy_leak`(개인정보 유출 주장). 감독 AI의 확신 정도는 `risk_confidence`(0~1)에 남기고, 긴급과 판단 필요를 나누는 기준값은 T06 평가로 정한다. 사람이 판단 필요를 일반·긴급으로 다시 나누면 `events`에 `risk_reclassified`로 이전 값·새 값·이유를 남긴다.
+- `topic_key`: 감독 AI가 민원에 붙이는 주제 값이다. "같은 내용 3번째 민원이면 원장 보고"(FR-07)는 **같은 반 · 최근 30일 · 같은 `topic_key`** 민원 수로 센다. 보낸 학부모가 달라도 합산한다(T04 합의 3).
+- `parent_confirmed_at`: 민원 회신에 학부모가 '확인했어요'를 누른 시각이다. 민원은 이 값이 찬 뒤 담임이 '처리 완료'를 눌러야 `completed`가 되고, 자동 완료는 하지 않는다(T04 합의 2). 상태 값을 늘리지 않고 이 칸 하나로 처리한다.
 - `missing_fields`: 필수 정보가 빠졌을 때 물어볼 항목 목록(FR-02).
 
 ### 4.3 승인 카드·결정·근거
@@ -85,13 +91,15 @@ erDiagram
 | 표 | 무엇 | 핵심 칸 | 요구사항 |
 | --- | --- | --- | --- |
 | `cards` | 교직원 받은함의 카드 | `kind`, `status`, `assignee_id`, `due_at`, `draft`, `check_result`, `check_attempts`, `version` | FR-03, FR-07~FR-10 |
-| `approvals` | 사람의 결정(승인·고쳐서 승인·거절·보류) | `card_version`, `decision`, `reason_code`, `reason_text` | FR-06, FR-09 |
+| `approvals` | 사람의 결정(승인·고쳐서 승인·거절·보류·반려·처리 완료) | `card_version`, `decision`, `reason_code`, `reason_text` | FR-06, FR-09 |
 | `card_evidence` | 카드 초안이 댄 근거 문서 조각 | `chunk_id`, `rank`, `score`, `quote` | FR-04, NFR-04 |
 
 - `kind`: `reply_draft`(답변 초안) · `consult_slots`(상담 후보) · `director_report`(원장 보고) · `needs_info`(정보 요청) · `daily_note`(알림장 묶음) · `rule_proposal`(개인 규칙 제안).
 - `check_attempts`: 검사 AI가 돌려보낸 횟수. 최대 2를 넘으면 DB가 거부하므로, 3번째부터는 코드가 사람에게 넘겨야 한다(FR-08).
 - `version`: 카드가 바뀔 때마다 1씩 올린다. `approvals`는 `(card_id, card_version)`에 결정을 하나만 받으므로, 승인 버튼이나 재개를 여러 번 눌러도 한 번만 처리된다(AC-05). 화면은 결정할 때 자기가 본 `version`을 같이 보낸다.
-- 거절은 `reason_code`가 있어야 저장된다. 이 값이 기억과 규칙 제안의 재료가 된다(FR-06).
+- `decision`: `approve`(승인) · `edit_approve`(고쳐서 승인) · `reject`(거절 → 초안 다시) · `hold`(보류) · `dismiss`(반려 → 요청을 처리하지 않음, `rejected`) · `complete`(민원 처리 완료). T04 2.1이 거절과 반려를 다른 길로 그리므로 값을 나눴다.
+- 거절·반려는 `reason_code`, 보류는 `reason_text`가 있어야 저장된다. 거절 이유가 기억과 규칙 제안의 재료가 된다(FR-06).
+- 보류한 카드는 `cards.hold_until`(예정일)이 있어야 저장된다. 학부모 화면에는 예정일만 보이고, 보류 이유는 교직원끼리만 본다(T04 3장·9장).
 - 근거 문서명·위치·적용일은 `card_evidence → document_chunks → documents`로 이어서 보여 준다.
 - 알림장 묶음 카드와 규칙 제안 카드는 요청이 없으므로 `subject_type`·`subject_id`로 대상을 가리킨다.
 
@@ -119,17 +127,21 @@ erDiagram
 
 `consultation_bookings`에는 배제 제약 두 개를 둔다. 확정된 예약끼리 **같은 상담실의 시간이 겹치거나, 같은 담임의 시간이 겹치면** DB가 저장을 거부한다. 일정 계산 코드가 미리 확인하더라도, 저장 직전에 두 사람이 동시에 확정하면 겹칠 수 있다. 이 제약이 있으면 동시에 저장해도 한 건만 성공한다(FR-05, AC-02). 취소된 예약은 제약에서 빠지므로 그 시간을 다시 예약할 수 있다. 상담 지연·종료 10분 전 알림(FR-17, T48)은 이 표의 `period`를 읽어 `notifications`에 넣는다.
 
-### 4.6 기억·개인 규칙
+### 4.6 기억·개인 규칙·원에 남은 답
 
 | 표 | 무엇 | 핵심 칸 | 요구사항 |
 | --- | --- | --- | --- |
-| `memories` | 사람별 기억(거절 이유·선호·말투·승인한 답) | `owner_id`, `kind`, `reason_code`, `content`, `structured`, `deleted_at` | FR-06, FR-20 |
+| `memories` | 사람별 기억(거절 이유·선호·말투) | `owner_id`, `kind`, `reason_code`, `content`, `structured`, `deleted_at` | FR-06, FR-20 |
 | `memory_rules` | 같은 거절 이유가 3번 쌓여 제안된 개인 규칙 | `reason_code`, `rule_text`, `rule_json`, `status` | FR-06 |
+| `saved_answers` | 원에 남은 답(담임이 승인한 문의 답, 원 단위) | `question`, `question_embedding`, `answer`, `source_card_id`, `status` | FR-04, FR-20 |
+| `saved_answer_sources` | 그 답이 근거로 쓴 문서 | `saved_answer_id`, `document_id` | FR-04, FR-13 |
 
 - 거절 이유가 저장되면 `memories`에 같은 `reason_code`로 쌓는다. 지우지 않은 기억 중 같은 값이 3개가 되면 코드가 `memory_rules`에 `proposed`로 넣고 규칙 제안 카드를 만든다.
 - 규칙은 담임이 승인해야 `active`가 되고, 그 전에는 다음 후보 계산에 쓰지 않는다. 같은 사람·같은 이유의 규칙은 `proposed`나 `active` 상태로 하나만 있을 수 있다.
 - 사용자가 기억을 지우면 `deleted_at`을 채우고 다음 제안에서 뺀다(FR-20 "내 AI 기억 보기·지우기"는 이 표를 그대로 씀).
 - 민감·일회성 정보는 저장하지 않는다. 저장 전 거르는 일은 기억 AI와 검사 AI가 맡는다.
+- **원에 남은 답**은 한 사람의 기억이 아니라 원 전체가 쓰는 답이라 `memories`와 따로 둔다. 같은 질문이 오면 `question_embedding`으로 가까운 답을 찾고, 질문 뜻이 충분히 같고 근거 문서가 최신일 때만 카드 없이 바로 답한다(T04 합의 7). 바로 답한 일은 `events`에 `answered_from_saved`로 남긴다.
+- 근거 문서가 새 판(`superseded`)이 되거나 충돌 확인 대기(`conflict_pending`)가 되면, DB 트리거가 그 문서를 쓴 답을 `invalidated`로 바꾼다. 무효가 된 답은 검색 대상(HNSW 부분 인덱스)에서도 빠진다. "뜻이 충분히 같다"의 기준값은 T06 평가로 정한다.
 
 ### 4.7 알림장(글 초안)
 
@@ -138,7 +150,7 @@ erDiagram
 | `daily_note_inputs` | 교사가 반 단위로 넣는 그날 활동·준비물 | `classroom_id`, `note_date`, `activities`, `supplies` | FR-10 |
 | `daily_notes` | 아이별 알림장 | `child_id`, `note_date`, `status`, `content`, `open_checks` | FR-10, FR-14 |
 
-`open_checks`에 검사 AI가 짚은 확인 필요 항목이 하나라도 남아 있으면 `status`를 `sent`로 바꿀 수 없다. 발송 잠금을 화면이나 API만이 아니라 DB에서도 한 번 더 막는 것이다(FR-10, AC-04). 식단·일정은 `documents`에서, 투약·귀가 줄은 `requests`에서 가져와 `content`에 넣는다.
+상태 값 `draft`·`needs_check`·`ready`·`sent`는 T04 6장의 `note_drafted`·`note_needs_check`·`note_ready`·`note_sent`와 같은 뜻이다(표가 따로라 앞의 `note_`를 뺐다). MVP는 반 전체를 한 번에 보내고, 반에 `needs_check`가 하나라도 있으면 보내기를 잠근다(T04 합의 6). `open_checks`에 검사 AI가 짚은 확인 필요 항목이 하나라도 남아 있으면 `status`를 `sent`로 바꿀 수 없다. 발송 잠금을 화면이나 API만이 아니라 DB에서도 한 번 더 막는 것이다(FR-10, AC-04). 식단·일정은 `documents`에서, 투약·귀가 줄은 `requests`에서 가져와 `content`에 넣는다.
 
 ### 4.8 처리 이력·알림·평가
 
@@ -148,13 +160,26 @@ erDiagram
 | `notifications` | 서비스 안 알림 | `recipient_id`, `dedupe_key`, `status`, `attempts`, `deliver_after`, `read_at` | FR-12, FR-21 |
 | `eval_runs` | 평가 실행 기록 | `suite`, `requested_model`, `returned_model`, `started_at`, `total`, `passed`, `errors` | 원장 현황 평가 결과, NFR-09 |
 
-- `events.action`: 생성·분류·정보 요청·배정·재배정·초안·검사·돌려보내기·승인·거절·보류·원장 보고·발송·예약·완료·도구 호출·도구 실패·권한 거부. 부재 재배정(FR-19)은 `reassigned`에 이전 담당·새 담당·이유를 `detail`로 남긴다. 권한 없는 요청도 `permission_denied`로 남긴다(NFR-01).
+- `events.action`: 생성·분류·정보 요청·배정·재배정·초안·검사·돌려보내기·승인·거절·보류·원장 보고·발송·예약·완료·도구 호출·도구 실패·권한 거부·학부모 확인·위험 등급 다시 분류·반려·원에 남은 답으로 답함. 부재 재배정(FR-19)은 `reassigned`에 이전 담당·새 담당·이유를 `detail`로 남긴다. 권한 없는 요청도 `permission_denied`로 남긴다(NFR-01).
 - `detail`에는 비밀값과 불필요한 개인정보를 넣지 않는다(NFR-05).
 - `notifications.dedupe_key`: 예를 들어 `card:<카드 ID>:approved:<받는 사람 ID>`처럼 만든다. 같은 키는 한 번만 들어가므로 재시도해도 알림이 두 번 가지 않는다. 재시도는 최대 3번이다(FR-12).
 - `deliver_after`: 퇴근 뒤 알림을 모아 두었다가 보내는 데 쓴다(FR-21, 최종).
 - `eval_runs`: 요청한 모델 ID와 응답에 돌아온 모델 ID를 함께 남긴다. 원장 현황의 '평가 결과'와 모델 선택 근거(T05)를 같은 기록에서 본다.
 
-### 4.9 원장 현황
+### 4.9 교직원 받은함과 원장 현황
+
+교직원 받은함은 뷰 `staff_inbox`가 카드마다 필터 하나(`inbox_filter`)를 붙인다(T04 2.2, 합의 5).
+
+| `inbox_filter` | 받은함 필터 | 들어가는 카드 |
+| --- | --- | --- |
+| `unassigned` | 미배정 | 담당이 없는 카드 |
+| `needs_review` | 확인 필요 | 요청이 `awaiting_review`·`escalated`, 학부모가 확인한 민원(`sent_or_booked` + `parent_confirmed_at`), 요청 없는 카드(규칙 제안 등) 중 결정 대기 |
+| `uncertain` | 판단 필요 | 위험 등급 `uncertain` 민원 |
+| `on_hold` | 보류 | 카드나 요청이 보류 |
+| `in_progress` | 진행 중 | 학부모·AI·시스템 차례인 것 |
+| `done` | 완료 | 카드 `done`·`rejected`, 요청 `completed`·`rejected` |
+
+긴급 민원은 필터를 따로 두지 않고 `is_urgent`로 '확인 필요' 맨 위에 올린다. 판단 필요 민원을 사람이 다시 나누면 `risk_level`이 바뀌어 '확인 필요'로 옮겨 간다.
 
 원장 현황(FR-19)은 표를 따로 두지 않고 `cards`를 세는 뷰 `director_overview`로 만든다. 미배정 = `unassigned`, 대기 = `pending`·`in_review`·`on_hold`, 지연 = 대기 중이면서 `due_at`이 지난 것, 완료 = 오늘 `done`이 된 것. 재배정 이력은 `events`의 `reassigned`, 평가 결과는 `eval_runs`에서 가져온다.
 
@@ -178,11 +203,11 @@ erDiagram
 | `escalated` | 원장 보고로 올라감 |
 | `rejected` | 처리하지 않기로 함 |
 
-어떤 상태에서 어떤 상태로 갈 수 있는지는 T04 흐름·권한표가 정하고, API 코드에서 검사한다. DB는 값이 목록 안에 있는지만 검사한다.
+어떤 상태에서 어떤 상태로 갈 수 있는지와 역할별 화면 표시 이름은 T04 2장(공통 전이 규칙·표시 이름 표)이 정하고, 전이는 API 코드에서 검사한다. DB는 값이 목록 안에 있는지만 검사한다.
 
 ### 5.2 카드 `cards.status`
 
-FR-09의 미배정·대기·검토·완료를 따른다.
+카드 처리 단계를 나타내는 내부 값이다. 화면의 받은함 필터는 이 값과 요청 상태를 함께 보고 `staff_inbox`가 정한다(4.9).
 
 | 값 | 화면 표시 |
 | --- | --- |
@@ -196,7 +221,7 @@ FR-09의 미배정·대기·검토·완료를 따른다.
 
 ## 6. DB가 막는 것과 확인 결과 (2026-11-17)
 
-DDL을 `pgvector/pgvector:pg16` 임시 컨테이너에 적용하고 가상 데이터로 시험했다. 표 24개와 뷰 1개가 오류 없이 만들어졌다.
+DDL을 `pgvector/pgvector:pg16` 임시 컨테이너에 적용하고 가상 데이터로 시험했다. 표 26개와 뷰 2개, 트리거 1개가 오류 없이 만들어졌다. 아래 21번부터는 T04 합의를 반영한 뒤 더한 시험이다.
 
 | 시험 | 기대 | 결과 | 막는 제약 |
 | --- | --- | --- | --- |
@@ -215,6 +240,13 @@ DDL을 `pgvector/pgvector:pg16` 임시 컨테이너에 적용하고 가상 데�
 | 검사 3번째 돌려보내기 | 거부 | 거부됨 | `cards.check_attempts` CHECK |
 | 문서 조각 벡터 검색 | 가까운 조각 반환 | 반환됨 | HNSW 인덱스 |
 | 원장 현황 집계 | 지연 1건 | 대기 1·지연 1 | `director_overview` 뷰 |
+| 긴급 민원인데 네 가지 중 무엇인지 없음 | 거부 | 거부됨 | `requests` CHECK |
+| 민원이 아닌 요청에 위험 등급·학부모 확인 | 거부 | 거부됨 | `requests` CHECK |
+| 이유 없이 반려 · 이유 없이 보류 결정 | 거부 | 거부됨 | `approvals` CHECK |
+| 예정일 없이 카드 보류 / 예정일 있는 보류 | 거부 / 저장 | 거부됨 / 저장됨 | `cards` CHECK |
+| 근거 문서가 새 판으로 바뀜 | 그 문서를 쓴 원에 남은 답이 무효 | `invalidated` (`document_superseded`) | `documents` 트리거 |
+| 받은함 필터 6종 | 판단 필요·긴급·학부모 확인·확인 전·미배정이 제 필터로 | 판단 필요=`uncertain`, 긴급=`needs_review`+맨 위, 확인함=`needs_review`, 확인 전=`in_progress`, 담당 없음=`unassigned` | `staff_inbox` 뷰 |
+| 같은 반·30일·같은 주제 민원 수(학부모 3명) | 3 | 3 | `requests_repeat_idx` |
 
 ## 7. 인덱스
 
@@ -222,10 +254,11 @@ DDL을 `pgvector/pgvector:pg16` 임시 컨테이너에 적용하고 가상 데�
 | --- | --- |
 | `requests (org_id, status)` | 기관별 상태 목록 |
 | `requests (requester_id, created_at DESC)` | 학부모 '내 요청' 목록 |
-| `requests (org_id, type, topic_key, created_at)` | 같은 주제 민원 반복 횟수 |
+| `requests (classroom_id, topic_key, created_at)` 민원만 | 같은 반·같은 주제 민원 반복 횟수 |
 | `cards (org_id, assignee_id, status)` 열린 카드만 | 교직원 받은함 |
 | `cards (org_id, due_at)` 열린 카드만 | 원장 현황 지연 계산 |
 | `document_chunks` HNSW(`vector_cosine_ops`) | 근거 검색 |
+| `saved_answers` HNSW, `active`만 | 원에 남은 답 찾기 |
 | `events (request_id, id)` | 요청 처리 이력 |
 | `notifications (recipient_id, created_at DESC)` 안 읽은 것만 | 알림 목록 |
 | `notifications (deliver_after)` 보낼 것만 | 알림 발송 대기열 |
@@ -256,15 +289,15 @@ DDL을 `pgvector/pgvector:pg16` 임시 컨테이너에 적용하고 가상 데�
 
 서버 한 대에 Docker Compose로 배포하므로 서비스를 하나 줄이는 것이 메모리·운영 면에서도 낫다.
 
-## 9. 역할별로 볼 수 있는 행 (초안 — T04 권한표에 맞춰 고침)
+## 9. 역할별로 볼 수 있는 행 (T04 7장 기준)
 
 | 역할 | 요청·카드 | 자료 | 기억 |
 | --- | --- | --- | --- |
-| 학부모 | 자기가 낸 요청과 그 대화·진행 상태만. 카드는 볼 수 없음 | `visibility`가 `parents`·`all`인 자료 | 자기 기억만 |
-| 교사 | 담당 반(`classroom_staff`)의 요청과 자기에게 배정된 카드 | 우리 원 자료 전부 | 자기 기억만 |
-| 원장·원감 | 우리 원의 모든 요청·카드, 원장 보고 카드 | 우리 원 자료 전부 | 자기 기억만 |
+| 학부모 | 자기가 낸 요청과 그 대화·진행 상태만. 카드·위험 등급·보류 이유는 볼 수 없음 | `visibility`가 `parents`·`all`인 자료, 우리 아이 알림장(발송 후) | 자기 기억만 |
+| 담임 | 우리 반(`classroom_staff`, 대체 담임은 기간 안) 요청·카드 + 재배정받은 카드. 다른 반은 볼 수 없음 | 우리 원 자료 전부, 우리 반 알림장 | 자기 기억만 |
+| 원장·원감 | 우리 원의 모든 요청·카드, 원장 보고 카드 | 우리 원 자료 전부, 원 전체 알림장(읽기) | 자기 기억만 |
 
-모든 조회는 토큰의 `org`와 행의 `org_id`가 같아야 한다. 우리 반 피드를 교직원이 못 보는 규칙(FR-22)은 T54에서 피드 표와 함께 정한다.
+모든 조회는 토큰의 `org`와 행의 `org_id`가 같아야 한다. 권한은 화면에서 숨기는 것이 아니라 서버가 역할·기관·반을 검사하고, URL·API로 직접 불러도 거부하며 `events`에 `permission_denied`로 남긴다(T04 7.1, FR-01). 누가 어떤 행동을 할 수 있는지(승인·반려·재배정·상담 확정·처리 완료 등)는 T04 7.2를 따른다. 우리 반 피드를 교직원이 못 보는 규칙(FR-22)은 T54에서 피드 표와 함께 정한다.
 
 ## 10. LangGraph 체크포인트
 
@@ -283,8 +316,10 @@ DDL을 `pgvector/pgvector:pg16` 임시 컨테이너에 적용하고 가상 데�
 
 ## 12. T10(11/18)에서 정할 것
 
-1. 거절 이유 코드 목록(`reason_code`). 예: 시간 안 됨·상담실 없음·정보 부족·다른 담당.
-2. "같은 내용 3번째 민원"을 셀 기간과 `topic_key`를 붙이는 기준(감독 AI 출력 형식).
+1. 거절 이유 코드 목록(`reason_code`). 예: 시간 안 됨·상담실 없음·정보 부족·다른 담당. 반려 이유 코드도 같이.
+2. `topic_key`를 붙이는 기준(감독 AI 출력 형식). 기간·범위는 T04 합의 3(같은 반·30일·같은 주제)으로 정해짐.
 3. 카드 종류별 처리 기한(`due_at`). 원장 현황의 '지연'이 이 값으로 정해짐.
 4. 알림 `dedupe_key` 만드는 규칙.
 5. 요청·카드 상태가 바뀔 때 화면이 받을 필드(T13 API 설계로 이어짐).
+6. T04 후속 F1: 학부모가 '확인했어요'를 안 눌러도 담임이 이유를 남기고 완료할 수 있게 할지. 하면 원장 현황에 "학부모 미확인 완료" 칸을 더함.
+7. 같은 질문 여러 건을 카드 한 장으로 묶을지(T04 5.2 [제안]). 묶으면 카드 하나에 요청 여러 건을 잇는 표(`card_requests`)를 더함.
