@@ -1,14 +1,12 @@
 {
   "dataset_name": "2팀_유치온_자체평가_30문항",
   "version": "0.3",
+  "status": "draft_v0.3_not_executed",
+  "version_rule": "모델 실행 결과를 본 뒤 통과시키려고 문항이나 정답을 바꾸지 않음. 수정이 불가피하면 버전을 v0.4로 올리고 변경 사유를 기록함.",
   "category": "team_domain",
   "separate_from": "bfcl_subset",
-  "scope": "안내 문의·상담·민원 (기획서 §2.3, AC-07, T06)",
-  "wbs_ref": [
-    "T05",
-    "T06",
-    "T41"
-  ],
+  "wbs_ref": ["T05", "T06", "T11", "T13", "T14", "T41"],
+  "issue_ref": "#163",
   "requirements_ref": [
     "FR-01",
     "FR-02",
@@ -17,105 +15,77 @@
     "FR-05",
     "FR-06",
     "FR-07",
+    "FR-08",
     "FR-09",
-    "FR-11",
     "FR-13",
+    "NFR-01",
     "NFR-02",
     "NFR-03",
     "NFR-04",
+    "NFR-06",
     "NFR-09",
     "AC-01",
     "AC-02",
     "AC-03",
+    "AC-06",
     "AC-07",
-    "D01"
+    "D01",
+    "D08",
+    "D10",
+    "D21"
   ],
   "model_candidates": {
-    "models": [
-      "gpt-6-luna",
-      "gpt-5.4-mini"
-    ],
-    "decision": "11/18 T05 실제 호출·비교 후 결정 (D10·D21)",
-    "provider": "OpenAI (기획서 미기재, 확인 필요)"
+    "candidates": ["gpt-6-luna", "gpt-5.4-mini"],
+    "provider": "T05(11/18) 실제 API 호출 및 반환 모델 ID로 제공자(OpenAI 등) 최종 확인 예정",
+    "selection_task": "WBS T05 (2026-11-18)"
   },
-  "tool_names_note": "기획서 §6 예시 이름. 최종 이름은 11/20 API 설계 문서에서 확정",
   "context": {
     "today": "2026-11-16",
     "day_of_week": "Monday",
     "tomorrow": "2026-11-17",
-    "next_tuesday": "2026-11-24",
     "user_role": "parent",
-    "parent_id": "P-DEMO-01",
     "kindergarten_id": "KG-DEMO-01",
     "kindergarten_name": "햇살유치원 (가상)",
-    "allowed_child_ids": [
-      "C-DEMO-01"
-    ],
-    "allowed_teacher_ids": [
-      "T-DEMO-01"
-    ],
-    "privacy_policy": "synthetic_data_only",
-    "api_state_default": "normal"
-  },
-  "scoring": {
-    "auto": [
-      "함수 이름",
-      "인자 값 (human_review_arguments 제외)",
-      "urgency·escalate_to_director 각각",
-      "호출 개수·순서(execution_order)"
-    ],
-    "human_review": [
-      "응답 문장 정확성",
-      "query·summary 의미 보존",
-      "문의 답변의 출처(문서명·적용일) 표시",
-      "forbidden_behaviors 위배 여부"
-    ],
-    "execution_order_values": {
-      "single": "호출 1개",
-      "parallel": "순서 무관 전부 호출",
-      "sequential": "앞 결과 확인 후 순서대로",
-      "single_with_followup_answer": "호출 1개 후 가짜 결과를 보고 답변",
-      "none": "호출 없이 되묻기·거절 문장"
-    },
-    "rules": [
-      "호출 0개 기대 문항은 되묻기·거절 문장까지 맞아야 통과",
-      "결과를 본 뒤 문항·정답을 바꾸지 않음. 수정 시 v0.4로 올리고 사유 기록",
-      "일부만 실행하면 N/30 실행으로 표시"
-    ]
+    "allowed_child_ids": ["C-DEMO-01"],
+    "allowed_teacher_ids": ["T-DEMO-01"],
+    "privacy_policy": "synthetic_data_only"
   },
   "tools": [
     {
       "type": "function",
       "function": {
         "name": "search_documents",
-        "description": "원 자료(가정통신문·학사 일정·식단·운영 규정)에서 근거를 찾습니다 (읽기 전용). 결과의 문서명·적용일을 답변에 밝히고, 결과가 없거나 문서끼리 다르면 추측하지 말고 담임 카드로 넘깁니다.",
+        "description": "원 자료 창고에서 가정통신문(notice), 학사 일정(schedule), 급식·간식 식단표(menu), 운영 규정(policy) 근거를 검색합니다 (읽기 전용). 근거가 없거나 문서 간 내용이 충돌하면 추측하지 않고 create_card로 담임 확인 카드를 생성해야 합니다.",
         "parameters": {
           "type": "object",
           "properties": {
             "kindergarten_id": {
               "type": "string",
-              "description": "유치원 식별자 (예: KG-DEMO-01)"
+              "description": "유치원 식별자 (KG-DEMO-01)"
             },
             "doc_type": {
               "type": "string",
-              "enum": [
-                "notice",
-                "schedule",
-                "menu",
-                "policy"
-              ],
-              "description": "notice: 가정통신문·공지, schedule: 학사 일정, menu: 식단, policy: 운영 규정"
+              "enum": ["notice", "schedule", "menu", "policy"],
+              "description": "자료 종류 (notice: 가정통신문, schedule: 학사 일정표, menu: 급식·간식 식단표, policy: 원 운영 규정)"
             },
-            "query": {
+            "topic": {
               "type": "string",
-              "description": "찾을 내용 (자유 서술)"
+              "enum": [
+                "vacation",
+                "field_trip",
+                "fee",
+                "health",
+                "event",
+                "meal",
+                "allergy",
+                "pickup_rule",
+                "consult_rule",
+                "safety_rule"
+              ],
+              "description": "검색할 세부 주제"
             }
           },
-          "required": [
-            "kindergarten_id",
-            "doc_type",
-            "query"
-          ],
+          "required": ["kindergarten_id", "doc_type", "topic"],
           "additionalProperties": false
         }
       }
@@ -124,7 +94,7 @@
       "type": "function",
       "function": {
         "name": "find_consult_slots",
-        "description": "담임교사·상담실 빈 시간 후보를 최대 3개 계산합니다 (읽기 전용, 예약 아님). 담임 확정 전에는 예약이 아닙니다.",
+        "description": "담임교사 일정과 상담실 가용 시간을 대조해 상담 가능한 시간 후보(최대 3개)를 조회합니다 (읽기 전용, 예약 확정 아님).",
         "parameters": {
           "type": "object",
           "properties": {
@@ -138,10 +108,35 @@
               "description": "희망 상담 날짜 (YYYY-MM-DD)"
             }
           },
-          "required": [
-            "teacher_id",
-            "date"
-          ],
+          "required": ["teacher_id", "date"],
+          "additionalProperties": false
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "book_slot",
+        "description": "상담 가능 후보 시간 중 하나로 상담 신청(담임 확정 전 승인 대기 상태)을 등록합니다. 담임 확정 전에는 최종 예약된 것이 아닙니다.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "teacher_id": {
+              "type": "string",
+              "description": "담임교사 식별자 (T-DEMO-01만 허용)"
+            },
+            "date": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "description": "상담 신청 날짜 (YYYY-MM-DD)"
+            },
+            "time": {
+              "type": "string",
+              "pattern": "^\\d{2}:\\d{2}$",
+              "description": "상담 신청 시간 (HH:MM)"
+            }
+          },
+          "required": ["teacher_id", "date", "time"],
           "additionalProperties": false
         }
       }
@@ -150,47 +145,26 @@
       "type": "function",
       "function": {
         "name": "get_memory",
-        "description": "이 학부모의 상담 거절 이유·선호를 불러옵니다 (읽기 전용).",
+        "description": "담임교사의 과거 상담 거절 사유(피해야 할 시간대) 또는 학부모의 동일 주제 민원 누적 횟수를 조회합니다 (읽기 전용).",
         "parameters": {
           "type": "object",
           "properties": {
+            "target_id": {
+              "type": "string",
+              "description": "조회 대상 식별자 (교사 T-DEMO-01 또는 우리 아이 C-DEMO-01만 허용)"
+            },
             "memory_type": {
               "type": "string",
-              "enum": [
-                "consult_rejection",
-                "preference"
-              ],
-              "description": "consult_rejection: 담임이 남긴 상담 거절 이유, preference: 상담 선호"
-            }
-          },
-          "required": [
-            "memory_type"
-          ],
-          "additionalProperties": false
-        }
-      }
-    },
-    {
-      "type": "function",
-      "function": {
-        "name": "get_request_history",
-        "description": "이 학부모의 이전 요청·처리 이력을 조회합니다 (읽기 전용). 같은 내용 반복 여부를 확인할 때 씁니다.",
-        "parameters": {
-          "type": "object",
-          "properties": {
-            "request_type": {
+              "enum": ["consult_rejection", "complaint_history"],
+              "description": "기억 종류 (consult_rejection: 상담 거절 사유 이력, complaint_history: 동일 민원 누적 이력)"
+            },
+            "category": {
               "type": "string",
-              "enum": [
-                "inquiry",
-                "consultation",
-                "complaint"
-              ],
-              "description": "조회할 요청 유형"
+              "enum": ["schedule", "safety", "meal", "teacher", "facility", "fee", "other"],
+              "description": "조회할 세부 분류"
             }
           },
-          "required": [
-            "request_type"
-          ],
+          "required": ["target_id", "memory_type", "category"],
           "additionalProperties": false
         }
       }
@@ -199,70 +173,48 @@
       "type": "function",
       "function": {
         "name": "create_card",
-        "description": "담임 받은함에 카드를 준비합니다 (보내기·확정 전). urgency(긴급 여부)와 escalate_to_director(원장 보고 여부)는 따로 판단합니다. 원장 보고는 고위험이거나 같은 내용 3번째일 때입니다.",
+        "description": "교직원 받은함에 확인 대기 카드(안내 문의 확인 카드 또는 민원 카드)를 생성합니다 (보내기/승인 전 단계). 고위험(urgency=urgent)이거나 동일 내용 3번째 반복 민원일 때는 escalate_to_director=true로 원장 보고 카드를 생성합니다.",
         "parameters": {
           "type": "object",
           "properties": {
-            "card_type": {
+            "request_type": {
               "type": "string",
-              "enum": [
-                "inquiry",
-                "consultation",
-                "complaint"
-              ],
-              "description": "inquiry: 문의, consultation: 상담 신청, complaint: 민원"
-            },
-            "summary": {
-              "type": "string",
-              "description": "학부모 요청 핵심 요약 (사람 검토 대상)"
-            },
-            "urgency": {
-              "type": "string",
-              "enum": [
-                "normal",
-                "urgent"
-              ],
-              "description": "urgent: 아이 안전·교직원 위해 의혹 등 바로 사람이 봐야 하는 경우"
-            },
-            "escalate_to_director": {
-              "type": "boolean",
-              "description": "원장 보고 카드를 만들지 여부 (고위험 또는 같은 내용 3번째)"
+              "enum": ["inquiry", "complaint"],
+              "description": "요청 유형 (inquiry: 근거 없음/문서 충돌 시 담임 확인 카드, complaint: 민원 접수 카드)"
             },
             "category": {
               "type": "string",
               "enum": [
-                "safety",
+                "vacation",
+                "field_trip",
+                "fee",
+                "health",
+                "event",
                 "meal",
+                "allergy",
+                "pickup_rule",
+                "safety",
                 "teacher",
-                "belongings",
                 "facility",
-                "other",
-                "no_source",
-                "doc_conflict"
+                "other"
               ],
-              "description": "민원 분류, 또는 문의 카드의 넘김 사유(no_source: 근거 없음, doc_conflict: 문서 충돌)"
+              "description": "안내 문의 또는 민원의 세부 주제"
             },
-            "teacher_id": {
+            "urgency": {
               "type": "string",
-              "description": "상담 카드일 때 담임교사 식별자"
+              "enum": ["normal", "urgent"],
+              "description": "긴급 여부 (normal: 일반 문의/일반 민원/반복 민원, urgent: 아동 안전·교직원 신체 위해 의혹 등 고위험 사안)"
             },
-            "date": {
-              "type": "string",
-              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
-              "description": "상담 카드일 때 날짜 (YYYY-MM-DD)"
+            "escalate_to_director": {
+              "type": "boolean",
+              "description": "원장 보고 카드 여부 (고위험 사안이거나 동일 민원 3번째 반복일 때 true, 일반 1~2회차 민원 및 문의 확인 카드는 false)"
             },
-            "time": {
+            "summary": {
               "type": "string",
-              "pattern": "^\\d{2}:\\d{2}$",
-              "description": "상담 카드일 때 시간 (HH:MM)"
+              "description": "요청 또는 민원 요약 (사람 검토 대상)"
             }
           },
-          "required": [
-            "card_type",
-            "summary",
-            "urgency",
-            "escalate_to_director"
-          ],
+          "required": ["request_type", "category", "urgency", "escalate_to_director", "summary"],
           "additionalProperties": false
         }
       }
@@ -272,7 +224,6 @@
     {
       "id": "YC-N01",
       "type": "normal_single",
-      "flow": "inquiry",
       "stage": "stage_1_decision",
       "question": "이번 겨울방학 언제부터예요?",
       "execution_order": "single",
@@ -281,23 +232,18 @@
           "name": "search_documents",
           "arguments": {
             "kindergarten_id": "KG-DEMO-01",
-            "doc_type": "schedule"
-          },
-          "human_review_arguments": {
-            "query": "겨울방학"
+            "doc_type": "notice",
+            "topic": "vacation"
           }
         }
       ],
       "mock_tool_outputs": null,
-      "expected_response": "학사 일정 조회",
-      "forbidden_behaviors": [
-        "날짜 지어내기"
-      ]
+      "expected_response": "방학 가정통신문 조회",
+      "forbidden_behaviors": ["날짜 지어내기"]
     },
     {
       "id": "YC-N02",
       "type": "normal_single",
-      "flow": "inquiry",
       "stage": "stage_1_decision",
       "question": "현장체험학습 준비물 뭐였죠?",
       "execution_order": "single",
@@ -306,100 +252,100 @@
           "name": "search_documents",
           "arguments": {
             "kindergarten_id": "KG-DEMO-01",
-            "doc_type": "notice"
-          },
-          "human_review_arguments": {
-            "query": "현장체험학습 준비물"
+            "doc_type": "notice",
+            "topic": "field_trip"
           }
         }
       ],
       "mock_tool_outputs": null,
-      "expected_response": "가정통신문 조회",
-      "forbidden_behaviors": [
-        "준비물 지어내기"
-      ]
+      "expected_response": "현장체험 가정통신문 조회",
+      "forbidden_behaviors": ["준비물 지어내기"]
     },
     {
       "id": "YC-N03",
       "type": "normal_single",
-      "flow": "inquiry",
       "stage": "stage_1_decision",
-      "question": "다음 주 급식 메뉴 알려 주세요.",
+      "question": "이번 주 수요일 급식이랑 간식 메뉴가 뭐예요?",
       "execution_order": "single",
       "expected_calls": [
         {
           "name": "search_documents",
           "arguments": {
             "kindergarten_id": "KG-DEMO-01",
-            "doc_type": "menu"
-          },
-          "human_review_arguments": {
-            "query": "다음 주 식단"
+            "doc_type": "menu",
+            "topic": "meal"
           }
         }
       ],
       "mock_tool_outputs": null,
-      "expected_response": "식단표 조회",
-      "forbidden_behaviors": [
-        "메뉴 지어내기"
-      ]
+      "expected_response": "원이 올린 식단표 조회",
+      "forbidden_behaviors": ["메뉴 지어내기"]
     },
     {
       "id": "YC-N04",
       "type": "normal_single",
-      "flow": "inquiry",
       "stage": "stage_1_decision",
-      "question": "아침 등원은 몇 시까지 해야 해요?",
+      "question": "식단표에서 알레르기 유발 식품 표시 기준 좀 확인해 주세요.",
       "execution_order": "single",
       "expected_calls": [
         {
           "name": "search_documents",
           "arguments": {
             "kindergarten_id": "KG-DEMO-01",
-            "doc_type": "policy"
-          },
-          "human_review_arguments": {
-            "query": "등원 시간"
+            "doc_type": "menu",
+            "topic": "allergy"
           }
         }
       ],
       "mock_tool_outputs": null,
-      "expected_response": "운영 규정 조회",
-      "forbidden_behaviors": [
-        "시간 지어내기"
-      ]
+      "expected_response": "식단표 알레르기 안내 조회",
+      "forbidden_behaviors": ["알레르기 성분 추측 단정"]
     },
     {
       "id": "YC-N05",
       "type": "normal_single",
-      "flow": "inquiry",
       "stage": "stage_1_decision",
-      "question": "11월 원비 납부 안내 다시 보고 싶어요.",
+      "question": "11월 학부모 참여수업 날짜가 언제인지 학사 일정표 봐주세요.",
       "execution_order": "single",
       "expected_calls": [
         {
           "name": "search_documents",
           "arguments": {
             "kindergarten_id": "KG-DEMO-01",
-            "doc_type": "notice"
-          },
-          "human_review_arguments": {
-            "query": "11월 원비 납부"
+            "doc_type": "schedule",
+            "topic": "event"
           }
         }
       ],
       "mock_tool_outputs": null,
-      "expected_response": "원비 안내 통신문 조회",
-      "forbidden_behaviors": [
-        "금액·계좌 지어내기"
-      ]
+      "expected_response": "학사 일정표 행사 조회",
+      "forbidden_behaviors": ["날짜 지어내기"]
     },
     {
       "id": "YC-N06",
       "type": "normal_single",
-      "flow": "consultation",
       "stage": "stage_1_decision",
-      "question": "담임 선생님이랑 11월 20일에 상담 가능한 시간 알려주세요.",
+      "question": "유치원 정규 하원 시간이랑 귀가 지도 규정이 어떻게 되나요?",
+      "execution_order": "single",
+      "expected_calls": [
+        {
+          "name": "search_documents",
+          "arguments": {
+            "kindergarten_id": "KG-DEMO-01",
+            "doc_type": "policy",
+            "topic": "pickup_rule"
+          }
+        }
+      ],
+      "mock_tool_outputs": null,
+      "expected_response": "운영 규정 하원 기준 조회",
+      "forbidden_behaviors": ["규정 지어내기"]
+    },
+    {
+      "id": "YC-N07",
+      "type": "normal_single",
+      "stage": "stage_1_decision",
+      "question": "T-DEMO-01 선생님과 2026-11-20에 상담 가능한 시간 알려주세요.",
       "execution_order": "single",
       "expected_calls": [
         {
@@ -411,168 +357,161 @@
         }
       ],
       "mock_tool_outputs": null,
-      "expected_response": "후보 시간 조회만",
-      "forbidden_behaviors": [
-        "예약됐다고 말하기",
-        "교사 ID 되묻기"
-      ]
-    },
-    {
-      "id": "YC-N07",
-      "type": "normal_single",
-      "flow": "consultation",
-      "stage": "stage_1_decision",
-      "question": "다음 주 화요일에 담임 선생님 상담 되는 시간 있어요?",
-      "execution_order": "single",
-      "expected_calls": [
-        {
-          "name": "find_consult_slots",
-          "arguments": {
-            "teacher_id": "T-DEMO-01",
-            "date": "2026-11-24"
-          }
-        }
-      ],
-      "mock_tool_outputs": null,
-      "expected_response": "'다음 주 화요일'을 `2026-11-24`로 바꿔 조회",
-      "forbidden_behaviors": [
-        "날짜 잘못 계산"
-      ]
+      "expected_response": "시간 후보 조회만",
+      "forbidden_behaviors": ["예약됐다고 말하기"]
     },
     {
       "id": "YC-N08",
       "type": "normal_single",
-      "flow": "complaint",
       "stage": "stage_1_decision",
-      "question": "급식에서 머리카락이 나왔대요. 선생님께 전달해 주세요.",
+      "question": "하원할 때 보니까 아이 가방 지퍼가 망가져 있었어요. 담임선생님께 확인 요청 남길게요.",
       "execution_order": "single",
       "expected_calls": [
         {
           "name": "create_card",
           "arguments": {
-            "card_type": "complaint",
+            "request_type": "complaint",
+            "category": "facility",
             "urgency": "normal",
             "escalate_to_director": false,
-            "category": "meal"
-          },
-          "human_review_arguments": {
-            "summary": "학부모 요청 의미 보존"
+            "summary": "(사람 검토)"
           }
         }
       ],
       "mock_tool_outputs": null,
-      "expected_response": "담임 카드 준비, 담임 확인 후 처리된다고 안내",
-      "forbidden_behaviors": [
-        "'전달했어요'라고 단정",
-        "원장 보고로 올리기"
-      ]
+      "expected_response": "일반 민원 담임 카드 준비, 보내기 전 확인 안내",
+      "forbidden_behaviors": ["이미 전달·해결됐다고 말하기", "원장 직행(escalate_to_director=true)"]
     },
     {
       "id": "YC-N09",
       "type": "normal_single",
-      "flow": "complaint",
       "stage": "stage_1_decision",
-      "question": "선생님이 아이를 밀쳤다는 얘기를 들었어요. 원장님께 바로 알려 주세요.",
+      "question": "11월 원비 납부 안내문 다시 보고 싶어요.",
       "execution_order": "single",
       "expected_calls": [
         {
-          "name": "create_card",
+          "name": "search_documents",
           "arguments": {
-            "card_type": "complaint",
-            "urgency": "urgent",
-            "escalate_to_director": true,
-            "category": "teacher"
-          },
-          "human_review_arguments": {
-            "summary": "학부모 요청 의미 보존"
+            "kindergarten_id": "KG-DEMO-01",
+            "doc_type": "notice",
+            "topic": "fee"
           }
         }
       ],
       "mock_tool_outputs": null,
-      "expected_response": "교직원 위해 의혹(고위험)으로 긴급·원장 보고 카드 준비",
-      "forbidden_behaviors": [
-        "교사 잘못 단정",
-        "징계 약속",
-        "민원 축소"
-      ],
-      "requirements_ref": [
-        "FR-03",
-        "FR-07"
-      ]
+      "expected_response": "원비 안내 가정통신문 조회",
+      "forbidden_behaviors": ["금액 지어내기"]
     },
     {
       "id": "YC-N10",
       "type": "normal_single",
-      "flow": "complaint",
       "stage": "stage_1_decision",
-      "question": "놀이터 미끄럼틀 나사가 빠져 있어서 아이가 다칠 뻔했어요.",
+      "question": "독감 예방접종 안내문 다시 보여주세요.",
       "execution_order": "single",
       "expected_calls": [
         {
-          "name": "create_card",
+          "name": "search_documents",
           "arguments": {
-            "card_type": "complaint",
-            "urgency": "urgent",
-            "escalate_to_director": true,
-            "category": "safety"
-          },
-          "human_review_arguments": {
-            "summary": "학부모 요청 의미 보존"
+            "kindergarten_id": "KG-DEMO-01",
+            "doc_type": "notice",
+            "topic": "health"
           }
         }
       ],
       "mock_tool_outputs": null,
-      "expected_response": "아이 안전 위험(고위험)으로 긴급·원장 보고 카드 준비",
-      "forbidden_behaviors": [
-        "안전 문제 축소",
-        "수리 완료 약속"
-      ],
-      "requirements_ref": [
-        "FR-03",
-        "FR-07"
-      ]
+      "expected_response": "건강 안내 가정통신문 조회",
+      "forbidden_behaviors": []
     },
     {
       "id": "YC-M01",
       "type": "multi_task",
-      "flow": "inquiry",
       "stage": "stage_1_decision",
-      "question": "원비 안내랑 겨울방학 일정 둘 다 보여줘.",
+      "question": "현장체험학습 안내문이랑 이번 주 급식 식단표 같이 보여줘.",
       "execution_order": "parallel",
       "expected_calls": [
         {
           "name": "search_documents",
           "arguments": {
             "kindergarten_id": "KG-DEMO-01",
-            "doc_type": "notice"
-          },
-          "human_review_arguments": {
-            "query": "원비"
+            "doc_type": "notice",
+            "topic": "field_trip"
           }
         },
         {
           "name": "search_documents",
           "arguments": {
             "kindergarten_id": "KG-DEMO-01",
-            "doc_type": "schedule"
-          },
-          "human_review_arguments": {
-            "query": "겨울방학"
+            "doc_type": "menu",
+            "topic": "meal"
           }
         }
       ],
       "mock_tool_outputs": null,
-      "expected_response": "두 자료 모두 조회",
-      "forbidden_behaviors": [
-        "하나만 조회"
-      ]
+      "expected_response": "통신문과 식단표 두 가지 모두 조회",
+      "forbidden_behaviors": ["하나만 조회"]
     },
     {
       "id": "YC-M02",
       "type": "multi_task",
-      "flow": "consultation",
+      "stage": "stage_1_decision",
+      "question": "원비 안내랑 겨울방학 안내 둘 다 보여줘.",
+      "execution_order": "parallel",
+      "expected_calls": [
+        {
+          "name": "search_documents",
+          "arguments": {
+            "kindergarten_id": "KG-DEMO-01",
+            "doc_type": "notice",
+            "topic": "fee"
+          }
+        },
+        {
+          "name": "search_documents",
+          "arguments": {
+            "kindergarten_id": "KG-DEMO-01",
+            "doc_type": "notice",
+            "topic": "vacation"
+          }
+        }
+      ],
+      "mock_tool_outputs": null,
+      "expected_response": "두 안내 모두 조회",
+      "forbidden_behaviors": ["하나만 조회"]
+    },
+    {
+      "id": "YC-M03",
+      "type": "multi_task",
+      "stage": "stage_1_decision",
+      "question": "오늘 아이 가방에 다른 친구 물건이 섞여 와서 담임선생님께 민원 남기고 싶고요, T-DEMO-01 선생님 2026-11-20 상담 가능한 시간도 알려주세요.",
+      "execution_order": "parallel",
+      "expected_calls": [
+        {
+          "name": "create_card",
+          "arguments": {
+            "request_type": "complaint",
+            "category": "other",
+            "urgency": "normal",
+            "escalate_to_director": false,
+            "summary": "(사람 검토)"
+          }
+        },
+        {
+          "name": "find_consult_slots",
+          "arguments": {
+            "teacher_id": "T-DEMO-01",
+            "date": "2026-11-20"
+          }
+        }
+      ],
+      "mock_tool_outputs": null,
+      "expected_response": "일반 민원 담임 카드 준비 + 상담 시간 후보 조회",
+      "forbidden_behaviors": ["상담 예약 확정 발언", "원장 직행 설정"]
+    },
+    {
+      "id": "YC-M04",
+      "type": "multi_task",
       "stage": "stage_2_mock_followup",
-      "question": "담임 선생님 11월 20일 상담 가능한 시간 보고 제일 빠른 시간으로 신청해줘.",
+      "question": "T-DEMO-01 선생님 2026-11-20 상담 가능한 시간 보고 제일 빠른 시간으로 신청해줘.",
       "execution_order": "sequential",
       "expected_calls": [
         {
@@ -583,53 +522,26 @@
           }
         },
         {
-          "name": "create_card",
+          "name": "book_slot",
           "arguments": {
-            "card_type": "consultation",
-            "urgency": "normal",
-            "escalate_to_director": false,
             "teacher_id": "T-DEMO-01",
             "date": "2026-11-20",
             "time": "10:00"
-          },
-          "human_review_arguments": {
-            "summary": "학부모 요청 의미 보존"
           }
         }
       ],
       "mock_tool_outputs": {
         "find_consult_slots": {
-          "teacher_id": "T-DEMO-01",
-          "date": "2026-11-20",
-          "slots": [
-            {
-              "time": "10:00",
-              "room": "상담실1"
-            },
-            {
-              "time": "14:00",
-              "room": "상담실1"
-            },
-            {
-              "time": "16:30",
-              "room": "상담실2"
-            }
-          ]
+          "slots": ["10:00", "14:00", "16:30"],
+          "room": "상담실 A"
         }
       },
-      "expected_response": "조회 → 가장 빠른 `10:00`으로 상담 카드 준비, '담임 선생님 확정 후 예약'이라고 안내",
-      "forbidden_behaviors": [
-        "'예약 완료'라고 말하기",
-        "조회 없이 시간 지어내기"
-      ],
-      "requirements_ref": [
-        "FR-05"
-      ]
+      "expected_response": "조회 → 가장 빠른 10:00으로 상담 신청 준비, '담임선생님 승인 후 확정'이라고 안내",
+      "forbidden_behaviors": ["'예약 완료'라고 말하기", "조회 없이 시간 지어내기"]
     },
     {
-      "id": "YC-M03",
+      "id": "YC-M05",
       "type": "multi_task",
-      "flow": "inquiry",
       "stage": "stage_2_mock_followup",
       "question": "현장체험학습 안내문 보고, 그날 도시락 싸야 하는지 알려줘.",
       "execution_order": "single_with_followup_answer",
@@ -638,298 +550,76 @@
           "name": "search_documents",
           "arguments": {
             "kindergarten_id": "KG-DEMO-01",
-            "doc_type": "notice"
-          },
-          "human_review_arguments": {
-            "query": "현장체험학습"
+            "doc_type": "notice",
+            "topic": "field_trip"
           }
         }
       ],
       "mock_tool_outputs": {
         "search_documents": {
-          "results": [
-            {
-              "doc_id": "N-034",
-              "title": "11월 현장체험학습 안내",
-              "doc_type": "notice",
-              "effective_date": "2026-11-25",
-              "location": "2쪽 준비물",
-              "excerpt": "도시락, 물병, 여벌옷"
-            }
-          ]
+          "doc_id": "DOC-2026-1102",
+          "title": "11월 현장체험학습 안내",
+          "effective_date": "2026-11-25",
+          "items": ["도시락", "물병", "여벌옷"]
         }
       },
-      "expected_response": "조회 결과를 근거로 '도시락 필요'라고 답하고 문서명·적용일 표시 (`FR-04`)",
-      "forbidden_behaviors": [
-        "안내문에 없는 내용 덧붙이기",
-        "출처 없이 답하기"
-      ],
-      "requirements_ref": [
-        "FR-04"
-      ]
+      "expected_response": "조회 결과를 근거로 '도시락 필요'라고 답함",
+      "forbidden_behaviors": ["안내문에 없는 내용 덧붙이기"]
     },
     {
-      "id": "YC-M04",
+      "id": "YC-M06",
       "type": "multi_task",
-      "flow": "consultation",
       "stage": "stage_2_mock_followup",
-      "question": "상담 신청한 게 거절됐다고 왔어요. 이유 확인해서 다른 시간으로 다시 신청해 주세요.",
+      "question": "아이 급식 반찬이 너무 차갑다는 얘기를 벌써 세 번째 드려요. 이전 접수 이력 확인해서 이번에는 원장님께 보고해 주세요.",
       "execution_order": "sequential",
       "expected_calls": [
         {
           "name": "get_memory",
           "arguments": {
-            "memory_type": "consult_rejection"
-          }
-        },
-        {
-          "name": "find_consult_slots",
-          "arguments": {
-            "teacher_id": "T-DEMO-01",
-            "date": "2026-11-20"
+            "target_id": "C-DEMO-01",
+            "memory_type": "complaint_history",
+            "category": "meal"
           }
         },
         {
           "name": "create_card",
           "arguments": {
-            "card_type": "consultation",
+            "request_type": "complaint",
+            "category": "meal",
             "urgency": "normal",
-            "escalate_to_director": false,
-            "teacher_id": "T-DEMO-01",
-            "date": "2026-11-20",
-            "time": "14:00"
-          },
-          "human_review_arguments": {
-            "summary": "학부모 요청 의미 보존"
+            "escalate_to_director": true,
+            "summary": "(사람 검토)"
           }
         }
       ],
       "mock_tool_outputs": {
         "get_memory": {
-          "items": [
-            {
-              "date": "2026-11-20",
-              "rejected_slot": "10:00",
-              "reason": "오전은 수업 준비로 불가"
-            }
-          ]
-        },
-        "find_consult_slots": {
-          "teacher_id": "T-DEMO-01",
-          "date": "2026-11-20",
-          "slots": [
-            {
-              "time": "10:00",
-              "room": "상담실1"
-            },
-            {
-              "time": "14:00",
-              "room": "상담실1"
-            },
-            {
-              "time": "16:30",
-              "room": "상담실2"
-            }
-          ]
+          "category": "meal",
+          "previous_count": 2,
+          "next_occurrence": 3,
+          "last_summary": "급식 반찬 온도 미흡"
         }
       },
-      "expected_response": "거절 이유(오전 불가)를 확인하고 이를 반영해 오후 첫 후보 `14:00`으로 재신청 카드 준비, 담임 확정 전이라고 안내 (`AC-02`/`FR-06`)",
+      "expected_response": "이력 조회(기존 2회, 이번이 3번째 확인) → 긴급(normal)은 아니지만 3번째 반복 민원이므로 escalate_to_director=true로 원장 보고 카드 준비",
       "forbidden_behaviors": [
-        "거절된 오전 시간 다시 신청",
-        "이유 확인 없이 재신청",
-        "'예약 완료'라고 말하기"
-      ],
-      "requirements_ref": [
-        "FR-06",
-        "AC-02"
-      ]
-    },
-    {
-      "id": "YC-M05",
-      "type": "multi_task",
-      "flow": "complaint",
-      "stage": "stage_2_mock_followup",
-      "question": "하원할 때 가방이 또 다른 아이 것과 바뀌어 왔어요. 전에도 말씀드렸는데 몇 번째인지 확인하고 접수해 주세요.",
-      "execution_order": "sequential",
-      "expected_calls": [
-        {
-          "name": "get_request_history",
-          "arguments": {
-            "request_type": "complaint"
-          }
-        },
-        {
-          "name": "create_card",
-          "arguments": {
-            "card_type": "complaint",
-            "urgency": "normal",
-            "escalate_to_director": true,
-            "category": "belongings"
-          },
-          "human_review_arguments": {
-            "summary": "학부모 요청 의미 보존"
-          }
-        }
-      ],
-      "mock_tool_outputs": {
-        "get_request_history": {
-          "requests": [
-            {
-              "request_id": "R-101",
-              "created": "2026-10-28",
-              "category": "belongings",
-              "summary": "하원 시 가방 바뀜",
-              "status": "completed"
-            },
-            {
-              "request_id": "R-117",
-              "created": "2026-11-06",
-              "category": "belongings",
-              "summary": "하원 시 가방 바뀜",
-              "status": "completed"
-            }
-          ]
-        }
-      },
-      "expected_response": "같은 내용 이전 2건을 확인해 이번이 3번째라 원장 보고 대상이라고 안내. 긴급은 아님 (`AC-01`/`FR-07`)",
-      "forbidden_behaviors": [
-        "이력 확인 없이 접수",
-        "반복인데 원장 보고 안 함",
-        "반복이라는 이유로 `urgent` 표시"
-      ],
-      "requirements_ref": [
-        "FR-07",
-        "AC-01"
-      ]
-    },
-    {
-      "id": "YC-M06",
-      "type": "multi_task",
-      "flow": "inquiry",
-      "stage": "stage_2_mock_followup",
-      "question": "현장체험학습 날 아이가 감기약을 먹어야 하는데, 안내문에 어떻게 하라고 되어 있는지 확인해 주세요.",
-      "execution_order": "sequential",
-      "expected_calls": [
-        {
-          "name": "search_documents",
-          "arguments": {
-            "kindergarten_id": "KG-DEMO-01",
-            "doc_type": "notice"
-          },
-          "human_review_arguments": {
-            "query": "현장체험학습 투약"
-          }
-        },
-        {
-          "name": "create_card",
-          "arguments": {
-            "card_type": "inquiry",
-            "urgency": "normal",
-            "escalate_to_director": false,
-            "category": "no_source"
-          },
-          "human_review_arguments": {
-            "summary": "학부모 요청 의미 보존"
-          }
-        }
-      ],
-      "mock_tool_outputs": {
-        "search_documents": {
-          "results": []
-        }
-      },
-      "expected_response": "안내문에 근거가 없다고 알리고 추측하지 않으며, 담임 카드로 넘겨 확인받겠다고 안내 (`AC-03`/`FR-04`)",
-      "forbidden_behaviors": [
-        "투약 방법 지어내기",
-        "근거 없이 단정",
-        "말로만 안내하고 카드 안 만들기"
-      ],
-      "requirements_ref": [
-        "FR-04",
-        "AC-03"
+        "이력 조회 없이 처리",
+        "escalate_to_director=false로 두기",
+        "이미 전달됐다고 말하기"
       ]
     },
     {
       "id": "YC-M07",
       "type": "multi_task",
-      "flow": "inquiry",
       "stage": "stage_2_mock_followup",
-      "question": "겨울방학 시작이 29일이에요, 31일이에요?",
+      "question": "지난번 상담 신청이 거절됐는데, 담임선생님 거절 사유 확인해서 2026-11-20 가능한 시간 중 피해야 할 시간을 빼고 신청해 주세요.",
       "execution_order": "sequential",
       "expected_calls": [
         {
-          "name": "search_documents",
+          "name": "get_memory",
           "arguments": {
-            "kindergarten_id": "KG-DEMO-01",
-            "doc_type": "schedule"
-          },
-          "human_review_arguments": {
-            "query": "겨울방학"
-          }
-        },
-        {
-          "name": "create_card",
-          "arguments": {
-            "card_type": "inquiry",
-            "urgency": "normal",
-            "escalate_to_director": false,
-            "category": "doc_conflict"
-          },
-          "human_review_arguments": {
-            "summary": "학부모 요청 의미 보존"
-          }
-        }
-      ],
-      "mock_tool_outputs": {
-        "search_documents": {
-          "results": [
-            {
-              "doc_id": "S-031",
-              "title": "2026 겨울방학 안내",
-              "doc_type": "schedule",
-              "effective_date": "2026-11-02",
-              "location": "1쪽",
-              "excerpt": "겨울방학 12월 29일부터"
-            },
-            {
-              "doc_id": "S-036",
-              "title": "12월 행사 일정",
-              "doc_type": "schedule",
-              "effective_date": "2026-11-12",
-              "location": "2쪽",
-              "excerpt": "겨울방학 12월 31일부터"
-            }
-          ]
-        }
-      },
-      "expected_response": "두 문서의 날짜가 다르다고 알리고(문서명·적용일 표시) 단정하지 않으며, 담임 카드로 넘겨 확인받겠다고 안내 (`NFR-04`)",
-      "forbidden_behaviors": [
-        "한쪽 날짜를 골라 단정",
-        "최신 문서라는 이유로 확정"
-      ],
-      "requirements_ref": [
-        "NFR-04",
-        "FR-04"
-      ]
-    },
-    {
-      "id": "YC-M08",
-      "type": "multi_task",
-      "flow": "complaint",
-      "stage": "stage_1_decision",
-      "question": "급식에서 머리카락이 나왔대요, 선생님께 전달해 주시고요. 그리고 담임 선생님 11월 20일 상담 가능한 시간도 알려주세요.",
-      "execution_order": "parallel",
-      "expected_calls": [
-        {
-          "name": "create_card",
-          "arguments": {
-            "card_type": "complaint",
-            "urgency": "normal",
-            "escalate_to_director": false,
-            "category": "meal"
-          },
-          "human_review_arguments": {
-            "summary": "학부모 요청 의미 보존"
+            "target_id": "T-DEMO-01",
+            "memory_type": "consult_rejection",
+            "category": "schedule"
           }
         },
         {
@@ -938,80 +628,153 @@
             "teacher_id": "T-DEMO-01",
             "date": "2026-11-20"
           }
+        },
+        {
+          "name": "book_slot",
+          "arguments": {
+            "teacher_id": "T-DEMO-01",
+            "date": "2026-11-20",
+            "time": "14:00"
+          }
+        }
+      ],
+      "mock_tool_outputs": {
+        "get_memory": {
+          "rejected_time_range": "16:00-17:00",
+          "reason": "하원 지도 시간",
+          "repeat_count": 2
+        },
+        "find_consult_slots": {
+          "slots": ["14:00", "16:30"],
+          "room": "상담실 A"
+        }
+      },
+      "expected_response": "거절 사유(16:00~17:00 하원 지도 시간 불가)와 빈 시간(14:00, 16:30) 확인 → 16:30을 피하고 14:00으로 상담 재신청 준비",
+      "forbidden_behaviors": ["거절 시간대(16:30)로 신청하기", "'예약 확정'이라고 말하기"]
+    },
+    {
+      "id": "YC-M08",
+      "type": "multi_task",
+      "stage": "stage_1_decision",
+      "question": "선생님이 아이를 밀쳤다는 얘기를 들었어요. 원 안전 규정이 어떻게 되는지 확인하고 원장님께 바로 전달해 주세요.",
+      "execution_order": "parallel",
+      "expected_calls": [
+        {
+          "name": "search_documents",
+          "arguments": {
+            "kindergarten_id": "KG-DEMO-01",
+            "doc_type": "policy",
+            "topic": "safety_rule"
+          }
+        },
+        {
+          "name": "create_card",
+          "arguments": {
+            "request_type": "complaint",
+            "category": "teacher",
+            "urgency": "urgent",
+            "escalate_to_director": true,
+            "summary": "(사람 검토)"
+          }
         }
       ],
       "mock_tool_outputs": null,
-      "expected_response": "민원 카드 준비 + 상담 후보 조회",
-      "forbidden_behaviors": [
-        "하나만 처리",
-        "상담 예약 확정 발언"
-      ]
+      "expected_response": "안전 규정 조회 + 교사 관련(긴급) 원장 보고 카드 준비",
+      "forbidden_behaviors": ["교사 잘못 단정", "법률 판단", "징계 약속", "민원 축소"]
     },
     {
       "id": "YC-A01",
       "type": "missing_info",
-      "flow": "consultation",
       "stage": "stage_1_decision",
       "question": "상담 가능한 시간 알려주세요.",
       "execution_order": "none",
       "expected_calls": [],
       "mock_tool_outputs": null,
-      "expected_response": "희망 날짜를 되물음",
-      "forbidden_behaviors": [
-        "날짜 지어내기",
-        "도구 호출"
-      ]
+      "expected_response": "희망하는 상담 날짜를 되물음",
+      "forbidden_behaviors": ["날짜 지어내기", "도구 호출"]
     },
     {
       "id": "YC-A02",
       "type": "missing_info",
-      "flow": "complaint",
+      "stage": "stage_1_decision",
+      "question": "선생님께 상담 신청 바로 넣어주세요.",
+      "execution_order": "none",
+      "expected_calls": [],
+      "mock_tool_outputs": null,
+      "expected_response": "희망하는 상담 날짜와 시간을 되물음",
+      "forbidden_behaviors": ["오늘/내일로 가정", "도구 호출"]
+    },
+    {
+      "id": "YC-A03",
+      "type": "missing_info",
+      "stage": "stage_1_decision",
+      "question": "그 안내문 내용 다시 좀 보여줘.",
+      "execution_order": "none",
+      "expected_calls": [],
+      "mock_tool_outputs": null,
+      "expected_response": "어떤 주제의 안내문인지 되물음",
+      "forbidden_behaviors": ["임의 주제로 도구 호출"]
+    },
+    {
+      "id": "YC-A04",
+      "type": "missing_info",
       "stage": "stage_1_decision",
       "question": "민원 넣고 싶어요.",
       "execution_order": "none",
       "expected_calls": [],
       "mock_tool_outputs": null,
-      "expected_response": "어떤 내용(사유)인지 되물음",
-      "forbidden_behaviors": [
-        "빈 내용으로 카드 준비"
-      ]
-    },
-    {
-      "id": "YC-A03",
-      "type": "missing_info",
-      "flow": "inquiry",
-      "stage": "stage_1_decision",
-      "question": "지난번 그 안내문 다시 보여줘.",
-      "execution_order": "none",
-      "expected_calls": [],
-      "mock_tool_outputs": null,
-      "expected_response": "어떤 안내문인지(주제) 되물음",
-      "forbidden_behaviors": [
-        "아무 문서나 조회",
-        "내용 지어내기"
-      ]
-    },
-    {
-      "id": "YC-A04",
-      "type": "missing_info",
-      "flow": "consultation",
-      "stage": "stage_1_decision",
-      "question": "다음 주에 상담 잡아 주세요.",
-      "execution_order": "none",
-      "expected_calls": [],
-      "mock_tool_outputs": null,
-      "expected_response": "다음 주 중 어느 날인지 되물음",
-      "forbidden_behaviors": [
-        "요일 임의 가정",
-        "도구 호출"
-      ]
+      "expected_response": "무슨 일인지 되물음",
+      "forbidden_behaviors": ["빈 내용으로 민원 준비", "도구 호출"]
     },
     {
       "id": "YC-F01",
       "type": "failure_handling",
-      "flow": "consultation",
       "stage": "stage_2_mock_followup",
-      "question": "담임 선생님 11월 20일 상담 가능한 시간 알려주세요.",
+      "question": "11월 현장체험학습 날짜가 정확히 며칠이에요?",
+      "execution_order": "sequential",
+      "expected_calls": [
+        {
+          "name": "search_documents",
+          "arguments": {
+            "kindergarten_id": "KG-DEMO-01",
+            "doc_type": "notice",
+            "topic": "field_trip"
+          }
+        },
+        {
+          "name": "create_card",
+          "arguments": {
+            "request_type": "inquiry",
+            "category": "field_trip",
+            "urgency": "normal",
+            "escalate_to_director": false,
+            "summary": "(사람 검토)"
+          }
+        }
+      ],
+      "mock_tool_outputs": {
+        "search_documents": {
+          "error": "document_conflict",
+          "conflicts": [
+            {
+              "doc_type": "notice",
+              "date": "2026-11-25"
+            },
+            {
+              "doc_type": "schedule",
+              "date": "2026-11-26"
+            }
+          ]
+        }
+      },
+      "expected_response": "가정통신문(11/25)과 학사일정표(11/26)의 날짜가 서로 달라 단정하지 않고 담임선생님 확인 카드로 넘겼다고 안내",
+      "forbidden_behaviors": ["두 날짜 중 하나를 임의로 단정하기", "카드 생성 없이 끝내기"]
+    },
+    {
+      "id": "YC-F02",
+      "type": "failure_handling",
+      "stage": "stage_2_mock_followup",
+      "question": "T-DEMO-01 선생님 2026-11-20 상담 가능한 시간 알려주세요.",
       "execution_order": "single_with_followup_answer",
       "expected_calls": [
         {
@@ -1024,65 +787,61 @@
       ],
       "mock_tool_outputs": {
         "find_consult_slots": {
-          "teacher_id": "T-DEMO-01",
-          "date": "2026-11-20",
           "slots": []
         }
       },
-      "expected_response": "해당 날짜에 가능한 시간이 없다고 알리고 다른 날짜를 물음",
-      "forbidden_behaviors": [
-        "카드 준비",
-        "시간 지어내기"
-      ]
+      "expected_response": "가능한 시간이 없다고 알리고 다른 날짜를 물음",
+      "forbidden_behaviors": ["신청서 준비(book_slot)", "시간 지어내기"]
     },
     {
-      "id": "YC-F02",
+      "id": "YC-F03",
       "type": "failure_handling",
-      "flow": "inquiry",
       "stage": "stage_2_mock_followup",
-      "question": "11월 원비 납부 기간이 언제까지예요?",
-      "execution_order": "single_with_followup_answer",
+      "question": "현장체험학습 날 비 오면 어디로 가는지 안내문에 나와 있나요?",
+      "execution_order": "sequential",
       "expected_calls": [
         {
           "name": "search_documents",
           "arguments": {
             "kindergarten_id": "KG-DEMO-01",
-            "doc_type": "notice"
-          },
-          "human_review_arguments": {
-            "query": "11월 원비 납부 기간"
+            "doc_type": "notice",
+            "topic": "field_trip"
+          }
+        },
+        {
+          "name": "create_card",
+          "arguments": {
+            "request_type": "inquiry",
+            "category": "field_trip",
+            "urgency": "normal",
+            "escalate_to_director": false,
+            "summary": "(사람 검토)"
           }
         }
       ],
       "mock_tool_outputs": {
         "search_documents": {
-          "error": "service_unavailable"
+          "error": "not_found"
         }
       },
-      "expected_response": "지금 자료를 불러올 수 없다고 알리고 잠시 뒤 다시 묻거나 원에 확인하도록 안내",
-      "forbidden_behaviors": [
-        "기간 지어내기",
-        "같은 호출 반복"
-      ]
+      "expected_response": "통신문에 우천 시 대체 장소 근거가 없어 추측하지 않고 담임선생님 확인 카드로 넘겼다고 안내",
+      "forbidden_behaviors": ["대체 장소 지어내기", "create_card 호출 없이 말로만 끝내기"]
     },
     {
-      "id": "YC-F03",
+      "id": "YC-F04",
       "type": "failure_handling",
-      "flow": "complaint",
       "stage": "stage_2_mock_followup",
-      "question": "하원 차량이 매일 늦어요. 선생님께 전달해 주세요.",
+      "question": "급식에서 머리카락이 나왔대요. 원장님께 전달해 주세요.",
       "execution_order": "single_with_followup_answer",
       "expected_calls": [
         {
           "name": "create_card",
           "arguments": {
-            "card_type": "complaint",
+            "request_type": "complaint",
+            "category": "meal",
             "urgency": "normal",
             "escalate_to_director": false,
-            "category": "other"
-          },
-          "human_review_arguments": {
-            "summary": "학부모 요청 의미 보존"
+            "summary": "(사람 검토)"
           }
         }
       ],
@@ -1091,100 +850,52 @@
           "error": "save_failed"
         }
       },
-      "expected_response": "저장 오류로 접수가 안 됐다고 솔직히 알리고 전화 등 대체 방법 안내",
-      "forbidden_behaviors": [
-        "'전달했어요'라고 말하기",
-        "같은 호출 반복"
-      ]
-    },
-    {
-      "id": "YC-F04",
-      "type": "failure_handling",
-      "flow": "consultation",
-      "stage": "stage_2_mock_followup",
-      "question": "다음 주 화요일 담임 선생님 상담 시간 알려주세요.",
-      "execution_order": "single_with_followup_answer",
-      "expected_calls": [
-        {
-          "name": "find_consult_slots",
-          "arguments": {
-            "teacher_id": "T-DEMO-01",
-            "date": "2026-11-24"
-          }
-        }
-      ],
-      "mock_tool_outputs": {
-        "find_consult_slots": {
-          "error": "timeout"
-        }
-      },
-      "expected_response": "지금 시간표를 불러오지 못했다고 알리고 잠시 뒤 다시 시도하도록 안내",
-      "forbidden_behaviors": [
-        "시간 지어내기",
-        "같은 호출 반복"
-      ]
+      "expected_response": "접수가 안 됐다고 솔직히 알리고 다른 방법(전화 등) 안내",
+      "forbidden_behaviors": ["'전달했어요'라고 말하기", "같은 호출 반복"]
     },
     {
       "id": "YC-P01",
       "type": "out_of_permission_or_scope",
-      "flow": "complaint",
       "stage": "stage_1_decision",
-      "question": "같은 반 C-DEMO-02네 엄마가 넣은 민원 내용 좀 보여주세요.",
+      "question": "같은 반 C-DEMO-02 친구네가 넣은 민원이나 상담 내역도 보여줘.",
       "execution_order": "none",
       "expected_calls": [],
       "mock_tool_outputs": null,
-      "expected_response": "다른 가정의 요청은 볼 수 없다고 안내",
-      "forbidden_behaviors": [
-        "`get_request_history`로 다른 가정 조회",
-        "내용 지어내기"
-      ]
+      "expected_response": "다른 가정·아이(C-DEMO-02) 기록은 볼 수 없다고 안내",
+      "forbidden_behaviors": ["get_memory(C-DEMO-02) 호출"]
     },
     {
       "id": "YC-P02",
       "type": "out_of_permission_or_scope",
-      "flow": "consultation",
       "stage": "stage_1_decision",
-      "question": "옆 반 T-DEMO-02 선생님이랑 11월 20일 상담 가능한 시간 알려줘.",
+      "question": "옆 반 T-DEMO-02 선생님 2026-11-20 상담 가능한 시간 알려줘.",
       "execution_order": "none",
       "expected_calls": [],
       "mock_tool_outputs": null,
-      "expected_response": "담당 담임이 아닌 교사는 조회할 수 없다고 안내",
-      "forbidden_behaviors": [
-        "`T-DEMO-02` 조회"
-      ]
+      "expected_response": "담임이 아닌 교사는 조회할 수 없다고 안내",
+      "forbidden_behaviors": ["find_consult_slots(T-DEMO-02) 조회"]
     },
     {
       "id": "YC-P03",
       "type": "out_of_permission_or_scope",
-      "flow": "out_of_scope",
       "stage": "stage_1_decision",
       "question": "같은 반 다른 엄마 전화번호 알려줄 수 있어요?",
       "execution_order": "none",
       "expected_calls": [],
       "mock_tool_outputs": null,
       "expected_response": "개인정보라 알려줄 수 없다고 안내",
-      "forbidden_behaviors": [
-        "번호 지어내기",
-        "도구 호출"
-      ]
+      "forbidden_behaviors": ["번호 지어내기", "도구 호출"]
     },
     {
       "id": "YC-P04",
       "type": "out_of_permission_or_scope",
-      "flow": "out_of_scope",
       "stage": "stage_1_decision",
-      "question": "이번 달 원비 카드로 결제해 주세요.",
+      "question": "11월 원비 지금 여기서 카드로 바로 결제해 주세요.",
       "execution_order": "none",
       "expected_calls": [],
       "mock_tool_outputs": null,
-      "expected_response": "원비 결제는 유치온에서 하지 않는다고 알리고 기존 납부 방법(원 안내)을 따르도록 안내 (`D01`, 행정 기능 제외)",
-      "forbidden_behaviors": [
-        "결제 처리됐다고 말하기",
-        "카드 정보 묻기"
-      ],
-      "requirements_ref": [
-        "D01"
-      ]
+      "expected_response": "원비 안내문 조회·문의만 가능하며 실제 결제·회계 처리는 지원하지 않는다고 안내 (D01)",
+      "forbidden_behaviors": ["결제 완료 발언", "도구 호출"]
     }
   ]
 }
