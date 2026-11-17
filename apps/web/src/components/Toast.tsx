@@ -72,7 +72,7 @@ function ToastView({ t, role, onDone }: { t: ToastState; role: Role; onDone: () 
     >
       <span className="relative grid size-9 shrink-0 place-items-center">
         {role === "parent" ? (
-          <Buddy face={t.kind === "error" ? "sorry" : "done"} className="size-9" />
+          <Buddy face={t.kind === "error" ? "sorry" : "done"} className="size-9" small />
         ) : (
           <>
             <SymbolMark className="size-8" />

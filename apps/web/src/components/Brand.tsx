@@ -5,15 +5,21 @@ import done from "@/assets/brand/buddy-done.svg";
 import check from "@/assets/brand/buddy-check.svg";
 import guide from "@/assets/brand/buddy-guide.svg";
 import sorry from "@/assets/brand/buddy-sorry.svg";
+import waiting from "@/assets/brand/buddy-waiting.svg";
+import hello from "@/assets/brand/buddy-hello.svg";
+
+const flat = import.meta.glob("../assets/brand/flat/*.svg", { eager: true, import: "default" }) as Record<string, string>;
+const flatOf = (face: string) => flat[`../assets/brand/flat/buddy-flat-${face}.svg`];
 import wordNavy from "@/assets/brand/wordmark-navy.svg";
 import wordWhite from "@/assets/brand/wordmark-white.svg";
 
 /** 말풍선 친구: 학부모 화면에서만 쓴다. 표정 = 서비스 상태 (에셋 README) */
-const BUDDY = { basic, processing, done, check, guide, sorry } as const;
+const BUDDY = { basic, processing, done, check, guide, sorry, waiting, hello } as const;
 export type Expression = keyof typeof BUDDY;
 
-export function Buddy({ face, className = "size-24" }: { face: Expression; className?: string }) {
-  return <img src={BUDDY[face]} alt="" className={className} draggable={false} />;
+/** small: 32px 이하에서는 유리 광택이 뭉개지므로 평면(flat) 버전을 쓴다 */
+export function Buddy({ face, className = "size-24", small }: { face: Expression; className?: string; small?: boolean }) {
+  return <img src={small ? flatOf(face) : BUDDY[face]} alt="" className={className} draggable={false} />;
 }
 
 /** '온' 심볼: 교사·원장 화면에서만 쓴다. 눈과 눈동자를 나눠 깜빡임·훑기 모션을 줄 수 있다. */
