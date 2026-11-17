@@ -109,6 +109,7 @@ CREATE TABLE requests (
     parent_confirmed_at timestamptz,       -- 민원 회신에 학부모가 '확인했어요'를 누른 시각(T04 합의 2)
     missing_fields   jsonb NOT NULL DEFAULT '[]',
     assignee_id      uuid,
+    previous_request_id uuid,              -- 끝난 요청을 다시 열 때 잇는 이전 요청(T04 2.1)
     created_at       timestamptz NOT NULL DEFAULT now(),
     updated_at       timestamptz NOT NULL DEFAULT now(),
     closed_at        timestamptz,
@@ -116,8 +117,10 @@ CREATE TABLE requests (
     FOREIGN KEY (child_id, org_id) REFERENCES children(id, org_id),
     FOREIGN KEY (requester_id, org_id) REFERENCES users(id, org_id),
     FOREIGN KEY (assignee_id, org_id) REFERENCES users(id, org_id),
+    FOREIGN KEY (previous_request_id, org_id) REFERENCES requests(id, org_id),
     UNIQUE (requester_id, client_request_id),
     UNIQUE (id, org_id),
+    CHECK (previous_request_id IS DISTINCT FROM id),
     CHECK (risk_level IS NULL OR type = 'complaint'),
     CHECK (risk_level IS DISTINCT FROM 'urgent' OR risk_category IS NOT NULL),
     CHECK (parent_confirmed_at IS NULL OR type = 'complaint')
@@ -163,13 +166,17 @@ CREATE TABLE documents (
     effective_to    date,
     status          text NOT NULL DEFAULT 'active'
                     CHECK (status IN ('active', 'conflict_pending', 'superseded')),
+    supersedes_id   uuid,                  -- 이 문서가 대신하는 옛 판. 옛 판은 superseded가 됨(T04 합의 7)
     uploaded_by     uuid REFERENCES users(id),
     content_sha256  text NOT NULL,
     is_virtual      boolean NOT NULL DEFAULT true,
     created_at      timestamptz NOT NULL DEFAULT now(),
     FOREIGN KEY (classroom_id, org_id) REFERENCES classrooms(id, org_id),
+    FOREIGN KEY (supersedes_id, org_id) REFERENCES documents(id, org_id),
     UNIQUE (org_id, content_sha256),
     UNIQUE (id, org_id),
+    UNIQUE (supersedes_id),                -- 한 판을 대신하는 새 판은 하나
+    CHECK (supersedes_id IS DISTINCT FROM id),
     CHECK (effective_to IS NULL OR effective_from IS NULL OR effective_to >= effective_from)
 );
 
@@ -221,7 +228,8 @@ CREATE TABLE cards (
     FOREIGN KEY (assignee_id, org_id) REFERENCES users(id, org_id),
     UNIQUE (id, org_id),
     CHECK (request_id IS NOT NULL OR subject_id IS NOT NULL),
-    CHECK (status <> 'on_hold' OR hold_until IS NOT NULL)
+    CHECK (status <> 'on_hold' OR hold_until IS NOT NULL),
+    CHECK (kind <> 'director_report' OR assignee_id IS NOT NULL)  -- 원장 보고 카드는 원장 ID로 만듦
 );
 CREATE INDEX cards_inbox_idx   ON cards (org_id, assignee_id, status)
     WHERE status IN ('unassigned', 'pending', 'in_review', 'on_hold');
@@ -247,8 +255,10 @@ CREATE TABLE approvals (
     card_version    integer NOT NULL,
     decided_by      uuid NOT NULL,
     -- reject = 거절(초안 다시) · dismiss = 반려(요청을 처리하지 않음) · complete = 민원 처리 완료(T04 합의 2)
+    -- resume = 보류 재개 · escalate = 담임이 원장님께 올리기(T04 8장 #5) · instruct = 원장 지시(내용은 reason_text)
     decision        text NOT NULL CHECK (decision IN ('approve', 'edit_approve', 'reject', 'hold',
-                                                      'dismiss', 'complete')),
+                                                      'resume', 'dismiss', 'complete',
+                                                      'escalate', 'instruct')),
     reason_code     text,                  -- 거절 이유 고르기 값(기억·규칙 제안에 씀)
     reason_text     text,
     edited_content  jsonb,
@@ -257,7 +267,7 @@ CREATE TABLE approvals (
     FOREIGN KEY (decided_by, org_id) REFERENCES users(id, org_id),
     UNIQUE (card_id, card_version),
     CHECK (decision NOT IN ('reject', 'dismiss') OR reason_code IS NOT NULL),
-    CHECK (decision <> 'hold' OR reason_text IS NOT NULL)
+    CHECK (decision NOT IN ('hold', 'instruct') OR reason_text IS NOT NULL)
 );
 
 -- ─────────────────────────────────────────────
@@ -275,7 +285,7 @@ CREATE TABLE events (
     action       text NOT NULL
                  CHECK (action IN ('created', 'classified', 'info_requested', 'assigned',
                                    'reassigned', 'drafted', 'checked', 'returned',
-                                   'approved', 'rejected', 'held', 'escalated',
+                                   'approved', 'rejected', 'held', 'resumed', 'escalated', 'instructed',
                                    'sent', 'booked', 'completed', 'tool_called',
                                    'tool_failed', 'permission_denied',
                                    'parent_confirmed', 'risk_reclassified', 'dismissed',
@@ -313,17 +323,18 @@ CREATE TABLE staff_busy_blocks (
 );
 CREATE INDEX staff_busy_blocks_idx ON staff_busy_blocks USING gist (user_id, period);
 
--- 일정 계산 코드가 낸 후보(최대 3개)
+-- 일정 계산 코드가 낸 후보(회차마다 최대 3개). 거절·충돌로 다시 내면 같은 카드에 round를 올림(T04 4.1)
 CREATE TABLE consultation_slots (
     id          bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     card_id     uuid NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
     teacher_id  uuid NOT NULL REFERENCES users(id),
     room_id     uuid NOT NULL REFERENCES rooms(id),
     period      tstzrange NOT NULL,
+    round       smallint NOT NULL DEFAULT 1 CHECK (round >= 1),
     rank        smallint NOT NULL CHECK (rank BETWEEN 1 AND 3),
     status      text NOT NULL DEFAULT 'proposed'
                 CHECK (status IN ('proposed', 'chosen_by_parent', 'confirmed', 'discarded')),
-    UNIQUE (card_id, rank)
+    UNIQUE (card_id, round, rank)
 );
 
 -- 확정된 예약. 같은 상담실·같은 담임이 겹치는 시간은 DB가 저장을 거부함
@@ -399,7 +410,7 @@ CREATE TABLE saved_answers (
     source_card_id      uuid NOT NULL REFERENCES cards(id),
     approved_by         uuid NOT NULL,
     status              text NOT NULL DEFAULT 'active'
-                        CHECK (status IN ('active', 'invalidated')),
+                        CHECK (status IN ('active', 'off', 'invalidated')),  -- off = 담임이 끔 → 다시 카드로 물음(FR-20)
     invalidated_at      timestamptz,
     invalidated_reason  text,
     created_at          timestamptz NOT NULL DEFAULT now(),
@@ -423,12 +434,13 @@ CREATE TABLE saved_answer_sources (
 CREATE INDEX saved_answer_sources_doc_idx ON saved_answer_sources (document_id);
 
 -- 근거 문서가 새 판으로 바뀌거나(superseded) 충돌 확인 대기가 되면 그 문서를 쓴 답을 자동으로 무효로 함
+-- 꺼 둔(off) 답도 무효로 해서, 나중에 다시 켜도 옛 판 근거로 답하지 않게 함
 CREATE FUNCTION invalidate_saved_answers() RETURNS trigger AS $$
 BEGIN
     UPDATE saved_answers sa
        SET status = 'invalidated', invalidated_at = now(),
            invalidated_reason = 'document_' || NEW.status
-     WHERE sa.status = 'active'
+     WHERE sa.status IN ('active', 'off')
        AND sa.id IN (SELECT saved_answer_id FROM saved_answer_sources WHERE document_id = NEW.id);
     RETURN NEW;
 END;
@@ -459,6 +471,7 @@ CREATE TABLE daily_note_inputs (
 );
 
 -- 아이별 알림장. needs_check 항목이 남으면 보내지 못함
+-- 아이 한 명 단위는 이 CHECK가 막고, '반에 하나라도 남으면 반 전체 잠금'(T04 합의 6)은 API가 한 트랜잭션에서 막음
 CREATE TABLE daily_notes (
     id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     org_id         uuid NOT NULL,
@@ -469,10 +482,14 @@ CREATE TABLE daily_notes (
                    CHECK (status IN ('draft', 'needs_check', 'ready', 'sent')),
     content        jsonb NOT NULL DEFAULT '{}',  -- 하루·식사·투약/귀가 줄·준비물
     open_checks    jsonb NOT NULL DEFAULT '[]',  -- 검사 AI가 짚은 확인 필요 항목
+    confirmed_by   uuid,                  -- 교사 확인(T04 6.1 note_ready = 교사가 확인함)
+    confirmed_at   timestamptz,
     sent_at        timestamptz,
     FOREIGN KEY (child_id, org_id) REFERENCES children(id, org_id),
+    FOREIGN KEY (confirmed_by, org_id) REFERENCES users(id, org_id),
     UNIQUE (child_id, note_date),
-    CHECK (status <> 'sent' OR jsonb_array_length(open_checks) = 0)
+    CHECK (status <> 'sent' OR jsonb_array_length(open_checks) = 0),
+    CHECK (status NOT IN ('ready', 'sent') OR (confirmed_by IS NOT NULL AND confirmed_at IS NOT NULL))
 );
 
 -- ─────────────────────────────────────────────
@@ -485,7 +502,13 @@ CREATE TABLE notifications (
     recipient_id  uuid NOT NULL REFERENCES users(id),
     request_id    uuid,
     card_id       uuid,
-    kind          text NOT NULL,
+    subject_type  text CHECK (subject_type IN ('daily_note')),  -- 요청·카드가 아닌 대상(알림장)
+    subject_id    uuid,
+    -- T04 9장 알림 시점 11가지. 최종 기능(상담 지연 알림 T48 등)은 그때 값을 더함
+    kind          text NOT NULL
+                  CHECK (kind IN ('needs_info', 'new_card', 'urgent_complaint', 'uncertain_complaint',
+                                  'director_report', 'on_hold', 'sent_or_booked', 'parent_confirmed',
+                                  'completed', 'rejected', 'note_sent')),
     title         text NOT NULL,
     body          text,
     dedupe_key    text NOT NULL UNIQUE,    -- 예: 'card:<id>:approved:<recipient>'. 같은 알림 두 번 안 감
@@ -496,7 +519,8 @@ CREATE TABLE notifications (
     deliver_after timestamptz NOT NULL DEFAULT now(),   -- 퇴근 뒤 알림 모아 두기(최종)
     created_at    timestamptz NOT NULL DEFAULT now(),
     sent_at       timestamptz,
-    read_at       timestamptz
+    read_at       timestamptz,
+    CHECK ((subject_type IS NULL) = (subject_id IS NULL))
 );
 CREATE INDEX notifications_unread_idx ON notifications (recipient_id, created_at DESC)
     WHERE read_at IS NULL;
@@ -522,22 +546,6 @@ CREATE TABLE eval_runs (
 );
 
 -- ─────────────────────────────────────────────
--- 원장 현황(FR-19)은 표를 따로 두지 않고 카드에서 바로 센다
--- ─────────────────────────────────────────────
-
-CREATE VIEW director_overview AS
-SELECT
-    c.org_id,
-    count(*) FILTER (WHERE c.status = 'unassigned')                                AS unassigned,
-    count(*) FILTER (WHERE c.status IN ('pending', 'in_review', 'on_hold'))         AS waiting,
-    count(*) FILTER (WHERE c.status IN ('pending', 'in_review', 'on_hold')
-                       AND c.due_at < now())                                       AS delayed,
-    count(*) FILTER (WHERE c.status = 'done'
-                       AND c.closed_at >= date_trunc('day', now()))                AS done_today
-FROM cards c
-GROUP BY c.org_id;
-
--- ─────────────────────────────────────────────
 -- 교직원 받은함 필터 6개(T04 2.2, 합의 5). 한 카드는 필터 하나에만 들어감
 -- 긴급 민원은 따로 필터가 아니라 '확인 필요' 안에서 is_urgent로 맨 위에 올림
 -- ─────────────────────────────────────────────
@@ -552,6 +560,7 @@ SELECT
     c.version,
     c.due_at,
     c.hold_until,
+    c.closed_at,
     r.id            AS request_id,
     r.classroom_id,
     r.type          AS request_type,
@@ -575,3 +584,20 @@ SELECT
     END AS inbox_filter
 FROM cards c
 LEFT JOIN requests r ON r.id = c.request_id;
+
+-- ─────────────────────────────────────────────
+-- 원장 현황(FR-19)은 표를 따로 두지 않고 받은함 뷰에서 센다
+-- 미배정은 받은함 '미배정'(inbox_filter = 'unassigned')과 같은 기준
+-- ─────────────────────────────────────────────
+
+CREATE VIEW director_overview AS
+SELECT
+    i.org_id,
+    count(*) FILTER (WHERE i.inbox_filter = 'unassigned')                             AS unassigned,
+    count(*) FILTER (WHERE i.card_status IN ('pending', 'in_review', 'on_hold'))       AS waiting,
+    count(*) FILTER (WHERE i.card_status IN ('pending', 'in_review', 'on_hold')
+                       AND i.due_at < now())                                          AS delayed,
+    count(*) FILTER (WHERE i.card_status = 'done'
+                       AND i.closed_at >= date_trunc('day', now()))                   AS done_today
+FROM staff_inbox i
+GROUP BY i.org_id;
