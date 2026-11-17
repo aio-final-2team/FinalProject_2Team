@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120"><defs>
+ <linearGradient id="t4" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#EEF0FA"/></linearGradient>
+ <linearGradient id="b4" x1=".35" y1="0" x2=".55" y2="1"><stop offset="0" stop-color="#A8A3F4"/><stop offset=".45" stop-color="#7590F0"/><stop offset=".8" stop-color="#4F5CF2"/><stop offset="1" stop-color="#3B3FEA"/></linearGradient>
+ <radialGradient id="g4" cx=".45" cy=".3" r=".5"><stop offset="0" stop-color="#fff" stop-opacity=".22"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+ <filter id="bl4" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3"/></filter>
+ <radialGradient id="o4" cx=".35" cy=".3" r=".8"><stop offset="0" stop-color="#FFFFFF"/><stop offset=".45" stop-color="#B8F3E2"/><stop offset="1" stop-color="#3FCFAE"/></radialGradient>
+ <clipPath id="cb4"><path d="M64 20 C90 20 103 40 101 64 C99 87 85 101 66 101 C60 101 56 99 52 96 C48 100 42 102 36 100 C29 98 27 92 29 86 C21 80 17 70 19 58 C22 35 41 20 64 20 Z"/></clipPath>
+ <filter id="sh4" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="5" stdDeviation="6" flood-color="#5560E0" flood-opacity=".18"/></filter>
+ <filter id="ns4"><feTurbulence type="fractalNoise" baseFrequency="1.6" numOctaves="1" seed="4"/><feColorMatrix values="0 0 0 0 0.5  0 0 0 0 0.5  0 0 0 0 0.6  0 0 0 .05 0"/><feComposite in2="SourceGraphic" operator="in"/></filter></defs>
+ 
+ <g transform=" rotate(-6 60 60)">
+  <path d="M64 20 C90 20 103 40 101 64 C99 87 85 101 66 101 C60 101 56 99 52 96 C48 100 42 102 36 100 C29 98 27 92 29 86 C21 80 17 70 19 58 C22 35 41 20 64 20 Z" fill="url(#b4)" fill-opacity=".95"/><path d="M64 20 C90 20 103 40 101 64 C99 87 85 101 66 101 C60 101 56 99 52 96 C48 100 42 102 36 100 C29 98 27 92 29 86 C21 80 17 70 19 58 C22 35 41 20 64 20 Z" fill="url(#g4)"/>
+  <g clip-path="url(#cb4)"><ellipse cx="62" cy="100" rx="38" ry="13" fill="#9BF0D6" opacity=".5" filter="url(#bl4)"/><ellipse cx="44" cy="36" rx="18" ry="8" transform="rotate(-28 44 36)" fill="#fff" opacity=".35" filter="url(#bl4)"/></g>
+  <path d="M64 20 C90 20 103 40 101 64 C99 87 85 101 66 101 C60 101 56 99 52 96 C48 100 42 102 36 100 C29 98 27 92 29 86 C21 80 17 70 19 58 C22 35 41 20 64 20 Z" fill="none" stroke="#fff" stroke-opacity=".45" stroke-width="1.4"/>
+  <g transform="rotate(6 60 60)"><path d="M59 51 Q64.5 44 70 51 M72 50 Q77.5 43 83 50" stroke="#fff" stroke-opacity=".82" stroke-width="5" fill="none" stroke-linecap="round"/><path d="M51 62 Q61 76 74 64" stroke="#fff" stroke-opacity=".82" stroke-width="5.2" fill="none" stroke-linecap="round"/></g></g><g><circle cx="98" cy="22" r="8" fill="url(#o4)"/><circle cx="95.6" cy="19.6" r="2.3" fill="#fff"/><circle cx="98" cy="22" r="8" fill="none" stroke="#fff" stroke-opacity=".7" stroke-width="1"/></g></svg>

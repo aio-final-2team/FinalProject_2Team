@@ -17,3 +17,10 @@ import logo from "./assets/logo/yuchion-main-logo-light-transparent.svg";
 
 <img src={logo} alt="유치온" />
 ```
+
+
+## brand · icons
+
+- `brand/`: 말풍선 친구 표정 6종(학부모 화면 전용), '온' 심볼(교사·원장 화면 전용), 워드마크. `symbol-on-eye.svg`는 원본에 빠진 닫는 태그를 고친 복사본이다.
+- `icons/`: 24px 선 아이콘 20종. `components/Icon.tsx`가 이름으로 불러 쓴다.
+- 원본: `유치온_에셋_최종/01_브랜드에셋`

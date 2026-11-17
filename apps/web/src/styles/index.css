@@ -1,0 +1,87 @@
+@import "pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css";
+@import "tailwindcss";
+@import "./tokens.css";
+@import "./motion.css";
+
+/* 토큰을 Tailwind 클래스로 연결한다: bg-card, text-ink2, border-sep … */
+@theme inline {
+  --color-g: var(--g);
+  --color-card: var(--card);
+  --color-ink: var(--ink);
+  --color-ink2: var(--ink2);
+  --color-ink3: var(--ink3);
+  --color-sep: var(--sep);
+  --color-fill: var(--fill);
+  --color-fill2: var(--fill2);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-tint: var(--tint);
+  --color-on-accent: var(--on-accent);
+  --color-mint: var(--mint);
+  --color-ok: var(--ok);
+  --color-ok-tint: var(--ok-tint);
+  --color-lav: var(--lav);
+  --color-lav-tint: var(--lav-tint);
+  --color-danger: var(--danger);
+  --color-danger-tint: var(--danger-tint);
+  --color-bar: var(--bar);
+  --color-scrim: var(--scrim);
+  --color-type-q: var(--type-q);
+  --color-type-q-tint: var(--type-q-tint);
+  --color-type-c: var(--type-c);
+  --color-type-c-tint: var(--type-c-tint);
+  --color-type-m: var(--type-m);
+  --color-type-m-tint: var(--type-m-tint);
+  --font-sans: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif;
+  /* 글자 크기 단계: 28 · 17 · 15 · 13 · 11 */
+  --text-title: 1.75rem;
+  --text-title--line-height: 1.15;
+  --text-head: 1.0625rem;
+  --text-body: 0.9375rem;
+  --text-sub: 0.8125rem;
+  --text-cap: 0.6875rem;
+  --ease-spring: var(--spring);
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    background: var(--g);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    letter-spacing: -0.01em;
+    word-break: keep-all;
+    overflow-wrap: break-word;
+  }
+  ::selection {
+    background: var(--tint);
+  }
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  button {
+    cursor: pointer;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .glass {
+    background: var(--card) !important;
+    backdrop-filter: none !important;
+  }
+}

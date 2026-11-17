@@ -1,0 +1,70 @@
+/*
+ * 유치온 디자인 토큰 (T12 회의 자료 기준)
+ * - 색은 브랜드 색만: 블루 #2F5BEA · 민트 #34C79A · 네이비 #0B1F3A · 라벤더 #A8A3F4
+ * - 상태 색 규칙: 긴급 = 네이비 채움, 할 일 = 블루, 답 왔음·일반 = 라벤더, 완료 = 민트, 기다림 = 회색
+ * - 빨강(danger)은 입력 오류 문구에만 쓴다
+ * 화면 코드는 이 변수를 Tailwind 클래스(bg-card, text-ink2 …)로만 쓴다. 색 값을 직접 쓰지 않는다.
+ */
+:root {
+  color-scheme: light;
+  --g: #f2f4f8;
+  --card: #ffffff;
+  --ink: #0b1f3a;
+  --ink2: #4e5b74;
+  --ink3: #8994ab;
+  --sep: rgba(11, 31, 58, 0.12);
+  --fill: rgba(11, 31, 58, 0.06);
+  --fill2: rgba(11, 31, 58, 0.1);
+  --accent: #2f5bea;
+  --accent-ink: #2449c9;
+  --tint: rgba(47, 91, 234, 0.11);
+  --on-accent: #ffffff;
+  --mint: #34c79a;
+  --ok: #127a5c;
+  --ok-tint: rgba(52, 199, 154, 0.16);
+  --lav: #5a4fd8;
+  --lav-tint: rgba(168, 163, 244, 0.28);
+  --danger: #c8323a;
+  --danger-tint: #fde9ea;
+  --bar: rgba(255, 255, 255, 0.78);
+  --scrim: rgba(11, 31, 58, 0.32);
+  --type-q: #2f5bea;
+  --type-q-tint: rgba(47, 91, 234, 0.12);
+  --type-c: #11795b;
+  --type-c-tint: rgba(52, 199, 154, 0.18);
+  --type-m: #5a4fd8;
+  --type-m-tint: rgba(168, 163, 244, 0.28);
+  --spring: cubic-bezier(0.2, 0.9, 0.25, 1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --g: #0a0f1c;
+    --card: #161e31;
+    --ink: #eef2fa;
+    --ink2: #a6b0c6;
+    --ink3: #77839c;
+    --sep: rgba(238, 242, 250, 0.12);
+    --fill: rgba(238, 242, 250, 0.07);
+    --fill2: rgba(238, 242, 250, 0.12);
+    --accent: #7d9bff;
+    --accent-ink: #9db4ff;
+    --tint: rgba(125, 155, 255, 0.16);
+    --on-accent: #0a0f1c;
+    --ok: #5be0bc;
+    --ok-tint: rgba(52, 199, 154, 0.18);
+    --lav: #bdb8ff;
+    --lav-tint: rgba(168, 163, 244, 0.2);
+    --danger: #ff8086;
+    --danger-tint: rgba(255, 128, 134, 0.15);
+    --bar: rgba(22, 30, 49, 0.78);
+    --scrim: rgba(0, 0, 0, 0.5);
+    --type-q: #8fa9ff;
+    --type-q-tint: rgba(125, 155, 255, 0.18);
+    --type-c: #5be0bc;
+    --type-c-tint: rgba(52, 199, 154, 0.18);
+    --type-m: #bdb8ff;
+    --type-m-tint: rgba(168, 163, 244, 0.2);
+  }
+}
