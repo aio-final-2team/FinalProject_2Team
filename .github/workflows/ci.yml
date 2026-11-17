@@ -20,9 +20,6 @@ jobs:
           - name: web
             context: apps/web
             dockerfile: apps/web/Dockerfile
-          - name: dashboard
-            context: apps/dashboard
-            dockerfile: apps/dashboard/Dockerfile
     steps:
       - uses: actions/checkout@v7
       - name: Build image
