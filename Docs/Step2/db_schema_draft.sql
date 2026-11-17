@@ -1,7 +1,8 @@
--- 유치온 DB 스키마 초안 (T09)
+-- 유치온 DB 스키마 초안 (T09) · 문서 버전 v0.5
 -- 설계서: Docs/Step2/DB_스키마_설계서.md
 -- 이 파일은 설계 검토용이다. 실제 적용은 T19 마이그레이션(apps/api/migrations)으로 옮긴다.
--- 대상: PostgreSQL 16 + pgvector (compose.yaml의 pgvector/pgvector:pg16)
+-- 대상: PostgreSQL 16 + pgvector 0.8 (compose.yaml의 pgvector/pgvector:pg16). Supabase는 쓰지 않는다(설계서 5.1)
+-- 기관 경계: 기관에 속한 표끼리는 (id, org_id) 짝으로 참조해서 다른 원 행을 섞어 넣으면 DB가 거부한다
 
 CREATE EXTENSION IF NOT EXISTS vector;      -- 문서 조각 임베딩
 CREATE EXTENSION IF NOT EXISTS btree_gist;  -- 상담실·담임 시간 겹침 막기(EXCLUDE)
@@ -54,6 +55,7 @@ CREATE TABLE classroom_staff (
     is_homeroom   boolean NOT NULL DEFAULT true,
     valid_from    date,                    -- 대체 담임 기간(T04 7.1). 그 기간에만 그 반 자료를 봄
     valid_to      date,
+    created_at    timestamptz NOT NULL DEFAULT now(),
     PRIMARY KEY (classroom_id, user_id),
     CHECK (valid_to IS NULL OR valid_from IS NULL OR valid_to >= valid_from),
     FOREIGN KEY (classroom_id, org_id) REFERENCES classrooms(id, org_id),
@@ -76,6 +78,7 @@ CREATE TABLE child_guardians (
     org_id    uuid NOT NULL,
     user_id   uuid NOT NULL,
     relation  text NOT NULL CHECK (relation IN ('mother', 'father', 'grandparent', 'other')),
+    created_at timestamptz NOT NULL DEFAULT now(),
     PRIMARY KEY (child_id, user_id),
     FOREIGN KEY (child_id, org_id) REFERENCES children(id, org_id),
     FOREIGN KEY (user_id, org_id) REFERENCES users(id, org_id)
@@ -138,10 +141,11 @@ CREATE TABLE request_messages (
     request_id   uuid NOT NULL,
     org_id       uuid NOT NULL,
     sender_type  text NOT NULL CHECK (sender_type IN ('user', 'agent', 'system')),
-    sender_id    uuid REFERENCES users(id),   -- 사람일 때만
+    sender_id    uuid,                     -- 사람일 때만
     body         text NOT NULL,
     created_at   timestamptz NOT NULL DEFAULT now(),
-    FOREIGN KEY (request_id, org_id) REFERENCES requests(id, org_id)
+    FOREIGN KEY (request_id, org_id) REFERENCES requests(id, org_id),
+    FOREIGN KEY (sender_id, org_id) REFERENCES users(id, org_id)
 );
 CREATE INDEX request_messages_req_idx ON request_messages (request_id, id);
 
@@ -167,11 +171,12 @@ CREATE TABLE documents (
     status          text NOT NULL DEFAULT 'active'
                     CHECK (status IN ('active', 'conflict_pending', 'superseded')),
     supersedes_id   uuid,                  -- 이 문서가 대신하는 옛 판. 옛 판은 superseded가 됨(T04 합의 7)
-    uploaded_by     uuid REFERENCES users(id),
+    uploaded_by     uuid,
     content_sha256  text NOT NULL,
     is_virtual      boolean NOT NULL DEFAULT true,
     created_at      timestamptz NOT NULL DEFAULT now(),
     FOREIGN KEY (classroom_id, org_id) REFERENCES classrooms(id, org_id),
+    FOREIGN KEY (uploaded_by, org_id) REFERENCES users(id, org_id),
     FOREIGN KEY (supersedes_id, org_id) REFERENCES documents(id, org_id),
     UNIQUE (org_id, content_sha256),
     UNIQUE (id, org_id),
@@ -187,12 +192,15 @@ CREATE TABLE document_chunks (
     chunk_index      integer NOT NULL,
     location         text,                 -- 근거 위치 표시용(예: '2쪽 3항')
     content          text NOT NULL,
-    embedding        vector(1024),         -- bge-m3 기준. 모델·차원을 바꾸면 다시 색인
-    embedding_model  text,
+    embedding        vector(1024),         -- bge-m3 출력 차원 1024. 모델·차원을 바꾸면 다시 색인
+    embedding_model  text,                 -- 예: 'BAAI/bge-m3'
+    embedding_version text,                -- 모델 판·색인 판. 판이 다른 벡터는 섞어 검색하지 않음
     created_at       timestamptz NOT NULL DEFAULT now(),
     FOREIGN KEY (document_id, org_id) REFERENCES documents(id, org_id) ON DELETE CASCADE,
-    UNIQUE (document_id, chunk_index)
+    UNIQUE (document_id, chunk_index),
+    UNIQUE (id, org_id)
 );
+-- 인덱스 연산자 vector_cosine_ops ↔ 검색식 연산자 <=>(코사인 거리). 둘이 다르면 인덱스를 안 탐
 CREATE INDEX document_chunks_embedding_idx ON document_chunks
     USING hnsw (embedding vector_cosine_ops);
 CREATE INDEX document_chunks_org_idx ON document_chunks (org_id, document_id);
@@ -239,12 +247,16 @@ CREATE INDEX cards_due_idx     ON cards (org_id, due_at)
 
 -- 카드가 댄 근거(문서명·위치·적용일을 화면에 보여 줌)
 CREATE TABLE card_evidence (
-    card_id      uuid NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
-    chunk_id     bigint NOT NULL REFERENCES document_chunks(id),
+    card_id      uuid NOT NULL,
+    org_id       uuid NOT NULL,
+    chunk_id     bigint NOT NULL,
     rank         smallint NOT NULL,
     score        real,
     quote        text,
-    PRIMARY KEY (card_id, chunk_id)
+    created_at   timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (card_id, chunk_id),
+    FOREIGN KEY (card_id, org_id) REFERENCES cards(id, org_id) ON DELETE CASCADE,
+    FOREIGN KEY (chunk_id, org_id) REFERENCES document_chunks(id, org_id)  -- 다른 원 자료를 근거로 못 댐
 );
 
 -- 사람의 결정. 카드 판(version)마다 결정은 한 번만 → 재개·승인 버튼을 여러 번 눌러도 한 번만 처리
@@ -259,7 +271,9 @@ CREATE TABLE approvals (
     decision        text NOT NULL CHECK (decision IN ('approve', 'edit_approve', 'reject', 'hold',
                                                       'resume', 'dismiss', 'complete',
                                                       'escalate', 'instruct')),
-    reason_code     text,                  -- 거절 이유 고르기 값(기억·규칙 제안에 씀)
+    -- 거절·반려 이유 코드(기억·규칙 제안에 씀). 값 목록은 설정값이라 CHECK로 묶지 않음(설계서 2.2):
+    -- wrong_fact · tone · missing_info · privacy · policy · slot_unavailable · room_unavailable · other
+    reason_code     text,
     reason_text     text,
     edited_content  jsonb,
     created_at      timestamptz NOT NULL DEFAULT now(),
@@ -267,7 +281,8 @@ CREATE TABLE approvals (
     FOREIGN KEY (decided_by, org_id) REFERENCES users(id, org_id),
     UNIQUE (card_id, card_version),
     CHECK (decision NOT IN ('reject', 'dismiss') OR reason_code IS NOT NULL),
-    CHECK (decision NOT IN ('hold', 'instruct') OR reason_text IS NOT NULL)
+    CHECK (decision NOT IN ('hold', 'instruct') OR reason_text IS NOT NULL),
+    CHECK (reason_code IS DISTINCT FROM 'other' OR reason_text IS NOT NULL)   -- 기타면 이유 글 필수
 );
 
 -- ─────────────────────────────────────────────
@@ -277,10 +292,10 @@ CREATE TABLE approvals (
 CREATE TABLE events (
     id           bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     org_id       uuid NOT NULL REFERENCES organizations(id),
-    request_id   uuid REFERENCES requests(id),
-    card_id      uuid REFERENCES cards(id),
+    request_id   uuid,
+    card_id      uuid,
     actor_type   text NOT NULL CHECK (actor_type IN ('user', 'agent', 'system')),
-    actor_id     uuid REFERENCES users(id),
+    actor_id     uuid,
     agent_name   text,                     -- 감독·자료·기억·검사 AI 등
     action       text NOT NULL
                  CHECK (action IN ('created', 'classified', 'info_requested', 'assigned',
@@ -289,11 +304,15 @@ CREATE TABLE events (
                                    'sent', 'booked', 'completed', 'tool_called',
                                    'tool_failed', 'permission_denied',
                                    'parent_confirmed', 'risk_reclassified', 'dismissed',
-                                   'answered_from_saved')),
+                                   'answered_from_saved', 'slot_hold_expired')),
+    -- 시스템이 한 일(보류 예정일 자동 재개, 상담 시간 잡아 두기 풀림)은 actor_type = 'system', actor_id = NULL
     from_status  text,
     to_status    text,
     detail       jsonb NOT NULL DEFAULT '{}',   -- 비밀값·불필요한 개인정보는 넣지 않음
-    created_at   timestamptz NOT NULL DEFAULT now()
+    created_at   timestamptz NOT NULL DEFAULT now(),
+    FOREIGN KEY (request_id, org_id) REFERENCES requests(id, org_id),
+    FOREIGN KEY (card_id, org_id) REFERENCES cards(id, org_id),
+    FOREIGN KEY (actor_id, org_id) REFERENCES users(id, org_id)
 );
 CREATE INDEX events_request_idx ON events (request_id, id);
 CREATE INDEX events_card_idx    ON events (card_id, id);
@@ -308,6 +327,7 @@ CREATE TABLE rooms (
     org_id     uuid NOT NULL REFERENCES organizations(id),
     name       text NOT NULL,
     is_active  boolean NOT NULL DEFAULT true,
+    created_at timestamptz NOT NULL DEFAULT now(),
     UNIQUE (org_id, name),
     UNIQUE (id, org_id)
 );
@@ -319,6 +339,7 @@ CREATE TABLE staff_busy_blocks (
     user_id   uuid NOT NULL,
     period    tstzrange NOT NULL,
     kind      text NOT NULL CHECK (kind IN ('class', 'meeting', 'duty', 'off', 'other')),
+    created_at timestamptz NOT NULL DEFAULT now(),
     FOREIGN KEY (user_id, org_id) REFERENCES users(id, org_id)
 );
 CREATE INDEX staff_busy_blocks_idx ON staff_busy_blocks USING gist (user_id, period);
@@ -326,15 +347,23 @@ CREATE INDEX staff_busy_blocks_idx ON staff_busy_blocks USING gist (user_id, per
 -- 일정 계산 코드가 낸 후보(회차마다 최대 3개). 거절·충돌로 다시 내면 같은 카드에 round를 올림(T04 4.1)
 CREATE TABLE consultation_slots (
     id          bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    card_id     uuid NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
-    teacher_id  uuid NOT NULL REFERENCES users(id),
-    room_id     uuid NOT NULL REFERENCES rooms(id),
+    card_id     uuid NOT NULL,
+    org_id      uuid NOT NULL,
+    teacher_id  uuid NOT NULL,
+    room_id     uuid NOT NULL,
     period      tstzrange NOT NULL,
     round       smallint NOT NULL DEFAULT 1 CHECK (round >= 1),
     rank        smallint NOT NULL CHECK (rank BETWEEN 1 AND 3),
     status      text NOT NULL DEFAULT 'proposed'
                 CHECK (status IN ('proposed', 'chosen_by_parent', 'confirmed', 'discarded')),
-    UNIQUE (card_id, round, rank)
+    chosen_at   timestamptz,               -- 학부모가 체크한 시각. 이때부터 24시간 그 시간을 잡아 둠(계약표 6장 ⑥)
+    created_at  timestamptz NOT NULL DEFAULT now(),
+    CHECK (status <> 'chosen_by_parent' OR chosen_at IS NOT NULL),
+    FOREIGN KEY (card_id, org_id) REFERENCES cards(id, org_id) ON DELETE CASCADE,
+    FOREIGN KEY (teacher_id, org_id) REFERENCES users(id, org_id),
+    FOREIGN KEY (room_id, org_id) REFERENCES rooms(id, org_id),
+    UNIQUE (card_id, round, rank),
+    UNIQUE (id, org_id)
 );
 
 -- 확정된 예약. 같은 상담실·같은 담임이 겹치는 시간은 DB가 저장을 거부함
@@ -342,17 +371,19 @@ CREATE TABLE consultation_bookings (
     id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     org_id        uuid NOT NULL,
     request_id    uuid NOT NULL,
-    slot_id       bigint REFERENCES consultation_slots(id),
-    teacher_id    uuid NOT NULL,
+    slot_id       bigint,                  -- 학부모가 체크한 후보. teacher_id·room_id·period는 이 후보에서 복사
+    teacher_id    uuid NOT NULL,           -- 아래 배제 제약이 이 표 안의 칸만 볼 수 있어서 후보 값을 복사해 둠(설계서 1.4)
     room_id       uuid NOT NULL,
     period        tstzrange NOT NULL,
     status        text NOT NULL DEFAULT 'confirmed'
                   CHECK (status IN ('confirmed', 'cancelled', 'done')),
-    confirmed_by  uuid NOT NULL REFERENCES users(id),
+    confirmed_by  uuid NOT NULL,
     created_at    timestamptz NOT NULL DEFAULT now(),
     FOREIGN KEY (request_id, org_id) REFERENCES requests(id, org_id),
+    FOREIGN KEY (slot_id, org_id) REFERENCES consultation_slots(id, org_id),
     FOREIGN KEY (teacher_id, org_id) REFERENCES users(id, org_id),
     FOREIGN KEY (room_id, org_id) REFERENCES rooms(id, org_id),
+    FOREIGN KEY (confirmed_by, org_id) REFERENCES users(id, org_id),
     EXCLUDE USING gist (room_id WITH =, period WITH &&) WHERE (status = 'confirmed'),
     EXCLUDE USING gist (teacher_id WITH =, period WITH &&) WHERE (status = 'confirmed')
 );
@@ -372,10 +403,11 @@ CREATE TABLE memories (
     reason_code     text,                  -- 거절 이유면 approvals.reason_code와 같은 값
     content         text NOT NULL,
     structured      jsonb NOT NULL DEFAULT '{}',   -- 예: {"weekday": 3, "before": "14:00"}
-    source_card_id  uuid REFERENCES cards(id),
+    source_card_id  uuid,
     created_at      timestamptz NOT NULL DEFAULT now(),
     deleted_at      timestamptz,           -- 사용자가 지우면 표시하고 다음 제안에서 뺌
-    FOREIGN KEY (owner_id, org_id) REFERENCES users(id, org_id)
+    FOREIGN KEY (owner_id, org_id) REFERENCES users(id, org_id),
+    FOREIGN KEY (source_card_id, org_id) REFERENCES cards(id, org_id)
 );
 CREATE INDEX memories_owner_idx ON memories (owner_id, kind, reason_code)
     WHERE deleted_at IS NULL;
@@ -390,7 +422,7 @@ CREATE TABLE memory_rules (
     rule_json    jsonb NOT NULL,
     status       text NOT NULL DEFAULT 'proposed'
                  CHECK (status IN ('proposed', 'active', 'off', 'declined')),
-    proposed_at  timestamptz NOT NULL DEFAULT now(),
+    created_at   timestamptz NOT NULL DEFAULT now(),   -- 제안된 시각
     decided_at   timestamptz,
     FOREIGN KEY (owner_id, org_id) REFERENCES users(id, org_id)
 );
@@ -406,8 +438,9 @@ CREATE TABLE saved_answers (
     question            text NOT NULL,
     question_embedding  vector(1024) NOT NULL,
     embedding_model     text NOT NULL,
+    embedding_version   text,
     answer              text NOT NULL,
-    source_card_id      uuid NOT NULL REFERENCES cards(id),
+    source_card_id      uuid NOT NULL,
     approved_by         uuid NOT NULL,
     status              text NOT NULL DEFAULT 'active'
                         CHECK (status IN ('active', 'off', 'invalidated')),  -- off = 담임이 끔 → 다시 카드로 물음(FR-20)
@@ -415,6 +448,7 @@ CREATE TABLE saved_answers (
     invalidated_reason  text,
     created_at          timestamptz NOT NULL DEFAULT now(),
     FOREIGN KEY (classroom_id, org_id) REFERENCES classrooms(id, org_id),
+    FOREIGN KEY (source_card_id, org_id) REFERENCES cards(id, org_id),
     FOREIGN KEY (approved_by, org_id) REFERENCES users(id, org_id),
     UNIQUE (id, org_id),
     CHECK (status <> 'invalidated' OR invalidated_at IS NOT NULL)
@@ -427,6 +461,7 @@ CREATE TABLE saved_answer_sources (
     saved_answer_id  uuid NOT NULL,
     org_id           uuid NOT NULL,
     document_id      uuid NOT NULL,
+    created_at       timestamptz NOT NULL DEFAULT now(),
     PRIMARY KEY (saved_answer_id, document_id),
     FOREIGN KEY (saved_answer_id, org_id) REFERENCES saved_answers(id, org_id) ON DELETE CASCADE,
     FOREIGN KEY (document_id, org_id) REFERENCES documents(id, org_id)
@@ -464,10 +499,12 @@ CREATE TABLE daily_note_inputs (
     note_date     date NOT NULL,
     activities    text,
     supplies      text,
-    author_id     uuid NOT NULL REFERENCES users(id),
+    author_id     uuid NOT NULL,
     created_at    timestamptz NOT NULL DEFAULT now(),
     FOREIGN KEY (classroom_id, org_id) REFERENCES classrooms(id, org_id),
-    UNIQUE (classroom_id, note_date)
+    FOREIGN KEY (author_id, org_id) REFERENCES users(id, org_id),
+    UNIQUE (classroom_id, note_date),
+    UNIQUE (id, org_id, note_date)         -- 아이별 알림장이 (입력, 기관, 날짜) 짝으로 참조
 );
 
 -- 아이별 알림장. needs_check 항목이 남으면 보내지 못함
@@ -475,9 +512,9 @@ CREATE TABLE daily_note_inputs (
 CREATE TABLE daily_notes (
     id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     org_id         uuid NOT NULL,
-    input_id       uuid NOT NULL REFERENCES daily_note_inputs(id),
+    input_id       uuid NOT NULL,
     child_id       uuid NOT NULL,
-    note_date      date NOT NULL,
+    note_date      date NOT NULL,         -- 입력의 날짜와 같아야 함(아래 복합 FK). 아이·날짜 유니크에 씀
     status         text NOT NULL DEFAULT 'draft'
                    CHECK (status IN ('draft', 'needs_check', 'ready', 'sent')),
     content        jsonb NOT NULL DEFAULT '{}',  -- 하루·식사·투약/귀가 줄·준비물
@@ -485,6 +522,8 @@ CREATE TABLE daily_notes (
     confirmed_by   uuid,                  -- 교사 확인(T04 6.1 note_ready = 교사가 확인함)
     confirmed_at   timestamptz,
     sent_at        timestamptz,
+    created_at     timestamptz NOT NULL DEFAULT now(),
+    FOREIGN KEY (input_id, org_id, note_date) REFERENCES daily_note_inputs(id, org_id, note_date),
     FOREIGN KEY (child_id, org_id) REFERENCES children(id, org_id),
     FOREIGN KEY (confirmed_by, org_id) REFERENCES users(id, org_id),
     UNIQUE (child_id, note_date),
@@ -499,19 +538,21 @@ CREATE TABLE daily_notes (
 CREATE TABLE notifications (
     id            bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     org_id        uuid NOT NULL REFERENCES organizations(id),
-    recipient_id  uuid NOT NULL REFERENCES users(id),
+    recipient_id  uuid NOT NULL,
     request_id    uuid,
     card_id       uuid,
     subject_type  text CHECK (subject_type IN ('daily_note')),  -- 요청·카드가 아닌 대상(알림장)
     subject_id    uuid,
-    -- T04 9장 알림 시점 11가지. 최종 기능(상담 지연 알림 T48 등)은 그때 값을 더함
+    -- T04 9장 알림 시점 11가지 + 계약표 6장 기본값 2가지(⑥ 상담 시간 잡아 두기 풀림, ⑨ 보류 자동 재개)
+    -- 최종 기능(상담 지연 알림 T48 등)은 그때 값을 더함
     kind          text NOT NULL
                   CHECK (kind IN ('needs_info', 'new_card', 'urgent_complaint', 'uncertain_complaint',
                                   'director_report', 'on_hold', 'sent_or_booked', 'parent_confirmed',
-                                  'completed', 'rejected', 'note_sent')),
+                                  'completed', 'rejected', 'note_sent',
+                                  'slot_hold_expired', 'hold_resumed')),
     title         text NOT NULL,
     body          text,
-    dedupe_key    text NOT NULL UNIQUE,    -- 예: 'card:<id>:approved:<recipient>'. 같은 알림 두 번 안 감
+    dedupe_key    text NOT NULL UNIQUE,    -- 'event:<events.id>:<받는 사람 ID>'(설계서 2.6). 같은 알림 두 번 안 감
     status        text NOT NULL DEFAULT 'pending'
                   CHECK (status IN ('pending', 'sent', 'failed', 'held')),
     attempts      smallint NOT NULL DEFAULT 0 CHECK (attempts BETWEEN 0 AND 3),
@@ -520,6 +561,9 @@ CREATE TABLE notifications (
     created_at    timestamptz NOT NULL DEFAULT now(),
     sent_at       timestamptz,
     read_at       timestamptz,
+    FOREIGN KEY (recipient_id, org_id) REFERENCES users(id, org_id),
+    FOREIGN KEY (request_id, org_id) REFERENCES requests(id, org_id),
+    FOREIGN KEY (card_id, org_id) REFERENCES cards(id, org_id),
     CHECK ((subject_type IS NULL) = (subject_id IS NULL))
 );
 CREATE INDEX notifications_unread_idx ON notifications (recipient_id, created_at DESC)
@@ -542,6 +586,7 @@ CREATE TABLE eval_runs (
     errors             integer NOT NULL DEFAULT 0,
     report_url         text,
     note               text,
+    created_at         timestamptz NOT NULL DEFAULT now(),   -- 기록한 시각(started_at은 평가를 시작한 시각)
     CHECK (passed + errors <= total)
 );
 
