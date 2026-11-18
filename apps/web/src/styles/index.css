@@ -5,7 +5,15 @@
 
 /* 토큰을 Tailwind 클래스로 연결한다: bg-card, text-ink2, border-sep … */
 @theme inline {
+  --color-page: var(--page);
   --color-g: var(--g);
+  --color-raise: var(--raise);
+  --color-edge: var(--edge);
+  --color-line: var(--line);
+  --color-brand-fill: var(--brand-fill);
+  --color-on-brand: var(--on-brand);
+  --color-urg-bg: var(--urg-bg);
+  --color-urg-fg: var(--urg-fg);
   --color-card: var(--card);
   --color-ink: var(--ink);
   --color-ink2: var(--ink2);
@@ -33,14 +41,40 @@
   --color-type-m: var(--type-m);
   --color-type-m-tint: var(--type-m-tint);
   --font-sans: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif;
-  /* 글자 크기 단계: 28 · 17 · 15 · 13 · 11 */
-  --text-title: 1.75rem;
-  --text-title--line-height: 1.15;
+  /* 글자 8단계 (디자인 시스템 2장): 32 · 24 · 20 · 17 · 16 · 15 · 13 · 12. 최소 12px */
+  --text-display: 2rem;
+  --text-display--line-height: 2.375rem;
+  --text-large-title: 1.5rem;
+  --text-large-title--line-height: 1.875rem;
+  --text-title2: 1.25rem;
+  --text-title2--line-height: 1.625rem;
+  --text-headline: 1.0625rem;
+  --text-headline--line-height: 1.5rem;
+  --text-body: 1rem;
+  --text-body--line-height: 1.5rem;
+  --text-callout: 0.9375rem;
+  --text-callout--line-height: 1.375rem;
+  --text-footnote: 0.8125rem;
+  --text-footnote--line-height: 1.125rem;
+  --text-caption: 0.75rem;
+  --text-caption--line-height: 1rem;
+  /* 이전 이름 → 새 단계 (컴포넌트 정리 전까지 유지) */
+  --text-title: 1.5rem;
+  --text-title--line-height: 1.875rem;
   --text-head: 1.0625rem;
-  --text-body: 0.9375rem;
   --text-sub: 0.8125rem;
-  --text-cap: 0.6875rem;
-  --ease-spring: var(--spring);
+  --text-cap: 0.75rem;
+  /* 모서리·그림자·움직임 */
+  --radius-xs: var(--radius-xs);
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
+  --shadow-card: var(--shadow-card);
+  --shadow-float: var(--shadow-float);
+  --shadow-sheet: var(--shadow-sheet);
+  --ease-spring: var(--ease-out);
+  --ease-move: var(--ease-move);
 }
 
 @layer base {
@@ -50,7 +84,7 @@
     height: 100%;
   }
   body {
-    background: var(--g);
+    background: var(--page);
     color: var(--ink);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
