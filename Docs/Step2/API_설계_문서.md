@@ -1,0 +1,776 @@
+# 유치온 API 설계 문서 (T13)
+
+문서 버전 v0.1 | 작성 상태: 초안
+
+| 항목 | 내용 |
+| --- | --- |
+| 작업 | T13 API 설계 문서(FastAPI·Function Calling 도구 계약)·모의 API (#170) |
+| 작성 | 태웅 · 검토 인혜 |
+| 기준 문서 | 기획서 1117판 3장 FR-01~FR-13 · T04 흐름·권한 명세(PR #234) · [입출력 계약표](입출력_계약표_초안.md) v0.7(T10 회의 11/18 합의) · [DB 스키마 설계서](DB_스키마_설계서.md) v0.7 |
+| 따른 가이드 | 강사님 'API 설계 문서 작성법' 11/18 수정본. 1~6장이 가이드의 '문서에 들어가는 여섯 가지' 순서다 |
+
+이 문서는 T10 계약표에서 합의한 필드·권한·오류를 엔드포인트와 도구 단위로 펼친 것이다. 계약표와 이 문서가 다르면 계약표를 먼저 고치고 두 문서의 판을 같이 올린다. 구현이 시작되면 FastAPI의 `/docs`와 대조해 판을 올린다(계약표 1.1 규칙 1). 이 판(v0.1)은 API 목록 전체, 핵심 6개의 상세 명세, 도구 전체의 실패 처리, 실행 규칙을 담는다. 모의 API와 `contracts/openapi.yaml`은 v0.2(11/20 제출본)에서 붙인다.
+
+**목차.** 1. 공통 정보와 인증 · 2. API 목록 · 3. 엔드포인트 상세 명세 · 4. 검증과 권한 규칙 · 5. Tool 정의와 호출 흐름 · 6. 실행 규칙 · 7. API 필드와 DB 컬럼 대응 · 8. 설정값 · 부록 A. 예시 ID · 변경 이력
+
+**가이드 최종 제출 전 체크리스트와 이 문서**
+
+| 체크리스트(가이드 33쪽) | 이 문서 |
+| --- | --- |
+| 구현할 API가 모두 목록 표에 있고 요구사항 ID와 연결된다 | 2장(29개, 요구사항 열) |
+| 서버 주소·인증·오류 형식·/docs·변경 이력이 있다 | 1장, 끝의 변경 이력 |
+| 구현할 API마다 상세 명세와 필드 명세 표가 있다 | 3장(v0.1은 핵심 6개. 나머지는 v0.2에서 채움) |
+| 형식 오류(422)와 권한·승인 오류(403)를 나눠 적었다 | 4.1 |
+| 202를 쓰는 API는 작업 상태·결과·실패 조회가 있다 | 6.3 |
+| Tool마다 성공·실패 출력과 실패 후 처리가 있다 | 5.2, 5.4 |
+| 타임아웃·재시도·중복 실행 방지 규칙이 있다 | 6.1, 6.2, 6.4 |
+| ID 형식이 같고, 필드와 DB 컬럼의 대응이 분명하다 | 1.5, 7장 |
+
+## 1. 공통 정보와 인증
+
+### 1.1 서버 주소와 자동 문서
+
+| 항목 | 값 |
+| --- | --- |
+| 개발 서버 | `http://localhost:8000/api/v1` (`compose.yaml`의 `api` 서비스) |
+| 배포 서버 | `https://<배포 도메인>/api/v1` (AWS EC2, T36 첫 배포 때 확정해 이 칸을 고침) |
+| 자동 문서 | `<서버 주소>/docs`, `<서버 주소>/openapi.json`. 저장소에는 `/openapi.json`에서 뽑은 `contracts/openapi.yaml`을 생성물로 둔다 |
+| 상태 확인 | `GET /health` (인증 없음, 버전 접두어 없음) |
+| 모의 API | 같은 경로가 이 문서의 예시 응답을 돌려주는 모드. 화면(T21·T28·T32)이 백엔드 구현 전에 붙는다(v0.2) |
+
+### 1.2 인증
+
+| 항목 | 내용 |
+| --- | --- |
+| 발급 | `POST /api/v1/auth/login`에 `login_id`·`password`를 보내면 서버가 JWT access token을 발급한다. 수명 12시간. Supabase Auth는 쓰지 않는다(DB 설계서 5.1·5.2) |
+| 전달 | `Authorization: Bearer <access_token>`. 쿠키는 쓰지 않는다(Android 앱과 웹이 같은 API를 씀) |
+| 검증 | 서명(`JWT_SECRET`)·만료·토큰 판(`users.token_version`과 같은지)·계정 사용 여부(`users.is_active`)를 본 뒤, 역할·기관·반으로 권한을 검사한다(4장) |
+| 오류 | 401 `UNAUTHENTICATED`: 토큰 없음·만료·서명 틀림·판이 낮음 / 403 `FORBIDDEN_ROLE`: 누구인지는 알지만 역할상 못 하는 일 / 404 `NOT_FOUND`: 다른 기관·다른 반 자료(있는지도 알리지 않음) |
+
+토큰에는 `sub`(계정 ID), `org`(기관 ID), `role`(`parent`·`teacher`·`director`), `ver`(토큰 판), `exp`(만료)만 넣는다. 반 소속과 아이 관계는 토큰에 넣지 않고 요청마다 DB에서 확인한다. 소속이 바뀌어도 토큰을 다시 받을 필요가 없게 하기 위해서다.
+
+### 1.3 공통 헤더
+
+| 헤더 | 방향 | 내용 |
+| --- | --- | --- |
+| `Authorization` | 요청 | `Bearer <access_token>`. 로그인·`/health`만 빼고 필수 |
+| `X-Request-ID` | 요청·응답 | 화면이 요청마다 만들어 보낸다. 없으면 서버가 만든다. 응답 헤더로 같은 값을 돌려주고, 오류의 `trace_id`·도구 호출·이력(`events.detail.trace_id`)에 같은 값을 남긴다 |
+| `Content-Type` | 요청 | `application/json`. 자료 올리기만 `multipart/form-data` |
+
+가이드 예시의 `request_id`(추적 ID)를 이 서비스에서는 `trace_id`라고 부른다. 이 서비스에서 `request_id`는 학부모 요청(`requests.id`)을 뜻하기 때문이다(계약표 1.1 규칙 6).
+
+### 1.4 공통 오류 형식
+
+모든 API가 같은 형식으로 오류를 돌려준다. 200에 오류를 담아 보내지 않는다.
+
+```json
+{
+  "error": {
+    "code": "CARD_VERSION_CONFLICT",
+    "message": "다른 사람이 먼저 카드를 처리했어요. 새로고침해 주세요.",
+    "trace_id": "6b0f1c2e-9a7d-4c1e-8f3a-2d5b7e9c1a40",
+    "details": { "current_version": 3 }
+  }
+}
+```
+
+| HTTP | `code` | 언제 | 누가 검사 |
+| --- | --- | --- | --- |
+| 401 | `UNAUTHENTICATED` | 토큰 없음·만료·무효 | 인증 의존성 |
+| 403 | `FORBIDDEN_ROLE` | 역할상 못 하는 일(학부모가 카드 결정, 담임이 원장 보고 카드 결정) | 서버 권한 검사 |
+| 404 | `NOT_FOUND` | 없거나, 다른 기관·다른 반·남의 자료 | 서버 범위 검사 |
+| 409 | `CARD_VERSION_CONFLICT` | 화면이 본 카드 판이 지금 판과 다름(`details.current_version`) | 서버 |
+| 409 | `ALREADY_DECIDED` | 같은 카드 판에 이미 결정이 있음 | 서버 + DB 유니크 |
+| 409 | `INVALID_TRANSITION` | T04 전이 규칙에 없는 상태 변경(예: 회신 전 처리 완료, 보류 아닌 카드 재개) | 서버 |
+| 409 | `REASON_REQUIRED` | 학부모 미확인 민원을 이유 없이 처리 완료(계약표 6장 ⑦) | 서버 + DB 트리거 |
+| 409 | `SLOT_TAKEN` | 같은 상담실·담임의 겹치는 시간이 이미 확정됨 | DB 배제 제약 |
+| 409 | `SLOT_NOT_CHOSEN` | 학부모가 체크하지 않은 후보로 확정 | 서버 |
+| 409 | `NOTE_BATCH_BLOCKED` | 반에 아직 확인 안 된 알림장이 있음(`details.blocked[]`) | 서버 |
+| 422 | `VALIDATION_FAILED` | 입력 형식·허용 값·길이·함께 와야 하는 칸이 어긋남(`details.fields[]`) | Pydantic |
+| 500 | `INTERNAL_ERROR` | 서버 내부 오류. 내부 내용은 응답에 넣지 않고 로그에만 남김 | — |
+| 503 | `UPSTREAM_UNAVAILABLE` | 모델·외부 API 장애. 요청은 저장되고 나중에 다시 처리 | 서버 |
+
+400은 쓰지 않는다. 필수 정보가 빠진 요청은 오류가 아니라 요청 상태 `needs_info`로 정상 응답에 담는다(계약표 1.1 규칙 4). FastAPI 기본 422 응답은 예외 처리기에서 위 형식으로 바꿔 돌려준다. `message`는 서버의 기본 한국어 문장이고, 화면에 띄울 문구는 화면이 `code`별로 정한다(계약표 1.1 규칙 9).
+
+### 1.5 공통 규칙
+
+| 항목 | 규칙 |
+| --- | --- |
+| 경로 | 모두 `/api/v1`로 시작. 자원은 복수 명사, 실행은 하위 경로 `POST`(예: `/cards/{card_id}/decisions`). 소문자와 하이픈만 |
+| 목록 | `?page=1&size=20&sort=-created_at` → `{ "items": [...], "total": 37, "page": 1, "size": 20 }`. `size` 기본 20·최대 100 |
+| 시각 | ISO 8601, 한국 시간 오프셋 포함(`2026-12-01T15:00:00+09:00`). 날짜만이면 `YYYY-MM-DD` |
+| ID | DB 설계서 2.0 ID 형식 표와 같다. 기관·반·계정·아이·요청·카드·문서·상담실·상담 예약·자동 규칙·원에 남은 답·알림장은 UUID 문자열, 대화 메시지·문서 조각·결정 기록·이력·상담 후보(`slot_id`)·알림은 정수 |
+| 시간 구간 | DB의 `tstzrange`는 API에서 `{ "start": "...", "end": "..." }`로 주고받는다 |
+| 성공 코드 | 조회 200 · AI 처리 접수 202 · 그 밖의 생성 201 · 결정·확정 같은 실행 200 · 삭제 204(MVP에 없음) |
+
+## 2. API 목록
+
+인증 열의 '자기 것'·'우리 반'은 4.2의 범위 규칙을 뜻한다. 상세 열이 비어 있는 API는 v0.2에서 상세 명세를 채운다.
+
+| # | 메서드 | 경로 | 인증·역할 | 설명 | 성공 | 요구사항 | 상세 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | POST | `/api/v1/auth/login` | 없음 | 로그인, 토큰 발급 | 200 | FR-01 | |
+| 2 | GET | `/api/v1/me` | JWT | 내 정보·내 아이(학부모)·담당 반(교직원) | 200 | FR-01 | |
+| 3 | POST | `/api/v1/requests` | 학부모 | 요청 만들기(AI 처리 접수) | 202 | FR-02, FR-03 | 3.1 |
+| 4 | GET | `/api/v1/requests` | 학부모(자기 것) | 내 요청 목록 | 200 | FR-02 | |
+| 5 | GET | `/api/v1/requests/{request_id}` | 학부모(자기 것) · 교직원(우리 반) | 요청 상세·대화·진행 기록 | 200 | FR-02, FR-11 | 3.2 |
+| 6 | GET | `/api/v1/requests/{request_id}/stream` | 학부모(자기 것) | AI 진행 스트림(SSE) | 200 | NFR-10 | 3.2 |
+| 7 | POST | `/api/v1/requests/{request_id}/messages` | 학부모(자기 것) | 대화 이어 쓰기 | 201 | FR-02 | |
+| 8 | POST | `/api/v1/requests/{request_id}/slot-choices` | 학부모(자기 것) | 상담 가능 시간 체크 | 200 | FR-05 | 3.4 |
+| 9 | POST | `/api/v1/requests/{request_id}/confirm` | 학부모(자기 민원) | 민원 회신 '확인했어요' | 200 | FR-07 | 3.5 |
+| 10 | GET | `/api/v1/notifications` | JWT(자기 것) | 알림 목록 | 200 | FR-12 | |
+| 11 | POST | `/api/v1/notifications/{notification_id}/read` | JWT(자기 것) | 알림 읽음 | 200 | FR-12 | |
+| 12 | GET | `/api/v1/cards` | 담임·원장 | 받은함(필터 6개·필터별 건수) | 200 | FR-09 | |
+| 13 | GET | `/api/v1/cards/{card_id}` | 담임(우리 반)·원장 | 카드 상세(초안·근거·반복 수·이력) | 200 | FR-04, FR-07, FR-09, FR-11 | |
+| 14 | GET | `/api/v1/cards/{card_id}/stream` | 담임(우리 반)·원장 | 카드 AI 진행 스트림(초안 글자 포함) | 200 | NFR-10 | |
+| 15 | POST | `/api/v1/cards/{card_id}/decisions` | 담임(우리 반)·원장 | 카드 결정(승인·거절·보류·재개·반려·처리 완료·원장님께 올리기) | 200 | FR-05~FR-09 | 3.3 |
+| 16 | POST | `/api/v1/cards/{card_id}/reclassify` | 담임(우리 반)·원장 | 민원 위험 등급 다시 분류 | 200 | FR-03, FR-07 | |
+| 17 | POST | `/api/v1/cards/{card_id}/bookings` | 담임(우리 반) | 상담 확정 | 200 | FR-05 | 3.4 |
+| 18 | POST | `/api/v1/cards/{card_id}/instructions` | 원장·원감 | 원장 보고 지시 | 200 | FR-07 | |
+| 19 | POST | `/api/v1/cards/{card_id}/reassign` | 원장·원감 | 담당 재배정 | 200 | FR-09, FR-19 | |
+| 20 | POST | `/api/v1/memory-rules/{rule_id}/decision` | 규칙 주인 | 개인 규칙 제안 켜기·거절 | 200 | FR-06 | |
+| 21 | GET | `/api/v1/overview` | 원장·원감 | 원장 현황(미배정·대기·지연·완료·학부모 미확인 완료) | 200 | FR-09, FR-19 | |
+| 22 | POST | `/api/v1/daily-notes/drafts` | 담임 | 알림장 초안 만들기(AI 처리 접수) | 202 | FR-10 | |
+| 23 | GET | `/api/v1/daily-notes/drafts/{input_id}` | 담임(우리 반) | 알림장 초안 진행 상태 | 200 | FR-10 | |
+| 24 | GET | `/api/v1/daily-notes` | 학부모(내 아이, 보낸 것) · 담임(우리 반) | 알림장 보기 | 200 | FR-10 | |
+| 25 | PATCH | `/api/v1/daily-notes/{note_id}` | 담임(우리 반) | 알림장 고치기·확인 | 200 | FR-10 | |
+| 26 | POST | `/api/v1/daily-notes/send` | 담임(우리 반) | 반 알림장 한 번에 보내기 | 200 | FR-10 | 3.6 |
+| 27 | POST | `/api/v1/documents` | 원장·담임 | 자료 올리기(적재 접수) | 202 | FR-13 | |
+| 28 | GET | `/api/v1/documents` | 교직원 | 자료 목록 | 200 | FR-13 | |
+| 29 | GET | `/api/v1/documents/{document_id}` | 교직원 | 자료 상세·적재 상태 | 200 | FR-13 | |
+
+SSE 두 개(6·14)는 실시간 진행 화면(NFR-10)이 쓰므로 넣었다. 투약·귀가(T46)와 최종 기능(FR-14 이후)은 그 작업에서 이 표에 더한다.
+
+## 3. 엔드포인트 상세 명세
+
+핵심 6개를 가이드의 여덟 칸으로 쓴다(계약표 1.1 규칙 8). 예시 ID는 부록 A의 데모 ID다. 필드 표의 '빈값'은 `""`이나 `null`을 받아도 되는지다.
+
+### 3.1 요청 만들기 — `POST /api/v1/requests`
+
+| 칸 | 내용 |
+| --- | --- |
+| ① 호출 목적 | 학부모가 안내 문의·상담·민원을 보낸다. 서버는 요청을 저장하고 바로 202를 돌려준 뒤, 감독 AI 분류부터 카드 생성까지를 뒤에서 처리한다(FR-02, FR-03) |
+| ② 요청 헤더 | `Authorization`(필수), `X-Request-ID`(권장), `Content-Type: application/json` |
+| ③ 경로·쿼리 | 없음 |
+| ④ 요청 본문 | 아래 필드 표 |
+| ⑤ 검증·권한 | 형식은 Pydantic(422). 역할이 학부모가 아니면 403. `child_id`가 내 아이(`child_guardians`)가 아니면 404. `previous_request_id`는 내 요청이고 끝난 상태(`completed`·`rejected`)여야 하며, 아니면 404 또는 409 `INVALID_TRANSITION` |
+| ⑥ 정상 응답 | 202 + 요청 ID·상태·스트림 주소. 같은 `client_request_id`로 다시 보내면 200 + 처음 만든 요청 |
+| ⑦ 오류 응답 | 아래 오류 표 |
+| ⑧ 실행 규칙 | 저장만 하고 바로 답한다(10초 안). 중복 제출은 `(requester_id, client_request_id)` DB 유니크로 막는다. AI 처리가 실패해도 요청은 남고, 재시도 뒤에도 실패하면 사람 카드로 넘긴다(6.3) |
+
+**요청 본문 필드**
+
+| 필드 | 위치 | 타입 | 필수 | 빈값 | 제약 | 설명 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `client_request_id` | 본문 | string | 필수 | 불가 | 8~64자, 화면이 만든 UUID 권장 | 같은 제출을 두 번 받지 않기 위한 키 |
+| `type` | 본문 | string | 필수 | 불가 | `inquiry`·`consultation`·`complaint` | 요청 유형. `medication`·`pickup`은 T46에서 연다 |
+| `body` | 본문 | string | 필수 | 불가 | 1~2,000자 | 질문·요청 내용 |
+| `child_id` | 본문 | string(UUID) | 필수 | 불가 | 내 아이 | 대상 아이. 반은 서버가 아이에서 정한다 |
+| `previous_request_id` | 본문 | string(UUID) | 선택 | `null` 가능 | 내 요청, 끝난 상태 | 끝난 요청을 다시 열 때 이전 요청(T04 2.1) |
+
+```http
+POST /api/v1/requests
+Authorization: Bearer <JWT>
+X-Request-ID: 6b0f1c2e-9a7d-4c1e-8f3a-2d5b7e9c1a40
+Content-Type: application/json
+
+{
+  "client_request_id": "c1a7e0d2-5b3f-4e8a-9c61-0f2d4b6a8e10",
+  "type": "complaint",
+  "body": "등원 버스가 이번 주에만 세 번 20분씩 늦었어요.",
+  "child_id": "00000000-0000-4000-8000-000000000501",
+  "previous_request_id": null
+}
+```
+
+```http
+HTTP/1.1 202 Accepted
+X-Request-ID: 6b0f1c2e-9a7d-4c1e-8f3a-2d5b7e9c1a40
+
+{
+  "request": {
+    "id": "00000000-0000-4000-8000-000000000702",
+    "status": "received",
+    "stream_url": "/api/v1/requests/00000000-0000-4000-8000-000000000702/stream"
+  }
+}
+```
+
+**정상 응답 필드**
+
+| 필드 | 타입 | 항상 | 설명 |
+| --- | --- | --- | --- |
+| `request.id` | string(UUID) | 예 | 요청 ID |
+| `request.status` | string | 예 | 처음엔 `received`. 같은 키 재전송(200)이면 지금 상태 |
+| `request.stream_url` | string | 예 | AI 진행 스트림 주소(3.2) |
+
+**오류**
+
+| HTTP | `code` | 조건 |
+| --- | --- | --- |
+| 401 | `UNAUTHENTICATED` | 토큰 문제 |
+| 403 | `FORBIDDEN_ROLE` | 교직원이 호출 |
+| 404 | `NOT_FOUND` | `child_id`가 내 아이가 아님, `previous_request_id`가 내 요청이 아님 |
+| 409 | `INVALID_TRANSITION` | `previous_request_id`가 아직 끝나지 않은 요청 |
+| 422 | `VALIDATION_FAILED` | 허용 밖 `type`, `body` 길이 초과, 필수 칸 없음 |
+
+### 3.2 요청 상세·스트림 — `GET /api/v1/requests/{request_id}`, `GET …/stream`
+
+| 칸 | 내용 |
+| --- | --- |
+| ① 호출 목적 | 학부모가 자기 요청의 상태·대화·진행 기록·상담 후보를 본다. 교직원도 카드 화면에서 같은 요청을 본다(FR-02, FR-11). 스트림은 AI 처리 단계를 실시간으로 보여 준다(NFR-10) |
+| ② 요청 헤더 | `Authorization`(필수), `X-Request-ID`. 스트림은 `Accept: text/event-stream`, 토큰을 헤더로 보내야 해서 `EventSource` 대신 `fetch` 스트림으로 읽는다 |
+| ③ 경로·쿼리 | `request_id`(경로, UUID, 필수) |
+| ④ 요청 본문 | 없음 |
+| ⑤ 검증·권한 | 학부모는 자기 요청만, 담임은 우리 반 요청(대체 담임은 기간 안)과 재배정받은 카드의 요청만, 원장은 원 전체. 범위 밖이면 404 |
+| ⑥ 정상 응답 | 200. 학부모에게는 위험 등급(T04 7.1)·보류 이유(교직원끼리만, DB 설계서 2.2 `cards.hold_until`)·도구 호출을 넣지 않고, 처리 이력은 학부모용 요약만 준다(T04 7.1) |
+| ⑦ 오류 응답 | 401, 404, 422(UUID 형식이 아님) |
+| ⑧ 실행 규칙 | 조회라 재시도해도 된다. 스트림이 끊기면 상세를 다시 불러 상태를 맞춘 뒤 다시 연결한다 |
+
+```json
+{
+  "request": {
+    "id": "00000000-0000-4000-8000-000000000701",
+    "type": "consultation",
+    "title": "아이 친구 관계 상담",
+    "status": "needs_info",
+    "status_label": "시간을 골라 주세요",
+    "missing_fields": [],
+    "hold_until": null,
+    "parent_confirmed_at": null,
+    "created_at": "2026-12-01T09:10:00+09:00",
+    "updated_at": "2026-12-01T09:10:20+09:00"
+  },
+  "messages": [
+    { "id": 41, "sender_type": "user", "body": "아이 친구 관계로 상담하고 싶어요.", "created_at": "2026-12-01T09:10:00+09:00" }
+  ],
+  "timeline": [
+    { "label": "접수됨", "at": "2026-12-01T09:10:00+09:00" },
+    { "label": "시간을 골라 주세요", "at": "2026-12-01T09:10:20+09:00" }
+  ],
+  "consultation": {
+    "slots": [
+      { "id": 9001, "period": { "start": "2026-12-02T15:00:00+09:00", "end": "2026-12-02T15:30:00+09:00" }, "room": "상담실", "status": "proposed" },
+      { "id": 9002, "period": { "start": "2026-12-02T16:00:00+09:00", "end": "2026-12-02T16:30:00+09:00" }, "room": "상담실", "status": "proposed" },
+      { "id": 9003, "period": { "start": "2026-12-03T15:00:00+09:00", "end": "2026-12-03T15:30:00+09:00" }, "room": "상담실", "status": "proposed" }
+    ],
+    "booking": null
+  }
+}
+```
+
+| 필드 | 타입 | 항상 | 설명 |
+| --- | --- | --- | --- |
+| `request.status` | string | 예 | 기획서 6장 공통 상태 11개 중 하나 |
+| `request.status_label` | string | 예 | T04 2장 표시 이름(학부모용·교직원용이 다름) |
+| `request.missing_fields[]` | string[] | 예 | `needs_info`일 때 물어볼 항목. 없으면 빈 목록 |
+| `request.hold_until` | date | 아니오 | 보류 예정일. 보류 이유는 학부모에게 주지 않음 |
+| `request.parent_confirmed_at` | datetime | 아니오 | 민원 '확인했어요' 시각 |
+| `messages[]` | 목록 | 예 | 대화. `sender_type`은 `user`(사람)·`agent`(AI)·`system` |
+| `timeline[]` | 목록 | 예 | 학부모용은 상태가 바뀐 단계만 표시 이름으로 |
+| `consultation` | 객체 | 아니오 | 상담 요청일 때만. 후보 최대 3개와 확정 예약 |
+
+**스트림 이벤트**(계약표 3장): `stage`(`classifying`·`searching`·`drafting`·`checking`) · `done`(`request_status`) · `error`(1.4 형식). 학부모 스트림에는 답변 글자(`token`)와 카드(`card`)를 보내지 않는다. 담임 승인 전 초안이 학부모에게 나가지 않게 하기 위해서다.
+
+```text
+event: stage
+data: {"stage": "classifying", "at": "2026-12-01T09:10:01+09:00"}
+
+event: done
+data: {"request_status": "needs_info"}
+```
+
+### 3.3 카드 결정 — `POST /api/v1/cards/{card_id}/decisions`
+
+| 칸 | 내용 |
+| --- | --- |
+| ① 호출 목적 | 담임·원장이 받은함 카드에 결정을 내린다. AI가 만든 초안은 이 결정을 거쳐야만 학부모에게 나간다(FR-05~FR-09, NFR-03) |
+| ② 요청 헤더 | `Authorization`(필수), `X-Request-ID`(권장), `Content-Type: application/json` |
+| ③ 경로·쿼리 | `card_id`(경로, UUID, 필수) |
+| ④ 요청 본문 | 아래 필드 표. 화면이 본 카드 `version`을 꼭 보낸다 |
+| ⑤ 검증·권한 | 형식·함께 와야 하는 칸은 Pydantic(422). 역할·범위·카드 종류는 서버(403·404). 판·전이·학부모 확인은 서버(409) |
+| ⑥ 정상 응답 | 200 + 바뀐 카드·요청 상태. 다음 카드가 생기면 `next_card_id` |
+| ⑦ 오류 응답 | 아래 오류 표 |
+| ⑧ 실행 규칙 | 같은 카드 판에 결정은 하나만 저장된다(`approvals (card_id, card_version)` 유니크). 응답이 끊기면 카드 상세로 상태를 확인한 뒤 다시 보낸다. 같은 판으로 다시 보내면 409 `ALREADY_DECIDED`라 두 번 처리되지 않는다 |
+
+**요청 본문 필드**
+
+| 필드 | 위치 | 타입 | 필수 | 빈값 | 제약 | 설명 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `version` | 본문 | integer | 필수 | 불가 | 1 이상 | 화면이 본 카드 판 |
+| `decision` | 본문 | string | 필수 | 불가 | `approve`·`edit_approve`·`reject`·`hold`·`resume`·`dismiss`·`complete`·`escalate` | 결정. 원장 지시(`instruct`)는 18번 API |
+| `reason_code` | 본문 | string | `reject`·`dismiss`면 필수 | 불가 | 계약표 6장 ① 8개 | 거절·반려 이유 |
+| `reason_text` | 본문 | string | `hold`·`reason_code = other`면 필수, `complete`인데 학부모 미확인이면 필수 | 불가 | 1~500자 | 보류 이유·기타 이유·마무리한 방법 |
+| `hold_until` | 본문 | date | `hold`면 필수 | 불가 | 오늘 이후 | 보류 예정일 |
+| `edited_content` | 본문 | object | `edit_approve`면 필수 | 불가 | 초안과 같은 모양 | 담임이 고친 내용 |
+
+```http
+POST /api/v1/cards/00000000-0000-4000-8000-000000000802/decisions
+Authorization: Bearer <JWT>
+X-Request-ID: 0e7d4a51-2c3b-4f6e-9a18-5b7c9d0e1f23
+
+{
+  "version": 2,
+  "decision": "complete",
+  "reason_text": "전화로 설명드리고 마무리함"
+}
+```
+
+```json
+{
+  "card": { "id": "00000000-0000-4000-8000-000000000802", "status": "done", "version": 3 },
+  "request": { "id": "00000000-0000-4000-8000-000000000702", "status": "completed" },
+  "next_card_id": null
+}
+```
+
+**결정마다 바뀌는 것**
+
+| `decision` | 카드 | 요청 | 이력(`events.action`) | 알림 |
+| --- | --- | --- | --- | --- |
+| `approve`·`edit_approve` | `approved` → 발송 뒤 `done` | `approved` → `sent_or_booked` | `approved`, `sent` | 학부모 `sent_or_booked` |
+| `reject` | `rejected`, 같은 요청에 새 초안 카드 | `awaiting_review` → `assigned`, 새 초안이 나오면 다시 `awaiting_review` | `rejected` | 없음(이유는 기억 AI 재료) |
+| `hold` | `on_hold` + `hold_until` | `on_hold` | `held` | 학부모 `on_hold`(예정일만) |
+| `resume` | `pending` | `on_hold` → `awaiting_review` | `resumed` | 없음 |
+| `dismiss` | `rejected` | `rejected` | `dismissed` | 학부모 `rejected` |
+| `complete` | `done` | `sent_or_booked` → `completed`(민원만) | `completed` | 학부모 `completed` |
+| `escalate` | 원장 보고 카드(`director_report`)가 새로 생김 | `escalated` | `escalated` | 원장 `director_report` |
+
+**오류**
+
+| HTTP | `code` | 조건 |
+| --- | --- | --- |
+| 403 | `FORBIDDEN_ROLE` | 학부모가 호출, 담임이 원장 보고 카드에 결정 |
+| 404 | `NOT_FOUND` | 다른 기관·다른 반 카드 |
+| 409 | `CARD_VERSION_CONFLICT` | `version`이 지금 판과 다름(`details.current_version`) |
+| 409 | `ALREADY_DECIDED` | 같은 판에 이미 결정이 있음 |
+| 409 | `INVALID_TRANSITION` | 민원이 아닌데 `complete`, 회신 전 `complete`, 보류가 아닌데 `resume` |
+| 409 | `REASON_REQUIRED` | 학부모가 '확인했어요'를 안 눌렀는데 `reason_text` 없이 `complete` |
+| 422 | `VALIDATION_FAILED` | 허용 밖 `decision`·`reason_code`, `reject`인데 `reason_code` 없음, `hold`인데 `hold_until` 없음 |
+
+`REASON_REQUIRED`는 422가 아니라 409다. 요청의 학부모 확인 여부를 DB에서 봐야 알 수 있는 조건이라, 본문 형식만 보는 Pydantic 검사(422)와 섞지 않는다(가이드 19쪽).
+
+### 3.4 상담 시간 체크·확정 — `POST …/requests/{request_id}/slot-choices`, `POST …/cards/{card_id}/bookings`
+
+| 칸 | 내용 |
+| --- | --- |
+| ① 호출 목적 | 학부모가 후보 1~3개 중 가능한 시간을 체크하고(`slot-choices`), 담임이 그중 하나로 확정한다(`bookings`). 확정 전에는 예약이 아니다(FR-05, T04 합의 1) |
+| ② 요청 헤더 | `Authorization`(필수), `X-Request-ID`(권장) |
+| ③ 경로·쿼리 | `request_id` 또는 `card_id`(경로, UUID, 필수) |
+| ④ 요청 본문 | 아래 필드 표 |
+| ⑤ 검증·권한 | 체크는 요청한 학부모만, 확정은 그 반 담임만(원장은 대신 확정하지 않음). 범위 밖이면 404, 역할이 다르면 403 |
+| ⑥ 정상 응답 | 체크: 200 + 후보 상태, 요청 `awaiting_review`. 확정: 200 + 예약 |
+| ⑦ 오류 응답 | 아래 오류 표 |
+| ⑧ 실행 규칙 | 체크한 시간은 24시간 잡아 둔다. 지나면 후보를 `proposed`로 돌리고 담임에게 `slot_hold_expired` 알림(계약표 6장 ⑥). 같은 상담실·담임의 겹치는 시간은 DB 배제 제약이 한 건만 받는다(DB 설계서 9.1 F1-7) |
+
+**필드**
+
+| 필드 | 위치 | 타입 | 필수 | 빈값 | 제약 | 설명 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `slot_ids[]` | 체크 본문 | integer[] | `none_fit`이 아니면 필수 | 불가 | 1~3개, 그 요청의 지금 회차 후보 | 가능한 시간 |
+| `none_fit` | 체크 본문 | boolean | 선택 | — | 기본 `false` | 맞는 시간이 없음 → 후보를 다시 계산 |
+| `preferred_times` | 체크 본문 | string | `none_fit`이면 필수 | 불가 | 1~200자 | 원하는 시간 설명 |
+| `version` | 확정 본문 | integer | 필수 | 불가 | 1 이상 | 상담 후보 카드 판 |
+| `slot_id` | 확정 본문 | integer | 필수 | 불가 | 학부모가 체크한 후보 | 확정할 시간 |
+| `booking.id` | 확정 응답 | string(UUID) | 항상 | 불가 | — | 예약 ID |
+| `booking.room` | 확정 응답 | string | 항상 | 불가 | — | 상담실 이름 |
+| `booking.period` | 확정 응답 | object | 항상 | 불가 | `start` < `end` | 상담 시간 |
+
+```http
+POST /api/v1/requests/00000000-0000-4000-8000-000000000701/slot-choices
+{ "slot_ids": [9001, 9003] }
+
+HTTP/1.1 200 OK
+{ "slots": [ { "id": 9001, "status": "chosen_by_parent" }, { "id": 9003, "status": "chosen_by_parent" } ],
+  "request": { "id": "00000000-0000-4000-8000-000000000701", "status": "awaiting_review" } }
+```
+
+```http
+POST /api/v1/cards/00000000-0000-4000-8000-000000000801/bookings
+{ "version": 1, "slot_id": 9001 }
+
+HTTP/1.1 200 OK
+{ "booking": { "id": "00000000-0000-4000-8000-000000000901", "room": "상담실",
+               "period": { "start": "2026-12-02T15:00:00+09:00", "end": "2026-12-02T15:30:00+09:00" } },
+  "request": { "id": "00000000-0000-4000-8000-000000000701", "status": "sent_or_booked" } }
+```
+
+**오류**
+
+| HTTP | `code` | 조건 |
+| --- | --- | --- |
+| 403 | `FORBIDDEN_ROLE` | 교직원이 체크, 학부모·원장이 확정 |
+| 404 | `NOT_FOUND` | 남의 요청, 다른 반 카드, 그 요청 후보가 아닌 `slot_id` |
+| 409 | `INVALID_TRANSITION` | 시간을 고를 단계(`needs_info`)가 아닌데 체크 |
+| 409 | `SLOT_NOT_CHOSEN` | 학부모가 체크하지 않은 후보로 확정 |
+| 409 | `SLOT_TAKEN` | 그 사이 같은 상담실·담임 시간이 확정됨 → 담임 화면이 후보 다시 내기를 안내 |
+| 409 | `CARD_VERSION_CONFLICT` | 확정할 때 카드 판이 다름 |
+| 422 | `VALIDATION_FAILED` | `slot_ids` 0개·4개 이상, `none_fit`인데 `preferred_times` 없음 |
+
+### 3.5 민원 '확인했어요' — `POST /api/v1/requests/{request_id}/confirm`
+
+| 칸 | 내용 |
+| --- | --- |
+| ① 호출 목적 | 학부모가 민원 회신을 읽고 '확인했어요'를 누른다. 담임 받은함의 '확인 필요'로 올라가 담임이 처리 완료를 누를 차례가 된다(FR-07, T04 합의 2) |
+| ② 요청 헤더 | `Authorization`(필수), `X-Request-ID`(권장) |
+| ③ 경로·쿼리 | `request_id`(경로, UUID, 필수) |
+| ④ 요청 본문 | 없음 |
+| ⑤ 검증·권한 | 요청한 학부모만. 민원이 아니거나 회신 전(`sent_or_booked`가 아님)이면 409 |
+| ⑥ 정상 응답 | 200 + `request { status, parent_confirmed_at }`. 상태는 `sent_or_booked` 그대로 |
+| ⑦ 오류 응답 | 401, 403(교직원), 404(남의 요청), 409 `INVALID_TRANSITION`(민원 아님·회신 전) |
+| ⑧ 실행 규칙 | 다시 눌러도 처음 시각을 유지하고 200을 돌려준다(멱등). 담임에게 `parent_confirmed` 알림을 한 번만 보낸다(`dedupe_key`) |
+
+```json
+{ "request": { "id": "00000000-0000-4000-8000-000000000702", "status": "sent_or_booked",
+               "parent_confirmed_at": "2026-12-01T19:02:00+09:00" } }
+```
+
+### 3.6 알림장 보내기 — `POST /api/v1/daily-notes/send`
+
+| 칸 | 내용 |
+| --- | --- |
+| ① 호출 목적 | 담임이 그날 반 알림장을 한 번에 보낸다. 아이 한 명이라도 확인이 안 끝났으면 아무것도 보내지 않는다(FR-10, T04 합의 6) |
+| ② 요청 헤더 | `Authorization`(필수), `X-Request-ID`(권장), `Content-Type: application/json` |
+| ③ 경로·쿼리 | 없음 |
+| ④ 요청 본문 | `classroom_id`(UUID, 필수, 우리 반), `note_date`(date, 필수, 오늘 또는 지난날) |
+| ⑤ 검증·권한 | 그 반 담임만(대체 담임은 기간 안). 원장은 보내지 않는다 |
+| ⑥ 정상 응답 | 200 + `sent_count`. 아이마다 `daily_notes.status = sent`, 학부모에게 `note_sent` 알림 |
+| ⑦ 오류 응답 | 403, 404, 409 `NOTE_BATCH_BLOCKED`(`details.blocked[] { note_id, child_id, open_checks[] }`), 422 |
+| ⑧ 실행 규칙 | 한 트랜잭션에서 반 전체를 잠그고 확인한 뒤 보낸다. 이미 보낸 알림장은 다시 보내지 않고 `sent_count`에서 뺀다 |
+
+```json
+{ "error": { "code": "NOTE_BATCH_BLOCKED", "message": "확인이 안 끝난 알림장이 있어요.",
+             "trace_id": "…", "details": { "blocked": [ { "note_id": "…", "child_id": "00000000-0000-4000-8000-000000000502",
+             "open_checks": ["준비물 날짜가 식단표와 달라요"] } ] } } }
+```
+
+## 4. 검증과 권한 규칙
+
+### 4.1 형식 검사(422)와 서버 검사(403·404·409)를 나눈다
+
+| 검사 | 어디서 | 실패하면 | 예 |
+| --- | --- | --- | --- |
+| 형식: 타입·허용 값·길이·날짜 형식 | Pydantic(`Literal`·`Field`) | 422 `VALIDATION_FAILED` | `type = "medication"`, `body` 2,001자 |
+| 본문 안에서 함께 와야 하는 칸 | Pydantic `model_validator` | 422 | `hold`인데 `hold_until` 없음 |
+| 역할 | 서버(인증 의존성) | 403 `FORBIDDEN_ROLE` | 학부모가 카드 결정 |
+| 소유·범위(기관·반·내 아이) | 서버(DB 조회) | 404 `NOT_FOUND` | 다른 반 카드, 남의 아이 |
+| 상태·판·DB 값이 필요한 조건 | 서버(DB 조회) + DB 제약 | 409 | 판이 다름, 회신 전 완료, 학부모 미확인 완료에 이유 없음 |
+
+DB 값을 봐야 아는 조건은 Pydantic에 넣지 않는다. 승인·확인 여부를 본문 값만 믿고 통과시키지 않기 위해서다(가이드 21쪽).
+
+```python
+# schemas.py — 형식만 본다. 여기서 걸리면 422
+class CardDecision(BaseModel):
+    version: int = Field(ge=1)
+    decision: Literal["approve", "edit_approve", "reject", "hold", "resume", "dismiss", "complete", "escalate"]
+    reason_code: Literal["wrong_fact", "tone", "missing_info", "privacy", "policy",
+                         "slot_unavailable", "room_unavailable", "other"] | None = None
+    reason_text: str | None = Field(default=None, min_length=1, max_length=500)
+    hold_until: date | None = None
+    edited_content: dict | None = None
+
+    @model_validator(mode="after")
+    def fields_for_decision(self):
+        if self.decision in {"reject", "dismiss"} and self.reason_code is None:
+            raise ValueError("reason_code")
+        if self.decision == "hold" and (self.hold_until is None or self.reason_text is None):
+            raise ValueError("hold_until, reason_text")
+        if self.reason_code == "other" and self.reason_text is None:
+            raise ValueError("reason_text")
+        return self
+```
+
+```python
+# routes.py — 권한·범위·상태는 서버가 DB로 확인한다
+@router.post("/cards/{card_id}/decisions")
+def decide(card_id: UUID, body: CardDecision, user: User = Depends(current_staff)):
+    card = load_card_in_scope(card_id, user)              # 다른 기관·반이면 404
+    if card.kind == "director_report" and user.role != "director":
+        raise ApiError(403, "FORBIDDEN_ROLE")
+    if body.version != card.version:
+        raise ApiError(409, "CARD_VERSION_CONFLICT", current_version=card.version)
+    request = card.request
+    if body.decision == "complete":
+        if request.type != "complaint" or request.status != "sent_or_booked":
+            raise ApiError(409, "INVALID_TRANSITION")
+        if request.parent_confirmed_at is None and body.reason_text is None:
+            raise ApiError(409, "REASON_REQUIRED")       # DB 트리거도 한 번 더 막음
+    return apply_decision(card, request, body, user)     # 같은 판 두 번이면 DB 유니크 → 409 ALREADY_DECIDED
+```
+
+### 4.2 역할별 범위
+
+| 역할 | 볼 수 있는 것 | 할 수 있는 것 |
+| --- | --- | --- |
+| 학부모 | 자기가 보낸 요청, 내 아이의 보낸 알림장, 자기 알림 | 요청 만들기·대화·시간 체크·'확인했어요'·알림 읽음 |
+| 담임 | 우리 반 요청·카드(대체 담임은 `classroom_staff.valid_from~valid_to` 기간 안), 재배정받은 카드, 우리 반 알림장, 원 자료 | 카드 결정(원장 보고 카드 제외)·위험 등급 다시 분류·상담 확정·알림장·자료 올리기·자기 규칙 결정 |
+| 원장·원감 | 원 전체 | 카드 결정(원장 보고 카드 포함)·원장 지시·재배정·원장 현황·자료 올리기 |
+
+모든 조회와 변경은 토큰의 `org`로 먼저 거르고, 그다음 반·사람 범위를 본다. 범위 밖 자원은 403이 아니라 404로 답하고 `events`에 `permission_denied`로 남긴다(DB 설계서 4.4). 이 규칙은 AI 보안 가드레일 문서(T52)의 권한표와 같아야 한다.
+
+## 5. Tool 정의와 호출 흐름
+
+### 5.1 REST API와 Tool
+
+| 구분 | REST API | Tool (Function Calling) |
+| --- | --- | --- |
+| 부르는 쪽 | 화면(앱·웹) | 에이전트(감독·자료·기억·검사 AI, 코드) |
+| 부르는 법 | HTTP 메서드 + 경로 | 도구 이름 + JSON 인자 |
+| 권한 | JWT의 역할·기관·반 | 에이전트별 허용 목록 + 요청한 사용자의 권한(5.3) |
+| 이 문서에 적는 것 | 요청·응답·상태 코드(2·3장) | 입력·출력·실패 처리·실행 조건(5.4) |
+
+에이전트가 만든 인자도 사용자 입력처럼 다룬다. 도구 안에서 REST API와 같은 Pydantic 검사와 범위 검사를 한 번 더 한다. 도구의 이름·인자는 계약표 4장과 팀 자체 30문항 v0.5가 기준이다.
+
+### 5.2 공통 출력 형식
+
+모든 도구는 성공과 실패를 같은 모양으로 돌려준다. 에이전트는 `ok`로 성공을 가르고, 실패면 `retryable`로 다시 부를지 정한다.
+
+```json
+{ "ok": true,
+  "data": { "card_id": "00000000-0000-4000-8000-000000000802" },
+  "trace_id": "6b0f1c2e-9a7d-4c1e-8f3a-2d5b7e9c1a40" }
+
+{ "ok": false,
+  "error": { "code": "UPSTREAM_UNAVAILABLE", "message": "법령 API가 10초 안에 응답하지 않음", "retryable": true },
+  "trace_id": "6b0f1c2e-9a7d-4c1e-8f3a-2d5b7e9c1a40" }
+```
+
+`trace_id`는 그 요청을 만든 API 호출의 `X-Request-ID`와 같다. 도구 호출은 모두 `events`에 `tool_called` 또는 `tool_failed`로 남고, `detail`에 도구 이름·`trace_id`·걸린 시간·실패 코드를 넣는다.
+
+**도구 실패 코드**
+
+| `code` | `retryable` | 언제 |
+| --- | --- | --- |
+| `TOOL_TIMEOUT` | 참 | 도구가 30초 안에 끝나지 않음(6.1) |
+| `UPSTREAM_UNAVAILABLE` | 참 | 모델·외부 API(법령·기상) 장애, 429·5xx |
+| `SAVE_FAILED` | 참 | DB 저장이 일시적으로 실패(연결 끊김·잠금 대기 초과). 30문항 F04의 `save_failed` |
+| `NOT_FOUND` | 거짓 | 대상이 없거나 이 요청의 기관·반 밖 |
+| `VALIDATION_FAILED` | 거짓 | 인자 형식이 틀림(허용 밖 `doc_type`·`topic_key` 등) |
+| `FORBIDDEN_SCOPE` | 거짓 | 이 에이전트에 허용되지 않은 도구, 또는 요청한 사용자가 못 하는 일 |
+| `SLOT_TAKEN` · `SLOT_NOT_CHOSEN` | 거짓 | 상담 확정 충돌(3.4와 같음) |
+| `INVALID_TRANSITION` | 거짓 | 지금 상태에서 할 수 없는 일(예: 끝난 요청에 카드 만들기) |
+
+### 5.3 도구를 실행하기 전에 서버가 확인하는 네 가지
+
+| 확인 | 방법 | 실패하면 |
+| --- | --- | --- |
+| ① 에이전트 허용 목록 | 5.4의 '부르는 AI' 열에 없는 도구는 부르지 못함 | `FORBIDDEN_SCOPE` |
+| ② 요청한 사용자의 권한 | 학부모 요청에서 나온 호출은 그 학부모가 볼 수 있는 범위만. 교직원 쪽 도구(`book_slot`)는 담임의 확정 API에서만 부름 | `FORBIDDEN_SCOPE` |
+| ③ 데이터 소유권 | 기관·반·학부모 ID는 모델 인자가 아니라 지금 요청에서 백엔드가 채움(계약표 4장 '(백엔드)' 값). 모델이 다른 ID를 넣어도 범위 밖이면 거부 | `NOT_FOUND` |
+| ④ 사람 승인 상태 | 학부모에게 나가는 일(회신 발송·예약 확정·알림장 발송)은 도구로 하지 않는다. 담임의 결정 API가 승인 기록(`approvals`)을 남긴 뒤에만 일어난다 | 도구 목록에 없음 |
+
+### 5.4 도구 목록과 실패 후 처리
+
+계약표 4장의 '실패 코드' 칸을 채운 표다. '실패 후 처리'는 기본값이고, 에이전트별 세부 행동은 영민(T14)이 정한다(계약표 6장 ④). 기본값은 `retryable`이면 1번 다시 부르고, 그래도 실패하거나 `retryable`이 거짓이면 사람 카드로 넘기는 것이다.
+
+| 도구 | 부르는 AI | 실행 조건 | 성공 `data` | 실패 코드 | 실패 후 처리(기본) |
+| --- | --- | --- | --- | --- | --- |
+| `route_request` | 감독 | 요청이 `received`·`classified` | 분류 결과를 저장 | `UPSTREAM_UNAVAILABLE`·`SAVE_FAILED`(참), `INVALID_TRANSITION`(거짓) | 1번 다시 → 실패면 담당 없는 사람 카드(받은함 '미배정') |
+| `create_card` | 감독·자료 | 요청이 끝나지 않음 | `card_id` | `SAVE_FAILED`(참), `VALIDATION_FAILED`·`INVALID_TRANSITION`(거짓) | 1번 다시 → 실패면 초안 없는 사람 카드 |
+| `notify_staff` | 감독 | 카드가 있음 | `notification_id` | `SAVE_FAILED`(참), `NOT_FOUND`(거짓) | 1번 다시 → 실패해도 카드는 받은함에 남으므로 이력만 남김 |
+| `search_documents` | 자료 | 요청 기관 자료만, 학부모면 원 전체 + 아이 반 자료 | `chunks[]` | `TOOL_TIMEOUT`·`UPSTREAM_UNAVAILABLE`(참), `VALIDATION_FAILED`·`NOT_FOUND`(거짓) | 1번 다시 → 실패하거나 근거가 없으면 추측하지 않고 담임 카드(`no_evidence`) |
+| `get_law_article` | 자료 | 법령 이름·조문이 있음 | `text`, `source_url`, `fetched_at` | `UPSTREAM_UNAVAILABLE`(참), `NOT_FOUND`(거짓) | 1번 다시 → 실패면 법령 인용 없이 초안, 카드에 '법령 확인 못 함' 표시 |
+| `get_memory` | 기억 | 주인이 요청 담당자 | `memories[]`, `active_rules[]` | `SAVE_FAILED`(참) | 1번 다시 → 실패면 기억 없이 진행 |
+| `propose_rule` | 기억 | 같은 이유 코드 3번 | `rule_id`(이미 있으면 기존 ID) | `SAVE_FAILED`(참), `VALIDATION_FAILED`(거짓) | 1번 다시 → 실패면 제안 안 함(다음에 다시 셈) |
+| `check_draft` | 검사 | 초안이 있는 카드·알림장 | 검사 결과를 저장 | `TOOL_TIMEOUT`·`UPSTREAM_UNAVAILABLE`(참) | 1번 다시 → 실패면 '검사 못 함' 표시하고 사람 카드 |
+| `return_to_step` | 검사 | `check_attempts` < 2 | `attempt` | `INVALID_TRANSITION`(거짓, 3번째) | 3번째는 오류 대신 사람 카드로 넘김(FR-08) |
+| `find_consult_slots` | 코드 | 상담 요청, 담임 일정이 있음 | `slots[]`(회차마다 최대 3개) | `SAVE_FAILED`(참), `NOT_FOUND`(거짓) | 빈 목록이면 다른 날을 묻거나 담임 카드 |
+| `request_consultation` | 감독 | 상담 요청이 `needs_info` | `slots[]`, `request_status` | `SAVE_FAILED`(참), `INVALID_TRANSITION`(거짓) | 1번 다시 → 실패면 학부모에게 화면에서 다시 고르게 안내 |
+| `book_slot` | 코드 | 담임 확정 API 안에서만 | `booking_id` | `SLOT_TAKEN`·`SLOT_NOT_CHOSEN`(거짓), `SAVE_FAILED`(참) | 담임 화면에 409를 그대로 보여 주고 후보 다시 내기 안내 |
+| `get_my_requests` | 감독 | 요청한 학부모 본인 것만 | `items[]` | `SAVE_FAILED`(참) | 1번 다시 → 실패면 '요청 목록 화면에서 확인' 안내 |
+| `get_daily_note` | 감독 | 요청한 학부모의 아이, 보낸 알림장만 | `note` 또는 없음 | `NOT_FOUND`(거짓) | 없으면 '아직 안 보냄' 안내 |
+| `find_saved_answer` | 감독 | 근거 문서가 모두 최신 | `saved_answer_id`, `similarity`, `sources_current` | `TOOL_TIMEOUT`(참) | 실패하면 원에 남은 답 없이 평소대로 처리 |
+
+### 5.5 도구 정의 예시 — `create_card`
+
+모델에게 보이는 정의다. 백엔드가 채우는 값(`request_id`·`kind`·`assignee_id`)은 정의에 넣지 않는다(계약표 4장). `description`은 모델이 언제 이 도구를 쓸지 판단하는 근거라 구체적으로 쓴다.
+
+```json
+{
+  "name": "create_card",
+  "description": "학부모 문의·민원을 담임(또는 원장) 받은함에 사람 확인 카드로 올린다. 자동 회신 대신 쓴다. 근거가 없거나 문서끼리 다르거나 위험해 보이면 반드시 이 도구로 사람에게 넘긴다.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "request_type": { "type": "string", "enum": ["inquiry", "complaint"] },
+      "topic_key": { "type": "string", "enum": ["safety", "meal", "teacher", "belongings", "fee", "pickup_bus",
+                                                 "peer_conflict", "health_hygiene", "photo_record", "communication", "other"] },
+      "summary": { "type": "string", "maxLength": 300 },
+      "urgency": { "type": "string", "enum": ["normal", "urgent"] },
+      "escalate_to_director": { "type": "boolean" }
+    },
+    "required": ["request_type", "topic_key", "summary", "urgency", "escalate_to_director"],
+    "additionalProperties": false
+  }
+}
+```
+
+### 5.6 호출 흐름
+
+요청 하나가 거치는 순서다. 모든 단계가 같은 `trace_id`를 이어 써서 로그와 LangSmith에서 한 번에 추적된다.
+
+| 순서 | 누가 | 하는 일 | 쓰는 도구·API |
+| --- | --- | --- | --- |
+| 1 | 화면 → API | 인증, 입력 형식 검사, 요청 저장, 202 | `POST /requests` |
+| 2 | 감독 AI | 유형·급한 정도·위험 등급·주제 분류, 빠진 정보 확인 | `route_request` |
+| 3 | 자료 AI · 코드 · 기억 AI | 문의는 근거 검색과 초안, 상담은 후보 계산, 거절 이력은 기억 조회 | `search_documents`·`get_law_article`·`find_consult_slots`·`get_memory` |
+| 4 | 검사 AI | 출처·날짜·대상·누락·민감정보 대조, 최대 2번 앞 단계로 돌려보냄 | `check_draft`·`return_to_step` |
+| 5 | 감독 AI | 사람 확인 카드 생성, 긴급·3번째 반복 민원이면 원장 보고 | `create_card`·`notify_staff` |
+| 6 | 흐름 멈춤 | 카드가 사람 결정을 기다림(LangGraph interrupt, 체크포인트는 `cards.graph_thread_id`) | — |
+| 7 | 담임·원장 → API | 결정. 서버가 역할·범위·판·상태를 확인하고 승인 기록을 남김 | `POST /cards/{id}/decisions`·`bookings` |
+| 8 | 서버 | 회신 발송·예약 확정·알림, 이력 기록 | `book_slot`(확정 API 안), 알림 발송기 |
+
+## 6. 실행 규칙
+
+### 6.1 타임아웃
+
+| 대상 | 기준 | 넘으면 |
+| --- | --- | --- |
+| API 응답(조회·결정·접수) | 10초 | 503 `UPSTREAM_UNAVAILABLE` 또는 500. AI 처리는 202로 떼어 내서 이 시간에 들어가지 않음 |
+| 모델 호출 1번 | 30초 | 재시도 대상(6.2) |
+| 도구 호출 1번 | 30초(외부 법령·기상 API는 그 안에서 10초) | `TOOL_TIMEOUT`(`retryable` 참) |
+| 요청 하나의 AI 처리 전체(2~5단계) | 3분 | 처리를 멈추고 초안 없는 사람 카드로 넘김. 넘긴 이유(`ai_timeout`)는 이력 `events.detail.handoff_reason`에 남김 |
+| SSE 연결 | 처리 끝(`done`·`error`) 또는 5분 | 서버가 닫음. 화면은 상세를 다시 불러 맞춤 |
+
+### 6.2 재시도
+
+| 대상 | 다시 하는 것 | 다시 하지 않는 것 | 횟수·간격 |
+| --- | --- | --- | --- |
+| 모델 호출 | 타임아웃·429·5xx | 400·401·403·422(요청이 틀림) | 최대 2번, 1초 → 2초(지수 백오프) |
+| 도구 호출 | `retryable = true` | `retryable = false` | 1번(계약표 6장 ④) |
+| 알림 발송 | 발송 실패 | 받는 사람 없음 | 최대 3번(`notifications.attempts`, FR-12) |
+| 화면의 결정·확정 | 응답이 끊김 | 4xx | 먼저 카드·요청 상세로 상태를 확인한 뒤 같은 `version`으로 1번. 이미 처리됐으면 409 `ALREADY_DECIDED`로 막힘 |
+
+### 6.3 202로 접수하는 작업의 상태 조회
+
+202는 "접수했지만 처리는 끝나지 않았다"는 뜻이다. 세 가지 모두 진행·성공·실패를 조회할 수 있다. 작업이 실패해도 조회 요청은 성공했으므로 200이고, 실패는 상태 값으로 알린다.
+
+| 접수 API | 조회 | 진행 중 | 성공 | 실패 |
+| --- | --- | --- | --- | --- |
+| 요청 만들기 | `GET /requests/{id}` + 스트림 | `received`·`classified`·`assigned` | `needs_info`(학부모 차례) 또는 `awaiting_review`(카드 생김) | 재시도 뒤에도 실패하면 초안 없는 사람 카드로 넘기고 `awaiting_review`. 넘긴 이유(`ai_failed`)는 이력 `events.detail.handoff_reason`, 교직원 스트림에 `error` 이벤트. 요청은 버리지 않음 |
+| 알림장 초안 | `GET /daily-notes/drafts/{input_id}` | `draft_status = queued·running` | `succeeded`. 아이별 초안은 `GET /daily-notes?classroom_id=&date=`로 받음(계약표 2.2) | `failed` + `error { code, message }`(이유는 `events`의 `tool_failed`) |
+| 자료 올리기 | `GET /documents/{document_id}` | `ingest_status = queued·running` | `succeeded` + `chunk_count`(조각 수), 충돌이면 `status = conflict_pending` + `conflicts[]` | `failed` + `error { code, message }` |
+
+```json
+{ "input_id": "00000000-0000-4000-8000-000000000a01", "draft_status": "failed",
+  "error": { "code": "UPSTREAM_UNAVAILABLE", "message": "모델 응답이 없어 초안을 만들지 못했어요." } }
+```
+
+### 6.4 중복·동시 실행 방지
+
+| 상황 | 막는 것 | 결과 |
+| --- | --- | --- |
+| 같은 요청을 두 번 제출 | `requests (requester_id, client_request_id)` 유니크 | 200 + 처음 요청 |
+| 두 사람이 같은 카드를 동시에 결정 | 카드 `version` 비교 + `approvals (card_id, card_version)` 유니크 | 늦은 쪽 409 `CARD_VERSION_CONFLICT`·`ALREADY_DECIDED` |
+| 같은 시간 상담 두 건 확정 | 상담실·담임 배제 제약, 요청당 확정 예약 하나 | 늦은 쪽 409 `SLOT_TAKEN` |
+| 같은 알림 두 번 | `notifications.dedupe_key` 유니크 | 한 번만 저장·발송 |
+| 같은 규칙 제안 두 번 | `memory_rules` 부분 유니크 | 기존 `rule_id` |
+| 반 알림장을 두 사람이 동시에 보냄 | 한 트랜잭션에서 반 단위 잠금 | 먼저 보낸 쪽만 보냄, 늦은 쪽 `sent_count = 0` |
+
+### 6.5 처리 기한(`due_at`) 계산
+
+카드를 만들 때 서버가 계산해 `cards.due_at`에 넣는다(계약표 6장 ⑤, T10 회의 11/18). 시작은 요청 접수 시각이다.
+
+1. 민원 긴급·판단 필요(2시간)는 시작에 2시간을 그냥 더한다. 주말·공휴일에도 센다.
+2. 그 밖의 기한(민원 일반·상담 24시간, 문의 4시간)은 시간을 더하다가 토요일·일요일·공휴일에 걸리면 그날을 통째로 건너뛴다.
+3. 알림장 묶음은 그날 17:00, 원장 보고는 원래 민원 카드와 같은 기한, 정보 요청·규칙 제안은 기한이 없다(`NULL`).
+
+| 접수 | 기한 종류 | `due_at` |
+| --- | --- | --- |
+| 화 10:00 | 문의 4시간 | 화 14:00 |
+| 금 18:00 | 민원 일반 24시간 | 월 18:00 (금 6시간 + 토·일 건너뜀 + 월 18시간) |
+| 토 10:00 | 상담 24시간 | 화 00:00 (토·일 건너뜀 → 월 00:00부터 24시간) |
+| 금 23:00 | 민원 긴급 2시간 | 토 01:00 |
+
+공휴일 목록은 설정값이고, 둘 곳은 인혜가 정한다(FB-014-13).
+
+### 6.6 알림 발송 시각(`deliver_after`)
+
+알림을 만들 때 서버가 계산해 `notifications.deliver_after`에 넣는다. 발송기는 `status = 'pending' AND deliver_after <= now()`만 꺼낸다(계약표 6장 ⑬, T10 회의 11/18).
+
+| 받는 사람 · 알림 | 근무 시간(평일 09:00~18:00, 공휴일 제외) 안 | 근무 시간 밖 |
+| --- | --- | --- |
+| 교직원 · 긴급 민원 중 아이 안전(`risk_category = child_safety`) | 바로 | 바로 |
+| 교직원 · 그 밖의 긴급 민원(교직원 위협·법적 조치·개인정보)과 판단 필요 민원 | 바로 | 다음 근무 시작(09:00) |
+| 교직원 · 그 밖의 알림(새 카드·보류 재개·잡아 둔 시간 풀림 등) | 바로 | 다음 근무 시작(09:00) |
+| 학부모 · 모든 알림 | 바로 | 바로 |
+
+근무 시간 밖 규칙은 교직원이 받는 알림에만 쓴다(기획서 FR-21 '퇴근 뒤 알림은 모아 두고 아이 안전·발열만 바로 보냄'). 학부모 알림은 학부모가 보낸 요청의 진행 소식이라 시간과 상관없이 바로 보낸다. 발열 같은 건강 알림은 투약·귀가(T46)에서 이 표에 더한다. 근무 시간과 바로 보내는 위험 종류(`child_safety`)는 설정값으로 두고, 둘 곳은 인혜가 정한다(FB-014-14).
+
+## 7. API 필드와 DB 컬럼 대응
+
+이름이 다른 곳만 '대응'에 적었다. ID 형식은 DB 설계서 2.0과 같다.
+
+| API 필드 | DB 컬럼 | 대응 |
+| --- | --- | --- |
+| `request.id` · `request_id`(경로) | `requests.id` | UUID |
+| `client_request_id` | `requests.client_request_id` | 같음 |
+| `type` · `body` · `child_id` · `previous_request_id` | `requests.type` · `body` · `child_id` · `previous_request_id` | 같음 |
+| `request.status` | `requests.status` | 같음 |
+| `request.status_label` | — | 저장하지 않음. T04 2장 표시 이름을 역할에 맞춰 붙임 |
+| `request.missing_fields[]` | `requests.missing_fields` | `jsonb` 목록 |
+| `request.parent_confirmed_at` | `requests.parent_confirmed_at` | 같음 |
+| `request.hold_until` | `cards.hold_until` | 요청의 보류 카드에서 가져옴 |
+| 반(요청) | `requests.classroom_id` | API로 받지 않고 `children.classroom_id`에서 채움 |
+| `messages[]` | `request_messages` | `sender_type`·`body`·`created_at` |
+| `timeline[]` | `events` | `to_status`를 표시 이름으로 바꿈. 학부모용은 상태 변화만 |
+| `card.version` · `version`(본문) | `cards.version` | 정수 |
+| `decision` · `reason_code` · `reason_text` · `edited_content` | `approvals.decision` · `reason_code` · `reason_text` · `edited_content` | 같음. `approvals.card_version`에 본문 `version` |
+| `hold_until`(본문) | `cards.hold_until` | `date` |
+| `risk_level` · `risk_category` · `topic_key` | `requests.risk_level` · `risk_category` · `topic_key` | 같음 |
+| `repeat_count` | — | 저장하지 않음. `requests_repeat_idx`로 조회 때 셈 |
+| `due_at` · `is_delayed` | `cards.due_at` | `is_delayed = due_at < now()` |
+| `evidence[].document_title` · `location` · `effective_from` · `quote` | `documents.title` · `document_chunks.location` · `documents.effective_from` · `card_evidence.quote` | `card_evidence → document_chunks → documents` |
+| `slots[].id` · `slot_ids[]` · `slot_id` | `consultation_slots.id` | 정수 |
+| `slots[].period` · `booking.period` | `consultation_slots.period` · `consultation_bookings.period` | `tstzrange` ↔ `{ start, end }` |
+| `booking.room` | `rooms.name` | `consultation_bookings.room_id`로 이어 이름을 줌 |
+| `draft_status` · `input_id` | `daily_note_inputs.draft_status` · `id` | 같음 |
+| `notes[].status` · `content` · `open_checks[]` | `daily_notes.status` · `content` · `open_checks` | 같음 |
+| `ingest_status` | `documents.ingest_status` | 같음 |
+| `chunk_count` | — | 저장하지 않음. 그 문서의 `document_chunks` 개수 |
+| 넘긴 이유(`ai_timeout`·`ai_failed`, 분류 결과의 `handoff_reason`) | `events.detail->>'handoff_reason'` | 칸을 따로 두지 않고 이력에 넣음 |
+| `notification.kind` · `read_at` | `notifications.kind` · `read_at` | 같음 |
+| `completed_unconfirmed` 등 원장 현황 숫자 | `director_overview` 뷰 | 뷰의 칸 이름 그대로 |
+| `trace_id` · `X-Request-ID` | `events.detail->>'trace_id'` | 칸을 따로 두지 않고 이력 `detail`에 넣음 |
+
+## 8. 설정값
+
+`.env.example`에는 이름과 기본값만 두고 비밀 값은 넣지 않는다.
+
+| 이름 | 기본값 | 뜻 |
+| --- | --- | --- |
+| `JWT_SECRET` | (비움) | 토큰 서명 키 |
+| `JWT_ACCESS_TTL_HOURS` | `12` | 토큰 수명 |
+| `LLM_MODEL_DEFAULT` | `gpt-6-luna` | 역할별 모델을 비워 두면 쓰는 모델(D27) |
+| `LLM_MODEL_SUPERVISOR` | (비움) | 감독 AI 모델 |
+| `LLM_MODEL_DOCUMENT` | (비움) | 자료 AI 모델 |
+| `LLM_MODEL_MEMORY` | (비움) | 기억 AI 모델 |
+| `LLM_MODEL_CHECKER` | (비움) | 검사 AI 모델 |
+| `LLM_MODEL_CODE` | (비움) | 코드 AI 모델 |
+| `OPENAI_API_KEY` | (비움) | 모델 호출 키. 값은 팀 키 보관 위치에서 받음 |
+
+역할별 모델은 계약표 6장 ⑪을 따른다. 비워 두면 `LLM_MODEL_DEFAULT`를 쓰고, 역할별 교체는 다섯 에이전트 분리(T43) 뒤 앱 경유 평가에서 이득이 확인된 역할만 팀 결정으로 한다. 근무 시간·공휴일 목록은 인혜가 둘 곳을 정한 뒤 이 표에 더한다.
+
+## 부록 A. 예시 ID
+
+문서 예시·팀 자체 30문항·시드가 같은 값을 쓴다(계약표 부록 A). 시드(`db/seeds`)는 이 UUID로 만든다.
+
+| 데모 이름 | 무엇 | 표 | 고정 UUID |
+| --- | --- | --- | --- |
+| `KG-DEMO-01` | 가상 햇살유치원 | `organizations` | `00000000-0000-4000-8000-000000000001` |
+| `CL-DEMO-01` | 만 4세 별빛반 | `classrooms` | `00000000-0000-4000-8000-000000000101` |
+| `T-DEMO-01` | 우리 반 담임 | `users` | `00000000-0000-4000-8000-000000000201` |
+| `T-DEMO-02` | 다른 반 교사(권한 거부 시험용) | `users` | `00000000-0000-4000-8000-000000000202` |
+| `D-DEMO-01` | 원장 | `users` | `00000000-0000-4000-8000-000000000301` |
+| `P-DEMO-01` | 우리 아이 학부모 | `users` | `00000000-0000-4000-8000-000000000401` |
+| `C-DEMO-01` | 우리 아이 | `children` | `00000000-0000-4000-8000-000000000501` |
+| `C-DEMO-02` | 다른 아이(권한 거부 시험용) | `children` | `00000000-0000-4000-8000-000000000502` |
+| `RM-DEMO-01` | 상담실 | `rooms` | `00000000-0000-4000-8000-000000000601` |
+| `R-DEMO-01` · `R-DEMO-02` | 상담 요청 · 민원 요청 | `requests` | `…000000000701` · `…000000000702` |
+| `K-DEMO-01` · `K-DEMO-02` | 상담 후보 카드 · 민원 회신 카드 | `cards` | `…000000000801` · `…000000000802` |
+
+## 변경 이력
+
+| 판 | 날짜 | 내용 | 작성 |
+| --- | --- | --- | --- |
+| v0.1 | 2026-11-18 | 초안. API 목록 29개, 핵심 6개 상세 명세, 검증·권한 규칙, 도구 실패 코드·실패 후 처리, 실행 규칙(기한 계산·알림 발송 시각 포함, T10 회의 결과), API 필드↔DB 컬럼 대응, 설정값 | 태웅 |
