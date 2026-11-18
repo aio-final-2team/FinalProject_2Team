@@ -1,4 +1,4 @@
--- 유치온 DB 스키마 초안 (T09) · 문서 버전 v0.5
+-- 유치온 DB 스키마 초안 (T09) · 문서 버전 v0.6
 -- 설계서: Docs/Step2/DB_스키마_설계서.md
 -- 이 파일은 설계 검토용이다. 실제 적용은 T19 마이그레이션(apps/api/migrations)으로 옮긴다.
 -- 대상: PostgreSQL 16 + pgvector 0.8 (compose.yaml의 pgvector/pgvector:pg16). Supabase는 쓰지 않는다(설계서 5.1)
@@ -156,7 +156,6 @@ CREATE INDEX request_messages_req_idx ON request_messages (request_id, id);
 CREATE TABLE documents (
     id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     org_id          uuid NOT NULL REFERENCES organizations(id),
-    classroom_id    uuid,                  -- 없으면 원 전체 자료
     title           text NOT NULL,
     doc_type        text NOT NULL
                     CHECK (doc_type IN ('notice', 'schedule', 'menu', 'policy',
@@ -175,7 +174,6 @@ CREATE TABLE documents (
     content_sha256  text NOT NULL,
     is_virtual      boolean NOT NULL DEFAULT true,
     created_at      timestamptz NOT NULL DEFAULT now(),
-    FOREIGN KEY (classroom_id, org_id) REFERENCES classrooms(id, org_id),
     FOREIGN KEY (uploaded_by, org_id) REFERENCES users(id, org_id),
     FOREIGN KEY (supersedes_id, org_id) REFERENCES documents(id, org_id),
     UNIQUE (org_id, content_sha256),
@@ -204,6 +202,19 @@ CREATE TABLE document_chunks (
 CREATE INDEX document_chunks_embedding_idx ON document_chunks
     USING hnsw (embedding vector_cosine_ops);
 CREATE INDEX document_chunks_org_idx ON document_chunks (org_id, document_id);
+
+-- 반 자료의 대상 반. 대상 반마다 한 줄, 줄이 없으면 원 전체 자료(v0.6).
+-- 한 통신문이 여러 반 대상일 수 있고(예: 김장 체험 만 4·5세반), 같은 파일은 documents에 한 번만 들어가서(content_sha256) 반마다 문서를 따로 둘 수 없다
+CREATE TABLE document_classrooms (
+    document_id   uuid NOT NULL,
+    classroom_id  uuid NOT NULL,
+    org_id        uuid NOT NULL,
+    created_at    timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (document_id, classroom_id),
+    FOREIGN KEY (document_id, org_id) REFERENCES documents(id, org_id) ON DELETE CASCADE,
+    FOREIGN KEY (classroom_id, org_id) REFERENCES classrooms(id, org_id)
+);
+CREATE INDEX document_classrooms_class_idx ON document_classrooms (classroom_id, document_id);
 
 -- ─────────────────────────────────────────────
 -- 4. 승인 카드·결정·근거

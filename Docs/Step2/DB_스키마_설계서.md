@@ -6,7 +6,7 @@
 | --- | --- |
 | 작업 | T09 데이터베이스 스키마 설계서 (#166) |
 | 작성 | 태웅 · 검토 영민 |
-| 판 | v0.6 · 2026-11-18. `topic_key` = `create_card` `category`(계약표 v0.6 4.2). T10 계약표 v0.5의 영민 리뷰 반영(`topic_key` 정해진 목록·`other`는 반복 수 제외, 같은 질문 묶기 MVP 제외). v0.5 · 2026-11-17. T10 계약표 v0.3의 정한 규칙·기본값에 맞춤(알림 종류·자동 재개·거절 이유·처리 기한). v0.4는 강사님 'DB 스키마 설계서 작성법'(11/16)의 목차·체크리스트 반영, v0.1~v0.3은 초안 1~3(T04 합의·대조 검토 반영) |
+| 판 | v0.6 · 2026-11-18. `topic_key` = `create_card` `category`(계약표 v0.6 4.2). T10 계약표 v0.5의 영민 리뷰 반영(`topic_key` 정해진 목록·`other`는 반복 수 제외, 같은 질문 묶기 MVP 제외). 여러 반 대상 자료를 위해 `documents.classroom_id`를 연결 표 `document_classrooms`로 바꾸고 근거 검색에 반 조건을 더함(FB-003-2). v0.5 · 2026-11-17. T10 계약표 v0.3의 정한 규칙·기본값에 맞춤(알림 종류·자동 재개·거절 이유·처리 기한). v0.4는 강사님 'DB 스키마 설계서 작성법'(11/16)의 목차·체크리스트 반영, v0.1~v0.3은 초안 1~3(T04 합의·대조 검토 반영) |
 | 대상 DB | PostgreSQL 16 + pgvector 0.8 (`compose.yaml`의 `pgvector/pgvector:pg16`). Supabase를 쓰지 않는 이유는 5.1 |
 | DDL | [`db_schema_draft.sql`](db_schema_draft.sql) — 설계 검토용. 실제 적용은 T19 마이그레이션(`apps/api/migrations`)으로 옮김 |
 | 기준 문서 | 기획서 1116판 3장 FR-01~FR-13, 4장 NFR, 6장 공통 상태, 7장 기술과 데이터 · T04 흐름·권한 명세(11/17 팀 합의, PR #234) · T10 [입출력 계약표](입출력_계약표_초안.md) v0.5(1.1 정한 규칙, 6장 기본값) |
@@ -20,29 +20,29 @@
 
 | 체크리스트(가이드 22쪽) | 이 문서 |
 | --- | --- |
-| ERD 그림과 관계 명세 표가 서로 일치한다 | 1.2·1.3. ERD 선 56개 = 관계 표 56행 = DDL FK 제약 56개(9장 C3) |
-| 모든 컬럼에 타입·제약·의미가 적혀 있다 | 2장, 컬럼 261개 전부 |
-| 모든 테이블에 기본키와 created_at이 있다 | 2장. 표 26개 모두(9장 C1·C2) |
+| ERD 그림과 관계 명세 표가 서로 일치한다 | 1.2·1.3. ERD 선 57개 = 관계 표 57행 = DDL FK 제약 57개(9장 C3) |
+| 모든 컬럼에 타입·제약·의미가 적혀 있다 | 2장, 컬럼 264개 전부 |
+| 모든 테이블에 기본키와 created_at이 있다 | 2장. 표 27개 모두(9장 C1·C2) |
 | API 설계 문서와 필드명·ID 형식이 같다 | 2.0 ID 형식 표. T10 계약표와 맞춤, T13 API 설계 문서에서 필드 대응표를 더함(작성 예정) |
 | 벡터 차원, 인덱스 연산자, 임베딩 모델이 적혀 있다 | 3장 |
 | 테이블마다 역할별 권한 표가 있다 | 4.2. PostgreSQL RLS 대신 API가 검사함(4.1) |
 | Redis 키 이름 규칙과 TTL이 적혀 있다 | 5.3. 해당 없음(Redis를 쓰지 않음) |
-| 문서의 SQL을 실제로 실행해 확인했다 | 9장(시험 64개), 6.2(실행 계획), 3.3(검색 SQL) |
+| 문서의 SQL을 실제로 실행해 확인했다 | 9장(시험 67개), 6.2(실행 계획), 3.3(검색 SQL) |
 
 ## 1. ERD와 관계 명세
 
 ### 1.1 영역과 그리는 방법
 
-표 26개를 여섯 영역으로 나눠 그린다. 상자 안에는 키 컬럼(PK·FK·UK)만 적고, 다른 영역의 부모 표는 `id PK`만 있는 작은 상자로 그린다. 선 하나가 DDL의 FK 제약 하나다. 선 이름은 FK 컬럼이고, 기관 짝(`org_id`)과 함께 거는 FK는 `org_id`를 뺀 컬럼 이름으로 적는다.
+표 27개를 여섯 영역으로 나눠 그린다. 상자 안에는 키 컬럼(PK·FK·UK)만 적고, 다른 영역의 부모 표는 `id PK`만 있는 작은 상자로 그린다. 선 하나가 DDL의 FK 제약 하나다. 선 이름은 FK 컬럼이고, 기관 짝(`org_id`)과 함께 거는 FK는 `org_id`를 뺀 컬럼 이름으로 적는다.
 
 - `||--o{` 1 : N (자식의 FK가 NOT NULL) · `|o--o{` 0..1 : N (FK가 비어도 됨) · `|o--o|` 0..1 : 0..1 (FK에 UNIQUE)
-- N : M은 중간 테이블로 푼다. `classroom_staff`(반 ↔ 교사), `child_guardians`(아이 ↔ 보호자), `card_evidence`(카드 ↔ 문서 조각), `saved_answer_sources`(원에 남은 답 ↔ 문서).
+- N : M은 중간 테이블로 푼다. `classroom_staff`(반 ↔ 교사), `child_guardians`(아이 ↔ 보호자), `card_evidence`(카드 ↔ 문서 조각), `saved_answer_sources`(원에 남은 답 ↔ 문서), `document_classrooms`(문서 ↔ 대상 반).
 
 | 영역 | 테이블 | 선 수 |
 | --- | --- | --- |
 | ① 기관·사람 | `organizations` `classrooms` `users` `classroom_staff` `children` `child_guardians` | 7 |
 | ② 요청·카드·승인 | `requests` `request_messages` `cards` `approvals` `card_evidence` `events` | 17 |
-| ③ 자료·검색 | `documents` `document_chunks` | 5 |
+| ③ 자료·검색 | `documents` `document_chunks` `document_classrooms` | 6 |
 | ④ 상담 | `rooms` `staff_busy_blocks` `consultation_slots` `consultation_bookings` | 10 |
 | ⑤ 기억·원에 남은 답 | `memories` `memory_rules` `saved_answers` `saved_answer_sources` | 8 |
 | ⑥ 알림장·알림·평가 | `daily_note_inputs` `daily_notes` `notifications` `eval_runs`(기관에 속하지 않는 평가 기록이라 선 없음) | 9 |
@@ -106,13 +106,15 @@ erDiagram
 
 ```mermaid
 erDiagram
-    documents { uuid id PK uuid org_id FK uuid classroom_id FK uuid supersedes_id FK, UK uuid uploaded_by FK }
+    documents { uuid id PK uuid org_id FK uuid supersedes_id FK, UK uuid uploaded_by FK }
     document_chunks { bigint id PK uuid document_id FK uuid org_id FK }
+    document_classrooms { uuid document_id PK, FK uuid classroom_id PK, FK uuid org_id FK }
     classrooms { uuid id PK }
     organizations { uuid id PK }
     users { uuid id PK }
     documents ||--o{ document_chunks : "document_id"
-    classrooms |o--o{ documents : "classroom_id"
+    documents ||--o{ document_classrooms : "document_id"
+    classrooms ||--o{ document_classrooms : "classroom_id"
     organizations ||--o{ documents : "org_id"
     documents |o--o| documents : "supersedes_id"
     users |o--o{ documents : "uploaded_by"
@@ -218,49 +220,50 @@ erDiagram
 | 23 | `requests` | 0..1 : N | `requests` | `requests.(previous_request_id, org_id)` → `requests.(id, org_id)` |
 | 24 | `users` | 1 : N | `requests` | `requests.(requester_id, org_id)` → `users.(id, org_id)` |
 | 25 | `documents` | 1 : N | `document_chunks` | `document_chunks.(document_id, org_id)` → `documents.(id, org_id)` · 부모를 지우면 같이 지움 |
-| 26 | `classrooms` | 0..1 : N | `documents` | `documents.(classroom_id, org_id)` → `classrooms.(id, org_id)` |
-| 27 | `organizations` | 1 : N | `documents` | `documents.org_id` → `organizations.id` |
-| 28 | `documents` | 0..1 : 0..1 | `documents` | `documents.(supersedes_id, org_id)` → `documents.(id, org_id)` |
-| 29 | `users` | 0..1 : N | `documents` | `documents.(uploaded_by, org_id)` → `users.(id, org_id)` |
-| 30 | `users` | 1 : N | `consultation_bookings` | `consultation_bookings.(confirmed_by, org_id)` → `users.(id, org_id)` |
-| 31 | `requests` | 1 : N | `consultation_bookings` | `consultation_bookings.(request_id, org_id)` → `requests.(id, org_id)` |
-| 32 | `rooms` | 1 : N | `consultation_bookings` | `consultation_bookings.(room_id, org_id)` → `rooms.(id, org_id)` |
-| 33 | `consultation_slots` | 0..1 : N | `consultation_bookings` | `consultation_bookings.(slot_id, org_id)` → `consultation_slots.(id, org_id)` |
-| 34 | `users` | 1 : N | `consultation_bookings` | `consultation_bookings.(teacher_id, org_id)` → `users.(id, org_id)` |
-| 35 | `cards` | 1 : N | `consultation_slots` | `consultation_slots.(card_id, org_id)` → `cards.(id, org_id)` · 부모를 지우면 같이 지움 |
-| 36 | `rooms` | 1 : N | `consultation_slots` | `consultation_slots.(room_id, org_id)` → `rooms.(id, org_id)` |
-| 37 | `users` | 1 : N | `consultation_slots` | `consultation_slots.(teacher_id, org_id)` → `users.(id, org_id)` |
-| 38 | `organizations` | 1 : N | `rooms` | `rooms.org_id` → `organizations.id` |
-| 39 | `users` | 1 : N | `staff_busy_blocks` | `staff_busy_blocks.(user_id, org_id)` → `users.(id, org_id)` |
-| 40 | `users` | 1 : N | `memories` | `memories.(owner_id, org_id)` → `users.(id, org_id)` |
-| 41 | `cards` | 0..1 : N | `memories` | `memories.(source_card_id, org_id)` → `cards.(id, org_id)` |
-| 42 | `users` | 1 : N | `memory_rules` | `memory_rules.(owner_id, org_id)` → `users.(id, org_id)` |
-| 43 | `users` | 1 : N | `saved_answers` | `saved_answers.(approved_by, org_id)` → `users.(id, org_id)` |
-| 44 | `classrooms` | 0..1 : N | `saved_answers` | `saved_answers.(classroom_id, org_id)` → `classrooms.(id, org_id)` |
-| 45 | `cards` | 1 : N | `saved_answers` | `saved_answers.(source_card_id, org_id)` → `cards.(id, org_id)` |
-| 46 | `documents` | 1 : N | `saved_answer_sources` | `saved_answer_sources.(document_id, org_id)` → `documents.(id, org_id)` |
-| 47 | `saved_answers` | 1 : N | `saved_answer_sources` | `saved_answer_sources.(saved_answer_id, org_id)` → `saved_answers.(id, org_id)` · 부모를 지우면 같이 지움 |
-| 48 | `users` | 1 : N | `daily_note_inputs` | `daily_note_inputs.(author_id, org_id)` → `users.(id, org_id)` |
-| 49 | `classrooms` | 1 : N | `daily_note_inputs` | `daily_note_inputs.(classroom_id, org_id)` → `classrooms.(id, org_id)` |
-| 50 | `children` | 1 : N | `daily_notes` | `daily_notes.(child_id, org_id)` → `children.(id, org_id)` |
-| 51 | `users` | 0..1 : N | `daily_notes` | `daily_notes.(confirmed_by, org_id)` → `users.(id, org_id)` |
-| 52 | `daily_note_inputs` | 1 : N | `daily_notes` | `daily_notes.(input_id, org_id, note_date)` → `daily_note_inputs.(id, org_id, note_date)` |
-| 53 | `cards` | 0..1 : N | `notifications` | `notifications.(card_id, org_id)` → `cards.(id, org_id)` |
-| 54 | `organizations` | 1 : N | `notifications` | `notifications.org_id` → `organizations.id` |
-| 55 | `users` | 1 : N | `notifications` | `notifications.(recipient_id, org_id)` → `users.(id, org_id)` |
-| 56 | `requests` | 0..1 : N | `notifications` | `notifications.(request_id, org_id)` → `requests.(id, org_id)` |
+| 26 | `documents` | 1 : N | `document_classrooms` | `document_classrooms.(document_id, org_id)` → `documents.(id, org_id)` · 부모를 지우면 같이 지움 |
+| 27 | `classrooms` | 1 : N | `document_classrooms` | `document_classrooms.(classroom_id, org_id)` → `classrooms.(id, org_id)` |
+| 28 | `organizations` | 1 : N | `documents` | `documents.org_id` → `organizations.id` |
+| 29 | `documents` | 0..1 : 0..1 | `documents` | `documents.(supersedes_id, org_id)` → `documents.(id, org_id)` |
+| 30 | `users` | 0..1 : N | `documents` | `documents.(uploaded_by, org_id)` → `users.(id, org_id)` |
+| 31 | `users` | 1 : N | `consultation_bookings` | `consultation_bookings.(confirmed_by, org_id)` → `users.(id, org_id)` |
+| 32 | `requests` | 1 : N | `consultation_bookings` | `consultation_bookings.(request_id, org_id)` → `requests.(id, org_id)` |
+| 33 | `rooms` | 1 : N | `consultation_bookings` | `consultation_bookings.(room_id, org_id)` → `rooms.(id, org_id)` |
+| 34 | `consultation_slots` | 0..1 : N | `consultation_bookings` | `consultation_bookings.(slot_id, org_id)` → `consultation_slots.(id, org_id)` |
+| 35 | `users` | 1 : N | `consultation_bookings` | `consultation_bookings.(teacher_id, org_id)` → `users.(id, org_id)` |
+| 36 | `cards` | 1 : N | `consultation_slots` | `consultation_slots.(card_id, org_id)` → `cards.(id, org_id)` · 부모를 지우면 같이 지움 |
+| 37 | `rooms` | 1 : N | `consultation_slots` | `consultation_slots.(room_id, org_id)` → `rooms.(id, org_id)` |
+| 38 | `users` | 1 : N | `consultation_slots` | `consultation_slots.(teacher_id, org_id)` → `users.(id, org_id)` |
+| 39 | `organizations` | 1 : N | `rooms` | `rooms.org_id` → `organizations.id` |
+| 40 | `users` | 1 : N | `staff_busy_blocks` | `staff_busy_blocks.(user_id, org_id)` → `users.(id, org_id)` |
+| 41 | `users` | 1 : N | `memories` | `memories.(owner_id, org_id)` → `users.(id, org_id)` |
+| 42 | `cards` | 0..1 : N | `memories` | `memories.(source_card_id, org_id)` → `cards.(id, org_id)` |
+| 43 | `users` | 1 : N | `memory_rules` | `memory_rules.(owner_id, org_id)` → `users.(id, org_id)` |
+| 44 | `users` | 1 : N | `saved_answers` | `saved_answers.(approved_by, org_id)` → `users.(id, org_id)` |
+| 45 | `classrooms` | 0..1 : N | `saved_answers` | `saved_answers.(classroom_id, org_id)` → `classrooms.(id, org_id)` |
+| 46 | `cards` | 1 : N | `saved_answers` | `saved_answers.(source_card_id, org_id)` → `cards.(id, org_id)` |
+| 47 | `documents` | 1 : N | `saved_answer_sources` | `saved_answer_sources.(document_id, org_id)` → `documents.(id, org_id)` |
+| 48 | `saved_answers` | 1 : N | `saved_answer_sources` | `saved_answer_sources.(saved_answer_id, org_id)` → `saved_answers.(id, org_id)` · 부모를 지우면 같이 지움 |
+| 49 | `users` | 1 : N | `daily_note_inputs` | `daily_note_inputs.(author_id, org_id)` → `users.(id, org_id)` |
+| 50 | `classrooms` | 1 : N | `daily_note_inputs` | `daily_note_inputs.(classroom_id, org_id)` → `classrooms.(id, org_id)` |
+| 51 | `children` | 1 : N | `daily_notes` | `daily_notes.(child_id, org_id)` → `children.(id, org_id)` |
+| 52 | `users` | 0..1 : N | `daily_notes` | `daily_notes.(confirmed_by, org_id)` → `users.(id, org_id)` |
+| 53 | `daily_note_inputs` | 1 : N | `daily_notes` | `daily_notes.(input_id, org_id, note_date)` → `daily_note_inputs.(id, org_id, note_date)` |
+| 54 | `cards` | 0..1 : N | `notifications` | `notifications.(card_id, org_id)` → `cards.(id, org_id)` |
+| 55 | `organizations` | 1 : N | `notifications` | `notifications.org_id` → `organizations.id` |
+| 56 | `users` | 1 : N | `notifications` | `notifications.(recipient_id, org_id)` → `users.(id, org_id)` |
+| 57 | `requests` | 0..1 : N | `notifications` | `notifications.(request_id, org_id)` → `requests.(id, org_id)` |
 
-**ERD 선 수 = 표 행 수 = DDL FK 제약 수 = 56.** 같은 부모·자식 사이에 FK가 둘 이상이면(예: `requests`의 `requester_id`·`assignee_id` → `users`) 선도 행도 따로 센다. FK 제약 수는 9장 C3에서 DB 카탈로그로 셌다.
+**ERD 선 수 = 표 행 수 = DDL FK 제약 수 = 57.** 같은 부모·자식 사이에 FK가 둘 이상이면(예: `requests`의 `requester_id`·`assignee_id` → `users`) 선도 행도 따로 센다. FK 제약 수는 9장 C3에서 DB 카탈로그로 셌다.
 
 FK를 걸 수 없는 참조는 두 곳이다. `cards.subject_id`와 `notifications.subject_id`는 대상 종류(`subject_type`)에 따라 가리키는 표가 달라서 FK가 없다. 이 둘은 API가 저장 전에 대상이 같은 기관에 있는지 확인한다.
 
 ### 1.4 정규화
 
-3정규형(3NF)을 기준으로 맞췄다. 컬럼 값은 하나의 값이고(예외는 아래 `jsonb`), 키가 아닌 컬럼은 기본키 전체에만 기댄다. 복합 PK인 중간 테이블 4개에도 PK 일부에만 기대는 컬럼은 없다. 표마다 확인했을 때 키가 아닌 컬럼이 다른 키가 아닌 컬럼을 정하는 곳(이행 종속)은 아래 표의 '복사' 세 곳이다. 셋 다 이유가 있어서 그대로 두었고, 알림장 날짜는 v0.4에서 복합 FK로 어긋남을 막았다.
+3정규형(3NF)을 기준으로 맞췄다. 컬럼 값은 하나의 값이고(예외는 아래 `jsonb`), 키가 아닌 컬럼은 기본키 전체에만 기댄다. 복합 PK인 중간 테이블 5개에도 PK 일부에만 기대는 컬럼은 없다. 표마다 확인했을 때 키가 아닌 컬럼이 다른 키가 아닌 컬럼을 정하는 곳(이행 종속)은 아래 표의 '복사' 세 곳이다. 셋 다 이유가 있어서 그대로 두었고, 알림장 날짜는 v0.4에서 복합 FK로 어긋남을 막았다.
 
 | 일부러 겹쳐 둔 것 | 어디 | 이유 | 어긋남을 막는 방법 |
 | --- | --- | --- | --- |
-| 기관 경계 `org_id` | 기관에 속한 표 24개 | 부모를 따라가면 알 수 있지만, 다른 원 행이 섞이는 실수를 DB가 거부하게 하려고 둠(NFR-01) | `(id, org_id)` 복합 FK. 부모와 `org_id`가 다르면 저장 거부(9장 B1~B11) |
+| 기관 경계 `org_id` | 기관에 속한 표 25개 | 부모를 따라가면 알 수 있지만, 다른 원 행이 섞이는 실수를 DB가 거부하게 하려고 둠(NFR-01) | `(id, org_id)` 복합 FK. 부모와 `org_id`가 다르면 저장 거부(9장 B1~B11·B13) |
 | AI 결과 `jsonb` | `cards.draft`·`check_result`, `approvals.edited_content`, `requests.missing_fields`, `events.detail`, `memories.structured`, `memory_rules.rule_json`, `daily_notes.content`·`open_checks` | AI 출력 모양이 자주 바뀌고, SQL에서 안쪽 값으로 찾지 않음(가이드 8쪽 "JSONB: 구조가 자주 바뀌는 부가 정보") | 저장 전 Pydantic 검사(T13). SQL이 꼭 봐야 하는 값(`open_checks` 개수)만 CHECK |
 | 집계는 저장하지 않음 | 반복 민원 수, 받은함 필터, 원장 현황 | 숫자를 칸에 저장하면 실제와 어긋날 수 있음 | 볼 때마다 뷰(`staff_inbox`·`director_overview`)와 인덱스(`requests_repeat_idx`)로 셈 |
 | 복사 ① 상담 예약의 후보 값 | `consultation_bookings.teacher_id`·`room_id`·`period` (`slot_id`로도 알 수 있음) | 겹침을 막는 배제 제약(EXCLUDE)은 같은 표의 칸만 볼 수 있음 | API가 확정 트랜잭션에서 후보 값을 그대로 복사 |
@@ -270,7 +273,7 @@ FK를 걸 수 없는 참조는 두 곳이다. `cards.subject_id`와 `notificatio
 
 ## 2. 엔터티 정의
 
-컬럼마다 타입 / 제약 / 의미를 적는다(261개). 표는 DDL을 적용한 DB 카탈로그에서 뽑아서 DDL과 같다. 값이 정해진 컬럼은 허용 값을 적었다. 여러 컬럼에 걸친 제약은 영역 표 아래 '표 제약'에 있다.
+컬럼마다 타입 / 제약 / 의미를 적는다(264개). 표는 DDL을 적용한 DB 카탈로그에서 뽑아서 DDL과 같다. 값이 정해진 컬럼은 허용 값을 적었다. 여러 컬럼에 걸친 제약은 영역 표 아래 '표 제약'에 있다.
 
 ### 2.0 공통 규칙과 ID 형식
 
@@ -282,7 +285,7 @@ FK를 걸 수 없는 참조는 두 곳이다. `cards.subject_id`와 `notificatio
 | --- | --- | --- |
 | `uuid` (`gen_random_uuid()`) | `organizations` `classrooms` `users` `children` `requests` `documents` `cards` `rooms` `consultation_bookings` `memory_rules` `saved_answers` `daily_note_inputs` `daily_notes` (13개) | UUID 문자열 |
 | `bigint` (자동 증가) | `request_messages` `document_chunks` `approvals` `events` `staff_busy_blocks` `consultation_slots` `memories` `notifications` `eval_runs` (9개) | 정수 |
-| 복합 PK | `classroom_staff (classroom_id, user_id)` `child_guardians (child_id, user_id)` `card_evidence (card_id, chunk_id)` `saved_answer_sources (saved_answer_id, document_id)` (4개) | 두 ID 짝 |
+| 복합 PK | `classroom_staff (classroom_id, user_id)` `child_guardians (child_id, user_id)` `card_evidence (card_id, chunk_id)` `saved_answer_sources (saved_answer_id, document_id)` `document_classrooms (document_id, classroom_id)` (5개) | 두 ID 짝 |
 
 화면·URL에 오래 남고 다른 원 ID를 짐작하면 안 되는 대상은 `uuid`, 한 대상 밑에 계속 쌓이는 기록(대화·결정·이력·알림·상담 후보·기억)과 내부 행은 짧고 순서가 있는 `bigint`를 쓴다. 정수 ID도 화면에 나가지만(상담 후보 `slot_ids`, 알림, 기억 지우기) 조회할 때마다 기관·본인 권한을 검사한다(4장).
 
@@ -472,13 +475,12 @@ FK를 걸 수 없는 참조는 두 곳이다. `cards.subject_id`와 `notificatio
 
 ### 2.3 자료·검색
 
-표: `documents` 원 자료·공공 자료(FR-13, NFR-07) · `document_chunks` 검색 단위 조각(FR-04)
+표: `documents` 원 자료·공공 자료(FR-13, NFR-07) · `document_chunks` 검색 단위 조각(FR-04) · `document_classrooms` 반 자료의 대상 반(FR-04)
 
 | 테이블 | 컬럼 | 타입 / 제약 | 의미 |
 | --- | --- | --- | --- |
 | `documents` | `id` | `uuid` / PK, 기본값 gen_random_uuid() | 문서 ID |
 | `documents` | `org_id` | `uuid` / NOT NULL, FK → organizations.id | 기관 |
-| `documents` | `classroom_id` | `uuid` / NULL 허용, FK (classroom_id, org_id) → classrooms | 반 자료면 그 반. 비면 원 전체 |
 | `documents` | `title` | `text` / NOT NULL | 문서 이름 |
 | `documents` | `doc_type` | `text` / NOT NULL, 값: notice·schedule·menu·policy·consult_timetable·law·public_data | 문서 종류 |
 | `documents` | `visibility` | `text` / NOT NULL, 값: staff·parents·all, 기본값 'all' | 공개 범위: 교직원만·학부모·모두 |
@@ -503,6 +505,10 @@ FK를 걸 수 없는 참조는 두 곳이다. `cards.subject_id`와 `notificatio
 | `document_chunks` | `embedding_model` | `text` / NULL 허용 | 임베딩 모델 이름 |
 | `document_chunks` | `embedding_version` | `text` / NULL 허용 | 모델·색인 판 |
 | `document_chunks` | `created_at` | `timestamptz` / NOT NULL, 기본값 now() | 적재 시각 |
+| `document_classrooms` | `document_id` | `uuid` / PK(document_id, classroom_id), FK (document_id, org_id) → documents, 문서를 지우면 같이 지움 | 대상 반을 정한 문서 |
+| `document_classrooms` | `classroom_id` | `uuid` / PK(document_id, classroom_id), FK (classroom_id, org_id) → classrooms | 대상 반 |
+| `document_classrooms` | `org_id` | `uuid` / NOT NULL, 기관 짝 FK에 들어감 | 기관(경계 짝) |
+| `document_classrooms` | `created_at` | `timestamptz` / NOT NULL, 기본값 now() | 넣은 시각 |
 
 - `documents` 표 제약: `CHECK (supersedes_id IS DISTINCT FROM id)` · `CHECK ((effective_to IS NULL) OR (effective_from IS NULL) OR (effective_to >= effective_from))` · `UNIQUE (id, org_id)` · `UNIQUE (org_id, content_sha256)`
 - `document_chunks` 표 제약: `UNIQUE (document_id, chunk_index)` · `UNIQUE (id, org_id)`
@@ -511,6 +517,7 @@ FK를 걸 수 없는 참조는 두 곳이다. `cards.subject_id`와 `notificatio
 - `status = 'conflict_pending'`: 다른 자료와 날짜·숫자가 달라 확인을 기다리는 자료. 이 상태 자료는 답변 근거로 쓰지 않는다(FR-13).
 - `api_called_at`: 공공 API를 실제로 불러 온 시각. 목록만 확인한 API는 비워 두어 "연동 완료"로 보이지 않게 한다(FR-13, FR-27).
 - `content_sha256`: 같은 파일을 두 번 올리면 거부한다.
+- `document_classrooms`: 반 자료의 대상 반이다. 대상 반마다 한 줄이고, 줄이 없으면 원 전체 자료다. 한 통신문이 여러 반 대상일 수 있고(예: 김장 체험 안내 만 4·5세반), 같은 파일은 `content_sha256` 유니크라 반마다 문서를 따로 둘 수 없어서 연결 표로 둔다(v0.6). 학부모 근거 검색은 원 전체 자료와 우리 아이 반 자료만 본다(3.3 ①).
 - `supersedes_id`: 새 판이 대신하는 옛 판(같은 기관 문서만). 자료를 올릴 때 `replaces_document_id`를 받으면 같은 트랜잭션에서 새 문서의 이 칸을 채우고 옛 문서를 `superseded`로 바꾼다. 그러면 2.5의 트리거가 옛 판을 근거로 쓴 원에 남은 답을 무효로 한다(T04 합의 7). 한 판을 대신하는 새 판은 하나뿐이다.
 - 임베딩 모델·차원·인덱스는 3장에 적는다.
 
@@ -742,6 +749,7 @@ CREATE TABLE approvals (
 | --- | --- | --- |
 | `documents` | 제목·출처·적용일·공개 범위·상태·옛 판 | 조각이 어느 문서에서 나왔는지, 지금 근거로 써도 되는지 판단하는 기준 |
 | `document_chunks` | 잘라 낸 본문·문서 안 순번·위치·임베딩 | 근거 검색이 일어나는 곳. `UNIQUE (document_id, chunk_index)`로 같은 조각을 두 번 적재하지 않음 |
+| `document_classrooms` | 문서의 대상 반 | 학부모 검색에서 원 전체 자료와 우리 아이 반 자료만 남기는 조건 |
 | `saved_answers` | 승인된 질문·답과 질문 임베딩 | 같은 질문이 다시 오면 찾는 곳(2.5) |
 
 ### 3.2 모델·차원·인덱스
@@ -757,10 +765,10 @@ CREATE TABLE approvals (
 
 ### 3.3 검색 SQL
 
-아래 두 SQL은 6.2의 가상 데이터에서 실제로 실행했다. `:이름`은 API가 넣는 값이다. ①의 실행 계획은 6.2에 있고, ②는 원에 남은 답이 원마다 수십~수백 건이라 실행 계획을 따로 재지 않았다.
+아래 두 SQL은 6.2의 가상 데이터에서 실제로 실행했다. ①의 반 조건은 v0.6에서 더했고 6.2 ③-c로 다시 쟀다. `:이름`은 API가 넣는 값이다. ①의 실행 계획은 6.2에 있고, ②는 원에 남은 답이 원마다 수십~수백 건이라 실행 계획을 따로 재지 않았다.
 
 ```sql
--- ① 근거 검색: 같은 기관 · 사용 중 문서 · 묻는 사람이 볼 수 있는 공개 범위만, 가까운 순 k개
+-- ① 근거 검색: 같은 기관 · 사용 중 문서 · 묻는 사람이 볼 수 있는 공개 범위·반만, 가까운 순 k개
 SET hnsw.iterative_scan = relaxed_order;
 SELECT c.id, c.document_id, c.location, c.content,
        c.embedding <=> :query_vec AS distance           -- 코사인 거리
@@ -769,6 +777,12 @@ JOIN documents d ON d.id = c.document_id AND d.org_id = c.org_id
 WHERE c.org_id = :org_id
   AND d.status = 'active'                               -- 충돌 확인 대기·옛 판은 근거로 안 씀(FR-13)
   AND d.visibility = ANY (:visible)                     -- 학부모 {parents, all}, 교직원 {staff, parents, all}
+  AND (:classroom_id IS NULL                            -- 교직원은 반으로 거르지 않음(4.3)
+       OR NOT EXISTS (SELECT 1 FROM document_classrooms dc
+                      WHERE dc.document_id = d.id)      -- 원 전체 자료
+       OR EXISTS (SELECT 1 FROM document_classrooms dc
+                  WHERE dc.document_id = d.id
+                    AND dc.classroom_id = :classroom_id))  -- 우리 아이 반 자료
 ORDER BY c.embedding <=> :query_vec
 LIMIT :k;
 
@@ -815,6 +829,7 @@ LIMIT 1;
 | `events` | 학(내 요청의 학부모용 요약) · 담 · 원 | 시(모든 행동마다) | 금지 | 금지 |
 | `documents` | 학(`parents`·`all`) · 담·원(전부) | 담 · 원(자료 창고 올리기) | 시(충돌 대기·새 판 표시) | 금지(새 판으로 대신함) |
 | `document_chunks` | 시(검색) | 시(적재) | 시(다시 색인) | 시(다시 색인) |
+| `document_classrooms` | 시(검색 조건) · 담·원 | 담 · 원(자료 올리기 때 대상 반) | 금지 | 담 · 원(대상 반 고치기) |
 | `rooms` | 담 · 원 | 시(초기 자료) | 시 | 금지 |
 | `staff_busy_blocks` | 담(본인) · 원 · 시(일정 계산) | 시(가상 시간표) | 시 | 시 |
 | `consultation_slots` | 학(자기 요청 후보) · 담 · 원 | 시(일정 계산 코드) | 학(1~3개 체크) · 시(버림·확정 표시) | 금지 |
@@ -835,7 +850,7 @@ LIMIT 1;
 
 | 역할 | 요청·카드 | 자료 | 기억 |
 | --- | --- | --- | --- |
-| 학부모 | 자기가 낸 요청과 그 대화·진행 상태만. 카드·위험 등급·보류 이유는 볼 수 없음 | `visibility`가 `parents`·`all`인 자료, 우리 아이 알림장(발송 후) | 자기 기억만 |
+| 학부모 | 자기가 낸 요청과 그 대화·진행 상태만. 카드·위험 등급·보류 이유는 볼 수 없음 | `visibility`가 `parents`·`all`이고 원 전체이거나 우리 아이 반 대상인 자료, 우리 아이 알림장(발송 후) | 자기 기억만 |
 | 담임 | 우리 반(`classroom_staff`, 대체 담임은 기간 안) 요청·카드 + 재배정받은 카드. 다른 반은 볼 수 없음 | 우리 원 자료 전부, 우리 반 알림장 | 자기 기억만 |
 | 원장·원감 | 우리 원의 모든 요청·카드, 원장 보고 카드 | 우리 원 자료 전부, 원 전체 알림장(읽기) | 자기 기억만 |
 
@@ -845,7 +860,7 @@ LIMIT 1;
 
 | 막는 것 | 어디서 시험 | 상태 |
 | --- | --- | --- |
-| 다른 기관 반·학부모·조각·담임·상담실·요청·카드·사람을 이 원 행에 잇기 | DB(9장 2·3행, B1~B10) | 통과 |
+| 다른 기관 반·학부모·조각·담임·상담실·요청·카드·사람을 이 원 행에 잇기 | DB(9장 2·3행, B1~B10·B13) | 통과 |
 | 알림장 날짜가 반 입력 날짜와 다름 | DB(9장 B11) | 통과 |
 | 다른 반·다른 기관 사람의 토큰으로 요청·카드·알림장 조회 → 404 | API 시험(T24 접근 제어, T27 요청·카드 API) | 작성 예정 |
 | 학부모 응답에 위험 등급·보류 이유가 없음, 원장 보고 카드 결정은 원장·원감만 | API 시험(T27) | 작성 예정 |
@@ -898,6 +913,7 @@ Supabase 대신 Docker Compose 안의 PostgreSQL 16 + pgvector를 쓰고, Supaba
 | `cards (org_id, assignee_id, status)` 열린 카드만 | 교직원 받은함 | 6.2 ① |
 | `cards (org_id, due_at)` 열린 카드만 | 원장 현황 지연 계산 | — |
 | `document_chunks` HNSW(`vector_cosine_ops`) | 근거 검색 | 6.2 ③ |
+| `document_classrooms (classroom_id, document_id)` | 학부모 근거 검색의 반 조건 | 6.2 ③-c |
 | `saved_answers` HNSW, `active`만 | 원에 남은 답 찾기 | — |
 | `events (request_id, id)` · `events (card_id, id)` | 요청·카드 처리 이력 | — |
 | `notifications (recipient_id, created_at DESC)` 안 읽은 것만 | 알림 목록 | — |
@@ -914,9 +930,10 @@ Supabase 대신 Docker Compose 안의 PostgreSQL 16 + pgvector를 쓰고, Supaba
 | ② 같은 반·30일·같은 주제 민원 수(4건) | 17.6 ms · 순차 스캔, 49,996행 걸러냄 | **0.06 ms** · `requests_repeat_idx` 인덱스만 스캔. 이 인덱스만 빼면 0.12 ms(`requests_class_time_idx`로 20행 읽고 16행 걸러냄) |
 | ③-a 근거 검색, 기관 조건 있음(기관당 조각 1,000개) | 7.2 ms | 5.8~6.8 ms · 같은 계획: 기관 인덱스로 조각을 고른 뒤 정확히 정렬 |
 | ③-b 근거 검색, 한 기관에 조각 20,000개가 다 있는 경우(시연과 같음) | 129.1 ms · 조각 20,000행 순차 스캔 + 정렬 | **3.0~3.3 ms** · HNSW 인덱스 스캔 → 문서 조건 확인 |
+| ③-c ③-b에 반 조건(학부모, v0.6). 문서 1,000개 중 절반이 반 자료(대상 반 680줄) | — | **3.5 ms** · HNSW 인덱스 스캔으로 조각 11개 읽고 문서·반 조건 확인. 반 조건 없는 교직원 검색은 3.4 ms |
 
 - ①·②: 거르는 컬럼이 앞에 있는 복합 인덱스가 순차 스캔을 없앴다. ②는 반·시각 인덱스만으로도 빠르지만, 전용 부분 인덱스는 표를 읽지 않고 인덱스만으로 센다.
-- ③은 3.3 ① SQL이고, ③-b는 같은 SQL에서 기관 조건만 뺐다. 기관 조건이 조각을 1,000개로 줄이면 플래너가 HNSW 대신 정확 정렬을 고른다. 결과도 정확하다. 한 기관에 조각이 많을 때(시연)는 HNSW가 약 40배 빠르다.
+- ③-a·③-b는 v0.5의 3.3 ① SQL(반 조건 전)이고, ③-b는 같은 SQL에서 기관 조건만 뺐다. ③-c는 v0.6 SQL을 11/18 같은 환경에서 쟀다. 대상 반 표를 한 번 해시로 읽어 문서마다 확인해서, 반 조건이 붙어도 시간이 거의 같다. 기관 조건이 조각을 1,000개로 줄이면 플래너가 HNSW 대신 정확 정렬을 고른다. 결과도 정확하다. 한 기관에 조각이 많을 때(시연)는 HNSW가 약 40배 빠르다.
 - HNSW는 근사 검색이다. 이번 가상 벡터는 무작위라 벡터 사이 거리가 거의 같아서, 정확 검색 상위 5개와 겹친 수(5개 중 1개)로는 실제 정답률을 판단할 수 없다. 실제 문서 임베딩으로 T20(자료 창고 적재·검색)에서 다시 재고 `hnsw.ef_search`를 정한다.
 
 ```sql
@@ -985,9 +1002,9 @@ MVP(12/08) 기능 FR-01~FR-13이 쓰는 표를 모두 정의한다. 최종(반�
 | `rejected` | 거절·반려됨 |
 | `done` | 처리 끝 |
 
-## 9. DB가 막는 것과 확인 결과 (2026-11-17)
+## 9. DB가 막는 것과 확인 결과 (2026-11-17, v0.6 부분 11/18)
 
-v0.5 DDL을 `pgvector/pgvector:pg16` 임시 컨테이너(Supabase가 아닌 같은 PostgreSQL 16 이미지)에 적용하고 가상 데이터로 아래 시험을 모두 다시 돌렸다. 표 26개와 뷰 2개, 트리거 1개가 오류 없이 만들어졌고, 시험 64개가 모두 기대대로 나왔다(실패 0). '긴급인데 네 가지 중…' 행부터는 T04 합의를 반영한 뒤, '끝난 요청을 이전 요청으로…' 행부터는 T04 대조 검토를 반영한 뒤, B·C 행은 v0.4, R 행은 v0.5에서 더한 시험이다.
+v0.5 DDL을 `pgvector/pgvector:pg16` 임시 컨테이너(Supabase가 아닌 같은 PostgreSQL 16 이미지)에 적용하고 가상 데이터로 아래 시험을 모두 다시 돌렸다. 표 26개와 뷰 2개, 트리거 1개가 오류 없이 만들어졌고, 시험 64개가 모두 기대대로 나왔다(실패 0). '긴급인데 네 가지 중…' 행부터는 T04 합의를 반영한 뒤, '끝난 요청을 이전 요청으로…' 행부터는 T04 대조 검토를 반영한 뒤, B·C 행은 v0.4, R 행은 v0.5에서 더한 시험이다. v0.6(11/18)에서는 바뀐 자료·검색 부분만 v0.6 DDL로 다시 확인했다. 표 27개가 오류 없이 만들어졌고 B13·D1·D2와 C1~C3가 기대대로 나왔다. 다른 표는 바뀌지 않아 v0.5 결과를 그대로 둔다.
 
 | 시험 | 기대 | 결과 | 막는 제약 |
 | --- | --- | --- | --- |
@@ -1032,13 +1049,16 @@ v0.5 DDL을 `pgvector/pgvector:pg16` 임시 컨테이너(Supabase가 아닌 같�
 | B7 · B8 다른 기관 사람이 이 원 요청 대화에 씀 · 이 원 자료를 올림 | 거부 | 거부됨 | `request_messages`·`documents` 복합 FK |
 | B9 · B10 다른 기관 카드를 기억 출처로 · 다른 기관 사람이 예약 확정 | 거부 | 거부됨 | `memories`·`consultation_bookings` 복합 FK |
 | B11 알림장 날짜가 반 입력 날짜와 다름 | 거부 | 거부됨 | `daily_notes (input_id, org_id, note_date)` 복합 FK |
+| B13 다른 기관 반을 문서 대상 반으로 (v0.6) | 거부 | 거부됨 | `document_classrooms (classroom_id, org_id)` 복합 FK |
 | C1 · C2 `created_at`이 없는 표 · 기본키가 없는 표 | 0 · 0 | 0 · 0 | — |
-| C3 FK 제약 수 | 관계 표 행 수와 같음 | 56 | — |
+| C3 FK 제약 수 | 관계 표 행 수와 같음 | 57 (v0.6) | — |
 | R1 새 알림 종류 `slot_hold_expired`·`hold_resumed` | 저장 | 저장됨 | `notifications.kind` CHECK |
 | R2 · R5 시스템이 보류 자동 재개(`resumed`) · 잡아 두기 풀림(`slot_hold_expired`)을 이력에 남김 | 저장 | 저장됨 | `events.action` CHECK |
 | R3 기타(`other`) 이유인데 이유 글 없음 / 이유 글 있음 / 상담 거절 `slot_unavailable` | 거부 / 저장 / 저장 | 거부됨 / 저장됨 / 저장됨 | `approvals` CHECK |
 | R4 체크 시각 없이 `chosen_by_parent` / 체크 시각과 함께 | 거부 / 저장 | 거부됨 / 저장됨 | `consultation_slots` CHECK |
 | R6 기한(`due_at`)이 없는 대기 카드를 더함 | 지연 수 그대로 | 1 → 1 | `director_overview` 뷰 |
+| D1 같은 문서·같은 반을 대상 반으로 두 번 (v0.6) | 거부 | 거부됨 | `document_classrooms` PK |
+| D2 근거 검색 반 조건: 만 4세 학부모 / 만 3세 학부모 / 교직원 (원 전체 문서 1·만 4·5세반 문서 1·만 3세반 문서 1) (v0.6) | 원 전체+김장 / 원 전체+소풍 / 셋 다 | 기대대로 2건 / 2건 / 3건 | 3.3 ① 반 조건 |
 
 ## 10. LangGraph 체크포인트
 
@@ -1072,4 +1092,5 @@ v0.4까지 'T10에서 정할 것'이던 항목은 모두 정했다. 백엔드 �
 | 보류 예정일 재개 | 기본값 → 계약표 6장 ⑨ 자동 재개 | 2.2 |
 | `urgency`와 위험 등급 | 정함 → 계약표 1.1 규칙 11. 받은함 맨 위는 `risk_level = urgent` | 2.7 |
 | 요청 없는 카드의 받은함 위치 | 기본값 → 계약표 6장 ⑩ '확인 필요'. 뷰가 이미 이렇게 나눔 | 2.7 |
+| 여러 반 대상 자료(FB-003-2, 11/18) | 정함 → 연결 표 `document_classrooms`. 학부모 근거 검색은 원 전체 자료와 우리 아이 반 자료만 | 2.3, 3.3 |
 | `conflict_pending`이면 원에 남은 답 무효 | 정함 → 계약표 1.1 규칙 12. 트리거가 이미 이렇게 동작 | 2.5 |
