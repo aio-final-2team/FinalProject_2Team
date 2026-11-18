@@ -5,6 +5,7 @@ doc_type: menu
 kindergarten_id: KG-DEMO-01
 kindergarten_name: 햇살유치원(가상)
 classroom: "전체"
+classroom_keys: []
 effective_from: 2026-09-01
 published_at: 2026-09-01
 visibility: all

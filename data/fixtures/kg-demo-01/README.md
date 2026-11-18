@@ -6,11 +6,42 @@
 - 교사: `T-DEMO-01` 김하늘 선생님(가상, 만 5세반 담임), `T-DEMO-02` 이바다 선생님(가상, 만 4세반 담임), `T-DEMO-03` 박구름 선생님(가상, 만 3세반 담임)
 - 기준일: 2026-11-16(월) (팀 자체 30문항 v0.5 공통 설정)
 - 문서 형식: 11/13 통신문 양식(원훈·호수·항목별 안내·준비물), 위치는 `## 1쪽 …` 제목으로 표시
-- 머리말(front matter): `id`, `title`, `doc_type`(notice·schedule·menu·policy·consult_timetable), `kindergarten_id`, `classroom`, `effective_from`, `published_at`, `visibility`(all·parents·staff), `source`(virtual), `is_virtual` — DB `documents` 표 열 이름에 맞춤(PR #238)
-- 이 색인과 메모는 사람용입니다. 검색 적재(T20)는 하위 폴더의 문서만 읽어 주세요(답이 새지 않게).
-- 상담 시간표는 문서(`consult_timetable/CS-*.md`, 사람용·검색용)와 `consult_timetable/staff_busy_blocks.json`(DB `staff_busy_blocks` 적재용, 계약표 5장) 두 형태로 둡니다. 둘은 같은 값이고 생성기가 일치를 검사합니다.
-- 반 이름·교사 이름은 아직 시드(`db/seeds`, T13)가 없어 임시 값입니다. 시드가 나오면 맞춥니다. 데모 ID(`KG-DEMO-01`·`T-DEMO-01/02`)는 계약표 부록 A와 같습니다.
-- 다시 만들기: `python3 data/fixtures/make_fixtures.py` (생성 + 완료 기준 검사)
+- 머리말(front matter): `id`, `title`, `doc_type`(notice·schedule·menu·policy·consult_timetable), `kindergarten_id`, `classroom`, `classroom_keys`, `effective_from`, `published_at`, `visibility`(all·parents·staff), `source`(virtual), `is_virtual` — DB `documents` 표 열 이름에 맞춤(PR #238)
+- 상담 시간표는 문서(`consult_timetable/CS-*.md`, 사람용·검색용)와 `consult_timetable/staff_busy_blocks.json`(DB `staff_busy_blocks` 적재용, 계약표 5장) 두 형태로 둡니다. 둘 다 생성기의 `FREE_SLOTS` 한 곳에서 만들고, 검사는 생성된 두 파일을 직접 읽어 비교합니다.
+- 다시 만들기: `python3 data/fixtures/make_fixtures.py` (생성 + 완료 기준 검사) · 검사만: `python3 data/fixtures/make_fixtures.py --check-only` (손으로 고친 파일도 그대로 검사)
+
+## T20 적재 규칙
+
+**적재 대상**
+
+| 파일 | 넣는 곳 | 비고 |
+| --- | --- | --- |
+| `notice/` `schedule/` `menu/` `policy/` `consult_timetable/` 아래 `*.md` 30개 | `documents` → 조각 나눠 `document_chunks` | 검색 대상은 이 30개뿐 |
+| `consult_timetable/staff_busy_blocks.json` | `staff_busy_blocks` | 검색 대상 아님. `period = tstzrange(start, end, '[)')` |
+| 이 `README.md` | 넣지 않음 | 사람용 색인·평가 메모. 검색에 넣으면 답이 샘 |
+
+**기관·반·교사 연결** (고정 UUID는 시드 `db/seeds`(T13)에서 정함. 데모 ID는 계약표 부록 A와 같음)
+
+| 문서 쪽 값 | DB 쪽 값 | 규칙 |
+| --- | --- | --- |
+| `kindergarten_id: KG-DEMO-01` | `documents.org_id` | 시드의 `KG-DEMO-01` 기관 UUID |
+| `classroom_keys: []` (`classroom: "전체"`) | `documents.classroom_id = NULL` | 원 공통 자료 |
+| `classroom_keys: [C5]` 처럼 하나 | `documents.classroom_id` = 그 반 UUID | 아래 반 표로 연결 |
+| `classroom_keys: [C4, C5]` 처럼 둘 이상 | 아래 '복수 반' 참고 | 해당: `NT-2026-30` 김장 체험 |
+| `staff_busy_blocks.json`의 `teacher_id: T-DEMO-0N` | `staff_busy_blocks.user_id` | 시드의 교사 계정 UUID |
+| `title`·`doc_type`·`effective_from`·`visibility`·`source`·`is_virtual` | 같은 이름의 열 | 그대로 |
+| 본문의 `## 1쪽 …`·`## 2쪽 준비물` 제목 | `document_chunks.location` | 제목 단위로 조각을 나누고 제목을 위치로 씀 |
+
+반 표 (`classrooms`, 2026학년도. 이름은 시드가 나오면 시드에 맞춤)
+
+| 반 키 | `name` | `age_group` | 담임 |
+| --- | --- | --- | --- |
+| C3 | 만 3세 새싹반 | 3 | T-DEMO-03 |
+| C4 | 만 4세 별빛반 | 4 | T-DEMO-02 |
+| C5 | 만 5세반(햇살반) | 5 | T-DEMO-01 |
+
+**복수 반 문서 (확인 필요: 태웅·#238)**
+`documents.classroom_id`는 반 하나만 담고, `UNIQUE (org_id, content_sha256)` 때문에 같은 문서를 반마다 한 줄씩 넣을 수도 없습니다. 제안: 지금은 `classroom_id = NULL`(원 공통)로 넣고 본문의 '대상 반'으로 구분합니다. 반별 검색 필터가 꼭 필요해지면 `document_classrooms(document_id, classroom_id)` 연결 표를 #238에 추가하는 안을 태웅님과 정합니다.
 
 ## 의도한 시험 장치
 - **문서 충돌(FR-04)**: 겨울방학 시작일 — 통신문 `NT-2026-25` 12/24 vs 학사 일정표 `SC-2026-2H` 12/26 → 단정하지 않고 담임 카드(YC-F03)

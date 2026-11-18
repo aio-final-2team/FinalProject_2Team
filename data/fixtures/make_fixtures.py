@@ -33,7 +33,19 @@ TEACHERS = {
 FICTION = "※ 이 문서는 유치온 개발·평가용 가상 자료입니다. 실제 기관·인물·아동 정보가 아닙니다."
 DOC_TYPES = {"notice", "schedule", "menu", "policy", "consult_timetable"}  # DB 설계서 documents.doc_type (PR #238)
 
+CLASS_TEACHER = {"C3": "T-DEMO-03", "C4": "T-DEMO-02", "C5": "T-DEMO-01"}
 DOCS: list[dict] = []
+
+
+def classroom_keys(classroom):
+    """대상 반 글자 → 반 키 목록. '전체' = [] (원 공통 자료, documents.classroom_id = NULL)"""
+    if classroom == "전체":
+        return []
+    return [k for k, v in CLASSES.items() if v in classroom]
+
+
+def class_rows():
+    return "\n".join(f"| {k} | {v} | {k[1]} | {CLASS_TEACHER[k]} |" for k, v in CLASSES.items())
 
 
 def doc(id, doc_type, title, effective_from, classroom, body, *, published_at=None, eval_refs=(), note=None, visibility="all"):
@@ -365,27 +377,45 @@ doc("PL-PRIVACY", "policy", "운영 규정 — 개인정보와 사진 공개", "
 2. 동의하지 않은 아이의 얼굴은 가리거나 사진에서 뺍니다.
 """, note="권한 밖 문항(P02 옆 반 정보 요청) 참고용.")
 
-# ───────────────────────── 상담 시간표 (consult) 2 ─────────────────────────
-doc("CS-T01-2026-11", "consult_timetable", "상담 시간표 — 김하늘 선생님(만 5세반, T-DEMO-01)", "2026-11-02", "만 5세반(햇살반)", """
-| 날짜 | 가능 시간(30분) | 비고 |
-| --- | --- | --- |
-| 11-16(월) | 14:00, 15:00 | |
-| 11-17(화) | 14:30, 16:00 | |
-| 11-18(수) | 15:00 | 오후 교사 회의 |
-| 11-19(목) | 14:00, 16:30 | |
-| **11-20(금)** | **10:00**, **14:00**, **16:30** | 10:00은 수업 일정에 따라 담임이 거절할 수 있음(오전 예외 시간) |
+# ───────────────────────── 상담 시간표 (consult_timetable) 2 ─────────────────────────
+# 상담 가능 시간의 원천은 이 표 하나뿐이다. 문서(CS-*.md)의 표와 staff_busy_blocks.json 을
+# 모두 여기서 만들고, 검사는 생성된 두 파일을 직접 읽어 비교한다(PR #247 검토 의견).
+# 값: 가능 시간 목록, [] = 가능 시간 없음, None = 하루 종일 off(교사 연수)
+DAY_START, DAY_END, SLOT_MIN = "09:00", "17:30", 30
+FREE_SLOTS = {
+    "T-DEMO-01": {"2026-11-16": ["14:00", "15:00"], "2026-11-17": ["14:30", "16:00"],
+                  "2026-11-18": ["15:00"], "2026-11-19": ["14:00", "16:30"],
+                  "2026-11-20": ["10:00", "14:00", "16:30"]},
+    "T-DEMO-02": {"2026-11-16": ["15:00", "16:00"], "2026-11-17": [], "2026-11-18": ["14:00"],
+                  "2026-11-19": [], "2026-11-20": None},
+}
+SLOT_REMARKS = {
+    ("T-DEMO-01", "2026-11-18"): "오후 교사 회의",
+    ("T-DEMO-01", "2026-11-20"): "10:00은 수업 일정에 따라 담임이 거절할 수 있음(오전 예외 시간)",
+    ("T-DEMO-02", "2026-11-20"): "교사 연수로 상담 없음",
+}
+MEETING_DAYS = {("T-DEMO-01", "2026-11-18")}
+
+
+def timetable_table(teacher):
+    rows = ["| 날짜 | 가능 시간(30분) | 비고 |", "| --- | --- | --- |"]
+    for day, slots in FREE_SLOTS[teacher].items():
+        d = dt.date.fromisoformat(day)
+        label = f"{day[5:]}({'월화수목금토일'[d.weekday()]})"
+        rows.append(f"| {label} | {', '.join(slots) if slots else '—'} | {SLOT_REMARKS.get((teacher, day), '')} |")
+    return "\n".join(rows)
+
+
+doc("CS-T01-2026-11", "consult_timetable", "상담 시간표 — 김하늘 선생님(만 5세반, T-DEMO-01)", "2026-11-02", "만 5세반(햇살반)", f"""
+{timetable_table("T-DEMO-01")}
 
 - 담당 교사 ID: T-DEMO-01
 - 신청은 '요청'이며 담임이 확정해야 예약이 됩니다.
 """, eval_refs=["YC-N06", "YC-M03", "YC-M04", "YC-F01"],
     note="11/20 후보 10:00·14:00·16:30 = YC-M03 모의 응답과 같음. 10:00 거절 이유 '오전은 수업 시간' = YC-M04.")
 
-doc("CS-T02-2026-11", "consult_timetable", "상담 시간표 — 이바다 선생님(만 4세반, T-DEMO-02)", "2026-11-02", "만 4세 별빛반", """
-| 날짜 | 가능 시간(30분) | 비고 |
-| --- | --- | --- |
-| 11-16(월) | 15:00, 16:00 | |
-| 11-18(수) | 14:00 | |
-| 11-20(금) | — | 교사 연수로 상담 없음 |
+doc("CS-T02-2026-11", "consult_timetable", "상담 시간표 — 이바다 선생님(만 4세반, T-DEMO-02)", "2026-11-02", "만 4세 별빛반", f"""
+{timetable_table("T-DEMO-02")}
 
 - 담당 교사 ID: T-DEMO-02
 """, note="빈 날짜(11/20) 사례: YC-F02 '가능한 시간 없음' 응답 유형 참고.")
@@ -415,6 +445,7 @@ def render(d):
              f"kindergarten_id: {KG['id']}",
              f"kindergarten_name: {KG['name']}",
              f"classroom: \"{d['classroom']}\"",
+             f"classroom_keys: [{', '.join(classroom_keys(d['classroom']))}]",
              f"effective_from: {d['effective_from']}",
              f"published_at: {d['published_at']}",
              f"visibility: {d['visibility']}",
@@ -442,6 +473,8 @@ def check():
         dt.date.fromisoformat(d["effective_from"])
         if not d["classroom"]:
             errors.append(f"{d['id']}: 대상 반 없음")
+        elif d["classroom"] != "전체" and len(classroom_keys(d["classroom"])) != d["classroom"].count(",") + 1:
+            errors.append(f"{d['id']}: 대상 반 '{d['classroom']}'을 반 키로 바꿀 수 없음")
         if d["doc_type"] not in DOC_TYPES:
             errors.append(f"{d['id']}: doc_type {d['doc_type']}")
         for m in re.finditer(r"(\d{4})-(\d{2})-(\d{2})\((.)\)", t):
@@ -466,16 +499,7 @@ def check():
 # ───────────────────────── 상담 시간표 → staff_busy_blocks (계약표 5장) ─────────────────────────
 # 계약표 5장: 상담 시간표는 '교사별 요일·시간'으로 staff_busy_blocks 에 들어가고,
 # 후보 시간은 코드 AI(find_consult_slots)가 '바쁜 시간의 빈틈'으로 계산한다.
-# 아래 FREE_SLOTS(상담 시간표 문서와 같은 값)의 여집합을 바쁜 시간으로 만든다.
-DAY_START, DAY_END, SLOT_MIN = "09:00", "17:30", 30
-FREE_SLOTS = {
-    "T-DEMO-01": {"2026-11-16": ["14:00", "15:00"], "2026-11-17": ["14:30", "16:00"],
-                  "2026-11-18": ["15:00"], "2026-11-19": ["14:00", "16:30"],
-                  "2026-11-20": ["10:00", "14:00", "16:30"]},
-    "T-DEMO-02": {"2026-11-16": ["15:00", "16:00"], "2026-11-17": [], "2026-11-18": ["14:00"],
-                  "2026-11-19": [], "2026-11-20": None},  # None = 하루 종일 off(교사 연수)
-}
-MEETING_DAYS = {("T-DEMO-01", "2026-11-18")}
+# 위 FREE_SLOTS(상담 시간표의 유일한 원천)의 여집합을 바쁜 시간으로 만든다.
 
 
 def _m(hhmm):
@@ -523,23 +547,53 @@ def write_busy_blocks():
     (d / "staff_busy_blocks.json").write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
+def free_from_json(path):
+    """생성된 staff_busy_blocks.json 만 읽어 (교사, 날짜) → 빈틈 30분 시작 시각 목록"""
+    import json
+    data = json.loads(path.read_text(encoding="utf-8"))
+    win_a, win_b = (_m(x) for x in data["day_window"])
+    step = data["slot_minutes"]
+    by_day = {}
+    for b in data["blocks"]:
+        by_day.setdefault((b["teacher_id"], b["start"][:10]), []).append(
+            (_m(b["start"][11:16]), _m(b["end"][11:16])))
+    out = {}
+    for key, spans in by_day.items():
+        free, cur = [], win_a
+        for a, b in sorted(spans):
+            free += [_hhmm(t) for t in range(cur, a, step)]
+            cur = max(cur, b)
+        free += [_hhmm(t) for t in range(cur, win_b, step)]
+        out[key] = free
+    return out
+
+
+def free_from_markdown(path):
+    """생성된 상담 시간표 문서(CS-*.md)만 읽어 (교사, 날짜) → 가능 시간 목록"""
+    t = path.read_text(encoding="utf-8")
+    teacher = re.search(r"담당 교사 ID: (T-DEMO-\d+)", t)[1]
+    year = re.search(r"effective_from: (\d{4})", t)[1]
+    out = {}
+    for m in re.finditer(r"^\| (\d{2}-\d{2})\(.\) \| ([^|]*) \|", t, re.M):
+        times = re.findall(r"\d{2}:\d{2}", m[2])
+        out[(teacher, f"{year}-{m[1]}")] = times
+    return out
+
+
 def check_busy_blocks():
+    """문서(.md)와 DB 적재용 JSON 을 서로 직접 비교한다. FREE_SLOTS 는 보지 않는다."""
     errs = []
-    blocks = busy_blocks()
-    for teacher, days in FREE_SLOTS.items():
-        for day, slots in days.items():
-            mine = sorted((_m(b["start"][11:16]), _m(b["end"][11:16])) for b in blocks
-                          if b["teacher_id"] == teacher and b["start"].startswith(day))
-            free, cur = [], _m(DAY_START)
-            for a, b in mine:
-                free += [_hhmm(t) for t in range(cur, a, SLOT_MIN)]
-                cur = b
-            free += [_hhmm(t) for t in range(cur, _m(DAY_END), SLOT_MIN)]
-            want = slots or []
-            if free != sorted(want):
-                errs.append(f"busy_blocks {teacher} {day}: 빈틈 {free} ≠ 시간표 {want}")
-    t01 = FREE_SLOTS["T-DEMO-01"]["2026-11-20"]
-    if t01 != ["10:00", "14:00", "16:30"]:
+    from_json = free_from_json(OUT / "consult_timetable" / "staff_busy_blocks.json")
+    from_md = {}
+    for p in sorted((OUT / "consult_timetable").glob("CS-*.md")):
+        from_md.update(free_from_markdown(p))
+    if not from_md:
+        errs.append("상담 시간표 문서에서 시간을 읽지 못함")
+    for key in sorted(set(from_md) | set(from_json)):
+        a, b = from_md.get(key), from_json.get(key)
+        if a != b:
+            errs.append(f"상담 시간 불일치 {key[0]} {key[1]}: 문서 {a} ≠ JSON 빈틈 {b}")
+    if from_md.get(("T-DEMO-01", "2026-11-20")) != ["10:00", "14:00", "16:30"]:
         errs.append("YC-M03 모의 응답(10:00·14:00·16:30)과 다름")
     return errs
 
@@ -556,11 +610,40 @@ def write_index():
 - 교사: {', '.join(f'`{k}` {v}' for k, v in TEACHERS.items())}
 - 기준일: 2026-11-16(월) (팀 자체 30문항 v0.5 공통 설정)
 - 문서 형식: 11/13 통신문 양식(원훈·호수·항목별 안내·준비물), 위치는 `## 1쪽 …` 제목으로 표시
-- 머리말(front matter): `id`, `title`, `doc_type`(notice·schedule·menu·policy·consult_timetable), `kindergarten_id`, `classroom`, `effective_from`, `published_at`, `visibility`(all·parents·staff), `source`(virtual), `is_virtual` — DB `documents` 표 열 이름에 맞춤(PR #238)
-- 이 색인과 메모는 사람용입니다. 검색 적재(T20)는 하위 폴더의 문서만 읽어 주세요(답이 새지 않게).
-- 상담 시간표는 문서(`consult_timetable/CS-*.md`, 사람용·검색용)와 `consult_timetable/staff_busy_blocks.json`(DB `staff_busy_blocks` 적재용, 계약표 5장) 두 형태로 둡니다. 둘은 같은 값이고 생성기가 일치를 검사합니다.
-- 반 이름·교사 이름은 아직 시드(`db/seeds`, T13)가 없어 임시 값입니다. 시드가 나오면 맞춥니다. 데모 ID(`KG-DEMO-01`·`T-DEMO-01/02`)는 계약표 부록 A와 같습니다.
-- 다시 만들기: `python3 data/fixtures/make_fixtures.py` (생성 + 완료 기준 검사)
+- 머리말(front matter): `id`, `title`, `doc_type`(notice·schedule·menu·policy·consult_timetable), `kindergarten_id`, `classroom`, `classroom_keys`, `effective_from`, `published_at`, `visibility`(all·parents·staff), `source`(virtual), `is_virtual` — DB `documents` 표 열 이름에 맞춤(PR #238)
+- 상담 시간표는 문서(`consult_timetable/CS-*.md`, 사람용·검색용)와 `consult_timetable/staff_busy_blocks.json`(DB `staff_busy_blocks` 적재용, 계약표 5장) 두 형태로 둡니다. 둘 다 생성기의 `FREE_SLOTS` 한 곳에서 만들고, 검사는 생성된 두 파일을 직접 읽어 비교합니다.
+- 다시 만들기: `python3 data/fixtures/make_fixtures.py` (생성 + 완료 기준 검사) · 검사만: `python3 data/fixtures/make_fixtures.py --check-only` (손으로 고친 파일도 그대로 검사)
+
+## T20 적재 규칙
+
+**적재 대상**
+
+| 파일 | 넣는 곳 | 비고 |
+| --- | --- | --- |
+| `notice/` `schedule/` `menu/` `policy/` `consult_timetable/` 아래 `*.md` 30개 | `documents` → 조각 나눠 `document_chunks` | 검색 대상은 이 30개뿐 |
+| `consult_timetable/staff_busy_blocks.json` | `staff_busy_blocks` | 검색 대상 아님. `period = tstzrange(start, end, '[)')` |
+| 이 `README.md` | 넣지 않음 | 사람용 색인·평가 메모. 검색에 넣으면 답이 샘 |
+
+**기관·반·교사 연결** (고정 UUID는 시드 `db/seeds`(T13)에서 정함. 데모 ID는 계약표 부록 A와 같음)
+
+| 문서 쪽 값 | DB 쪽 값 | 규칙 |
+| --- | --- | --- |
+| `kindergarten_id: KG-DEMO-01` | `documents.org_id` | 시드의 `KG-DEMO-01` 기관 UUID |
+| `classroom_keys: []` (`classroom: "전체"`) | `documents.classroom_id = NULL` | 원 공통 자료 |
+| `classroom_keys: [C5]` 처럼 하나 | `documents.classroom_id` = 그 반 UUID | 아래 반 표로 연결 |
+| `classroom_keys: [C4, C5]` 처럼 둘 이상 | 아래 '복수 반' 참고 | 해당: `NT-2026-30` 김장 체험 |
+| `staff_busy_blocks.json`의 `teacher_id: T-DEMO-0N` | `staff_busy_blocks.user_id` | 시드의 교사 계정 UUID |
+| `title`·`doc_type`·`effective_from`·`visibility`·`source`·`is_virtual` | 같은 이름의 열 | 그대로 |
+| 본문의 `## 1쪽 …`·`## 2쪽 준비물` 제목 | `document_chunks.location` | 제목 단위로 조각을 나누고 제목을 위치로 씀 |
+
+반 표 (`classrooms`, 2026학년도. 이름은 시드가 나오면 시드에 맞춤)
+
+| 반 키 | `name` | `age_group` | 담임 |
+| --- | --- | --- | --- |
+{class_rows()}
+
+**복수 반 문서 (확인 필요: 태웅·#238)**
+`documents.classroom_id`는 반 하나만 담고, `UNIQUE (org_id, content_sha256)` 때문에 같은 문서를 반마다 한 줄씩 넣을 수도 없습니다. 제안: 지금은 `classroom_id = NULL`(원 공통)로 넣고 본문의 '대상 반'으로 구분합니다. 반별 검색 필터가 꼭 필요해지면 `document_classrooms(document_id, classroom_id)` 연결 표를 #238에 추가하는 안을 태웅님과 정합니다.
 
 ## 의도한 시험 장치
 - **문서 충돌(FR-04)**: 겨울방학 시작일 — 통신문 `NT-2026-25` 12/24 vs 학사 일정표 `SC-2026-2H` 12/26 → 단정하지 않고 담임 카드(YC-F03)
@@ -572,6 +655,12 @@ def write_index():
 
 
 def main():
+    if "--check-only" in sys.argv:
+        errs = check() + check_busy_blocks()
+        print("검사 실패:" if errs else "검사 통과(파일만 검사)")
+        for e in errs:
+            print(" -", e)
+        sys.exit(1 if errs else 0)
     OUT.mkdir(parents=True, exist_ok=True)
     write_index()
     for d in DOCS:
