@@ -36,6 +36,8 @@
 - 1117 WBS의 T06 요구사항에 AC-07을 추가했습니다. BFCL과 팀 자체 평가는 별도 분모로 채점하고, T05 반복 실측에 사용한 팀 v0.3과 #235의 v0.5 평가 자료를 구분해 기록했습니다. [참고 #235](https://github.com/aio-final-2team/FinalProject_2Team/pull/235) · [문서 병합 #244](https://github.com/aio-final-2team/FinalProject_2Team/pull/244)
 - [피드백 안내](../Feedback/README.md)에 담당자별 메모 폴더와 `[문서]`·`[작업]` 항목의 처리 절차를 정리했습니다. [#240](https://github.com/aio-final-2team/FinalProject_2Team/pull/240) · [#241](https://github.com/aio-final-2team/FinalProject_2Team/pull/241) · [#243](https://github.com/aio-final-2team/FinalProject_2Team/pull/243)
 
+- FB-001-5의 AWS 개발 기간 비용 추정(약 $133)과 실제 청구액 확인 방법을 기획서 §11에, 크레딧 초과 위험과 대응을 §10에 반영했습니다. WBS T66에는 개발 기간 추정치·실제 청구액·유치원 운영 월비용을 구분하는 기준을 추가했습니다. [원본 메모 PR #242](https://github.com/aio-final-2team/FinalProject_2Team/pull/242) · [통합 PR #259](https://github.com/aio-final-2team/FinalProject_2Team/pull/259) · [반영 메모](../Feedback/jihye/FB-001-5.md)
+
 ## 문서 갱신 기준
 
 Word와 Excel 원본을 기준으로 관리합니다. Markdown은 각각 DOCX·XLSX에서 생성한 UTF-8 열람용 사본이며, 원본을 수정하면 Markdown도 함께 갱신합니다. 날짜가 있는 핵심 반영 내용은 당시 결정과 최신 결정을 구분해 기록합니다.
