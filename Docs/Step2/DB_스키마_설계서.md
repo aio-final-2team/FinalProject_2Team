@@ -1,20 +1,20 @@
 # 유치온 데이터베이스 스키마 설계서 (T09)
 
-문서 버전 v0.6 | 작성 상태: 초안
+문서 버전 v0.7 | 작성 상태: T10 회의(11/18) 반영
 
 | 항목 | 내용 |
 | --- | --- |
 | 작업 | T09 데이터베이스 스키마 설계서 (#166) |
 | 작성 | 태웅 · 검토 영민 |
-| 판 | v0.6 · 2026-11-18. `topic_key` = 에이전트 `create_card`의 `topic_key` 인자(계약표 v0.6 4.2). T10 계약표 v0.5의 영민 리뷰 반영(`topic_key` 정해진 목록·`other`는 반복 수 제외, 같은 질문 묶기 MVP 제외). 여러 반 대상 자료를 위해 `documents.classroom_id`를 연결 표 `document_classrooms`로 바꾸고 근거 검색에 반 조건을 더함(FB-003-2). v0.5 · 2026-11-17. T10 계약표 v0.3의 정한 규칙·기본값에 맞춤(알림 종류·자동 재개·거절 이유·처리 기한). v0.4는 강사님 'DB 스키마 설계서 작성법'(11/16)의 목차·체크리스트 반영, v0.1~v0.3은 초안 1~3(T04 합의·대조 검토 반영) |
+| 판 | v0.7 · 2026-11-18. T10 회의 결과(FB-014) 반영: 학부모 미확인 민원은 이유 글이 있어야 처리 완료(트리거 `approvals_unconfirmed_complete_reason`), 원장 현황에 '학부모 미확인 완료' 수(`completed_unconfirmed`), `topic_key` 주제 10개 + `other`, 처리 기한은 주말·공휴일 제외, 근무 시간 밖 긴급 알림은 아이 안전만 바로. 강사 피드백 FB-001-3에 따라 세 흐름의 화면·API·DB 상태 대조(8.3)와 흐름별 DB 시험 23개(9.1)를 더함. v0.6 · 2026-11-18. `topic_key` = 에이전트 `create_card`의 `topic_key` 인자(계약표 v0.6 4.2). T10 계약표 v0.5의 영민 리뷰 반영(`topic_key` 정해진 목록·`other`는 반복 수 제외, 같은 질문 묶기 MVP 제외). 여러 반 대상 자료를 위해 `documents.classroom_id`를 연결 표 `document_classrooms`로 바꾸고 근거 검색에 반 조건을 더함(FB-003-2). v0.5 · 2026-11-17. T10 계약표 v0.3의 정한 규칙·기본값에 맞춤(알림 종류·자동 재개·거절 이유·처리 기한). v0.4는 강사님 'DB 스키마 설계서 작성법'(11/16)의 목차·체크리스트 반영, v0.1~v0.3은 초안 1~3(T04 합의·대조 검토 반영) |
 | 대상 DB | PostgreSQL 16 + pgvector 0.8 (`compose.yaml`의 `pgvector/pgvector:pg16`). Supabase를 쓰지 않는 이유는 5.1 |
 | DDL | [`db_schema_draft.sql`](db_schema_draft.sql) — 설계 검토용. 실제 적용은 T19 마이그레이션(`apps/api/migrations`)으로 옮김 |
-| 기준 문서 | 기획서 1116판 3장 FR-01~FR-13, 4장 NFR, 6장 공통 상태, 7장 기술과 데이터 · T04 흐름·권한 명세(11/17 팀 합의, PR #234) · T10 [입출력 계약표](입출력_계약표_초안.md) v0.5(1.1 정한 규칙, 6장 기본값) |
+| 기준 문서 | 기획서 1116판 3장 FR-01~FR-13, 4장 NFR, 6장 공통 상태, 7장 기술과 데이터 · T04 흐름·권한 명세(11/17 팀 합의, PR #234) · T10 [입출력 계약표](입출력_계약표_초안.md) v0.7(1.1 정한 규칙, 6장 11/18 회의 확정) |
 
 **목차.** 1~6장은 가이드의 '문서에 들어가는 여섯 가지' 순서다. 7장부터는 이 서비스의 범위·원칙·상태 값·시험 결과 같은 보충 내용이다.
 
 1. ERD와 관계 명세 · 2. 엔터티 정의 · 3. pgvector 스키마 · 4. 권한 정책(RLS 대신 API 검사) · 5. 세션·캐시 설계 · 6. 인덱스와 쿼리 최적화
-7. 범위와 설계 원칙 · 8. 상태 값 · 9. DB가 막는 것과 확인 결과 · 10. LangGraph 체크포인트 · 11. 나중에 더하는 표 · 12. 정한 것 (T10은 이의만 받음)
+7. 범위와 설계 원칙 · 8. 상태 값과 세 흐름 대조 · 9. DB가 막는 것과 확인 결과 · 10. LangGraph 체크포인트 · 11. 나중에 더하는 표 · 12. 정한 것 (T10 회의 11/18 확정)
 
 **가이드 제출 전 체크리스트와 이 문서**
 
@@ -27,7 +27,7 @@
 | 벡터 차원, 인덱스 연산자, 임베딩 모델이 적혀 있다 | 3장 |
 | 테이블마다 역할별 권한 표가 있다 | 4.2. PostgreSQL RLS 대신 API가 검사함(4.1) |
 | Redis 키 이름 규칙과 TTL이 적혀 있다 | 5.3. 해당 없음(Redis를 쓰지 않음) |
-| 문서의 SQL을 실제로 실행해 확인했다 | 9장(시험 67개), 6.2(실행 계획), 3.3(검색 SQL) |
+| 문서의 SQL을 실제로 실행해 확인했다 | 9장(시험 67개 + 세 흐름 시험 23개), 6.2(실행 계획), 3.3(검색 SQL) |
 
 ## 1. ERD와 관계 명세
 
@@ -428,7 +428,7 @@ FK를 걸 수 없는 참조는 두 곳이다. `cards.subject_id`와 `notificatio
 
 - `requests` 표 제약: `CHECK (previous_request_id IS DISTINCT FROM id)` · `CHECK ((risk_level IS NULL) OR (type = 'complaint'))` · `CHECK ((risk_level IS DISTINCT FROM 'urgent') OR (risk_category IS NOT NULL))` · `CHECK ((parent_confirmed_at IS NULL) OR (type = 'complaint'))` · `UNIQUE (id, org_id)` · `UNIQUE (requester_id, client_request_id)`
 - `cards` 표 제약: `CHECK ((request_id IS NOT NULL) OR (subject_id IS NOT NULL))` · `CHECK ((status <> 'on_hold') OR (hold_until IS NOT NULL))` · `CHECK ((kind <> 'director_report') OR (assignee_id IS NOT NULL))` · `UNIQUE (id, org_id)`
-- `approvals` 표 제약: `CHECK ((decision <> ALL (ARRAY['reject', 'dismiss'])) OR (reason_code IS NOT NULL))` · `CHECK ((decision <> ALL (ARRAY['hold', 'instruct'])) OR (reason_text IS NOT NULL))` · `CHECK ((reason_code IS DISTINCT FROM 'other') OR (reason_text IS NOT NULL))` · `UNIQUE (card_id, card_version)`
+- `approvals` 표 제약: `CHECK ((decision <> ALL (ARRAY['reject', 'dismiss'])) OR (reason_code IS NOT NULL))` · `CHECK ((decision <> ALL (ARRAY['hold', 'instruct'])) OR (reason_text IS NOT NULL))` · `CHECK ((reason_code IS DISTINCT FROM 'other') OR (reason_text IS NOT NULL))` · `UNIQUE (card_id, card_version)` · 트리거 `approvals_unconfirmed_complete_reason`(`complete`인데 요청의 `parent_confirmed_at`이 비어 있으면 `reason_text` 필수. 다른 표 값을 봐야 해서 CHECK 대신 트리거, v0.7)
 
 **요청**
 
@@ -436,8 +436,8 @@ FK를 걸 수 없는 참조는 두 곳이다. `cards.subject_id`와 `notificatio
 - `client_request_id`: 화면이 제출할 때 만드는 키다. 같은 사람이 같은 키로 다시 보내면 DB가 거부하므로, 네트워크 재시도로 요청이 두 번 생기지 않는다.
 - `urgency`: 모든 요청의 급한 정도(`low`·`normal`·`high`·`urgent`). 받은함 정렬에 쓴다.
 - `risk_level`: 민원에만 붙이는 위험 등급이다. `normal`(일반) · `urgent`(긴급) · `uncertain`(판단 필요)(T04 2.3, 합의 4). 긴급이면 `risk_category`에 네 가지 중 무엇인지 넣어야 저장된다: `child_safety`(아이 안전) · `staff_attack`(교직원 비난·위협) · `legal_external`(법적 조치·외부 기관) · `privacy_leak`(개인정보 유출 주장). 감독 AI의 확신 정도는 `risk_confidence`(0~1)에 남기고, 긴급과 판단 필요를 나누는 기준값은 T06 평가로 정한다. 사람이 판단 필요를 일반·긴급으로 다시 나누면 `events`에 `risk_reclassified`로 이전 값·새 값·이유를 남긴다.
-- `topic_key`: 감독 AI가 민원에 붙이는 주제 값이다. "같은 내용 3번째 민원이면 원장 보고"(FR-07)는 **같은 반 · 최근 30일 · 같은 `topic_key`** 민원 수로 센다. 보낸 학부모가 달라도 합산한다(T04 합의 3). 값은 영민이 T14에서 정하는 주제 목록(10개 안팎)과 `other` 중 하나이고, 에이전트 `create_card`의 `topic_key` 인자 그대로다(시작 목록 `safety`·`meal`·`teacher`·`belongings`·`fee`·`other`, 계약표 4.2). 목록은 설정값이라 `reason_code`처럼 CHECK로 묶지 않는다. `other`는 반복 수를 세지 않는다. 정해진 주제에 안 맞는 민원끼리는 같은 내용이라는 보장이 없어서다(계약표 6장 ②). 백엔드는 `topic_key = 'other'`이면 6.2 ② 쿼리를 부르지 않는다.
-- `parent_confirmed_at`: 민원 회신에 학부모가 '확인했어요'를 누른 시각이다. 민원은 이 값이 찬 뒤 담임이 '처리 완료'를 눌러야 `completed`가 되고, 자동 완료는 하지 않는다(T04 합의 2). 상태 값을 늘리지 않고 이 칸 하나로 처리한다.
+- `topic_key`: 감독 AI가 민원에 붙이는 주제 값이다. "같은 내용 3번째 민원이면 원장 보고"(FR-07)는 **같은 반 · 최근 30일 · 같은 `topic_key`** 민원 수로 센다. 보낸 학부모가 달라도 합산한다(T04 합의 3). 값은 T10 회의(11/18)에서 정한 주제 10개와 `other` 중 하나이고, 에이전트 `create_card`의 `topic_key` 인자 그대로다: `safety`(안전) · `meal`(급식) · `teacher`(선생님) · `belongings`(소지품) · `fee`(원비) · `pickup_bus`(등하원·버스) · `peer_conflict`(친구 다툼) · `health_hygiene`(건강·위생) · `photo_record`(사진·기록) · `communication`(소통·연락) · `other`(계약표 6장 ②). 확정본은 영민이 T14에서 공유한다. 목록은 설정값이라 `reason_code`처럼 CHECK로 묶지 않는다. `other`는 반복 수를 세지 않는다. 정해진 주제에 안 맞는 민원끼리는 같은 내용이라는 보장이 없어서다(계약표 6장 ②). 백엔드는 `topic_key = 'other'`이면 6.2 ② 쿼리를 부르지 않는다.
+- `parent_confirmed_at`: 민원 회신에 학부모가 '확인했어요'를 누른 시각이다. 민원은 담임이 '처리 완료'를 눌러야 `completed`가 되고, 자동 완료는 하지 않는다(T04 합의 2). 상태 값을 늘리지 않고 이 칸 하나로 처리한다. 학부모가 끝내 누르지 않으면 담임이 이유 글(`approvals.reason_text`, 예: '전화로 마무리함')을 남기고 처리 완료할 수 있다(계약표 6장 ⑦, T10 회의). 이유 없이 끝내려 하면 DB 트리거가 거부한다(9.1 F2-6).
 - `missing_fields`: 필수 정보가 빠졌을 때 물어볼 항목 목록(FR-02).
 - `previous_request_id`: `completed`·`rejected`는 끝 상태라, 다시 열려면 학부모가 새 요청을 보내고 이 칸에 이전 요청을 잇는다(T04 2.1). 같은 기관 요청만 이을 수 있다.
 - 반복 횟수(같은 반·최근 30일·같은 `topic_key` 민원 수)는 칸으로 두지 않고 카드를 조회할 때 `requests_repeat_idx`로 센다. 원장 보고를 만든 때의 수는 `events`의 `escalated` 행 `detail`에 남긴다.
@@ -446,7 +446,7 @@ FK를 걸 수 없는 참조는 두 곳이다. `cards.subject_id`와 `notificatio
 
 - `kind`: `reply_draft`(답변 초안) · `consult_slots`(상담 후보) · `director_report`(원장 보고) · `needs_info`(정보 요청) · `daily_note`(알림장 묶음) · `rule_proposal`(개인 규칙 제안).
 - `assignee_id`: 카드를 만들 때 담당자 ID를 바로 넣는다. 원장 보고 카드는 원장 ID가 없으면 저장되지 않는다. 감독 AI가 담당을 못 정하면 비워 두고, 그 카드가 받은함 '미배정'에 들어가 원장·원감이 지정한다.
-- `due_at`: 카드를 만들 때 처리 기한을 계산해 넣는다. 값은 계약표 6장 ⑤ 설정값이고, 시작 시각은 요청 접수(`requests.created_at`)다. 설정값이라 DB CHECK로 묶지 않는다. **`due_at`이 NULL이면 원장 현황 '지연'에 안 잡힌다**(뷰가 `due_at < now()`로 세므로, 9장 R6).
+- `due_at`: 카드를 만들 때 처리 기한을 계산해 넣는다. 값은 계약표 6장 ⑤ 설정값이고, 시작 시각은 요청 접수(`requests.created_at`)다. 설정값이라 DB CHECK로 묶지 않는다. 기한은 **주말·공휴일을 건너뛰고** 센다. 금요일 18시에 들어온 일반 민원(24시간)은 토·일을 건너뛰어 월요일 18시가 기한이다. 민원 긴급·판단 필요 2시간만 주말·공휴일에도 그대로 센다(T10 회의 11/18). 공휴일 목록은 설정값이고 위치는 인혜가 정한다. **`due_at`이 NULL이면 원장 현황 '지연'에 안 잡힌다**(뷰가 `due_at < now()`로 세므로, 9장 R6).
 
   | 카드 | `due_at` |
   | --- | --- |
@@ -459,7 +459,7 @@ FK를 걸 수 없는 참조는 두 곳이다. `cards.subject_id`와 `notificatio
 - `check_attempts`: 검사 AI가 돌려보낸 횟수. 최대 2를 넘으면 DB가 거부하므로, 3번째부터는 코드가 사람에게 넘겨야 한다(FR-08).
 - `version`: 카드가 바뀔 때마다 1씩 올린다. `approvals`는 `(card_id, card_version)`에 결정을 하나만 받으므로, 승인 버튼이나 재개를 여러 번 눌러도 한 번만 처리된다(AC-05). 화면은 결정할 때 자기가 본 `version`을 같이 보낸다.
 - `decision`: `approve`(승인) · `edit_approve`(고쳐서 승인) · `reject`(거절 → 초안 다시) · `hold`(보류) · `resume`(보류 재개 → `awaiting_review`) · `dismiss`(반려 → 요청을 처리하지 않음, `rejected`) · `complete`(민원 처리 완료) · `escalate`(담임이 원장님께 올리기, T04 8장 #5) · `instruct`(원장 지시 → 원장 보고 카드 `done`, 요청 `escalated → awaiting_review`). T04 2.1이 거절과 반려를 다른 길로 그리므로 값을 나눴다.
-- 거절·반려는 `reason_code`, 보류와 원장 지시는 `reason_text`(지시 내용)가 있어야 저장된다. 거절 이유가 기억과 규칙 제안의 재료가 된다(FR-06).
+- 거절·반려는 `reason_code`, 보류와 원장 지시는 `reason_text`(지시 내용), 학부모 미확인 민원의 처리 완료는 `reason_text`(마무리한 방법)가 있어야 저장된다. 거절 이유가 기억과 규칙 제안의 재료가 된다(FR-06).
 - `reason_code` 값(계약표 6장 ①에 상담 거절용 2개를 더함): `wrong_fact`(사실이 틀림) · `tone`(말투) · `missing_info`(근거·정보 부족) · `privacy`(개인정보) · `policy`(원 방침과 다름) · `slot_unavailable`(시간 안 됨) · `room_unavailable`(상담실 없음) · `other`(기타). 목록은 설정값이라 DB CHECK로 묶지 않고 API가 검사한다. `other`면 `reason_text`가 있어야 저장된다(DB CHECK). 같은 사람에게 같은 코드가 3번 쌓이면 규칙을 제안하므로(2.5), 상담 거절은 시간·상담실 코드로 남겨야 규칙이 생긴다.
 - 원장 보고 카드(`director_report`)에 결정을 내리는 사람은 원장·원감뿐이다(T04 7.2). 카드 종류에 따른 이 권한은 API가 검사한다.
 - 보류한 카드는 `cards.hold_until`(예정일)이 있어야 저장된다. 학부모 화면에는 예정일만 보이고, 보류 이유는 교직원끼리만 본다(T04 3장·9장).
@@ -689,7 +689,7 @@ FK를 걸 수 없는 참조는 두 곳이다. `cards.subject_id`와 `notificatio
 - `notifications.dedupe_key`: 알림은 처리 이력 한 건에서 생기므로 `event:<events.id>:<받는 사람 ID>`로 만든다(정함). 같은 이력으로 발송을 다시 시도해도 키가 같아 한 번만 들어가고, 같은 카드가 다시 보류되는 것처럼 새 이력이 생기면 새 알림이 된다. 재시도는 최대 3번이다(FR-12).
 - `notifications.kind`: T04 9장 알림 시점 11가지와 계약표 6장 기본값 2가지, 모두 13가지만 받는다. `needs_info` · `new_card`(새 카드) · `urgent_complaint`(긴급 민원) · `uncertain_complaint`(판단 필요 민원) · `director_report`(반복 3번째 원장 보고) · `on_hold` · `sent_or_booked` · `parent_confirmed`(학부모가 확인함) · `completed`(민원 완료) · `rejected` · `note_sent`(오늘 알림장) · `slot_hold_expired`(잡아 둔 상담 시간이 풀림 → 담임, ⑥) · `hold_resumed`(보류 카드가 예정일에 자동 재개 → 담당, ⑨). 최종 기능(상담 지연 알림 T48 등)은 그때 값을 더한다.
 - `subject_type`·`subject_id`: 요청·카드가 아닌 대상을 가리킨다. 지금은 `note_sent` 알림이 아이별 알림장(`daily_note`)을 가리킬 때만 쓴다.
-- `deliver_after`: 퇴근 뒤 알림을 모아 두었다가 보내는 데 쓴다(FR-21, 최종).
+- `deliver_after`: 이 시각이 지나야 보낸다. 근무 시간(평일 09~18시) 밖에 생긴 알림은 다음 근무 시작 시각을 넣는다. 긴급 민원 중 **아이 안전(`risk_category = child_safety`)만** 지금 시각을 넣어 바로 보내고, 나머지 긴급 3가지와 판단 필요 민원은 다음 근무 시간에 보낸다(FR-21, 계약표 6장 ⑬, T10 회의 11/18). 발송기는 `status = 'pending' AND deliver_after <= now()`만 꺼낸다(9.1 F3-5).
 
 **평가.** `eval_runs`는 요청한 모델 ID와 응답에 돌아온 모델 ID를 함께 남긴다. 원장 현황의 '평가 결과'와 모델 선택 근거(T05)를 같은 기록에서 본다.
 
@@ -708,7 +708,7 @@ FK를 걸 수 없는 참조는 두 곳이다. `cards.subject_id`와 `notificatio
 
 긴급 민원은 필터를 따로 두지 않고 `is_urgent`로 '확인 필요' 맨 위에 올린다. 판단 필요 민원을 사람이 다시 나누면 `risk_level`이 바뀌어 '확인 필요'로 옮겨 간다.
 
-원장 현황(FR-19)은 표를 따로 두지 않고 `staff_inbox`를 세는 뷰 `director_overview`로 만든다. 미배정 = 받은함 '미배정'(`inbox_filter = 'unassigned'`)과 같은 기준, 대기 = `pending`·`in_review`·`on_hold`, 지연 = 대기 중이면서 `due_at`이 지난 것, 완료 = 오늘 `done`이 된 것. 재배정 이력은 `events`의 `reassigned`, 평가 결과는 `eval_runs`에서 가져온다.
+원장 현황(FR-19)은 표를 따로 두지 않고 `staff_inbox`를 세는 뷰 `director_overview`로 만든다. 미배정 = 받은함 '미배정'(`inbox_filter = 'unassigned'`)과 같은 기준, 대기 = `pending`·`in_review`·`on_hold`, 지연 = 대기 중이면서 `due_at`이 지난 것, 완료 = 오늘 `done`이 된 것, 학부모 미확인 완료(`completed_unconfirmed`) = 최근 30일에 학부모 확인 없이 담임이 이유를 남기고 끝낸 민원 수(요청마다 한 번, 계약표 6장 ⑦). 재배정 이력은 `events`의 `reassigned`, 평가 결과는 `eval_runs`에서 가져온다.
 
 ### 2.8 엔터티 정의가 SQL이 되는 모습 (핵심 표)
 
@@ -1002,7 +1002,35 @@ MVP(12/08) 기능 FR-01~FR-13이 쓰는 표를 모두 정의한다. 최종(반�
 | `rejected` | 거절·반려됨 |
 | `done` | 처리 끝 |
 
-## 9. DB가 막는 것과 확인 결과 (2026-11-17, v0.6 부분 11/18)
+### 8.3 세 흐름의 화면·API·DB 상태 대조 (강사 피드백 FB-001-3)
+
+강사님 11/17 피드백 3번: "상담 후보 제시·선택·확정, 민원 회신·확인·처리 완료, 긴급 건 전달 흐름이 API와 DB에서 같은 상태로 표현되어야 해요. DB 제약 시험은 시험한 사례와 결과를 남기고, 계약 회의에서 바뀐 내용까지 반영해 주세요." 아래 표는 단계마다 화면 표시(T04 2장), API(계약표 2장·4장), DB 값을 나란히 놓고 그 단계를 DB가 어떻게 지키는지와 시험 번호(9.1)를 붙였다. T10 회의(11/18)에서 세 흐름 모두 '맞음'으로 확인했다.
+
+**상담: 후보 제시 → 학부모 선택 → 담임 확정**
+
+| 단계 | 화면 (학부모 / 교직원) | API | DB 값 | DB가 지키는 것 · 시험 |
+| --- | --- | --- | --- | --- |
+| 후보 제시 | 시간을 골라 주세요 / 학부모 응답 대기 | 요청 상세 `consultation` 후보 · 도구 `find_consult_slots` | `requests.status = needs_info` · `consultation_slots.status = proposed`(회차마다 최대 3개) | 같은 회차·같은 순번 두 번 거부(`(card_id, round, rank)` 유니크) · F1-1 |
+| 학부모 선택 | 선생님 확인 중 / 확인 필요 | `POST …/slot-choices` → `slots[] { status: chosen_by_parent }` · 도구 `request_consultation` | `consultation_slots.status = chosen_by_parent` + `chosen_at` · `requests.status = awaiting_review` | 체크 시각 없는 선택 거부(CHECK) · F1-2, F1-3. 24시간 지나면 풀고 시스템 이력 `slot_hold_expired` · F1-8 |
+| 담임 확정 | 예약 확정 / 예약됨 | 상담 확정 → `booking { id, room, period }`, 겹치면 409 `SLOT_TAKEN` · 도구 `book_slot` | `consultation_bookings.status = confirmed` · `consultation_slots.status = confirmed` · `requests.status = approved → sent_or_booked` | 같은 판 두 번 결정 거부(`approvals` 유니크) · F1-5. 요청당 확정 예약 하나 · F1-6. 같은 상담실·겹치는 시간 거부(배제 제약) · F1-7 |
+
+**민원: 회신 → 학부모 확인 → 처리 완료**
+
+| 단계 | 화면 (학부모 / 교직원) | API | DB 값 | DB가 지키는 것 · 시험 |
+| --- | --- | --- | --- | --- |
+| 회신 | 답변 도착 [확인했어요] / 진행 중 | 카드 결정 `approve`(또는 `edit_approve`) → 회신 발송 | `approvals.decision = approve` · `requests.status = sent_or_booked` · 받은함 `in_progress` | 주제는 정해진 10개 + `other`(설정값이라 CHECK 없음) · F2-1, F2-2 |
+| 학부모 확인 | 확인함 · 선생님이 마무리하고 있어요 / 확인 필요(처리 완료 대기) | '확인했어요' → `request { status, parent_confirmed_at }` | `requests.parent_confirmed_at` 기록, 상태는 `sent_or_booked` 그대로 · 받은함 `needs_review` | 민원이 아닌 요청엔 저장 거부(CHECK) · F2-3, F2-4 |
+| 처리 완료 | 완료 / 완료 | 카드 결정 `complete`. 학부모 미확인이면 `reason_text` 필수(없으면 422) | `approvals.decision = complete` · `requests.status = completed` | 학부모 미확인 + 이유 없음 거부(트리거, v0.7) · F2-5, F2-6, F2-7. 원장 현황 '학부모 미확인 완료' 수 · F2-8 |
+
+**긴급 건 전달: 긴급 분류 → 원장 보고 → 원장 지시**
+
+| 단계 | 화면 (학부모 / 교직원) | API | DB 값 | DB가 지키는 것 · 시험 |
+| --- | --- | --- | --- | --- |
+| 긴급 분류 | 원장님 확인 중 / 원장 보고(받은함 맨 위) | 받은함 `risk_level = urgent` 맨 위, `is_urgent` · 카드 상세 `request.risk_level` · 알림 `urgent_complaint` | `requests.risk_level = urgent` + `risk_category`(4가지 중 하나) · `requests.status = escalated` · `notifications.deliver_after` | 긴급인데 네 가지 중 무엇인지 없으면 거부(CHECK) · F3-1, F3-2. 근무 시간 밖엔 아이 안전만 바로 보냄 · F3-5 |
+| 원장 보고 | — / 원장 보고 카드 | 원장 보고 카드는 원장·원감만 결정 | `cards.kind = director_report`, `assignee_id` = 원장 | 담당 없는 원장 보고 카드 거부(CHECK) · F3-3, F3-4 |
+| 원장 지시 | 선생님 확인 중 / 확인 필요 | 원장 보고 지시 → 담임 카드에 지시가 붙음, 요청 `awaiting_review` | `approvals.decision = instruct` + `reason_text`(지시 내용) · 원장 보고 카드 `done` · 이력 `instructed` | 내용 없는 지시 거부(CHECK) · F3-6, F3-7 |
+
+## 9. DB가 막는 것과 확인 결과 (2026-11-17, v0.6·v0.7 부분 11/18)
 
 v0.5 DDL을 `pgvector/pgvector:pg16` 임시 컨테이너(Supabase가 아닌 같은 PostgreSQL 16 이미지)에 적용하고 가상 데이터로 아래 시험을 모두 다시 돌렸다. 표 26개와 뷰 2개, 트리거 1개가 오류 없이 만들어졌고, 시험 64개가 모두 기대대로 나왔다(실패 0). '긴급인데 네 가지 중…' 행부터는 T04 합의를 반영한 뒤, '끝난 요청을 이전 요청으로…' 행부터는 T04 대조 검토를 반영한 뒤, B·C 행은 v0.4, R 행은 v0.5에서 더한 시험이다. v0.6(11/18)에서는 바뀐 자료·검색 부분만 v0.6 DDL로 다시 확인했다. 표 27개가 오류 없이 만들어졌고 B13·D1·D2와 C1~C3가 기대대로 나왔다. 다른 표는 바뀌지 않아 v0.5 결과를 그대로 둔다.
 
@@ -1060,6 +1088,36 @@ v0.5 DDL을 `pgvector/pgvector:pg16` 임시 컨테이너(Supabase가 아닌 같�
 | D1 같은 문서·같은 반을 대상 반으로 두 번 (v0.6) | 거부 | 거부됨 | `document_classrooms` PK |
 | D2 근거 검색 반 조건: 만 4세 학부모 / 만 3세 학부모 / 교직원 (원 전체 문서 1·만 4·5세반 문서 1·만 3세반 문서 1) (v0.6) | 원 전체+김장 / 원 전체+소풍 / 셋 다 | 기대대로 2건 / 2건 / 3건 | 3.3 ① 반 조건 |
 
+### 9.1 세 흐름 시험 (v0.7, 2026-11-18)
+
+8.3의 세 흐름을 v0.7 DDL에서 처음부터 끝까지 따라가며 다시 시험했다. 같은 `pgvector/pgvector:pg16` 임시 컨테이너에 v0.7 DDL을 올렸고, 표 27개·뷰 2개·트리거 2개·FK 57개·컬럼 264개가 오류 없이 만들어졌다. 가상 원 하나(담임·원장·학부모 2명·아이 1명·상담실 1개)로 23개를 돌렸고 모두 기대대로 나왔다(실패 0). 바뀐 뷰 위에서 v0.6 시험(B13·D1·D2·C1~C3)도 다시 돌려 같은 결과를 확인했다. T10 회의(11/18)에서 바뀐 것은 F2-5~F2-8(학부모 미확인 처리 완료)과 F3-5(근무 시간 밖 긴급 알림)에서 확인한다.
+
+| 시험 | 기대 | 결과 | 막는 제약 |
+| --- | --- | --- | --- |
+| F1-1 상담 후보 3개 제시 | 저장 3 | 3 | — |
+| F1-2 체크 시각 없이 학부모 선택 | 거부 | 거부됨 | `consultation_slots` CHECK |
+| F1-3 체크 시각과 함께 선택, 요청 `awaiting_review` | 저장, 받은함 확인 필요 | `awaiting_review` · `needs_review` | — |
+| F1-4 체크한 후보로 담임 확정 | 저장 | 예약 `confirmed` · 후보 `confirmed` · 요청 `sent_or_booked` | — |
+| F1-5 같은 카드 판에 확정 두 번 | 거부 | 거부됨 | `approvals (card_id, card_version)` 유니크 |
+| F1-6 같은 요청에 두 번째 확정 예약 | 거부 | 거부됨 | `consultation_bookings_one_per_request` |
+| F1-7 다른 요청을 같은 상담실·겹치는 시간으로 확정 | 거부(API 409 `SLOT_TAKEN`) | 거부됨 | 상담실 배제 제약 |
+| F1-8 잡아 둔 시간이 풀림(시스템 이력) | 저장 | 저장됨 | `events.action` CHECK |
+| F2-1 새 주제 `pickup_bus` 민원 | 저장 | 저장됨 | — |
+| F2-2 회신 승인, 요청 `sent_or_booked` | 받은함 진행 중 | `in_progress` | `staff_inbox` 뷰 |
+| F2-3 상담 요청에 학부모 확인 시각 | 거부 | 거부됨 | `requests` CHECK |
+| F2-4 민원에 학부모 확인 시각 | 저장, 상태 그대로, 받은함 확인 필요 | `sent_or_booked` · `needs_review` | `staff_inbox` 뷰 |
+| F2-5 학부모가 확인한 민원을 이유 없이 처리 완료 | 저장 | 저장됨 | — |
+| F2-6 학부모가 확인 안 한 민원을 이유 없이 처리 완료 | 거부 | 거부됨 | 트리거 `approvals_unconfirmed_complete_reason` (v0.7) |
+| F2-7 같은 민원을 이유 글과 함께 처리 완료 | 저장 | 저장됨 | — |
+| F2-8 원장 현황 학부모 미확인 완료 수 | 1(확인한 민원은 안 셈) | 1 (오늘 완료 2) | `director_overview.completed_unconfirmed` (v0.7) |
+| F3-1 긴급인데 네 가지 중 무엇인지 없음 | 거부 | 거부됨 | `requests` CHECK |
+| F3-2 긴급 + 아이 안전 · 긴급 + 교직원 위협 | 저장 2 | 2 | — |
+| F3-3 담당 없는 원장 보고 카드 | 거부 | 거부됨 | `cards` CHECK |
+| F3-4 원장 ID로 원장 보고 카드 | 저장, 확인 필요 맨 위 | `needs_review` · `is_urgent` 참 | `staff_inbox` 뷰 |
+| F3-5 근무 시간 밖 긴급 알림 2건(아이 안전 지금 · 교직원 위협 다음 근무 시작) | 지금 보낼 것 1 | 1 | `notifications_queue_idx` 조건 |
+| F3-6 내용 없는 원장 지시 | 거부 | 거부됨 | `approvals` CHECK |
+| F3-7 내용 있는 원장 지시 | 카드 `done` · 요청 `awaiting_review` · 이력 `instructed` | 그대로 나옴 | — |
+
 ## 10. LangGraph 체크포인트
 
 승인 대기에서 멈췄다가 재개하는 흐름(interrupt)의 상태는 LangGraph의 PostgreSQL 체크포인트 저장소가 자기 표를 만들어 저장한다. 이 표는 라이브러리가 관리하므로 이 설계서의 DDL에 넣지 않는다. 카드와는 `cards.graph_thread_id`로 잇는다. 재개할 때는 체크포인트만 믿지 않고 카드의 `status`·`version`과 사용자 권한을 다시 확인한다(기획서 7장). 에이전트 설계서(상태 전이 그래프 설계서)에는 체크포인트 저장소와 장기 기억 표(`memories`·`saved_answers`)를 이 이름 그대로 적는다.
@@ -1076,21 +1134,23 @@ v0.5 DDL을 `pgvector/pgvector:pg16` 임시 컨테이너(Supabase가 아닌 같�
 | 같은 질문 묶기(계약표 6장 ⑧) | MVP 뒤(작업 미정) | MVP에서는 요청마다 카드 한 장. 더할 때 카드 한 장에 요청 여러 건을 잇는 표 `card_requests (card_id, request_id)`를 더하고, 승인하면 묶인 요청 모두에 회신. 일반 문의·같은 반만 묶고 민원과 아이 개인 정보가 든 질문은 뺌 |
 | 최종(선택) 기능 | T50·T56·T59·T60 | 착수를 정한 뒤 설계함 |
 
-## 12. 정한 것 (T10은 이의만 받음)
+## 12. 정한 것 (T10 회의 11/18 확정)
 
-v0.4까지 'T10에서 정할 것'이던 항목은 모두 정했다. 백엔드 형식은 태웅이 정했고(계약표 1.1), 다른 사람 작업에 걸리는 것은 기본값으로 정했다(계약표 6장). T10(11/18) 회의는 계약표를 같이 훑고 이의만 받는다.
+백엔드 형식은 태웅이 정했고(계약표 1.1), 다른 사람 작업에 걸리는 것은 T10 회의(2026-11-18, 5명)에서 확정했다(계약표 6장). 회의 결과와 할 일은 #피드백 FB-014에 있다.
 
 | 옛 안건 | 정한 것 | 이 문서 |
 | --- | --- | --- |
 | 거절·반려 이유 코드 | 정함 → 계약표 6장 ①, 상담 거절용 `slot_unavailable`·`room_unavailable`을 더함 | 2.2 |
-| `topic_key` 붙이는 기준 | 정함 → 계약표 6장 ②. 정해진 목록 + `other`, 목록은 영민이 T14에서 정함. `other`는 반복 수에서 뺌 | 2.2 |
-| 카드 종류별 처리 기한 | 정함 → 계약표 6장 ⑤. 원장 보고·정보 요청·규칙 제안은 이 문서에서 보충 | 2.2 |
+| `topic_key` 붙이는 기준 | 확정(11/18 회의 A안) → 계약표 6장 ②. 주제 10개 + `other`, 확정본은 영민이 T14에서 공유. `other`는 반복 수에서 뺌 | 2.2 |
+| 카드 종류별 처리 기한 | 확정(11/18 회의 B안) → 계약표 6장 ⑤. 주말·공휴일은 건너뛰고 세고, 긴급·판단 필요 2시간만 그대로. 원장 보고·정보 요청·규칙 제안은 이 문서에서 보충 | 2.2 |
 | 알림 `dedupe_key` | 정함(태웅) | 2.6 |
 | 상태가 바뀔 때 화면이 받을 필드 | 백엔드 형식이라 태웅이 T13 API 설계 문서에서 정함 | — |
-| 학부모 미확인 처리 완료(T04 F1) | 기본값 → 계약표 6장 ⑦ "담임이 이유를 남기면 처리 완료 가능". 이유는 `approvals.reason_text`에 남김. 원장 현황 '학부모 미확인 완료' 칸은 F1 담당(지혜·성주)이 확정한 뒤 더함 | 2.2 |
+| 학부모 미확인 처리 완료(T04 F1) | 확정(11/18 회의 A안) → 계약표 6장 ⑦ "담임이 이유를 남기면 처리 완료". 이유는 `approvals.reason_text`, 없으면 트리거가 거부. 원장 현황 `completed_unconfirmed` 수를 더함 | 2.2, 2.7, 9.1 |
 | 같은 질문 묶기 | MVP에서 뺌 → 계약표 6장 ⑧ | 11장(`card_requests`) |
-| 보류 예정일 재개 | 기본값 → 계약표 6장 ⑨ 자동 재개 | 2.2 |
+| 보류 예정일 재개 | 확정(11/18 회의 A안) → 계약표 6장 ⑨ 자동 재개 + `hold_resumed` 알림 | 2.2 |
 | `urgency`와 위험 등급 | 정함 → 계약표 1.1 규칙 11. 받은함 맨 위는 `risk_level = urgent` | 2.7 |
-| 요청 없는 카드의 받은함 위치 | 기본값 → 계약표 6장 ⑩ '확인 필요'. 뷰가 이미 이렇게 나눔 | 2.7 |
+| 요청 없는 카드의 받은함 위치 | 확정(11/18 회의, 기본값 그대로) → 계약표 6장 ⑩ '확인 필요'. 뷰가 이미 이렇게 나눔 | 2.7 |
+| 상담 시간 잡아 두기 | 확정(11/18 회의 A안) → 계약표 6장 ⑥ 24시간, 지나면 `slot_hold_expired` | 2.4, 9.1 F1-8 |
+| 근무 시간 밖 긴급 알림(T04 F2) | 확정(11/18 회의 A안) → 계약표 6장 ⑬ 아이 안전만 바로, 나머지는 다음 근무 시작(`deliver_after`) | 2.6, 9.1 F3-5 |
 | 여러 반 대상 자료(FB-003-2, 11/18) | 정함 → 연결 표 `document_classrooms`. 학부모 근거 검색은 원 전체 자료와 우리 아이 반 자료만 | 2.3, 3.3 |
 | `conflict_pending`이면 원에 남은 답 무효 | 정함 → 계약표 1.1 규칙 12. 트리거가 이미 이렇게 동작 | 2.5 |

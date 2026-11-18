@@ -1,4 +1,4 @@
--- 유치온 DB 스키마 초안 (T09) · 문서 버전 v0.6
+-- 유치온 DB 스키마 초안 (T09) · 문서 버전 v0.7 (T10 회의 11/18 반영)
 -- 설계서: Docs/Step2/DB_스키마_설계서.md
 -- 이 파일은 설계 검토용이다. 실제 적용은 T19 마이그레이션(apps/api/migrations)으로 옮긴다.
 -- 대상: PostgreSQL 16 + pgvector 0.8 (compose.yaml의 pgvector/pgvector:pg16). Supabase는 쓰지 않는다(설계서 5.1)
@@ -108,7 +108,7 @@ CREATE TABLE requests (
     risk_category    text CHECK (risk_category IN ('child_safety', 'staff_attack',
                                                    'legal_external', 'privacy_leak')),  -- 긴급 4가지
     risk_confidence  real CHECK (risk_confidence BETWEEN 0 AND 1),  -- 기준값은 T06 평가로 정함
-    topic_key        text,                 -- 감독 AI가 정해진 목록(계약표 6장 ②)에서 고른 민원 주제. 같은 주제 반복 횟수 계산용('other'는 안 셈)
+    topic_key        text,                 -- 감독 AI가 정해진 주제 10개 + 'other'(계약표 6장 ②, T10 회의 11/18)에서 고른 민원 주제. 같은 주제 반복 횟수 계산용('other'는 안 셈)
     parent_confirmed_at timestamptz,       -- 민원 회신에 학부모가 '확인했어요'를 누른 시각(T04 합의 2)
     missing_fields   jsonb NOT NULL DEFAULT '[]',
     assignee_id      uuid,
@@ -233,7 +233,7 @@ CREATE TABLE cards (
                      CHECK (status IN ('unassigned', 'pending', 'in_review', 'on_hold',
                                        'approved', 'rejected', 'done')),
     assignee_id      uuid,
-    due_at           timestamptz,          -- 지나면 원장 현황에서 '지연'
+    due_at           timestamptz,          -- 지나면 원장 현황에서 '지연'. API가 주말·공휴일을 건너뛰고 계산(긴급·판단 필요 2시간은 그대로, 계약표 6장 ⑤)
     hold_until       date,                 -- 보류 예정일. 학부모 화면에 보임(보류 이유는 교직원끼리만)
     draft            jsonb NOT NULL DEFAULT '{}',   -- AI 초안
     check_result     jsonb,                -- 검사 AI 결과(통과 여부·짚은 항목)
@@ -295,6 +295,26 @@ CREATE TABLE approvals (
     CHECK (decision NOT IN ('hold', 'instruct') OR reason_text IS NOT NULL),
     CHECK (reason_code IS DISTINCT FROM 'other' OR reason_text IS NOT NULL)   -- 기타면 이유 글 필수
 );
+
+-- 학부모가 '확인했어요'를 누르지 않은 민원을 처리 완료하려면 이유 글이 있어야 함(계약표 6장 ⑦, T10 회의 11/18)
+-- 다른 표(requests)의 값을 봐야 해서 CHECK 대신 트리거로 막음
+CREATE FUNCTION require_reason_for_unconfirmed_complete() RETURNS trigger AS $$
+BEGIN
+    IF NEW.decision = 'complete' AND NEW.reason_text IS NULL AND EXISTS (
+        SELECT 1 FROM cards c
+        JOIN requests r ON r.id = c.request_id AND r.org_id = c.org_id
+        WHERE c.id = NEW.card_id AND c.org_id = NEW.org_id AND r.parent_confirmed_at IS NULL
+    ) THEN
+        RAISE EXCEPTION 'complete without parent confirmation needs reason_text'
+            USING ERRCODE = 'check_violation';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER approvals_unconfirmed_complete_reason
+    BEFORE INSERT ON approvals
+    FOR EACH ROW EXECUTE FUNCTION require_reason_for_unconfirmed_complete();
 
 -- ─────────────────────────────────────────────
 -- 5. 처리 이력(지우지 않고 쌓기만)
@@ -568,7 +588,7 @@ CREATE TABLE notifications (
                   CHECK (status IN ('pending', 'sent', 'failed', 'held')),
     attempts      smallint NOT NULL DEFAULT 0 CHECK (attempts BETWEEN 0 AND 3),
     last_error    text,
-    deliver_after timestamptz NOT NULL DEFAULT now(),   -- 퇴근 뒤 알림 모아 두기(최종)
+    deliver_after timestamptz NOT NULL DEFAULT now(),   -- 근무 시간 밖 알림은 다음 근무 시작으로 미룸. 아이 안전 긴급만 바로(계약표 6장 ⑬)
     created_at    timestamptz NOT NULL DEFAULT now(),
     sent_at       timestamptz,
     read_at       timestamptz,
@@ -622,6 +642,7 @@ SELECT
     r.type          AS request_type,
     r.status        AS request_status,
     r.risk_level,
+    r.parent_confirmed_at,
     (r.risk_level = 'urgent') IS TRUE AS is_urgent,
     CASE
         WHEN c.status IN ('rejected', 'done') OR r.status IN ('completed', 'rejected')
@@ -654,6 +675,12 @@ SELECT
     count(*) FILTER (WHERE i.card_status IN ('pending', 'in_review', 'on_hold')
                        AND i.due_at < now())                                          AS delayed,
     count(*) FILTER (WHERE i.card_status = 'done'
-                       AND i.closed_at >= date_trunc('day', now()))                   AS done_today
+                       AND i.closed_at >= date_trunc('day', now()))                   AS done_today,
+    -- 학부모 확인 없이 담임이 이유를 남기고 끝낸 민원(최근 30일, 계약표 6장 ⑦). 요청마다 한 번만 셈
+    count(DISTINCT i.request_id) FILTER (WHERE i.request_type = 'complaint'
+                       AND i.request_status = 'completed'
+                       AND i.parent_confirmed_at IS NULL
+                       AND i.card_status = 'done'
+                       AND i.closed_at >= now() - interval '30 days')                 AS completed_unconfirmed
 FROM staff_inbox i
 GROUP BY i.org_id;
