@@ -1,0 +1,9 @@
+"""/api/v1 아래 라우터를 모은다. 목록은 API 설계 문서 2장 번호 순서."""
+
+from fastapi import APIRouter
+
+from app.api.routes import auth, requests
+
+api_router = APIRouter(prefix="/api/v1")
+api_router.include_router(auth.router)
+api_router.include_router(requests.router)

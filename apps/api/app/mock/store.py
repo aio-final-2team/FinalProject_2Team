@@ -1,0 +1,395 @@
+"""모의 API 저장소. 메모리 안에서만 살고, 서버를 다시 켜거나 reset()하면 데모 데이터로 돌아간다.
+
+칸 이름은 DB 설계서(db_schema_draft.sql)의 컬럼 이름을 그대로 쓴다. T19부터 이 자리를 실제 DB 구현으로 바꾼다.
+모의 AI는 요청을 받는 즉시 결과(분류·카드·상담 후보)를 만들어 두고, 스트림은 단계만 흉내 낸다.
+"""
+
+from __future__ import annotations
+
+import threading
+from dataclasses import dataclass, field
+from datetime import date, datetime, time, timedelta, timezone
+from typing import Any
+from uuid import UUID, uuid4
+
+from app.core.errors import ApiError
+from app.mock import seed
+
+KST = timezone(timedelta(hours=9))
+
+
+def now() -> datetime:
+    return datetime.now(KST)
+
+
+@dataclass
+class User:
+    id: UUID
+    org_id: UUID
+    role: str
+    login_id: str
+    password: str
+    display_name: str
+    token_version: int = 0
+    is_active: bool = True
+
+
+@dataclass
+class Classroom:
+    id: UUID
+    org_id: UUID
+    name: str
+
+
+@dataclass
+class ClassroomStaff:
+    classroom_id: UUID
+    user_id: UUID
+    valid_from: date | None = None
+    valid_to: date | None = None
+
+
+@dataclass
+class Child:
+    id: UUID
+    org_id: UUID
+    classroom_id: UUID
+    display_name: str
+    guardian_ids: list[UUID]
+
+
+@dataclass
+class Room:
+    id: UUID
+    org_id: UUID
+    name: str
+
+
+@dataclass
+class Request:
+    id: UUID
+    org_id: UUID
+    classroom_id: UUID
+    child_id: UUID
+    requester_id: UUID
+    client_request_id: str
+    type: str
+    body: str
+    title: str | None = None
+    status: str = "received"
+    urgency: str | None = None
+    risk_level: str | None = None
+    risk_category: str | None = None
+    topic_key: str | None = None
+    parent_confirmed_at: datetime | None = None
+    missing_fields: list[str] = field(default_factory=list)
+    assignee_id: UUID | None = None
+    previous_request_id: UUID | None = None
+    created_at: datetime = field(default_factory=now)
+    updated_at: datetime = field(default_factory=now)
+    closed_at: datetime | None = None
+
+
+@dataclass
+class Message:
+    id: int
+    request_id: UUID
+    sender_type: str            # user · agent · system
+    sender_id: UUID | None
+    body: str
+    created_at: datetime = field(default_factory=now)
+
+
+@dataclass
+class Card:
+    id: UUID
+    org_id: UUID
+    request_id: UUID | None
+    kind: str                   # reply_draft · consult_slots · director_report · needs_info · daily_note · rule_proposal
+    status: str = "pending"
+    assignee_id: UUID | None = None
+    due_at: datetime | None = None
+    hold_until: date | None = None
+    draft: dict[str, Any] = field(default_factory=dict)
+    check_result: dict[str, Any] | None = None
+    check_attempts: int = 0
+    version: int = 1
+    subject_type: str | None = None
+    subject_id: UUID | None = None
+    created_at: datetime = field(default_factory=now)
+    updated_at: datetime = field(default_factory=now)
+    closed_at: datetime | None = None
+
+
+@dataclass
+class Slot:
+    id: int
+    card_id: UUID
+    org_id: UUID
+    teacher_id: UUID
+    room_id: UUID
+    start: datetime
+    end: datetime
+    round: int = 1
+    rank: int = 1
+    status: str = "proposed"    # proposed · chosen_by_parent · confirmed · discarded
+    chosen_at: datetime | None = None
+
+
+@dataclass
+class Event:
+    id: int
+    org_id: UUID
+    action: str
+    request_id: UUID | None = None
+    card_id: UUID | None = None
+    actor_type: str = "system"  # user · agent · system
+    actor_id: UUID | None = None
+    agent_name: str | None = None
+    from_status: str | None = None
+    to_status: str | None = None
+    detail: dict[str, Any] = field(default_factory=dict)
+    created_at: datetime = field(default_factory=now)
+
+
+class _State:
+    def __init__(self) -> None:
+        org = seed.ORG
+        self.users = {u["id"]: User(org_id=org, password=seed.DEMO_PASSWORD, **u) for u in seed.USERS}
+        self.classrooms = {c["id"]: Classroom(org_id=org, **c) for c in seed.CLASSROOMS}
+        self.classroom_staff = [ClassroomStaff(**s) for s in seed.CLASSROOM_STAFF]
+        self.children = {c["id"]: Child(org_id=org, **c) for c in seed.CHILDREN}
+        self.rooms = {r["id"]: Room(org_id=org, **r) for r in seed.ROOMS}
+        self.requests: dict[UUID, Request] = {}
+        self.messages: list[Message] = []
+        self.cards: dict[UUID, Card] = {}
+        self.slots: dict[int, Slot] = {}
+        self.events: list[Event] = []
+        self._seq = 1000
+
+    def next_int(self) -> int:
+        self._seq += 1
+        return self._seq
+
+
+_lock = threading.RLock()
+_state = _State()
+
+
+def reset() -> None:
+    """데모 데이터로 되돌린다. 시험마다 부른다."""
+    global _state
+    with _lock:
+        _state = _State()
+
+
+def state() -> _State:
+    return _state
+
+
+# ---------- 사람·범위 ----------
+
+def get_user(user_id: UUID) -> User | None:
+    return _state.users.get(user_id)
+
+
+def find_user_by_login(login_id: str) -> User | None:
+    return next((u for u in _state.users.values() if u.login_id == login_id), None)
+
+
+def children_of(parent_id: UUID) -> list[Child]:
+    return [c for c in _state.children.values() if parent_id in c.guardian_ids]
+
+
+def classroom_ids_of(teacher_id: UUID, on: date | None = None) -> list[UUID]:
+    """오늘 볼 수 있는 반. 대체 담임은 valid_from~valid_to 안에서만(T04 7.1)."""
+    on = on or now().date()
+    out = []
+    for s in _state.classroom_staff:
+        if s.user_id != teacher_id:
+            continue
+        if (s.valid_from and on < s.valid_from) or (s.valid_to and on > s.valid_to):
+            continue
+        out.append(s.classroom_id)
+    return out
+
+
+def homeroom_teacher(classroom_id: UUID) -> UUID | None:
+    return next((s.user_id for s in _state.classroom_staff if s.classroom_id == classroom_id), None)
+
+
+def director_of(org_id: UUID) -> UUID | None:
+    return next((u.id for u in _state.users.values() if u.org_id == org_id and u.role == "director"), None)
+
+
+def request_in_scope(user, request_id: UUID) -> Request:
+    """범위 밖이면 있는지도 알리지 않고 404(API 설계 문서 4.2)."""
+    req = _state.requests.get(request_id)
+    if req is None or req.org_id != user.org_id:
+        raise ApiError(404, "NOT_FOUND")
+    if user.role == "parent" and req.requester_id != user.id:
+        raise ApiError(404, "NOT_FOUND")
+    if user.role == "teacher":
+        reassigned = any(c.request_id == req.id and c.assignee_id == user.id for c in _state.cards.values())
+        if req.classroom_id not in classroom_ids_of(user.id) and not reassigned:
+            raise ApiError(404, "NOT_FOUND")
+    return req
+
+
+# ---------- 이력 ----------
+
+def add_event(req: Request | None, action: str, *, card: Card | None = None, actor_type: str = "system",
+              actor_id: UUID | None = None, agent_name: str | None = None, from_status: str | None = None,
+              to_status: str | None = None, **detail) -> Event:
+    ev = Event(id=_state.next_int(), org_id=(req.org_id if req else card.org_id), action=action,
+               request_id=req.id if req else None, card_id=card.id if card else None,
+               actor_type=actor_type, actor_id=actor_id, agent_name=agent_name,
+               from_status=from_status, to_status=to_status, detail=detail)
+    _state.events.append(ev)
+    return ev
+
+
+def set_request_status(req: Request, to: str, **event_kw) -> None:
+    frm, req.status, req.updated_at = req.status, to, now()
+    if to in ("completed", "rejected"):
+        req.closed_at = req.updated_at
+    add_event(req, event_kw.pop("action", "classified"), from_status=frm, to_status=to, **event_kw)
+
+
+# ---------- 요청 만들기 ----------
+
+def create_request(user, *, client_request_id: str, type: str, body: str, child_id: UUID,
+                   previous_request_id: UUID | None, trace_id: str | None) -> tuple[Request, bool]:
+    """(요청, 새로 만들었는지). 같은 client_request_id면 처음 요청을 돌려준다(6.4)."""
+    with _lock:
+        for r in _state.requests.values():
+            if r.requester_id == user.id and r.client_request_id == client_request_id:
+                return r, False
+        child = _state.children.get(child_id)
+        if child is None or child.org_id != user.org_id or user.id not in child.guardian_ids:
+            raise ApiError(404, "NOT_FOUND")
+        if previous_request_id is not None:
+            prev = request_in_scope(user, previous_request_id)
+            if prev.status not in ("completed", "rejected"):
+                raise ApiError(409, "INVALID_TRANSITION")
+        req = Request(id=uuid4(), org_id=user.org_id, classroom_id=child.classroom_id, child_id=child.id,
+                      requester_id=user.id, client_request_id=client_request_id, type=type, body=body,
+                      title=body.split("\n")[0][:40], previous_request_id=previous_request_id)
+        _state.requests[req.id] = req
+        _state.messages.append(Message(id=_state.next_int(), request_id=req.id, sender_type="user",
+                                       sender_id=user.id, body=body))
+        add_event(req, "created", actor_type="user", actor_id=user.id, to_status="received", trace_id=trace_id)
+        _run_mock_ai(req, trace_id)
+        return req, True
+
+
+# 모의 AI 분류 규칙. 실제 분류는 감독 AI(T14)가 한다. 화면 시연용으로 낱말만 본다.
+_URGENT_WORDS = {
+    "child_safety": ("다쳤", "다침", "학대", "때렸", "안전"),
+    "legal_external": ("고소", "신고", "변호사", "언론"),
+    "privacy_leak": ("개인정보", "사진 유출"),
+    "staff_attack": ("가만두지", "협박"),
+}
+_TOPIC_WORDS = {
+    "pickup_bus": ("버스", "등원", "하원"), "meal": ("급식", "밥", "식단", "간식"),
+    "safety": ("안전", "다쳤", "다침"), "fee": ("원비", "비용", "환불"),
+    "belongings": ("소지품", "가방", "옷", "분실"), "peer_conflict": ("친구", "다툼", "싸움"),
+    "health_hygiene": ("열", "아파", "위생", "감기"), "photo_record": ("사진", "앨범"),
+    "communication": ("연락", "답장", "알림장"), "teacher": ("선생님",),
+}
+
+
+def _classify(req: Request) -> None:
+    text = req.body
+    req.topic_key = next((k for k, words in _TOPIC_WORDS.items() if any(w in text for w in words)), "other")
+    req.urgency = "normal"
+    if req.type == "complaint":
+        category = next((k for k, words in _URGENT_WORDS.items() if any(w in text for w in words)), None)
+        req.risk_level = "urgent" if category else "normal"
+        req.risk_category = category
+        if category:
+            req.urgency = "urgent"
+
+
+def _run_mock_ai(req: Request, trace_id: str | None) -> None:
+    _classify(req)
+    set_request_status(req, "classified", action="classified", actor_type="agent", agent_name="supervisor",
+                       trace_id=trace_id)
+    teacher = homeroom_teacher(req.classroom_id)
+    req.assignee_id = teacher
+    set_request_status(req, "assigned", action="assigned", actor_type="agent", agent_name="supervisor",
+                       trace_id=trace_id)
+    if req.type == "consultation":
+        card = _new_card(req, "consult_slots", teacher)
+        _propose_slots(card, teacher)
+        set_request_status(req, "needs_info", action="info_requested", card=card, actor_type="agent",
+                           agent_name="code", trace_id=trace_id)
+        return
+    summary = req.body[:60]
+    card = _new_card(req, "reply_draft", teacher, draft={
+        "summary": summary,
+        "text": "(모의 초안) 말씀해 주셔서 감사합니다. 확인해서 다시 안내드릴게요.",
+        "no_evidence": req.type == "inquiry",
+    })
+    add_event(req, "drafted", card=card, actor_type="agent", agent_name="document", trace_id=trace_id)
+    if req.risk_level == "urgent":
+        report = _new_card(req, "director_report", director_of(req.org_id), draft={"summary": summary})
+        set_request_status(req, "escalated", action="escalated", card=report, actor_type="agent",
+                           agent_name="supervisor", trace_id=trace_id)
+        return
+    set_request_status(req, "awaiting_review", action="checked", card=card, actor_type="agent",
+                       agent_name="checker", trace_id=trace_id)
+
+
+def _new_card(req: Request, kind: str, assignee: UUID | None, draft: dict | None = None) -> Card:
+    card = Card(id=uuid4(), org_id=req.org_id, request_id=req.id, kind=kind,
+                status="pending" if assignee else "unassigned", assignee_id=assignee, draft=draft or {})
+    _state.cards[card.id] = card
+    add_event(req, "created", card=card, actor_type="agent", agent_name="supervisor")
+    return card
+
+
+def _next_weekday(d: date) -> date:
+    d += timedelta(days=1)
+    while d.weekday() >= 5:
+        d += timedelta(days=1)
+    return d
+
+
+def _propose_slots(card: Card, teacher: UUID | None, round_no: int = 1) -> list[Slot]:
+    """다음 평일 15:00·16:00, 그다음 평일 15:00 (30분씩, 회차마다 최대 3개)."""
+    first = _next_weekday(now().date())
+    second = _next_weekday(first)
+    starts = [(first, time(15)), (first, time(16)), (second, time(15))]
+    room = next(iter(_state.rooms))
+    out = []
+    for rank, (d, t) in enumerate(starts, start=1):
+        start = datetime.combine(d, t, KST)
+        slot = Slot(id=_state.next_int(), card_id=card.id, org_id=card.org_id, teacher_id=teacher or seed.TEACHER,
+                    room_id=room, start=start, end=start + timedelta(minutes=30), round=round_no, rank=rank)
+        _state.slots[slot.id] = slot
+        out.append(slot)
+    return out
+
+
+# ---------- 조회 ----------
+
+def messages_of(request_id: UUID) -> list[Message]:
+    return [m for m in _state.messages if m.request_id == request_id]
+
+
+def events_of(request_id: UUID) -> list[Event]:
+    return [e for e in _state.events if e.request_id == request_id]
+
+
+def cards_of(request_id: UUID) -> list[Card]:
+    return [c for c in _state.cards.values() if c.request_id == request_id]
+
+
+def slots_of_request(request_id: UUID) -> list[Slot]:
+    card_ids = {c.id for c in cards_of(request_id) if c.kind == "consult_slots"}
+    return sorted((s for s in _state.slots.values() if s.card_id in card_ids), key=lambda s: (s.round, s.rank))
+
+
+def hold_until_of(request_id: UUID) -> date | None:
+    return next((c.hold_until for c in cards_of(request_id) if c.status == "on_hold"), None)
