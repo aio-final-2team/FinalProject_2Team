@@ -6,7 +6,7 @@
 | --- | --- |
 | 작업 | T09 데이터베이스 스키마 설계서 (#166) |
 | 작성 | 태웅 · 검토 영민 |
-| 판 | v0.7 · 2026-11-18. T10 회의 결과(FB-014) 반영: 학부모 미확인 민원은 이유 글이 있어야 처리 완료(트리거 `approvals_unconfirmed_complete_reason`), 원장 현황에 '학부모 미확인 완료' 수(`completed_unconfirmed`), `topic_key` 주제 10개 + `other`, 처리 기한은 주말·공휴일 제외, 근무 시간 밖 긴급 알림은 아이 안전만 바로. 강사 피드백 FB-001-3에 따라 세 흐름의 화면·API·DB 상태 대조(8.3)와 흐름별 DB 시험 23개(9.1)를 더함. v0.6 · 2026-11-18. `topic_key` = 에이전트 `create_card`의 `topic_key` 인자(계약표 v0.6 4.2). T10 계약표 v0.5의 영민 리뷰 반영(`topic_key` 정해진 목록·`other`는 반복 수 제외, 같은 질문 묶기 MVP 제외). 여러 반 대상 자료를 위해 `documents.classroom_id`를 연결 표 `document_classrooms`로 바꾸고 근거 검색에 반 조건을 더함(FB-003-2). v0.5 · 2026-11-17. T10 계약표 v0.3의 정한 규칙·기본값에 맞춤(알림 종류·자동 재개·거절 이유·처리 기한). v0.4는 강사님 'DB 스키마 설계서 작성법'(11/16)의 목차·체크리스트 반영, v0.1~v0.3은 초안 1~3(T04 합의·대조 검토 반영) |
+| 판 | v0.7 · 2026-11-18. T10 회의 결과(FB-014) 반영: 학부모 미확인 민원은 이유 글이 있어야 처리 완료(트리거 `approvals_unconfirmed_complete_reason`), 202로 접수하는 자료 올리기·알림장 초안의 진행 상태 칸(`ingest_status`·`draft_status`, 강사님 API 작성법 11/18 수정본 '202는 상태 조회가 있어야 함'), 원장 현황에 '학부모 미확인 완료' 수(`completed_unconfirmed`), `topic_key` 주제 10개 + `other`, 처리 기한은 주말·공휴일 제외, 근무 시간 밖 긴급 알림은 아이 안전만 바로. 강사 피드백 FB-001-3에 따라 세 흐름의 화면·API·DB 상태 대조(8.3)와 흐름별 DB 시험 23개(9.1)를 더함. v0.6 · 2026-11-18. `topic_key` = 에이전트 `create_card`의 `topic_key` 인자(계약표 v0.6 4.2). T10 계약표 v0.5의 영민 리뷰 반영(`topic_key` 정해진 목록·`other`는 반복 수 제외, 같은 질문 묶기 MVP 제외). 여러 반 대상 자료를 위해 `documents.classroom_id`를 연결 표 `document_classrooms`로 바꾸고 근거 검색에 반 조건을 더함(FB-003-2). v0.5 · 2026-11-17. T10 계약표 v0.3의 정한 규칙·기본값에 맞춤(알림 종류·자동 재개·거절 이유·처리 기한). v0.4는 강사님 'DB 스키마 설계서 작성법'(11/16)의 목차·체크리스트 반영, v0.1~v0.3은 초안 1~3(T04 합의·대조 검토 반영) |
 | 대상 DB | PostgreSQL 16 + pgvector 0.8 (`compose.yaml`의 `pgvector/pgvector:pg16`). Supabase를 쓰지 않는 이유는 5.1 |
 | DDL | [`db_schema_draft.sql`](db_schema_draft.sql) — 설계 검토용. 실제 적용은 T19 마이그레이션(`apps/api/migrations`)으로 옮김 |
 | 기준 문서 | 기획서 1116판 3장 FR-01~FR-13, 4장 NFR, 6장 공통 상태, 7장 기술과 데이터 · T04 흐름·권한 명세(11/17 팀 합의, PR #234) · T10 [입출력 계약표](입출력_계약표_초안.md) v0.7(1.1 정한 규칙, 6장 11/18 회의 확정) |
@@ -21,13 +21,13 @@
 | 체크리스트(가이드 22쪽) | 이 문서 |
 | --- | --- |
 | ERD 그림과 관계 명세 표가 서로 일치한다 | 1.2·1.3. ERD 선 57개 = 관계 표 57행 = DDL FK 제약 57개(9장 C3) |
-| 모든 컬럼에 타입·제약·의미가 적혀 있다 | 2장, 컬럼 264개 전부 |
+| 모든 컬럼에 타입·제약·의미가 적혀 있다 | 2장, 컬럼 266개 전부 |
 | 모든 테이블에 기본키와 created_at이 있다 | 2장. 표 27개 모두(9장 C1·C2) |
 | API 설계 문서와 필드명·ID 형식이 같다 | 2.0 ID 형식 표. T10 계약표와 맞춤, T13 API 설계 문서에서 필드 대응표를 더함(작성 예정) |
 | 벡터 차원, 인덱스 연산자, 임베딩 모델이 적혀 있다 | 3장 |
 | 테이블마다 역할별 권한 표가 있다 | 4.2. PostgreSQL RLS 대신 API가 검사함(4.1) |
 | Redis 키 이름 규칙과 TTL이 적혀 있다 | 5.3. 해당 없음(Redis를 쓰지 않음) |
-| 문서의 SQL을 실제로 실행해 확인했다 | 9장(시험 67개 + 세 흐름 시험 23개), 6.2(실행 계획), 3.3(검색 SQL) |
+| 문서의 SQL을 실제로 실행해 확인했다 | 9장(시험 67개 + 세 흐름 시험 23개 + 진행 상태 5개), 6.2(실행 계획), 3.3(검색 SQL) |
 
 ## 1. ERD와 관계 명세
 
@@ -273,7 +273,7 @@ FK를 걸 수 없는 참조는 두 곳이다. `cards.subject_id`와 `notificatio
 
 ## 2. 엔터티 정의
 
-컬럼마다 타입 / 제약 / 의미를 적는다(264개). 표는 DDL을 적용한 DB 카탈로그에서 뽑아서 DDL과 같다. 값이 정해진 컬럼은 허용 값을 적었다. 여러 컬럼에 걸친 제약은 영역 표 아래 '표 제약'에 있다.
+컬럼마다 타입 / 제약 / 의미를 적는다(266개). 표는 DDL을 적용한 DB 카탈로그에서 뽑아서 DDL과 같다. 값이 정해진 컬럼은 허용 값을 적었다. 여러 컬럼에 걸친 제약은 영역 표 아래 '표 제약'에 있다.
 
 ### 2.0 공통 규칙과 ID 형식
 
@@ -490,6 +490,7 @@ FK를 걸 수 없는 참조는 두 곳이다. `cards.subject_id`와 `notificatio
 | `documents` | `effective_from` | `date` / NULL 허용 | 적용 시작일 |
 | `documents` | `effective_to` | `date` / NULL 허용 | 적용 끝일 |
 | `documents` | `status` | `text` / NOT NULL, 값: active·conflict_pending·superseded, 기본값 'active' | 사용 중·충돌 확인 대기·새 판으로 바뀜 |
+| `documents` | `ingest_status` | `text` / NOT NULL, 값: queued·running·succeeded·failed, 기본값 'queued' | 자료 올리기(202) 뒤 조각 나누기·임베딩·충돌 검사 진행 상태. 실패 이유는 `events`(`tool_failed`)에 남김 (v0.7) |
 | `documents` | `supersedes_id` | `uuid` / NULL 허용, UNIQUE, FK (supersedes_id, org_id) → documents | 이 문서가 대신하는 옛 판 |
 | `documents` | `uploaded_by` | `uuid` / NULL 허용, FK (uploaded_by, org_id) → users | 올린 교직원 |
 | `documents` | `content_sha256` | `text` / NOT NULL | 파일 해시. 같은 파일 두 번 올리기 막음 |
@@ -633,6 +634,7 @@ FK를 걸 수 없는 참조는 두 곳이다. `cards.subject_id`와 `notificatio
 | `daily_note_inputs` | `note_date` | `date` / NOT NULL | 날짜 |
 | `daily_note_inputs` | `activities` | `text` / NULL 허용 | 그날 활동 |
 | `daily_note_inputs` | `supplies` | `text` / NULL 허용 | 준비물 |
+| `daily_note_inputs` | `draft_status` | `text` / NOT NULL, 값: queued·running·succeeded·failed, 기본값 'queued' | 알림장 초안(202) 뒤 AI가 아이별 초안을 만드는 진행 상태 (v0.7) |
 | `daily_note_inputs` | `author_id` | `uuid` / NOT NULL, FK (author_id, org_id) → users | 입력한 교사 |
 | `daily_note_inputs` | `created_at` | `timestamptz` / NOT NULL, 기본값 now() | 입력 시각 |
 | `daily_notes` | `id` | `uuid` / PK, 기본값 gen_random_uuid() | 알림장 ID |
@@ -1090,7 +1092,7 @@ v0.5 DDL을 `pgvector/pgvector:pg16` 임시 컨테이너(Supabase가 아닌 같�
 
 ### 9.1 세 흐름 시험 (v0.7, 2026-11-18)
 
-8.3의 세 흐름을 v0.7 DDL에서 처음부터 끝까지 따라가며 다시 시험했다. 같은 `pgvector/pgvector:pg16` 임시 컨테이너에 v0.7 DDL을 올렸고, 표 27개·뷰 2개·트리거 2개·FK 57개·컬럼 264개가 오류 없이 만들어졌다. 가상 원 하나(담임·원장·학부모 2명·아이 1명·상담실 1개)로 23개를 돌렸고 모두 기대대로 나왔다(실패 0). 바뀐 뷰 위에서 v0.6 시험(B13·D1·D2·C1~C3)도 다시 돌려 같은 결과를 확인했다. T10 회의(11/18)에서 바뀐 것은 F2-5~F2-8(학부모 미확인 처리 완료)과 F3-5(근무 시간 밖 긴급 알림)에서 확인한다.
+8.3의 세 흐름을 v0.7 DDL에서 처음부터 끝까지 따라가며 다시 시험했다. 같은 `pgvector/pgvector:pg16` 임시 컨테이너에 v0.7 DDL을 올렸고, 표 27개·뷰 2개·트리거 2개·FK 57개·컬럼 266개가 오류 없이 만들어졌다. 가상 원 하나(담임·원장·학부모 2명·아이 1명·상담실 1개)로 23개를 돌렸고 모두 기대대로 나왔다(실패 0). 202로 접수하는 자료 올리기·알림장 초안의 진행 상태 칸(`documents.ingest_status`·`daily_note_inputs.draft_status`)도 J1~J5로 따로 확인했다. 바뀐 뷰 위에서 v0.6 시험(B13·D1·D2·C1~C3)도 다시 돌려 같은 결과를 확인했다. T10 회의(11/18)에서 바뀐 것은 F2-5~F2-8(학부모 미확인 처리 완료)과 F3-5(근무 시간 밖 긴급 알림)에서 확인한다.
 
 | 시험 | 기대 | 결과 | 막는 제약 |
 | --- | --- | --- | --- |
@@ -1117,6 +1119,10 @@ v0.5 DDL을 `pgvector/pgvector:pg16` 임시 컨테이너(Supabase가 아닌 같�
 | F3-5 근무 시간 밖 긴급 알림 2건(아이 안전 지금 · 교직원 위협 다음 근무 시작) | 지금 보낼 것 1 | 1 | `notifications_queue_idx` 조건 |
 | F3-6 내용 없는 원장 지시 | 거부 | 거부됨 | `approvals` CHECK |
 | F3-7 내용 있는 원장 지시 | 카드 `done` · 요청 `awaiting_review` · 이력 `instructed` | 그대로 나옴 | — |
+| J1 · J2 자료 올리기 접수 → 진행 → 성공 | `queued` → `succeeded` | 그대로 나옴 | — |
+| J3 목록에 없는 적재 상태 | 거부 | 거부됨 | `documents.ingest_status` CHECK |
+| J4 알림장 초안 접수 → 실패 | `queued` → `failed` | 그대로 나옴 | — |
+| J5 목록에 없는 초안 상태 | 거부 | 거부됨 | `daily_note_inputs.draft_status` CHECK |
 
 ## 10. LangGraph 체크포인트
 

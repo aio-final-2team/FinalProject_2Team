@@ -169,6 +169,10 @@ CREATE TABLE documents (
     effective_to    date,
     status          text NOT NULL DEFAULT 'active'
                     CHECK (status IN ('active', 'conflict_pending', 'superseded')),
+    -- 자료 올리기는 202로 접수하고 조각 나누기·임베딩·충돌 검사를 뒤에서 함. 화면은 이 값으로 진행·실패를 봄(T13 6.3)
+    -- 실패 이유는 events(tool_failed)의 detail에 남김. 조각은 succeeded가 될 때 한 번에 넣음
+    ingest_status   text NOT NULL DEFAULT 'queued'
+                    CHECK (ingest_status IN ('queued', 'running', 'succeeded', 'failed')),
     supersedes_id   uuid,                  -- 이 문서가 대신하는 옛 판. 옛 판은 superseded가 됨(T04 합의 7)
     uploaded_by     uuid,
     content_sha256  text NOT NULL,
@@ -530,6 +534,9 @@ CREATE TABLE daily_note_inputs (
     note_date     date NOT NULL,
     activities    text,
     supplies      text,
+    -- 알림장 초안은 202로 접수하고 AI가 뒤에서 아이별 초안을 만듦. 화면은 이 값으로 진행·실패를 봄(T13 6.3)
+    draft_status  text NOT NULL DEFAULT 'queued'
+                  CHECK (draft_status IN ('queued', 'running', 'succeeded', 'failed')),
     author_id     uuid NOT NULL,
     created_at    timestamptz NOT NULL DEFAULT now(),
     FOREIGN KEY (classroom_id, org_id) REFERENCES classrooms(id, org_id),
