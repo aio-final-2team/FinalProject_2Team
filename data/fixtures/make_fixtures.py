@@ -491,6 +491,18 @@ def check():
             if n not in blob:
                 errors.append(f"{case}: 근거 문구 '{n}' 없음")
     blob_all = "\n".join((OUT / filename(d)).read_text(encoding="utf-8") for d in DOCS)
+    # 겨울방학 정상(N01)·충돌(F03) 시나리오가 검색 범위로 갈리는지
+    vac = {}
+    for d in DOCS:
+        t = (OUT / filename(d)).read_text(encoding="utf-8")
+        if re.search(r"12월 26일|12-26", t):
+            vac.setdefault("12/26", []).append((d["id"], d["doc_type"]))
+        if re.search(r"12월 24일|12-24", t):
+            vac.setdefault("12/24", []).append((d["id"], d["doc_type"]))
+    if vac.get("12/24") != [("NT-2026-25", "notice")]:
+        errors.append(f"YC-N01: 12/24 근거는 통신문 NT-2026-25 한 곳이어야 함 {vac.get('12/24')}")
+    if vac.get("12/26") != [("SC-2026-2H", "schedule")]:
+        errors.append(f"YC-F03: 12/26 근거는 학사 일정 SC-2026-2H 한 곳이어야 함 {vac.get('12/26')}")
     if "방학 중 방과후" in blob_all or "방학 중에도 방과후" in blob_all:
         errors.append("YC-M05: 방학 중 방과후 운영 근거가 있으면 안 됨")
     return errors
@@ -648,6 +660,17 @@ def write_index():
 ## 의도한 시험 장치
 - **문서 충돌(FR-04)**: 겨울방학 시작일 — 통신문 `NT-2026-25` 12/24 vs 학사 일정표 `SC-2026-2H` 12/26 → 단정하지 않고 담임 카드(YC-F03)
 - **근거 없음(FR-04)**: 겨울방학 중 방과후 운영 여부는 어느 문서에도 없음 → 담임 카드(YC-M05)
+
+### 겨울방학 문의: 정상·충돌 시나리오 검색 조건
+겨울방학 날짜는 통신문에는 `NT-2026-25` 한 곳(12/24)에만, 학사 일정에는 `SC-2026-2H` 한 곳(12/26)에만 있습니다(생성기가 검사). 그래서 **검색 범위(문서 종류)**에 따라 정상과 충돌이 갈립니다.
+
+| 문항 | 검색 범위 (계약 `search_documents`) | 걸리는 문서 | 기대 결과 |
+| --- | --- | --- | --- |
+| YC-N01 정상 | `doc_types: ["notice"]` (v0.5 `doc_type: "notice"`) | `NT-2026-25` 겨울방학 안내 · `1쪽 겨울방학 기간` · 시행 2026-11-02 | "12월 24일(목)부터"라고 답하고 문서명·위치·시행일 표시 |
+| YC-F03 충돌 | `doc_types: ["notice", "schedule"]` (v0.5는 `notice`·`schedule` 두 번 조회) | `NT-2026-25` 12/24 (시행 2026-11-02) + `SC-2026-2H` 2학기 학사 일정표 12/26 (시행 2026-09-01) | 날짜를 단정하지 않고 두 문서가 다르다고 알린 뒤 담임 확인 카드(`create_card`, 문의·일반) |
+
+- 지금 v0.5(PR #235)의 YC-F03은 `doc_type: "notice"` 한 번만 조회하도록 되어 있어 실제 검색으로는 충돌이 재현되지 않습니다. 문항의 모의 응답에는 두 문서가 이미 들어 있어 모의 채점은 되지만, T20·T33 실제 검색 시험에서는 위 범위로 조회해야 합니다. 문항 수정은 #235와 맞춥니다.
+- 최신 문서가 우선이라고 판단해 12/24로 답하면 YC-F03은 실패입니다(FR-04: 충돌이면 추측하지 않고 담임에게).
 
 ## 문서 목록
 """
