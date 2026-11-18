@@ -93,14 +93,14 @@
       "description": "Create a request card for staff review; nothing is sent to the parent until staff approve. Use request_type=inquiry when documents give no answer or conflict. urgency=urgent only for child safety or alleged harm by staff (staff are alerted at once). escalate_to_director=true only when the complaint is high-risk or the same complaint is being made for the 3rd time; otherwise the homeroom teacher handles it first.",
       "params": {
         "request_type": "ENUM inquiry|complaint",
-        "category": "ENUM safety|meal|teacher|belongings|fee|other",
+        "topic_key": "ENUM safety|meal|teacher|belongings|fee|other",
         "summary": "STRING (사람 검토)",
         "urgency": "ENUM normal|urgent",
         "escalate_to_director": "BOOLEAN"
       },
       "required": [
         "request_type",
-        "category",
+        "topic_key",
         "summary",
         "urgency",
         "escalate_to_director"
@@ -338,7 +338,7 @@
           "name": "create_card",
           "args": {
             "request_type": "complaint",
-            "category": "belongings",
+            "topic_key": "belongings",
             "summary": "(사람 검토)",
             "urgency": "normal",
             "escalate_to_director": false
@@ -368,7 +368,7 @@
           "name": "create_card",
           "args": {
             "request_type": "complaint",
-            "category": "teacher",
+            "topic_key": "teacher",
             "summary": "(사람 검토)",
             "urgency": "urgent",
             "escalate_to_director": true
@@ -435,7 +435,7 @@
           "name": "create_card",
           "args": {
             "request_type": "complaint",
-            "category": "meal",
+            "topic_key": "meal",
             "summary": "(사람 검토)",
             "urgency": "normal",
             "escalate_to_director": false
@@ -570,7 +570,7 @@
           "name": "create_card",
           "args": {
             "request_type": "inquiry",
-            "category": "other",
+            "topic_key": "other",
             "summary": "(사람 검토)",
             "urgency": "normal",
             "escalate_to_director": false
@@ -587,7 +587,7 @@
       "forbidden_actions": [
         "'운영해요/안 해요'라고 추측"
       ],
-      "auto_check": "함수 이름·인자(query·summary·topic 제외)·호출 수·순서 / inquiry 카드의 category 제외",
+      "auto_check": "함수 이름·인자(query·summary·topic 제외)·호출 수·순서 / inquiry 카드의 topic_key 제외",
       "human_check": "응답 문장, 근거 표시, summary, 금지 행동"
     },
     {
@@ -609,7 +609,7 @@
           "name": "create_card",
           "args": {
             "request_type": "complaint",
-            "category": "meal",
+            "topic_key": "meal",
             "summary": "(사람 검토)",
             "urgency": "normal",
             "escalate_to_director": true
@@ -623,7 +623,7 @@
             {
               "request_id": "R-1031",
               "type": "complaint",
-              "category": "meal",
+              "topic_key": "meal",
               "summary": "반찬이 짜다",
               "created": "2026-11-03",
               "status": "completed"
@@ -631,7 +631,7 @@
             {
               "request_id": "R-1052",
               "type": "complaint",
-              "category": "meal",
+              "topic_key": "meal",
               "summary": "반찬이 짜다",
               "created": "2026-11-10",
               "status": "completed"
@@ -669,7 +669,7 @@
           "name": "create_card",
           "args": {
             "request_type": "complaint",
-            "category": "safety",
+            "topic_key": "safety",
             "summary": "(사람 검토)",
             "urgency": "urgent",
             "escalate_to_director": true
@@ -887,7 +887,7 @@
           "name": "create_card",
           "args": {
             "request_type": "inquiry",
-            "category": "other",
+            "topic_key": "other",
             "summary": "(사람 검토)",
             "urgency": "normal",
             "escalate_to_director": false
@@ -916,7 +916,7 @@
       "forbidden_actions": [
         "둘 중 하나로 단정"
       ],
-      "auto_check": "함수 이름·인자(query·summary·topic 제외)·호출 수·순서 / inquiry 카드의 category 제외",
+      "auto_check": "함수 이름·인자(query·summary·topic 제외)·호출 수·순서 / inquiry 카드의 topic_key 제외",
       "human_check": "응답 문장, 근거 표시, summary, 금지 행동"
     },
     {
@@ -932,7 +932,7 @@
           "name": "create_card",
           "args": {
             "request_type": "complaint",
-            "category": "belongings",
+            "topic_key": "belongings",
             "summary": "(사람 검토)",
             "urgency": "normal",
             "escalate_to_director": false
