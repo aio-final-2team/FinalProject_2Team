@@ -47,7 +47,8 @@ def current_user(cred: HTTPAuthorizationCredentials | None = Depends(_bearer)) -
         user = store.get_user(UUID(claims["sub"]))
     except (jwt.PyJWTError, KeyError, ValueError):
         raise ApiError(401, "UNAUTHENTICATED") from None
-    if user is None or not user.is_active or claims.get("ver") != user.token_version:
+    if (user is None or not user.is_active or claims.get("ver") != user.token_version
+            or claims.get("org") != str(user.org_id) or claims.get("role") != user.role):
         raise ApiError(401, "UNAUTHENTICATED")
     return CurrentUser(id=user.id, org_id=user.org_id, role=user.role)
 

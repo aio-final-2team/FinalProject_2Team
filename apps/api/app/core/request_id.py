@@ -5,6 +5,9 @@
 """
 
 import logging
+from contextvars import ContextVar
+
+active_trace_id = ContextVar("trace_id", default=None)
 from uuid import uuid4
 
 from fastapi import Request
@@ -17,6 +20,7 @@ log = logging.getLogger("yuchion.api")
 async def request_id_middleware(request: Request, call_next):
     trace_id = request.headers.get("X-Request-ID") or str(uuid4())
     request.state.trace_id = trace_id
+    active_trace_id.set(trace_id)
     try:
         response = await call_next(request)
     except Exception:  # 내부 내용은 로그에만 남기고 응답에는 넣지 않는다(1.4)

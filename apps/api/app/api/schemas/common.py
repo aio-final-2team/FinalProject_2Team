@@ -27,3 +27,9 @@ class ErrorResponse(BaseModel):
 def errors(*statuses: int) -> dict[int | str, dict]:
     """라우트 responses= 에 넣어 /docs에 오류 형식을 보이게 한다."""
     return {s: {"model": ErrorResponse} for s in statuses}
+
+
+class Page(BaseModel):
+    total: int
+    page: int
+    size: int

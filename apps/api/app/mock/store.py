@@ -8,14 +8,14 @@ from __future__ import annotations
 
 import threading
 from dataclasses import dataclass, field
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import date, datetime, time, timedelta
 from typing import Any
 from uuid import UUID, uuid4
 
 from app.core.errors import ApiError
 from app.mock import seed
-
-KST = timezone(timedelta(hours=9))
+from app.core.schedule import KST, due_at
+from app.mock.records import Approval, Booking, Notification, Document, Chunk, Evidence, Rule, NoteInput, Note
 
 
 def now() -> datetime:
@@ -85,8 +85,8 @@ class Request:
     missing_fields: list[str] = field(default_factory=list)
     assignee_id: UUID | None = None
     previous_request_id: UUID | None = None
-    created_at: datetime = field(default_factory=now)
-    updated_at: datetime = field(default_factory=now)
+    created_at: datetime = field(default_factory=lambda: now())
+    updated_at: datetime = field(default_factory=lambda: now())
     closed_at: datetime | None = None
 
 
@@ -97,7 +97,7 @@ class Message:
     sender_type: str            # user · agent · system
     sender_id: UUID | None
     body: str
-    created_at: datetime = field(default_factory=now)
+    created_at: datetime = field(default_factory=lambda: now())
 
 
 @dataclass
@@ -116,8 +116,8 @@ class Card:
     version: int = 1
     subject_type: str | None = None
     subject_id: UUID | None = None
-    created_at: datetime = field(default_factory=now)
-    updated_at: datetime = field(default_factory=now)
+    created_at: datetime = field(default_factory=lambda: now())
+    updated_at: datetime = field(default_factory=lambda: now())
     closed_at: datetime | None = None
 
 
@@ -128,8 +128,7 @@ class Slot:
     org_id: UUID
     teacher_id: UUID
     room_id: UUID
-    start: datetime
-    end: datetime
+    period: dict
     round: int = 1
     rank: int = 1
     status: str = "proposed"    # proposed · chosen_by_parent · confirmed · discarded
@@ -149,7 +148,7 @@ class Event:
     from_status: str | None = None
     to_status: str | None = None
     detail: dict[str, Any] = field(default_factory=dict)
-    created_at: datetime = field(default_factory=now)
+    created_at: datetime = field(default_factory=lambda: now())
 
 
 class _State:
@@ -165,6 +164,16 @@ class _State:
         self.cards: dict[UUID, Card] = {}
         self.slots: dict[int, Slot] = {}
         self.events: list[Event] = []
+        self.approvals: list[Approval] = []
+        self.bookings: dict[UUID, Booking] = {}
+        self.notifications: dict[int, Notification] = {}
+        self.documents: dict[UUID, Document] = {}
+        self.document_classrooms: dict[UUID, list[UUID]] = {}
+        self.chunks: dict[int, Chunk] = {}
+        self.evidence: list[Evidence] = []
+        self.rules: dict[UUID, Rule] = {}
+        self.note_inputs: dict[UUID, NoteInput] = {}
+        self.notes: dict[UUID, Note] = {}
         self._seq = 1000
 
     def next_int(self) -> int:
@@ -181,6 +190,8 @@ def reset() -> None:
     global _state
     with _lock:
         _state = _State()
+        from app.mock.seeding import populate
+        populate()
 
 
 def state() -> _State:
@@ -215,7 +226,8 @@ def classroom_ids_of(teacher_id: UUID, on: date | None = None) -> list[UUID]:
 
 
 def homeroom_teacher(classroom_id: UUID) -> UUID | None:
-    return next((s.user_id for s in _state.classroom_staff if s.classroom_id == classroom_id), None)
+    return next((s.user_id for s in _state.classroom_staff if s.classroom_id == classroom_id
+                 and classroom_id in classroom_ids_of(s.user_id)), None)
 
 
 def director_of(org_id: UUID) -> UUID | None:
@@ -226,13 +238,14 @@ def request_in_scope(user, request_id: UUID) -> Request:
     """범위 밖이면 있는지도 알리지 않고 404(API 설계 문서 4.2)."""
     req = _state.requests.get(request_id)
     if req is None or req.org_id != user.org_id:
-        raise ApiError(404, "NOT_FOUND")
+        deny(user, req=req if req and req.org_id == user.org_id else None)
     if user.role == "parent" and req.requester_id != user.id:
-        raise ApiError(404, "NOT_FOUND")
+        deny(user, req=req if req and req.org_id == user.org_id else None)
     if user.role == "teacher":
         reassigned = any(c.request_id == req.id and c.assignee_id == user.id for c in _state.cards.values())
         if req.classroom_id not in classroom_ids_of(user.id) and not reassigned:
-            raise ApiError(404, "NOT_FOUND")
+            deny(user, req=req if req and req.org_id == user.org_id else None)
+    expire(req.id)
     return req
 
 
@@ -241,11 +254,16 @@ def request_in_scope(user, request_id: UUID) -> Request:
 def add_event(req: Request | None, action: str, *, card: Card | None = None, actor_type: str = "system",
               actor_id: UUID | None = None, agent_name: str | None = None, from_status: str | None = None,
               to_status: str | None = None, **detail) -> Event:
-    ev = Event(id=_state.next_int(), org_id=(req.org_id if req else card.org_id), action=action,
+    ev = Event(id=_state.next_int(), org_id=(req.org_id if req else card.org_id if card else detail.pop("org_id")), action=action,
                request_id=req.id if req else None, card_id=card.id if card else None,
                actor_type=actor_type, actor_id=actor_id, agent_name=agent_name,
                from_status=from_status, to_status=to_status, detail=detail)
+    from app.core.request_id import active_trace_id
+    if ev.detail.get("trace_id") is None:
+        ev.detail["trace_id"] = active_trace_id.get()
     _state.events.append(ev)
+    from app.mock.notifications import notify_event
+    notify_event(ev, req, card)
     return ev
 
 
@@ -305,7 +323,7 @@ def _classify(req: Request) -> None:
     req.urgency = "normal"
     if req.type == "complaint":
         category = next((k for k, words in _URGENT_WORDS.items() if any(w in text for w in words)), None)
-        req.risk_level = "urgent" if category else "normal"
+        req.risk_level = "uncertain" if "판단 필요" in text else ("urgent" if category else "normal")
         req.risk_category = category
         if category:
             req.urgency = "urgent"
@@ -326,13 +344,17 @@ def _run_mock_ai(req: Request, trace_id: str | None) -> None:
                            agent_name="code", trace_id=trace_id)
         return
     summary = req.body[:60]
+    high_risk = req.risk_level in ("urgent", "uncertain")
     card = _new_card(req, "reply_draft", teacher, draft={
         "summary": summary,
-        "text": "(모의 초안) 말씀해 주셔서 감사합니다. 확인해서 다시 안내드릴게요.",
-        "no_evidence": req.type == "inquiry",
+        **({} if high_risk else {"text": "(모의 초안) 말씀해 주셔서 감사합니다. 확인해서 다시 안내드릴게요."}),
     })
+    if not high_risk:
+        from app.mock.documents import attach_evidence
+        attach_evidence(card)
+        card.check_result = {"passed": True, "issues": [], "attempt": 1}
     add_event(req, "drafted", card=card, actor_type="agent", agent_name="document", trace_id=trace_id)
-    if req.risk_level == "urgent":
+    if high_risk or (req.type == "complaint" and (repeat_count(req) or 0) >= 3):
         report = _new_card(req, "director_report", director_of(req.org_id), draft={"summary": summary})
         set_request_status(req, "escalated", action="escalated", card=report, actor_type="agent",
                            agent_name="supervisor", trace_id=trace_id)
@@ -343,7 +365,8 @@ def _run_mock_ai(req: Request, trace_id: str | None) -> None:
 
 def _new_card(req: Request, kind: str, assignee: UUID | None, draft: dict | None = None) -> Card:
     card = Card(id=uuid4(), org_id=req.org_id, request_id=req.id, kind=kind,
-                status="pending" if assignee else "unassigned", assignee_id=assignee, draft=draft or {})
+                status="pending" if assignee else "unassigned", assignee_id=assignee, draft=draft or {},
+                due_at=due_at(req.created_at, req.type, req.risk_level, kind))
     _state.cards[card.id] = card
     add_event(req, "created", card=card, actor_type="agent", agent_name="supervisor")
     return card
@@ -358,7 +381,9 @@ def _next_weekday(d: date) -> date:
 
 def _propose_slots(card: Card, teacher: UUID | None, round_no: int = 1) -> list[Slot]:
     """다음 평일 15:00·16:00, 그다음 평일 15:00 (30분씩, 회차마다 최대 3개)."""
-    first = _next_weekday(now().date())
+    first = now().date()
+    for _ in range(round_no):
+        first = _next_weekday(first)
     second = _next_weekday(first)
     starts = [(first, time(15)), (first, time(16)), (second, time(15))]
     room = next(iter(_state.rooms))
@@ -366,7 +391,8 @@ def _propose_slots(card: Card, teacher: UUID | None, round_no: int = 1) -> list[
     for rank, (d, t) in enumerate(starts, start=1):
         start = datetime.combine(d, t, KST)
         slot = Slot(id=_state.next_int(), card_id=card.id, org_id=card.org_id, teacher_id=teacher or seed.TEACHER,
-                    room_id=room, start=start, end=start + timedelta(minutes=30), round=round_no, rank=rank)
+                    room_id=room, period={"start": start, "end": start + timedelta(minutes=30)},
+                    round=round_no, rank=rank)
         _state.slots[slot.id] = slot
         out.append(slot)
     return out
@@ -393,3 +419,48 @@ def slots_of_request(request_id: UUID) -> list[Slot]:
 
 def hold_until_of(request_id: UUID) -> date | None:
     return next((c.hold_until for c in cards_of(request_id) if c.status == "on_hold"), None)
+
+
+def repeat_count(req):
+    if req.type != "complaint" or req.topic_key in (None, "other"):
+        return None
+    return sum(r.org_id == req.org_id and r.classroom_id == req.classroom_id and r.type == "complaint"
+               and r.topic_key == req.topic_key and r.created_at >= now() - timedelta(days=30)
+               for r in _state.requests.values())
+
+
+def expire(request_id=None):
+    """읽을 때 기한이 지난 보류와 상담 후보를 한 번만 되돌린다."""
+    with _lock:
+        for card in list(_state.cards.values()):
+            if request_id is not None and card.request_id != request_id:
+                continue
+            req = _state.requests.get(card.request_id)
+            if card.status == "on_hold" and card.hold_until <= now().date():
+                card.status, card.hold_until = "pending", None
+                card.version += 1
+                card.updated_at = now()
+                if req:
+                    set_request_status(req, "awaiting_review", action="resumed", card=card, automatic=True)
+            expired = [s for s in _state.slots.values() if s.card_id == card.id
+                       and s.status == "chosen_by_parent" and s.chosen_at + timedelta(hours=24) <= now()]
+            for slot in expired:
+                slot.status, slot.chosen_at = "proposed", None
+            if expired:
+                set_request_status(req, "needs_info", action="slot_hold_expired", card=card)
+
+
+def deny(user, req=None, card=None):
+    add_event(req, "permission_denied", card=card, org_id=user.org_id, actor_type="user", actor_id=user.id)
+    raise ApiError(404, "NOT_FOUND")
+
+
+def classroom_in_scope(user, classroom_id):
+    classroom = _state.classrooms.get(classroom_id)
+    if classroom is None or classroom.org_id != user.org_id or (user.role == "teacher"
+            and classroom_id not in classroom_ids_of(user.id)):
+        deny(user)
+    return classroom
+
+
+reset()

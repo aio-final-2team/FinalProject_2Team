@@ -1,3 +1,6 @@
+import os
+os.environ["MOCK_STREAM_DELAY_MS"] = "0"
+
 import pytest
 from fastapi.testclient import TestClient
 

@@ -7,6 +7,7 @@
 import logging
 
 from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -53,7 +54,7 @@ def error_response(request: Request, status: int, code: str, message: str | None
         "trace_id": trace_id_of(request),
         "details": details or {},
     }}
-    return JSONResponse(status_code=status, content=body)
+    return JSONResponse(status_code=status, content=jsonable_encoder(body))
 
 
 def install_error_handlers(app: FastAPI) -> None:

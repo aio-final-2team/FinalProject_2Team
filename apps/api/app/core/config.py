@@ -2,6 +2,7 @@
 
 import os
 from dataclasses import dataclass
+from datetime import date
 
 
 @dataclass(frozen=True)
@@ -9,6 +10,8 @@ class Settings:
     jwt_secret: str
     jwt_access_ttl_hours: int
     cors_origins: tuple[str, ...]
+    holidays: tuple[date, ...] = ()
+    mock_stream_delay_ms: int = 300
 
 
 def load_settings() -> Settings:
@@ -17,6 +20,8 @@ def load_settings() -> Settings:
         jwt_secret=os.getenv("JWT_SECRET", "local-dev-only-change-me-32-bytes-min"),
         jwt_access_ttl_hours=int(os.getenv("JWT_ACCESS_TTL_HOURS", "12")),
         cors_origins=tuple(o.strip() for o in origins.split(",") if o.strip()),
+        holidays=tuple(date.fromisoformat(d.strip()) for d in os.getenv("HOLIDAYS", "").split(",") if d.strip()),
+        mock_stream_delay_ms=max(0, int(os.getenv("MOCK_STREAM_DELAY_MS", "300"))),
     )
 
 

@@ -52,3 +52,31 @@ CHILDREN = [
 ]
 
 ROOMS = [{"id": ROOM, "name": "상담실"}]
+
+REQUEST_CONSULT = demo_id("701")
+REQUEST_COMPLAINT = demo_id("702")
+CARD_CONSULT = demo_id("801")
+CARD_COMPLAINT = demo_id("802")
+MENU = demo_id("b01")
+NOTICE = demo_id("b02")
+OLD_NOTICE = demo_id("b03")
+RULE = demo_id("d01")
+
+# 같은 반 두 아이의 일괄 발송과 학부모별 조회 범위를 함께 시연한다.
+CHILDREN.append({"id": demo_id("503"), "classroom_id": CLASS_STAR, "display_name": "노을", "guardian_ids": [PARENT_OTHER]})
+
+DEMO_REQUESTS = [
+    ("701", "consultation", "아이 친구 관계 상담", "needs_info"),
+    ("702", "complaint", "등원 버스가 늦었어요", "awaiting_review"),
+    ("703", "complaint", "아이 안전을 확인해 주세요", "escalated"),
+    ("704", "complaint", "급식 관련 판단 필요 민원", "escalated"),
+    ("705", "complaint", "원비 설명을 부탁드려요", "on_hold"),
+    ("706", "inquiry", "지난 행사 안내를 확인했어요", "completed"),
+    ("707", "inquiry", "새 행사 일정이 궁금해요", "classified"),
+]
+
+DEMO_DOCUMENTS = [
+    (MENU, "가상 식단표", "menu", "active", "점심: 카레라이스, 채소와 과일"),
+    (NOTICE, "가상 행사 안내", "notice", "active", "행사는 별빛반과 햇님반이 함께 참여해요."),
+    (OLD_NOTICE, "가상 행사 안내 옛 판", "notice", "superseded", "지난 행사 안내입니다."),
+]
