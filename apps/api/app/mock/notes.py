@@ -67,7 +67,8 @@ def patch(user, note_id, body):
         if note.status == "sent":
             raise ApiError(409, "INVALID_TRANSITION")
         if not set(body.resolved_checks).issubset({c["id"] for c in note.open_checks}):
-            raise ApiError(422, "VALIDATION_FAILED", fields=[{"field": "resolved_checks", "problem": "없는 확인 항목이에요"}])
+            # 저장된 확인 항목과 대조해야 아는 조건이라 형식 오류(422)가 아니라 서버 검사(409)다(API 설계 4.1)
+            raise ApiError(409, "INVALID_TRANSITION", open_checks=note.open_checks)
         remaining = [c for c in note.open_checks if c["id"] not in body.resolved_checks]
         if body.confirm and remaining:
             raise ApiError(409, "INVALID_TRANSITION", open_checks=remaining)

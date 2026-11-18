@@ -1,6 +1,6 @@
 # 유치온 API 설계 문서 (T13)
 
-문서 버전 v0.1 | 작성 상태: 초안
+문서 버전 v0.2 | 작성 상태: 모의 API와 대조 끝
 
 | 항목 | 내용 |
 | --- | --- |
@@ -9,7 +9,7 @@
 | 기준 문서 | 기획서 1117판 3장 FR-01~FR-13 · T04 흐름·권한 명세(PR #234) · [입출력 계약표](입출력_계약표_초안.md) v0.8(T10 회의 11/18 합의 v0.7 + 이 문서 3.7의 화면용 칸) · [DB 스키마 설계서](DB_스키마_설계서.md) v0.7 |
 | 따른 가이드 | 강사님 'API 설계 문서 작성법' 11/18 수정본. 1~6장이 가이드의 '문서에 들어가는 여섯 가지' 순서다 |
 
-이 문서는 T10 계약표에서 합의한 필드·권한·오류를 엔드포인트와 도구 단위로 펼친 것이다. 계약표와 이 문서가 다르면 계약표를 먼저 고치고 두 문서의 판을 같이 올린다. 구현이 시작되면 FastAPI의 `/docs`와 대조해 판을 올린다(계약표 1.1 규칙 1). 이 판(v0.1)은 API 목록 전체, 핵심 6개의 상세 명세, 화면이 쓰는 조회 응답 칸(3.7), 도구 전체의 실패 처리, 실행 규칙을 담는다. 모의 API와 `contracts/openapi.yaml`은 v0.2(11/20 제출본)에서 붙인다.
+이 문서는 T10 계약표에서 합의한 필드·권한·오류를 엔드포인트와 도구 단위로 펼친 것이다. 계약표와 이 문서가 다르면 계약표를 먼저 고치고 두 문서의 판을 같이 올린다. 구현이 시작되면 FastAPI의 `/docs`와 대조해 판을 올린다(계약표 1.1 규칙 1). 이 판(v0.2)은 API 29개 전부의 상세 명세, 화면이 쓰는 조회 응답 칸(3.7), 도구 전체의 실패 처리, 실행 규칙을 담는다. 모의 API와 생성물 `contracts/openapi.yaml`을 붙였으며, 쓰는 법과 데모 계정은 [모의 API 안내](../../contracts/mock_api/README.md)에 있다.
 
 **목차.** 1. 공통 정보와 인증 · 2. API 목록 · 3. 엔드포인트 상세 명세 · 4. 검증과 권한 규칙 · 5. Tool 정의와 호출 흐름 · 6. 실행 규칙 · 7. API 필드와 DB 컬럼 대응 · 8. 설정값 · 부록 A. 예시 ID · 변경 이력
 
@@ -19,7 +19,7 @@
 | --- | --- |
 | 구현할 API가 모두 목록 표에 있고 요구사항 ID와 연결된다 | 2장(29개, 요구사항 열) |
 | 서버 주소·인증·오류 형식·/docs·변경 이력이 있다 | 1장, 끝의 변경 이력 |
-| 구현할 API마다 상세 명세와 필드 명세 표가 있다 | 3장(v0.1은 핵심 6개와 화면용 조회 칸. 나머지는 v0.2에서 채움) |
+| 구현할 API마다 상세 명세와 필드 명세 표가 있다 | 3장(29개 전부) |
 | 형식 오류(422)와 권한·승인 오류(403)를 나눠 적었다 | 4.1 |
 | 202를 쓰는 API는 작업 상태·결과·실패 조회가 있다 | 6.3 |
 | Tool마다 성공·실패 출력과 실패 후 처리가 있다 | 5.2, 5.4 |
@@ -34,9 +34,9 @@
 | --- | --- |
 | 개발 서버 | `http://localhost:8000/api/v1` (`compose.yaml`의 `api` 서비스) |
 | 배포 서버 | `https://<배포 도메인>/api/v1` (AWS EC2, T36 첫 배포 때 확정해 이 칸을 고침) |
-| 자동 문서 | `<서버 주소>/docs`, `<서버 주소>/openapi.json`. 저장소에는 `/openapi.json`에서 뽑은 `contracts/openapi.yaml`을 생성물로 둔다 |
+| 자동 문서 | `http://localhost:8000/docs`, `http://localhost:8000/openapi.json`(버전 접두어 없이 앱 맨 위에 있음). 저장소에는 `/openapi.json`에서 뽑은 `contracts/openapi.yaml`을 생성물로 둔다 |
 | 상태 확인 | `GET /health` (인증 없음, 버전 접두어 없음) |
-| 모의 API | 같은 경로가 이 문서의 예시 응답을 돌려주는 모드. 화면(T21·T28·T32)이 백엔드 구현 전에 붙는다(v0.2) |
+| 모의 API | API 29개가 메모리 데모 데이터로 응답한다. 다시 켜면 초기화된다. 실행·계정·흐름은 [모의 API 안내](../../contracts/mock_api/README.md) 참고 |
 
 ### 1.2 인증
 
@@ -47,7 +47,7 @@
 | 검증 | 서명(`JWT_SECRET`)·만료·토큰 판(`users.token_version`과 같은지)·계정 사용 여부(`users.is_active`)를 본 뒤, 역할·기관·반으로 권한을 검사한다(4장) |
 | 오류 | 401 `UNAUTHENTICATED`: 토큰 없음·만료·서명 틀림·판이 낮음 / 403 `FORBIDDEN_ROLE`: 누구인지는 알지만 역할상 못 하는 일 / 404 `NOT_FOUND`: 다른 기관·다른 반 자료(있는지도 알리지 않음) |
 
-토큰에는 `sub`(계정 ID), `org`(기관 ID), `role`(`parent`·`teacher`·`director`), `ver`(토큰 판), `exp`(만료)만 넣는다. 반 소속과 아이 관계는 토큰에 넣지 않고 요청마다 DB에서 확인한다. 소속이 바뀌어도 토큰을 다시 받을 필요가 없게 하기 위해서다.
+토큰에는 `sub`(계정 ID), `org`(기관 ID), `role`(`parent`·`teacher`·`director`), `ver`(토큰 판), `iat`(발급 시각), `exp`(만료)만 넣는다. 반 소속과 아이 관계는 토큰에 넣지 않고 요청마다 DB에서 확인한다. 소속이 바뀌어도 토큰을 다시 받을 필요가 없게 하기 위해서다.
 
 ### 1.3 공통 헤더
 
@@ -105,45 +105,45 @@
 
 ## 2. API 목록
 
-인증 열의 '자기 것'·'우리 반'은 4.2의 범위 규칙을 뜻한다. 상세 열이 비어 있는 API는 v0.2에서 상세 명세를 채운다.
+인증 열의 '자기 것'·'우리 반'은 4.2의 범위 규칙을 뜻한다. 상세 열은 29개 API의 3장 절 번호를 가리킨다.
 
 | # | 메서드 | 경로 | 인증·역할 | 설명 | 성공 | 요구사항 | 상세 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | POST | `/api/v1/auth/login` | 없음 | 로그인, 토큰 발급 | 200 | FR-01 | 3.7 |
-| 2 | GET | `/api/v1/me` | JWT | 내 정보·내 아이(학부모)·담당 반(교직원) | 200 | FR-01 | 3.7 |
+| 1 | POST | `/api/v1/auth/login` | 없음 | 로그인, 토큰 발급 | 200 | FR-01 | 3.8 |
+| 2 | GET | `/api/v1/me` | JWT | 내 정보·내 아이(학부모)·담당 반(교직원) | 200 | FR-01 | 3.8 |
 | 3 | POST | `/api/v1/requests` | 학부모 | 요청 만들기(AI 처리 접수) | 202 | FR-02, FR-03 | 3.1 |
-| 4 | GET | `/api/v1/requests` | 학부모(자기 것) | 내 요청 목록 | 200 | FR-02 | |
+| 4 | GET | `/api/v1/requests` | 학부모(자기 것) | 내 요청 목록 | 200 | FR-02 | 3.9 |
 | 5 | GET | `/api/v1/requests/{request_id}` | 학부모(자기 것) · 교직원(우리 반) | 요청 상세·대화·진행 기록 | 200 | FR-02, FR-11 | 3.2, 3.7 |
 | 6 | GET | `/api/v1/requests/{request_id}/stream` | 학부모(자기 것) | AI 진행 스트림(SSE) | 200 | NFR-10 | 3.2 |
-| 7 | POST | `/api/v1/requests/{request_id}/messages` | 학부모(자기 것) | 대화 이어 쓰기 | 201 | FR-02 | |
+| 7 | POST | `/api/v1/requests/{request_id}/messages` | 학부모(자기 것) | 대화 이어 쓰기 | 201 | FR-02 | 3.10 |
 | 8 | POST | `/api/v1/requests/{request_id}/slot-choices` | 학부모(자기 것) | 상담 가능 시간 체크 | 200 | FR-05 | 3.4 |
 | 9 | POST | `/api/v1/requests/{request_id}/confirm` | 학부모(자기 민원) | 민원 회신 '확인했어요' | 200 | FR-07 | 3.5 |
-| 10 | GET | `/api/v1/notifications` | JWT(자기 것) | 알림 목록 | 200 | FR-12 | |
-| 11 | POST | `/api/v1/notifications/{notification_id}/read` | JWT(자기 것) | 알림 읽음 | 200 | FR-12 | |
-| 12 | GET | `/api/v1/cards` | 담임·원장 | 받은함(필터 6개·종류 필터·필터별 건수) | 200 | FR-09 | 3.7 |
-| 13 | GET | `/api/v1/cards/{card_id}` | 담임(우리 반)·원장 | 카드 상세(초안·근거·반복 수·이력) | 200 | FR-04, FR-07, FR-09, FR-11 | 3.7 |
-| 14 | GET | `/api/v1/cards/{card_id}/stream` | 담임(우리 반)·원장 | 카드 AI 진행 스트림(초안 글자 포함) | 200 | NFR-10 | |
+| 10 | GET | `/api/v1/notifications` | JWT(자기 것) | 알림 목록 | 200 | FR-12 | 3.11 |
+| 11 | POST | `/api/v1/notifications/{notification_id}/read` | JWT(자기 것) | 알림 읽음 | 200 | FR-12 | 3.11 |
+| 12 | GET | `/api/v1/cards` | 담임·원장 | 받은함(필터 6개·종류 필터·필터별 건수) | 200 | FR-09 | 3.12, 3.7 |
+| 13 | GET | `/api/v1/cards/{card_id}` | 담임(우리 반)·원장 | 카드 상세(초안·근거·반복 수·이력) | 200 | FR-04, FR-07, FR-09, FR-11 | 3.13, 3.7 |
+| 14 | GET | `/api/v1/cards/{card_id}/stream` | 담임(우리 반)·원장 | 카드 AI 진행 스트림(초안 글자 포함) | 200 | NFR-10 | 3.13 |
 | 15 | POST | `/api/v1/cards/{card_id}/decisions` | 담임(우리 반)·원장 | 카드 결정(승인·거절·보류·재개·반려·처리 완료·원장님께 올리기) | 200 | FR-05~FR-09 | 3.3 |
-| 16 | POST | `/api/v1/cards/{card_id}/reclassify` | 담임(우리 반)·원장 | 민원 위험 등급 다시 분류 | 200 | FR-03, FR-07 | |
+| 16 | POST | `/api/v1/cards/{card_id}/reclassify` | 담임(우리 반)·원장 | 민원 위험 등급 다시 분류 | 200 | FR-03, FR-07 | 3.14 |
 | 17 | POST | `/api/v1/cards/{card_id}/bookings` | 담임(우리 반) | 상담 확정 | 200 | FR-05 | 3.4 |
-| 18 | POST | `/api/v1/cards/{card_id}/instructions` | 원장·원감 | 원장 보고 지시 | 200 | FR-07 | |
-| 19 | POST | `/api/v1/cards/{card_id}/reassign` | 원장·원감 | 담당 재배정 | 200 | FR-09, FR-19 | |
-| 20 | POST | `/api/v1/memory-rules/{rule_id}/decision` | 규칙 주인 | 개인 규칙 제안 켜기·거절 | 200 | FR-06 | |
-| 21 | GET | `/api/v1/overview` | 원장·원감 | 원장 현황(미배정·대기·지연·완료·학부모 미확인 완료) | 200 | FR-09, FR-19 | |
-| 22 | POST | `/api/v1/daily-notes/drafts` | 담임 | 알림장 초안 만들기(AI 처리 접수) | 202 | FR-10 | |
-| 23 | GET | `/api/v1/daily-notes/drafts/{input_id}` | 담임(우리 반) | 알림장 초안 진행 상태 | 200 | FR-10 | |
-| 24 | GET | `/api/v1/daily-notes` | 학부모(내 아이, 보낸 것) · 담임(우리 반) | 알림장 보기 | 200 | FR-10 | 3.7 |
-| 25 | PATCH | `/api/v1/daily-notes/{note_id}` | 담임(우리 반) | 알림장 고치기·확인 | 200 | FR-10 | |
+| 18 | POST | `/api/v1/cards/{card_id}/instructions` | 원장·원감 | 원장 보고 지시 | 200 | FR-07 | 3.15 |
+| 19 | POST | `/api/v1/cards/{card_id}/reassign` | 원장·원감 | 담당 재배정 | 200 | FR-09, FR-19 | 3.16 |
+| 20 | POST | `/api/v1/memory-rules/{rule_id}/decision` | 규칙 주인 | 개인 규칙 제안 켜기·거절 | 200 | FR-06 | 3.17 |
+| 21 | GET | `/api/v1/overview` | 원장·원감 | 원장 현황(미배정·대기·지연·완료·학부모 미확인 완료) | 200 | FR-09, FR-19 | 3.18 |
+| 22 | POST | `/api/v1/daily-notes/drafts` | 담임 | 알림장 초안 만들기(AI 처리 접수) | 202 | FR-10 | 3.19 |
+| 23 | GET | `/api/v1/daily-notes/drafts/{input_id}` | 담임(우리 반) | 알림장 초안 진행 상태 | 200 | FR-10 | 3.19 |
+| 24 | GET | `/api/v1/daily-notes` | 학부모(내 아이, 보낸 것) · 담임(우리 반) | 알림장 보기 | 200 | FR-10 | 3.20, 3.7 |
+| 25 | PATCH | `/api/v1/daily-notes/{note_id}` | 담임(우리 반) | 알림장 고치기·확인 | 200 | FR-10 | 3.21 |
 | 26 | POST | `/api/v1/daily-notes/send` | 담임(우리 반) | 반 알림장 한 번에 보내기 | 200 | FR-10 | 3.6 |
-| 27 | POST | `/api/v1/documents` | 원장·담임 | 자료 올리기(적재 접수) | 202 | FR-13 | |
-| 28 | GET | `/api/v1/documents` | 교직원 | 자료 목록 | 200 | FR-13 | |
-| 29 | GET | `/api/v1/documents/{document_id}` | 교직원 | 자료 상세·적재 상태 | 200 | FR-13 | |
+| 27 | POST | `/api/v1/documents` | 원장·담임 | 자료 올리기(적재 접수) | 202 | FR-13 | 3.22 |
+| 28 | GET | `/api/v1/documents` | 교직원 | 자료 목록 | 200 | FR-13 | 3.23 |
+| 29 | GET | `/api/v1/documents/{document_id}` | 교직원 | 자료 상세·적재 상태 | 200 | FR-13 | 3.23 |
 
 SSE 두 개(6·14)는 실시간 진행 화면(NFR-10)이 쓰므로 넣었다. 투약·귀가(T46)와 최종 기능(FR-14 이후)은 그 작업에서 이 표에 더한다.
 
 ## 3. 엔드포인트 상세 명세
 
-핵심 6개를 가이드의 여덟 칸으로 쓴다(계약표 1.1 규칙 8). 예시 ID는 부록 A의 데모 ID다. 필드 표의 '빈값'은 `""`이나 `null`을 받아도 되는지다.
+API 29개를 가이드의 여덟 칸으로 쓴다(계약표 1.1 규칙 8). 고정 예시 ID는 부록 A의 데모 ID다. 필드 표의 '빈값'은 `""`이나 `null`을 받아도 되는지다. 3.8 이후 예시는 주요 응답 필드와 목록 첫 항목만 줄여 보인다. 토큰과 새로 발급한 ID는 `…`로 줄이고, 경로의 `{card_id}`·`{input_id}`·`{note_id}`는 앞선 응답에서 받은 값을 쓴다.
 
 ### 3.1 요청 만들기 — `POST /api/v1/requests`
 
@@ -524,6 +524,608 @@ T12 화면 지도(성주, PR #254)를 계약표 v0.7과 대조했을 때 화면�
 
 학부모가 받는 알림장(`sent`)에는 `open_checks`가 늘 빈 목록이다(DB 제약).
 
+### 3.8 로그인·내 정보 — `POST /api/v1/auth/login`, `GET /api/v1/me`
+
+| 칸 | 내용 |
+| --- | --- |
+| ① 호출 목적 | 로그인으로 토큰을 받고, 내 정보에서 현재 계정·담당 반·아이를 확인한다(FR-01). |
+| ② 요청 헤더 | 로그인은 `Content-Type: application/json`, 내 정보는 `Authorization`(필수), `X-Request-ID`(권장). |
+| ③ 경로·쿼리 | 없음. |
+| ④ 요청 본문 | 로그인만 `login_id`·`password`. 내 정보는 없음. |
+| ⑤ 검증·권한 | 로그인은 계정·비밀번호·사용 여부를 확인한다. 내 정보는 JWT 서명·만료·토큰 판·기관·역할·사용 여부를 확인한다. |
+| ⑥ 정상 응답 | 200. 로그인은 `access_token`·`token_type`·`user`·`children`, 내 정보는 `user`·`children`. |
+| ⑦ 오류 응답 | 아래 오류 표. |
+| ⑧ 실행 규칙 | JWT는 HS256, 기본 수명 12시간이며 `iat`도 넣는다. 반·아이 관계는 조회 때 다시 구한다. |
+
+| 필드 | 위치 | 타입 | 필수 | 빈값 | 제약 | 설명 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `login_id` | 로그인 본문 | string | 필수 | 불가 | 1~64자 | 데모 계정은 모의 API README 참고 |
+| `password` | 로그인 본문 | string | 필수 | 불가 | 1~128자 | 데모 전용 비밀번호는 `demo1234` |
+| `access_token`·`token_type` | 로그인 응답 | string | 항상 | 불가 | JWT·`bearer` | 다음 요청의 인증에 사용 |
+| `user` | 응답 | object | 항상 | 불가 | `id`·`role`·`display_name`·`org_id`·`classroom_ids[]` | 역할은 `parent`·`teacher`·`director` |
+| `user.classroom_ids[]`·`children[]` | 응답 | 목록 | 항상 | 빈 목록 가능 | 역할별 값·아이 객체 모양은 3.7 참고 | 담임은 반, 학부모는 아이; 나머지는 빈 목록 |
+
+```http
+POST /api/v1/auth/login
+{"login_id": "parent01", "password": "demo1234"}
+HTTP/1.1 200 OK
+{"user": {"id": "00000000-0000-4000-8000-000000000401", "role": "parent", "display_name": "하늘이 보호자", "org_id": "00000000-0000-4000-8000-000000000001", "classroom_ids": []}, "children": [{"id": "00000000-0000-4000-8000-000000000501", "display_name": "하늘", "classroom_id": "00000000-0000-4000-8000-000000000101"}], "access_token": "…", "token_type": "bearer"}
+GET /api/v1/me
+HTTP/1.1 200 OK
+{"user": {"id": "00000000-0000-4000-8000-000000000401", "role": "parent", "display_name": "하늘이 보호자", "org_id": "00000000-0000-4000-8000-000000000001", "classroom_ids": []}, "children": [{"id": "00000000-0000-4000-8000-000000000501", "display_name": "하늘", "classroom_id": "00000000-0000-4000-8000-000000000101"}]}
+```
+
+| HTTP | `code` | 조건 |
+| --- | --- | --- |
+| 401 | `UNAUTHENTICATED` | 로그인 실패·비활성 계정, 내 정보의 토큰 문제 |
+| 422 | `VALIDATION_FAILED` | 필수 칸·타입·허용 값·길이가 맞지 않음 |
+
+### 3.9 내 요청 목록 — `GET /api/v1/requests`
+
+| 칸 | 내용 |
+| --- | --- |
+| ① 호출 목적 | 학부모가 자기가 보낸 요청과 다음 할 일을 본다(FR-02). |
+| ② 요청 헤더 | `Authorization`(필수), `X-Request-ID`(권장). |
+| ③ 경로·쿼리 | 아래 쿼리 필드. |
+| ④ 요청 본문 | 없음. |
+| ⑤ 검증·권한 | 학부모만. 같은 기관·본인 요청을 고른 뒤 상태 조건을 적용한다. |
+| ⑥ 정상 응답 | 200 + `items[]`·`total`·`page`·`size`. 해당 요청이 없으면 빈 목록. |
+| ⑦ 오류 응답 | 아래 오류 표. |
+| ⑧ 실행 규칙 | 조회 때 보류·상담 시간 만료를 반영한다. 정렬 뒤 쪽을 나눈다. |
+
+| 필드 | 위치 | 타입 | 필수 | 빈값 | 제약 | 설명 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `status` | 쿼리 | string | 선택 | 생략 가능 | 3.2의 요청 상태 11개 | 생략하면 모든 상태 |
+| `page`·`size` | 쿼리 | integer | 선택 | 불가 | 기본 1·20, page ≥ 1, size 1~100 | 쪽 나누기 |
+| `sort` | 쿼리 | string | 선택 | 불가 | `-created_at`(기본)·`created_at`·`-updated_at`·`updated_at` | 생성·변경 시각 순 |
+| `items[].id`·`type`·`title`·`status`·`status_label`·`updated_at` | 응답 | UUID·string·datetime | 항상 | title은 null 가능 | 요청 유형 3개·상태 11개 | 본인 요청의 요약 |
+| `items[].next_action` | 응답 | string | 항상 | null 가능 | 정보 보완·시간 선택·민원 회신 확인 | needs_info면 보완 또는 시간 선택, 미확인 민원 회신이면 확인 안내 |
+| `items[].hold_until` | 응답 | date | 항상 | null 가능 | 보류 카드의 예정일 | 할 일·보류가 없으면 해당 칸은 null |
+| `total`·`page`·`size` | 응답 | integer | 항상 | 불가 | 전체 건수·요청한 쪽·크기 | 목록 공통 칸 |
+
+```http
+GET /api/v1/requests?status=needs_info
+HTTP/1.1 200 OK
+{"total": 1, "page": 1, "size": 20, "items": [{"id": "00000000-0000-4000-8000-000000000701", "type": "consultation", "title": "아이 친구 관계 상담", "status": "needs_info", "status_label": "시간을 골라 주세요", "updated_at": "2026-11-18T10:00:00+09:00", "next_action": "시간을 골라 주세요", "hold_until": null}]}
+```
+
+| HTTP | `code` | 조건 |
+| --- | --- | --- |
+| 401 | `UNAUTHENTICATED` | 토큰 없음·만료·무효 |
+| 403 | `FORBIDDEN_ROLE` | 허용하지 않은 역할 |
+| 422 | `VALIDATION_FAILED` | 필수 칸·타입·허용 값·길이가 맞지 않음 |
+
+### 3.10 대화 이어 쓰기 — `POST /api/v1/requests/{request_id}/messages`
+
+| 칸 | 내용 |
+| --- | --- |
+| ① 호출 목적 | 학부모가 진행 중인 요청에 설명을 더한다(FR-02). |
+| ② 요청 헤더 | `Authorization`(필수), `X-Request-ID`(권장), `Content-Type: application/json`. |
+| ③ 경로·쿼리 | `request_id`(UUID, 필수). |
+| ④ 요청 본문 | `body`(아래 표). |
+| ⑤ 검증·권한 | 본인 요청만. `completed`·`rejected`는 409로 막는다. |
+| ⑥ 정상 응답 | 201 + `message`. 다음 상태는 요청 상세(3.2)에서 확인한다. |
+| ⑦ 오류 응답 | 아래 오류 표. |
+| ⑧ 실행 규칙 | 민원 회신 뒤 추가 글이면 학부모 확인을 지우고 회신 카드를 pending으로 돌려 판을 1 올린다. 요청은 awaiting_review가 된다. 상담 이외 needs_info면 모의 분류를 다시 실행한다. |
+
+| 필드 | 위치 | 타입 | 필수 | 빈값 | 제약 | 설명 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `request_id` | 경로 | string(UUID) | 필수 | 불가 | 본인 요청 | 대화를 이을 요청 |
+| `body` | 본문 | string | 필수 | 불가 | 1~2,000자 | 추가 설명; 모의 구현은 공백만인 글도 길이로 검사 |
+| `message.id` | 응답 | integer | 항상 | 불가 | 서버 발급 | 메시지 ID |
+| `message.sender_type`·`body`·`created_at` | 응답 | string·datetime | 항상 | 불가 | sender_type은 `user` | 저장한 글과 시각 |
+
+```http
+POST /api/v1/requests/00000000-0000-4000-8000-000000000702/messages
+{"body": "버스 도착 시각을 더 알려드릴게요."}
+HTTP/1.1 201 Created
+{"message": {"id": 1071, "sender_type": "user", "body": "버스 도착 시각을 더 알려드릴게요.", "created_at": "2026-11-18T10:00:00+09:00"}}
+```
+
+| HTTP | `code` | 조건 |
+| --- | --- | --- |
+| 401 | `UNAUTHENTICATED` | 토큰 없음·만료·무효 |
+| 403 | `FORBIDDEN_ROLE` | 허용하지 않은 역할 |
+| 404 | `NOT_FOUND` | 없거나 기관·반·소유 범위 밖 |
+| 409 | `INVALID_TRANSITION` | 끝난 요청에 글을 더함 |
+| 422 | `VALIDATION_FAILED` | 필수 칸·타입·허용 값·길이가 맞지 않음 |
+
+### 3.11 알림 목록·읽음 — `GET /api/v1/notifications`, `POST /api/v1/notifications/{notification_id}/read`
+
+| 칸 | 내용 |
+| --- | --- |
+| ① 호출 목적 | 내 알림을 보고 읽은 시각을 남긴다(FR-12). |
+| ② 요청 헤더 | `Authorization`(필수), `X-Request-ID`(권장). |
+| ③ 경로·쿼리 | 목록은 page·size·sort, 읽음은 정수 notification_id. |
+| ④ 요청 본문 | 없음. |
+| ⑤ 검증·권한 | 모든 로그인 역할. 같은 기관·본인 알림 중 deliver_after가 지난 것만 보인다. 읽음도 이 범위에서 찾는다. |
+| ⑥ 정상 응답 | 목록 200 + 쪽 나눈 items[], 읽음 200 + notification. |
+| ⑦ 오류 응답 | 아래 오류 표. |
+| ⑧ 실행 규칙 | 모의 발송기는 조회할 때 pending 알림을 sent로 바꾼다. 읽음을 반복해도 첫 read_at을 유지한다. 예약된 알림은 시각 전까지 목록·읽음 모두에서 제외한다. |
+
+| 필드 | 위치 | 타입 | 필수 | 빈값 | 제약 | 설명 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `page`·`size` | 쿼리 | integer | 선택 | 불가 | 기본 1·20, page ≥ 1, size 1~100 | 쪽 나누기 |
+| `sort` | 쿼리 | string | 선택 | 불가 | `-created_at`(기본)·`created_at` | 내림차순·오름차순 |
+| `notification_id` | 읽음 경로 | integer | 필수 | 불가 | 목록에서 받은 ID | 0 이하도 형식상 정수이며 없으면 404 |
+| `items[].id`·`kind`·`title` | 목록 응답 | integer·string | 항상 | 불가 | kind는 알림 13종 | 알림 종류와 제목 |
+| `items[].body`·`request_id`·`subject_type`·`subject_id` | 목록 응답 | string·UUID | 항상 | null 가능 | 알림장 알림은 subject_type=`daily_note` | 내용과 연결 대상 |
+| `items[].read_at`·`deliver_after` | 목록 응답 | datetime | 항상 | read_at만 null 가능 | 한국 시간 포함 | 읽음·노출 시각; 읽음 응답 notification도 같은 모양 |
+| `total`·`page`·`size` | 응답 | integer | 항상 | 불가 | 전체 건수·요청한 쪽·크기 | 목록 공통 칸 |
+
+```http
+GET /api/v1/notifications?size=1
+HTTP/1.1 200 OK
+{"total": 2, "page": 1, "size": 1, "items": [{"id": 1013, "kind": "needs_info", "title": "정보가 더 필요해요", "body": "시간을 골라 주세요", "request_id": "00000000-0000-4000-8000-000000000701", "subject_type": null, "subject_id": null, "read_at": null, "deliver_after": "2026-11-18T10:00:00+09:00"}]}
+POST /api/v1/notifications/1013/read
+HTTP/1.1 200 OK
+{"notification": {"id": 1013, "kind": "needs_info", "read_at": "2026-11-18T10:00:00+09:00", "deliver_after": "2026-11-18T10:00:00+09:00"}}
+```
+
+| HTTP | `code` | 조건 |
+| --- | --- | --- |
+| 401 | `UNAUTHENTICATED` | 토큰 없음·만료·무효 |
+| 404 | `NOT_FOUND` | 없거나 기관·반·소유 범위 밖 |
+| 422 | `VALIDATION_FAILED` | 필수 칸·타입·허용 값·길이가 맞지 않음 |
+
+### 3.12 받은함 — `GET /api/v1/cards`
+
+| 칸 | 내용 |
+| --- | --- |
+| ① 호출 목적 | 담임·원장이 받은함 카드와 필터별 건수를 본다(FR-09). |
+| ② 요청 헤더 | `Authorization`(필수), `X-Request-ID`(권장). |
+| ③ 경로·쿼리 | 파라미터·화면용 더한 칸은 3.7 참고. sort는 받지 않는다. |
+| ④ 요청 본문 | 없음. |
+| ⑤ 검증·권한 | 담임은 현재 담당 반 또는 본인에게 배정된 카드, 원장은 같은 기관 전체를 본다. |
+| ⑥ 정상 응답 | 200 + items[]·counts·type_counts·total·page·size. filter를 생략하면 done을 뺀다. |
+| ⑦ 오류 응답 | 아래 오류 표. |
+| ⑧ 실행 규칙 | 만료를 반영하고 긴급 우선 → due_at이 있는 카드 우선 → due_at 오름차순 → 카드 UUID 문자열 순으로 정렬한다. 기한 지난 완료 카드도 is_delayed 자체는 참일 수 있다. |
+
+| 필드 | 위치 | 타입 | 필수 | 빈값 | 제약 | 설명 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `filter`·`request_type`·`risk_level`·`kind`·`assignee`·`page`·`size` | 쿼리 | 3.7 참고 | 선택 | 생략 가능 | 3.7 참고 | 기본 size=20, 최대 100 |
+| `items[].id`·`kind`·`status`·`version`·`title` | 응답 | UUID·string·integer | 항상 | 불가 | 카드 종류 6개, version ≥ 1 | status는 카드 내부 값 |
+| `items[].status_label`·`request_type`·`urgency`·`is_urgent` | 응답 | string·boolean | 항상 | request_type·urgency는 null 가능 | is_urgent는 요청 risk_level=urgent 여부 | 표시 이름은 요청 상태 기준 |
+| `items[].assignee`·`due_at`·`is_delayed`·`hold_until` | 응답 | object·datetime·boolean·date | 항상 | is_delayed 외 null 가능 | assignee={id, display_name}; due_at < 현재면 지연 | 화면용 더한 칸은 3.7 참고 |
+| `counts` | 응답 | object(integer) | 항상 | 불가 | 필터 6개를 모두 넣고 없으면 0 | 역할·risk_level·kind·assignee·request_type 안에서, filter 적용 전에 카드 수를 셈 |
+| `type_counts` | 응답 | object(integer) | 항상 | 불가 | all·complaint·consultation·inquiry | 역할·risk_level·kind·assignee·filter 안에서, request_type 적용 전에 셈 |
+| `total`·`page`·`size` | 응답 | integer | 항상 | 불가 | 전체 건수·요청한 쪽·크기 | 목록 공통 칸 |
+
+필터는 순서대로 하나만 고른다. ① 끝난 카드·요청은 `done`(회신 후 민원의 거절 아닌 reply_draft는 처리 완료 전까지 예외) ② 카드·요청 보류는 `on_hold` ③ 담당 없음은 `unassigned` ④ 위험 등급 uncertain은 `uncertain` ⑤ awaiting_review·escalated, 학부모 확인한 회신 민원, 요청 없는 카드는 `needs_review` ⑥ 나머지는 `in_progress`.
+종류 건수도 요청 수가 아닌 카드 수다. `type_counts.all`은 요청 없는 카드까지 세므로 세 유형 건수의 합보다 클 수 있다. counts는 완료도 포함하고, type_counts는 filter가 없으면 완료를 뺀다.
+
+```http
+GET /api/v1/cards?filter=needs_review&request_type=complaint&page=3&size=1
+HTTP/1.1 200 OK
+{"items": [{"id": "00000000-0000-4000-8000-000000000802", "kind": "reply_draft", "version": 1, "request_type": "complaint", "is_urgent": false}], "counts": {"unassigned": 0, "needs_review": 3, "uncertain": 2, "on_hold": 1, "in_progress": 0, "done": 0}, "type_counts": {"complaint": 3, "consultation": 0, "inquiry": 0, "all": 4}, "total": 3, "page": 3, "size": 1}
+```
+
+| HTTP | `code` | 조건 |
+| --- | --- | --- |
+| 401 | `UNAUTHENTICATED` | 토큰 없음·만료·무효 |
+| 403 | `FORBIDDEN_ROLE` | 허용하지 않은 역할 |
+| 422 | `VALIDATION_FAILED` | 필수 칸·타입·허용 값·길이가 맞지 않음 |
+
+### 3.13 카드 상세·교직원 스트림 — `GET /api/v1/cards/{card_id}`, `GET …/stream`
+
+| 칸 | 내용 |
+| --- | --- |
+| ① 호출 목적 | 교직원이 초안·근거·위험·전체 이력을 보고, 스트림으로 단계·초안 글자·카드를 받는다(FR-04·07·09·11, NFR-10). |
+| ② 요청 헤더 | `Authorization`(필수), `X-Request-ID`(권장). 스트림은 `Accept: text/event-stream`, fetch 스트림으로 읽는다. |
+| ③ 경로·쿼리 | card_id(UUID, 필수). |
+| ④ 요청 본문 | 없음. |
+| ⑤ 검증·권한 | 담임은 담당 반 또는 본인 배정 카드, 원장은 같은 기관 전체. 학부모는 403, 범위 밖은 404. |
+| ⑥ 정상 응답 | 상세는 200 + 아래 칸. 스트림은 200 text/event-stream, Cache-Control: no-cache. |
+| ⑦ 오류 응답 | 아래 오류 표. |
+| ⑧ 실행 규칙 | 조회 때 해당 요청의 만료를 반영한다. 모의 스트림은 classifying→searching→drafting→checking, text를 12자씩 token, card, done 순으로 재생한다. text가 없으면 token은 없고, 요청 없는 카드의 done.request_status는 null이다. 간격 기본 300ms, 매 연결 다시 재생한다. |
+
+| 필드 | 위치 | 타입 | 필수 | 빈값 | 제약 | 설명 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `card_id` | 경로 | string(UUID) | 필수 | 불가 | 권한 범위 안 | 상세·스트림 공통 |
+| `card.id`·`kind`·`status`·`version`·`summary`·`draft`·`check_result`·`check_attempts` | 응답 | UUID·string·integer·object | 항상 | check_result만 null 가능 | draft는 객체, check_attempts는 검사 횟수 | summary 등 화면용 칸은 3.7 참고 |
+| `request` | 응답 | object | 항상 | null 가능 | 3.2 요약 + body·risk_level·risk_category·repeat_count·classroom_id | 요청 없는 카드면 null |
+| `evidence[]`·`warnings[]`·`parent_choices[]`·`rule`·`director_instruction` | 응답 | 목록·object | 항상 | rule·director_instruction은 null 가능 | 3.7 참고 | 근거·경고·선택 시간·규칙·원장 지시 |
+| `timeline[]` | 응답 | object[] | 항상 | 빈 목록 가능 | id·action·request_id·card_id·agent_name·actor_type·actor_id·from_status·to_status·detail·created_at | 같은 요청의 이력 또는 해당 카드 이력, 저장 순서 |
+| `stage`·`token`·`card`·`done` | SSE data | object | 이벤트별 | request_status는 null 가능 | {stage, at}·{text}·{id, status, version}·{request_status} | token·card는 교직원만 받음 |
+
+```http
+GET /api/v1/cards/00000000-0000-4000-8000-000000000802
+HTTP/1.1 200 OK
+{"card": {"id": "00000000-0000-4000-8000-000000000802", "kind": "reply_draft", "status": "pending", "version": 1, "summary": "등원 버스가 늦었어요", "draft": {"summary": "등원 버스가 늦었어요", "text": "(모의 초안) 말씀해 주셔서 감사합니다. 확인해서 다시 안내드릴게요.", "no_evidence": false}}, "warnings": [], "parent_choices": [], "rule": null, "director_instruction": null}
+GET /api/v1/cards/00000000-0000-4000-8000-000000000802/stream
+HTTP/1.1 200 OK
+Content-Type: text/event-stream
+event: token
+data: {"text": "(모의 초안) 말씀해 "}
+
+event: card
+data: {"id": "00000000-0000-4000-8000-000000000802", "status": "pending", "version": 1}
+
+event: done
+data: {"request_status": "awaiting_review"}
+```
+
+| HTTP | `code` | 조건 |
+| --- | --- | --- |
+| 401 | `UNAUTHENTICATED` | 토큰 없음·만료·무효 |
+| 403 | `FORBIDDEN_ROLE` | 허용하지 않은 역할 |
+| 404 | `NOT_FOUND` | 없거나 기관·반·소유 범위 밖 |
+| 422 | `VALIDATION_FAILED` | 필수 칸·타입·허용 값·길이가 맞지 않음 |
+
+### 3.14 위험 등급 다시 분류 — `POST /api/v1/cards/{card_id}/reclassify`
+
+| 칸 | 내용 |
+| --- | --- |
+| ① 호출 목적 | 교직원이 민원의 위험 등급을 일반 또는 긴급으로 다시 정한다(FR-03·07). |
+| ② 요청 헤더 | `Authorization`(필수), `X-Request-ID`(권장), `Content-Type: application/json`. |
+| ③ 경로·쿼리 | card_id(UUID, 필수). |
+| ④ 요청 본문 | 아래 필드 표. |
+| ⑤ 검증·권한 | 담임·원장만. 원장 보고 카드는 원장만. 요청이 민원이고 awaiting_review·escalated여야 하며, 판을 확인한다. uncertain만으로 제한하지 않는다. |
+| ⑥ 정상 응답 | 200 + 교직원용 request. 응답에 card는 없으므로 새 판은 카드 상세에서 받는다. |
+| ⑦ 오류 응답 | 아래 오류 표. |
+| ⑧ 실행 규칙 | 일반이면 risk_category를 지우고 awaiting_review로, 긴급이면 원장 보고 카드를 확보하고 escalated로 바꾼다. 같은 요청 카드의 due_at을 접수 시각 기준으로 다시 계산하며 호출한 카드 판만 1 올린다. 초안은 새로 만들지 않는다. |
+
+| 필드 | 위치 | 타입 | 필수 | 빈값 | 제약 | 설명 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `card_id` | 경로 | string(UUID) | 필수 | 불가 | 권한 범위 안 | 위험 등급을 바꿀 카드 |
+| `version` | 본문 | integer | 필수 | 불가 | 1 이상 | 화면이 본 카드 판 |
+| `risk_level` | 본문 | string | 필수 | 불가 | `normal`·`urgent` | 새 등급 |
+| `risk_category` | 본문 | string | 긴급이면 필수 | 일반은 null 가능 | `child_safety`·`staff_attack`·`legal_external`·`privacy_leak` | 일반이면 보내도 저장하지 않음 |
+| `reason` | 본문 | string | 필수 | 불가 | 1~500자, 공백만 불가 | 처리 이유 |
+| `request` | 응답 | object | 항상 | 불가 | 3.13 교직원 요청과 같은 모양 | risk_level·risk_category·status 등을 돌려줌 |
+
+```http
+POST /api/v1/cards/00000000-0000-4000-8000-000000000802/reclassify
+{"version": 1, "risk_level": "normal", "reason": "일반 민원으로 확인함"}
+HTTP/1.1 200 OK
+{"request": {"id": "00000000-0000-4000-8000-000000000702", "risk_level": "normal", "risk_category": null, "status": "awaiting_review", "status_label": "확인 필요"}}
+```
+
+| HTTP | `code` | 조건 |
+| --- | --- | --- |
+| 401 | `UNAUTHENTICATED` | 토큰 없음·만료·무효 |
+| 403 | `FORBIDDEN_ROLE` | 허용하지 않은 역할 |
+| 404 | `NOT_FOUND` | 없거나 기관·반·소유 범위 밖 |
+| 409 | `CARD_VERSION_CONFLICT`·`INVALID_TRANSITION` | 판 불일치(details.current_version)·민원 아님·상태가 맞지 않음 |
+| 422 | `VALIDATION_FAILED` | 필수 칸·타입·허용 값·길이가 맞지 않음 |
+
+### 3.15 원장 보고 지시 — `POST /api/v1/cards/{card_id}/instructions`
+
+| 칸 | 내용 |
+| --- | --- |
+| ① 호출 목적 | 원장이 보고 카드에 지시를 남기고 담임에게 처리를 넘긴다(FR-07). |
+| ② 요청 헤더 | `Authorization`(필수), `X-Request-ID`(권장), `Content-Type: application/json`. |
+| ③ 경로·쿼리 | card_id(UUID, 원장 보고 카드). |
+| ④ 요청 본문 | version·instruction. |
+| ⑤ 검증·권한 | 역할 director만. 같은 기관의 director_report, 카드 pending·in_review, 요청 escalated여야 한다. 판·같은 판의 기존 결정을 확인한다. |
+| ⑥ 정상 응답 | 200 + done 카드(판 +1)·awaiting_review 요청·next_card_id=null. |
+| ⑦ 오류 응답 | 아래 오류 표. |
+| ⑧ 실행 규칙 | 결정을 instruct로, 지시를 reason_text로 기록한다. 기존 회신 카드 상세의 director_instruction에 최신 지시가 붙는다. 회신 카드의 판·초안은 바꾸지 않으며 승인·발송은 별도다. |
+
+| 필드 | 위치 | 타입 | 필수 | 빈값 | 제약 | 설명 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `card_id` | 경로 | string(UUID) | 필수 | 불가 | 원장 보고 카드 | 3.3 원장 보고 결과나 받은함에서 받은 ID |
+| `version` | 본문 | integer | 필수 | 불가 | 1 이상 | 화면이 본 카드 판 |
+| `instruction` | 본문 | string | 필수 | 불가 | 1~500자, 공백만 불가 | 원장 지시 |
+| `card.id`·`status`·`version` | 응답 | UUID·string·integer | 항상 | 불가 | status=`done` | 끝난 보고 카드와 새 판 |
+| `request`·`next_card_id` | 응답 | object·UUID | 항상 | next_card_id는 null | request={id, status, parent_confirmed_at} | 요청 상태는 awaiting_review |
+
+```http
+POST /api/v1/cards/{card_id}/instructions
+{"version": 1, "instruction": "운행 시각을 확인하고 보호자에게 안내해 주세요."}
+HTTP/1.1 200 OK
+{"card": {"id": "…", "status": "done", "version": 2}, "request": {"id": "00000000-0000-4000-8000-000000000702", "status": "awaiting_review", "parent_confirmed_at": null}, "next_card_id": null}
+```
+
+| HTTP | `code` | 조건 |
+| --- | --- | --- |
+| 401 | `UNAUTHENTICATED` | 토큰 없음·만료·무효 |
+| 403 | `FORBIDDEN_ROLE` | 허용하지 않은 역할 |
+| 404 | `NOT_FOUND` | 없거나 기관·반·소유 범위 밖 |
+| 409 | `ALREADY_DECIDED`·`CARD_VERSION_CONFLICT`·`INVALID_TRANSITION` | 같은 판의 기존 결정·판 불일치·카드 종류나 상태 불일치 |
+| 422 | `VALIDATION_FAILED` | 필수 칸·타입·허용 값·길이가 맞지 않음 |
+
+### 3.16 담당 재배정 — `POST /api/v1/cards/{card_id}/reassign`
+
+| 칸 | 내용 |
+| --- | --- |
+| ① 호출 목적 | 원장이 카드 담당자를 바꾸고 이유를 남긴다(FR-09·19). |
+| ② 요청 헤더 | `Authorization`(필수), `X-Request-ID`(권장), `Content-Type: application/json`. |
+| ③ 경로·쿼리 | card_id(UUID, 필수). |
+| ④ 요청 본문 | assignee_id·reason. version은 받지 않는다. |
+| ⑤ 검증·권한 | director만. 배정 대상은 같은 기관의 활성 teacher여야 한다. director_report 또는 done·rejected 카드는 재배정하지 못한다. |
+| ⑥ 정상 응답 | 200 + card { assignee { id, display_name }, version }. |
+| ⑦ 오류 응답 | 아래 오류 표. |
+| ⑧ 실행 규칙 | 카드와 연결 요청의 담당을 바꾸고 카드 판을 1 올린다. unassigned 카드만 pending으로 바꾼다. 요청 상태·기한은 유지한다. 다른 반 교사에게도 배정 가능하며 이력에 from·to·reason을 남긴다. |
+
+| 필드 | 위치 | 타입 | 필수 | 빈값 | 제약 | 설명 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `card_id` | 경로 | string(UUID) | 필수 | 불가 | 처리 가능한 카드 | 배정할 카드 |
+| `assignee_id` | 본문 | string(UUID) | 필수 | 불가 | 같은 기관의 활성 teacher | 새 담당자 |
+| `reason` | 본문 | string | 필수 | 불가 | 1~500자, 공백만 불가 | 처리 이유 |
+| `card.assignee` | 응답 | object | 항상 | 불가 | id(UUID)·display_name(string) | 새 담당자 |
+| `card.version` | 응답 | integer | 항상 | 불가 | 이전 판 +1 | 다음 결정에 쓸 판 |
+
+```http
+POST /api/v1/cards/00000000-0000-4000-8000-000000000802/reassign
+{"assignee_id": "00000000-0000-4000-8000-000000000202", "reason": "담당자 부재로 재배정함"}
+HTTP/1.1 200 OK
+{"card": {"assignee": {"id": "00000000-0000-4000-8000-000000000202", "display_name": "햇님반 선생님"}, "version": 3}}
+```
+
+| HTTP | `code` | 조건 |
+| --- | --- | --- |
+| 401 | `UNAUTHENTICATED` | 토큰 없음·만료·무효 |
+| 403 | `FORBIDDEN_ROLE` | 허용하지 않은 역할 |
+| 404 | `NOT_FOUND` | 카드 범위 밖·대상 없음·다른 기관·비활성·교사 아님 |
+| 409 | `INVALID_TRANSITION` | 원장 보고·끝난 카드 |
+| 422 | `VALIDATION_FAILED` | 필수 칸·타입·허용 값·길이가 맞지 않음 |
+
+### 3.17 개인 규칙 제안 켜기·거절 — `POST /api/v1/memory-rules/{rule_id}/decision`
+
+| 칸 | 내용 |
+| --- | --- |
+| ① 호출 목적 | 규칙 주인이 제안을 켜거나 거절한다(FR-06). |
+| ② 요청 헤더 | `Authorization`(필수), `X-Request-ID`(권장), `Content-Type: application/json`. |
+| ③ 경로·쿼리 | rule_id(UUID, 필수). |
+| ④ 요청 본문 | decision. |
+| ⑤ 검증·권한 | 로그인한 규칙 주인만. 같은 기관·주인 검사를 하며 다른 역할이라는 이유만으로 403을 내지는 않는다. proposed 상태만 결정한다. |
+| ⑥ 정상 응답 | 200 + rule { id, status }. activate는 active, decline은 declined. |
+| ⑦ 오류 응답 | 아래 오류 표. |
+| ⑧ 실행 규칙 | 연결 제안 카드를 done으로 바꾸고 판을 1 올린다. 켜기는 approve, 거절은 reject로 결정·이력을 남긴다. 재요청은 409이며 모의 상담 후보에 규칙을 적용하지는 않는다. |
+
+| 필드 | 위치 | 타입 | 필수 | 빈값 | 제약 | 설명 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `rule_id` | 경로 | string(UUID) | 필수 | 불가 | 본인 규칙 | 카드 상세 rule.id |
+| `decision` | 본문 | string | 필수 | 불가 | `activate`·`decline` | 켜기·거절 |
+| `rule.id` | 응답 | string(UUID) | 항상 | 불가 | 요청한 규칙 ID | 결정 대상 |
+| `rule.status` | 응답 | string | 항상 | 불가 | `active`·`declined` | 저장한 상태 |
+
+```http
+POST /api/v1/memory-rules/00000000-0000-4000-8000-000000000d01/decision
+{"decision": "activate"}
+HTTP/1.1 200 OK
+{"rule": {"id": "00000000-0000-4000-8000-000000000d01", "status": "active"}}
+```
+
+| HTTP | `code` | 조건 |
+| --- | --- | --- |
+| 401 | `UNAUTHENTICATED` | 토큰 없음·만료·무효 |
+| 404 | `NOT_FOUND` | 없거나 기관·반·소유 범위 밖 |
+| 409 | `INVALID_TRANSITION` | proposed가 아닌 규칙, 같은 결정의 반복 포함 |
+| 422 | `VALIDATION_FAILED` | 필수 칸·타입·허용 값·길이가 맞지 않음 |
+
+### 3.18 원장 현황 — `GET /api/v1/overview`
+
+| 칸 | 내용 |
+| --- | --- |
+| ① 호출 목적 | 원장이 기관 전체의 대기·지연·처리 결과와 재배정 이력을 본다(FR-09·19). |
+| ② 요청 헤더 | `Authorization`(필수), `X-Request-ID`(권장). |
+| ③ 경로·쿼리 | 없음. |
+| ④ 요청 본문 | 없음. |
+| ⑤ 검증·권한 | director만. 모든 집계는 같은 기관 안에서 한다. |
+| ⑥ 정상 응답 | 200 + 아래 숫자 5개·reassignments[]·eval[]. |
+| ⑦ 오류 응답 | 아래 오류 표. |
+| ⑧ 실행 규칙 | 먼저 만료를 반영한다. 카드 단위 집계이며 completed_unconfirmed만 최근 30일 닫힌 done 카드의 요청 ID를 중복 없이 모아 민원·completed·학부모 미확인인 것을 센다. 모의 eval은 빈 목록이다. |
+
+| 필드 | 위치 | 타입 | 필수 | 빈값 | 제약 | 설명 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `unassigned` | 응답 | integer | 항상 | 불가 | 받은함 필터 unassigned인 카드 수 | 미배정 |
+| `waiting`·`delayed` | 응답 | integer | 항상 | 불가 | pending·in_review·on_hold 수 / 그중 due_at이 지난 수 | 대기·지연 |
+| `done_today` | 응답 | integer | 항상 | 불가 | status=done이고 closed_at의 한국 날짜가 오늘 | 오늘 닫은 카드 수; 요청 완료 수와 다름 |
+| `completed_unconfirmed` | 응답 | integer | 항상 | 불가 | 위 실행 규칙; 최근 30일 | 학부모 미확인 완료 요청 수 |
+| `reassignments[]` | 응답 | object[] | 항상 | 빈 목록 가능 | card_id·from(null 가능)·to·reason·at | 기관의 전체 재배정 이력, 저장 순서 |
+| `eval[]` | 응답 | object[] | 항상 | 빈 목록 가능 | suite·requested_model·returned_model(null 가능)·passed·total·started_at | 평가 결과; 모의 값은 [] |
+
+```http
+GET /api/v1/overview
+HTTP/1.1 200 OK
+{"unassigned": 1, "waiting": 8, "delayed": 0, "done_today": 1, "completed_unconfirmed": 0, "reassignments": [], "eval": []}
+```
+
+| HTTP | `code` | 조건 |
+| --- | --- | --- |
+| 401 | `UNAUTHENTICATED` | 토큰 없음·만료·무효 |
+| 403 | `FORBIDDEN_ROLE` | 허용하지 않은 역할 |
+
+### 3.19 알림장 초안 만들기·진행 상태 — `POST /api/v1/daily-notes/drafts`, `GET …/drafts/{input_id}`
+
+| 칸 | 내용 |
+| --- | --- |
+| ① 호출 목적 | 담임이 반 전체 알림장 초안을 만들고 작업 상태를 확인한다(FR-10). |
+| ② 요청 헤더 | `Authorization`(필수), `X-Request-ID`(권장), `Content-Type: application/json`; 상태 조회는 본문 없음. |
+| ③ 경로·쿼리 | 상태 조회만 input_id(UUID, 필수). |
+| ④ 요청 본문 | 생성은 classroom_id·note_date·activities·supplies. |
+| ⑤ 검증·권한 | teacher만, 현재 담당 반만. note_date는 오늘 또는 지난날. 같은 반·날짜가 있으면 입력 내용이 달라도 기존 작업을 돌려준다. |
+| ⑥ 정상 응답 | 생성 202, 중복 200, 상태 조회 200. 모두 input_id·draft_status·error. |
+| ⑦ 오류 응답 | 아래 오류 표. |
+| ⑧ 실행 규칙 | 202 뒤 상태는 GET /daily-notes/drafts/{input_id}, 아이별 결과는 GET /daily-notes?classroom_id=&date=(3.20). 모의 생성은 즉시 succeeded, activities에 [실패]가 있으면 failed다. 실패도 작업·확인 카드를 남기지만 아이별 알림장은 없다. |
+
+| 필드 | 위치 | 타입 | 필수 | 빈값 | 제약 | 설명 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `input_id` | 조회 경로·응답 | string(UUID) | 조회·응답 필수 | 불가 | 접수 응답에서 받은 값 | 상태 조회 키 |
+| `classroom_id` | 생성 본문 | string(UUID) | 필수 | 불가 | 현재 담당 반 | 초안을 만들 반 |
+| `note_date` | 생성 본문 | date | 필수 | 불가 | YYYY-MM-DD, 오늘 또는 지난날 | 알림 날짜 |
+| `activities` | 생성 본문 | string | 필수 | 불가 | 1~2,000자 | 오늘 활동 |
+| `supplies` | 생성 본문 | string | 필수 | 빈 문자열 가능 | 최대 2,000자 | 준비물이 없어도 칸은 보냄 |
+| `draft_status`·`error` | 응답 | string·object | 항상 | error는 null 가능 | queued·running·succeeded·failed; 오류는 {code, message} | 실패 조회도 200, 모의 오류 코드는 UPSTREAM_UNAVAILABLE |
+
+```http
+POST /api/v1/daily-notes/drafts
+{"classroom_id": "00000000-0000-4000-8000-000000000101", "note_date": "2026-11-18", "activities": "블록 놀이와 산책을 했어요.", "supplies": "내일 실내화"}
+HTTP/1.1 202 Accepted
+{"input_id": "…", "draft_status": "succeeded", "error": null}
+GET /api/v1/daily-notes/drafts/{input_id}
+HTTP/1.1 200 OK
+{"input_id": "…", "draft_status": "succeeded", "error": null}
+```
+
+| HTTP | `code` | 조건 |
+| --- | --- | --- |
+| 401 | `UNAUTHENTICATED` | 토큰 없음·만료·무효 |
+| 403 | `FORBIDDEN_ROLE` | 허용하지 않은 역할 |
+| 404 | `NOT_FOUND` | 없거나 기관·반·소유 범위 밖 |
+| 422 | `VALIDATION_FAILED` | 필수 칸·타입·허용 값·길이가 맞지 않음 |
+
+### 3.20 알림장 보기 — `GET /api/v1/daily-notes`
+
+| 칸 | 내용 |
+| --- | --- |
+| ① 호출 목적 | 날짜별 아이 알림장을 본다. 담임은 반 전체 초안·확인 상태를, 학부모는 내 아이의 보낸 알림장을 받는다(FR-10). |
+| ② 요청 헤더 | `Authorization`(필수), `X-Request-ID`(권장). |
+| ③ 경로·쿼리 | date(필수), classroom_id(담임 필수), page·size·sort. |
+| ④ 요청 본문 | 없음. |
+| ⑤ 검증·권한 | 학부모는 내 아이·sent만. 담임은 현재 담당 반만. director는 기관 전체를 읽으며 반을 고를 수 있다. |
+| ⑥ 정상 응답 | 200 + 쪽 나눈 items[]. 조건에 맞는 알림장이 없으면 빈 목록. |
+| ⑦ 오류 응답 | 아래 오류 표. |
+| ⑧ 실행 규칙 | 학부모에게 classroom_id를 주어도 내 아이·sent 조건을 먼저 적용한다. created_at으로 정렬 뒤 쪽을 나눈다. 모의 초안은 day·supplies·meal 세 줄이며 첫 아이에 준비물 확인 항목 c1을 넣는다. |
+
+| 필드 | 위치 | 타입 | 필수 | 빈값 | 제약 | 설명 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `date` | 쿼리 | date | 필수 | 불가 | YYYY-MM-DD, 미래 날짜 조회도 허용 | 알림 날짜 |
+| `classroom_id` | 쿼리 | string(UUID) | 담임 필수 | 생략 가능 | 담임은 현재 담당 반 | 학부모·원장은 선택 |
+| `page`·`size` | 쿼리 | integer | 선택 | 불가 | 기본 1·20, page ≥ 1, size 1~100 | 쪽 나누기 |
+| `sort` | 쿼리 | string | 선택 | 불가 | `-created_at`(기본)·`created_at` | 내림차순·오름차순 |
+| `items[].id`·`child_id`·`note_date`·`status` | 응답 | UUID·date·string | 항상 | 불가 | draft·needs_check·ready·sent | 아이별 알림장; 보낸 것만 학부모에게 노출 |
+| `items[].content`·`open_checks[]` | 응답 | object·object[] | 항상 | 빈 목록 가능 | 줄·출처·확인 항목 모양은 3.7 참고 | items는 key·label·value·source를 가짐 |
+| `items[].confirmed_at`·`sent_at` | 응답 | datetime | 항상 | null 가능 | 확인·발송 뒤 시각 | 아직 실행하지 않았으면 null |
+| `total`·`page`·`size` | 응답 | integer | 항상 | 불가 | 전체 건수·요청한 쪽·크기 | 목록 공통 칸 |
+
+```http
+GET /api/v1/daily-notes?classroom_id=00000000-0000-4000-8000-000000000101&date=2026-11-18
+HTTP/1.1 200 OK
+{"items": [{"child_id": "00000000-0000-4000-8000-000000000503", "note_date": "2026-11-18", "status": "draft", "content": {"items": [{"key": "day", "label": "오늘 하루", "value": "블록 놀이와 산책을 했어요.", "source": {"type": "teacher_input", "document_id": null, "document_title": null, "request_id": null}}, {"key": "supplies", "label": "준비물", "value": "내일 실내화", "source": {"type": "teacher_input", "document_id": null, "document_title": null, "request_id": null}}, {"key": "meal", "label": "식사", "value": "점심: 카레라이스, 채소와 과일", "source": {"type": "document", "document_id": "00000000-0000-4000-8000-000000000b01", "document_title": "가상 식단표", "request_id": null}}]}, "open_checks": [], "confirmed_at": null, "sent_at": null}], "total": 2, "page": 1, "size": 20}
+```
+
+| HTTP | `code` | 조건 |
+| --- | --- | --- |
+| 401 | `UNAUTHENTICATED` | 토큰 없음·만료·무효 |
+| 403 | `FORBIDDEN_ROLE` | 허용하지 않은 역할 |
+| 404 | `NOT_FOUND` | 없거나 기관·반·소유 범위 밖 |
+| 422 | `VALIDATION_FAILED` | date 누락·날짜/UUID/쪽 형식 오류·담임의 classroom_id 누락 |
+
+### 3.21 알림장 고치기·확인 — `PATCH /api/v1/daily-notes/{note_id}`
+
+| 칸 | 내용 |
+| --- | --- |
+| ① 호출 목적 | 담임이 아이별 알림장을 고치고 확인 항목을 해결한 뒤 발송 준비를 마친다(FR-10). |
+| ② 요청 헤더 | `Authorization`(필수), `X-Request-ID`(권장), `Content-Type: application/json`. |
+| ③ 경로·쿼리 | note_id(UUID, 필수). |
+| ④ 요청 본문 | content·resolved_checks·confirm, 모두 선택. |
+| ⑤ 검증·권한 | teacher와 현재 담당 반만. 문서·요청 출처도 범위를 검사한다. sent는 수정 불가. 없는 확인 ID와 미해결 항목을 남긴 confirm은 저장된 확인 항목과 대조해야 알 수 있어 서버가 409로 막는다(4.1). |
+| ⑥ 정상 응답 | 200 + note. confirm=true이고 미해결 0개면 ready·confirmed_at을 남긴다. |
+| ⑦ 오류 응답 | 아래 오류 표. |
+| ⑧ 실행 규칙 | content를 보내면 전체 내용을 바꾼다. confirm=false(기본)이면 기존 확인을 지우고 미해결 유무에 따라 needs_check·draft로 되돌린다. 빈 본문도 기존 확인을 해제한다. 오류면 수정하지 않는다. |
+
+| 필드 | 위치 | 타입 | 필수 | 빈값 | 제약 | 설명 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `note_id` | 경로 | string(UUID) | 필수 | 불가 | 현재 담당 반 알림장 | 3.20 응답에서 받은 ID |
+| `content` | 본문 | object | 선택 | null 가능 | items[]의 key·label·value·source는 3.7; 빈 items도 허용 | 생략·null이면 내용 유지 |
+| `content.items[].key` | 본문 | string | 줄마다 필수 | 불가 | day·meal·medication·pickup·supplies | 줄 종류 |
+| `content.items[].label`·`value` | 본문 | string | 줄마다 필수 | value만 빈 문자열 가능 | label은 1자 이상, value 길이 제한 없음 | 줄 이름과 내용 |
+| `content.items[].source` | 본문 | object | 줄마다 필수 | 불가 | document면 document_id·document_title, request면 request_id 필수 | 출처 종류는 teacher_input·document·request |
+| `resolved_checks[]` | 본문 | string[] | 선택 | 빈 목록 가능 | 기본 [], 현재 open_checks의 id만 | 해결한 확인 항목 |
+| `confirm` | 본문 | boolean | 선택 | 불가 | 기본 false | 미해결 항목이 없어야 true 가능 |
+| `note` | 응답 | object | 항상 | 불가 | 3.20 items[]와 같은 모양 | status·open_checks·confirmed_at 포함 |
+
+```http
+PATCH /api/v1/daily-notes/{note_id}
+{"resolved_checks": ["c1"], "confirm": true}
+HTTP/1.1 200 OK
+{"note": {"child_id": "00000000-0000-4000-8000-000000000501", "status": "ready", "open_checks": [], "confirmed_at": "2026-11-18T10:00:00+09:00"}}
+```
+
+| HTTP | `code` | 조건 |
+| --- | --- | --- |
+| 401 | `UNAUTHENTICATED` | 토큰 없음·만료·무효 |
+| 403 | `FORBIDDEN_ROLE` | 허용하지 않은 역할 |
+| 404 | `NOT_FOUND` | 없거나 기관·반·소유 범위 밖 |
+| 409 | `INVALID_TRANSITION` | sent 수정, 없는 resolved_checks ID, confirm인데 미해결 항목 있음(details.open_checks) |
+| 422 | `VALIDATION_FAILED` | 형식·출처 필수 칸 |
+
+### 3.22 자료 올리기 — `POST /api/v1/documents`
+
+| 칸 | 내용 |
+| --- | --- |
+| ① 호출 목적 | 교직원이 자료 파일과 적용 범위를 올리고 적재 결과를 확인한다(FR-13). |
+| ② 요청 헤더 | `Authorization`(필수), `X-Request-ID`(권장), `Content-Type: multipart/form-data; boundary=…`. |
+| ③ 경로·쿼리 | 없음. |
+| ④ 요청 본문 | 아래 multipart/form-data 필드 표. classroom_ids[]는 같은 이름으로 반복 전송한다. |
+| ⑤ 검증·권한 | teacher·director만. 대상 반·이전 문서의 범위를 검사한다. 새 판의 이전 문서는 active여야 한다. |
+| ⑥ 정상 응답 | 새 자료 202 + document, 같은 기관의 같은 바이트 자료는 200 + 기존 document. |
+| ⑦ 오류 응답 | 아래 오류 표. |
+| ⑧ 실행 규칙 | 접수 뒤 GET /documents/{document_id}(3.23)로 성공·실패를 확인한다. 모의 적재는 즉시 끝나며 UTF-8 치환 해독 후 500자씩 나눈다(빈 파일도 1조각). 파일명 [실패]는 ingest_status=failed·chunk_count=0. 새 판은 적재에 성공했을 때만 이전 자료를 superseded로 바꾼다. 실패하면 옛 판을 그대로 쓰고 supersedes_id도 비운다. |
+
+| 필드 | 위치 | 타입 | 필수 | 빈값 | 제약 | 설명 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `file` | 폼 | binary | 필수 | 빈 파일 허용 | 코드의 별도 확장자·형식·크기 제한 없음 | 파일명이 title, 없으면 자료 |
+| `doc_type` | 폼 | string | 필수 | 불가 | notice·schedule·menu·policy·consult_timetable·law·public_data | 자료 유형 |
+| `visibility` | 폼 | string | 필수 | 불가 | staff·parents·all | 공개 범위 |
+| `classroom_ids[]` | 폼 | string[](UUID) | 선택 | 생략 가능 | 기본 [], 담임은 현재 담당 반 | 비우면 원 전체 |
+| `effective_from` | 폼 | date | 필수 | 불가 | YYYY-MM-DD, 미래 날짜 허용 | 적용 시작일 |
+| `replaces_document_id` | 폼 | string(UUID) | 선택 | 생략 가능 | 범위 안 active 문서 | 이전 판 |
+| `document` | 응답 | object | 항상 | 불가 | 전체 칸은 3.23 참고 | ID·적재 상태·조각 수·error |
+
+예시는 multipart 각 부분의 이름·값을 줄여 썼다. 시드 식단표와 바이트가 같아 200이다. 같은 기관의 파일 바이트 SHA-256만 비교하므로 이름·유형·공개 범위가 달라도 기존 자료를 반환한다. 중복 검사 뒤에 이전 판 상태를 검사한다.
+
+```http
+POST /api/v1/documents
+Content-Type: multipart/form-data; boundary=demo
+[file: filename="식단표.txt", Content-Type: text/plain, 내용="점심: 카레라이스, 채소와 과일"]
+[doc_type=menu, visibility=all, effective_from=2026-11-18]
+HTTP/1.1 200 OK
+{"document": {"id": "00000000-0000-4000-8000-000000000b01", "title": "가상 식단표", "ingest_status": "succeeded", "effective_from": "2026-11-08", "chunk_count": 1}}
+```
+
+| HTTP | `code` | 조건 |
+| --- | --- | --- |
+| 401 | `UNAUTHENTICATED` | 토큰 없음·만료·무효 |
+| 403 | `FORBIDDEN_ROLE` | 허용하지 않은 역할 |
+| 404 | `NOT_FOUND` | 없거나 기관·반·소유 범위 밖 |
+| 409 | `INVALID_TRANSITION` | 이전 문서가 active 아님 |
+| 422 | `VALIDATION_FAILED` | 필수 칸·타입·허용 값·길이가 맞지 않음 |
+
+### 3.23 자료 목록·상세 — `GET /api/v1/documents`, `GET /api/v1/documents/{document_id}`
+
+| 칸 | 내용 |
+| --- | --- |
+| ① 호출 목적 | 교직원이 자료 목록과 자료별 적재 상태·오류를 본다(FR-13). |
+| ② 요청 헤더 | `Authorization`(필수), `X-Request-ID`(권장). |
+| ③ 경로·쿼리 | 목록은 page·size·sort, 상세는 document_id(UUID). |
+| ④ 요청 본문 | 없음. |
+| ⑤ 검증·권한 | teacher·director만. 같은 기관 안에서 원 전체 자료와 현재 담당 반이 대상인 자료를 본다. 원장은 반 제한 없이 본다. visibility 값으로 교직원 조회를 막지는 않는다. |
+| ⑥ 정상 응답 | 목록 200 + items[]·total·page·size, 상세 200 + document. 적재 실패도 조회는 200. |
+| ⑦ 오류 응답 | 아래 오류 표. |
+| ⑧ 실행 규칙 | 생성 시각으로 정렬 뒤 쪽을 나눈다. 모의 구현은 superseded 자료도 목록에 남기고 conflicts는 항상 []다. status와 ingest_status는 별개이며 실패 파일도 status=active일 수 있다. |
+
+| 필드 | 위치 | 타입 | 필수 | 빈값 | 제약 | 설명 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `document_id` | 상세 경로 | string(UUID) | 필수 | 불가 | 조회 범위 안 | 접수 응답의 document.id |
+| `page`·`size` | 쿼리 | integer | 선택 | 불가 | 기본 1·20, page ≥ 1, size 1~100 | 쪽 나누기 |
+| `sort` | 쿼리 | string | 선택 | 불가 | `-created_at`(기본)·`created_at` | 내림차순·오름차순 |
+| `document.id`·`title`·`doc_type`·`visibility`·`classroom_ids[]` | 상세 응답 | UUID·string·UUID[] | 항상 | 빈 classroom_ids 가능 | 목록 items[]도 같은 모양 | 자료 이름·종류·공개 범위·대상 반 |
+| `document.effective_from`·`effective_to`·`supersedes_id` | 상세 응답 | date·UUID | 항상 | effective_to·supersedes_id는 null 가능 | 새 판에만 이전 문서 ID | 적용 기간·판 연결 |
+| `document.status`·`ingest_status` | 상세 응답 | string | 항상 | 불가 | status는 모의 active·superseded; ingest_status는 queued·running·succeeded·failed | 사용 상태·적재 진행 |
+| `document.chunk_count`·`conflicts[]`·`error` | 상세 응답 | integer·object[]·object | 항상 | error는 null 가능 | 조각 수; 오류는 {code, message} | 실패면 UPSTREAM_UNAVAILABLE; 충돌 판별은 모의 구현에 없음 |
+| `total`·`page`·`size` | 응답 | integer | 항상 | 불가 | 전체 건수·요청한 쪽·크기 | 목록 공통 칸 |
+
+```http
+GET /api/v1/documents?size=1
+HTTP/1.1 200 OK
+{"items": [{"id": "00000000-0000-4000-8000-000000000b01", "title": "가상 식단표", "status": "active", "ingest_status": "succeeded"}], "total": 3, "page": 1, "size": 1}
+GET /api/v1/documents/00000000-0000-4000-8000-000000000b01
+HTTP/1.1 200 OK
+{"document": {"id": "00000000-0000-4000-8000-000000000b01", "title": "가상 식단표", "doc_type": "menu", "visibility": "all", "classroom_ids": [], "effective_from": "2026-11-08", "effective_to": null, "status": "active", "ingest_status": "succeeded", "supersedes_id": null, "conflicts": [], "chunk_count": 1, "error": null}}
+```
+
+| HTTP | `code` | 조건 |
+| --- | --- | --- |
+| 401 | `UNAUTHENTICATED` | 토큰 없음·만료·무효 |
+| 403 | `FORBIDDEN_ROLE` | 허용하지 않은 역할 |
+| 404 | `NOT_FOUND` | 없거나 기관·반·소유 범위 밖 |
+| 422 | `VALIDATION_FAILED` | 필수 칸·타입·허용 값·길이가 맞지 않음 |
+
+
 ## 4. 검증과 권한 규칙
 
 ### 4.1 형식 검사(422)와 서버 검사(403·404·409)를 나눈다
@@ -819,8 +1421,11 @@ def decide(card_id: UUID, body: CardDecision, user: User = Depends(current_staff
 
 | 이름 | 기본값 | 뜻 |
 | --- | --- | --- |
-| `JWT_SECRET` | (비움) | 토큰 서명 키 |
+| `JWT_SECRET` | 개발용 기본 문자열(배포 때 반드시 바꿈) | 토큰 서명 키. 32바이트 이상 |
 | `JWT_ACCESS_TTL_HOURS` | `12` | 토큰 수명 |
+| `CORS_ORIGINS` | `http://localhost:5173` | 허용할 화면 출처. 쉼표로 여러 주소를 넣음 |
+| `HOLIDAYS` | `""`(빈 문자열, 공휴일 목록 없음) | YYYY-MM-DD를 쉼표로 나열. 기한·교직원 알림 시각에 적용 |
+| `MOCK_STREAM_DELAY_MS` | `300` | 모의 SSE 이벤트 사이 간격(밀리초). 음수는 0으로 처리 |
 | `LLM_MODEL_DEFAULT` | `gpt-6-luna` | 역할별 모델을 비워 두면 쓰는 모델(D27) |
 | `LLM_MODEL_SUPERVISOR` | (비움) | 감독 AI 모델 |
 | `LLM_MODEL_DOCUMENT` | (비움) | 자료 AI 모델 |
@@ -829,7 +1434,7 @@ def decide(card_id: UUID, body: CardDecision, user: User = Depends(current_staff
 | `LLM_MODEL_CODE` | (비움) | 코드 AI 모델 |
 | `OPENAI_API_KEY` | (비움) | 모델 호출 키. 값은 팀 키 보관 위치에서 받음 |
 
-역할별 모델은 계약표 6장 ⑪을 따른다. 비워 두면 `LLM_MODEL_DEFAULT`를 쓰고, 역할별 교체는 다섯 에이전트 분리(T43) 뒤 앱 경유 평가에서 이득이 확인된 역할만 팀 결정으로 한다. 근무 시간·공휴일 목록은 인혜가 둘 곳을 정한 뒤 이 표에 더한다.
+역할별 모델은 계약표 6장 ⑪을 따른다. 비워 두면 `LLM_MODEL_DEFAULT`를 쓰고, 역할별 교체는 다섯 에이전트 분리(T43) 뒤 앱 경유 평가에서 이득이 확인된 역할만 팀 결정으로 한다. 공휴일 목록은 `HOLIDAYS`로 받으며, 근무 시간은 현재 코드에서 평일 09:00~18:00을 쓴다.
 
 ## 부록 A. 예시 ID
 
@@ -839,18 +1444,24 @@ def decide(card_id: UUID, body: CardDecision, user: User = Depends(current_staff
 | --- | --- | --- | --- |
 | `KG-DEMO-01` | 가상 햇살유치원 | `organizations` | `00000000-0000-4000-8000-000000000001` |
 | `CL-DEMO-01` | 만 4세 별빛반 | `classrooms` | `00000000-0000-4000-8000-000000000101` |
+| `CL-DEMO-02` | 만 5세 햇님반 | `classrooms` | `00000000-0000-4000-8000-000000000102` |
 | `T-DEMO-01` | 우리 반 담임 | `users` | `00000000-0000-4000-8000-000000000201` |
 | `T-DEMO-02` | 다른 반 교사(권한 거부 시험용) | `users` | `00000000-0000-4000-8000-000000000202` |
 | `D-DEMO-01` | 원장 | `users` | `00000000-0000-4000-8000-000000000301` |
 | `P-DEMO-01` | 우리 아이 학부모 | `users` | `00000000-0000-4000-8000-000000000401` |
+| `P-DEMO-02` | 다른 아이 학부모 | `users` | `00000000-0000-4000-8000-000000000402` |
 | `C-DEMO-01` | 우리 아이 | `children` | `00000000-0000-4000-8000-000000000501` |
 | `C-DEMO-02` | 다른 아이(권한 거부 시험용) | `children` | `00000000-0000-4000-8000-000000000502` |
+| `C-DEMO-03` | 별빛반 노을, 보호자 P-DEMO-02 | `children` | `00000000-0000-4000-8000-000000000503` |
 | `RM-DEMO-01` | 상담실 | `rooms` | `00000000-0000-4000-8000-000000000601` |
 | `R-DEMO-01` · `R-DEMO-02` | 상담 요청 · 민원 요청 | `requests` | `…000000000701` · `…000000000702` |
 | `K-DEMO-01` · `K-DEMO-02` | 상담 후보 카드 · 민원 회신 카드 | `cards` | `…000000000801` · `…000000000802` |
+
+그 밖의 데모 요청(…703~707)·문서(…b01~b03)·규칙(…d01)은 `apps/api/app/mock/seed.py`를 참고한다.
 
 ## 변경 이력
 
 | 판 | 날짜 | 내용 | 작성 |
 | --- | --- | --- | --- |
 | v0.1 | 2026-11-18 | 초안. API 목록 29개, 핵심 6개 상세 명세, 화면용 조회 칸(3.7, T12 #254 리뷰), 검증·권한 규칙, 도구 실패 코드·실패 후 처리, 실행 규칙(기한 계산·알림 발송 시각 포함, T10 회의 결과), API 필드↔DB 컬럼 대응, 설정값 | 태웅 |
+| v0.2 | 2026-11-18 | 나머지 API 상세 명세(3.8~3.23)를 모의 API·OpenAPI와 대조해 채움. 29개 상세 절 연결, 모의 API 안내·설정값·데모 ID 보완 | 태웅 |

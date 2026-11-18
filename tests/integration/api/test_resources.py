@@ -75,7 +75,7 @@ def test_patch_is_atomic_and_requires_all_checks(client, teacher, parent, teache
     content = {"items": [{"key": "day", "label": "오늘 하루", "value": "새 내용", "source": {"type": "teacher_input"}}]}
     err(client.patch(f"{BASE}/daily-notes/{n['id']}", headers=teacher, json={"confirm": True, "content": content}), 409, "INVALID_TRANSITION")
     assert store.state().notes[UUID(n["id"])].content == original
-    err(client.patch(f"{BASE}/daily-notes/{n['id']}", headers=teacher, json={"resolved_checks": ["unknown"]}), 422, "VALIDATION_FAILED")
+    err(client.patch(f"{BASE}/daily-notes/{n['id']}", headers=teacher, json={"resolved_checks": ["unknown"]}), 409, "INVALID_TRANSITION")
     err(client.patch(f"{BASE}/daily-notes/{n['id']}", headers=teacher_other, json={"confirm": True}), 404, "NOT_FOUND")
     err(client.patch(f"{BASE}/daily-notes/{n['id']}", headers=parent, json={"confirm": True}), 403, "FORBIDDEN_ROLE")
     patched = client.patch(f"{BASE}/daily-notes/{n['id']}", headers=teacher,
@@ -123,6 +123,10 @@ def test_document_upload_duplicate_replacement_and_scope(client, teacher, teache
     assert newer.status_code == 202 and newer.json()["document"]["supersedes_id"] == document["id"]
     assert client.get(f"{BASE}/documents/{document['id']}", headers=teacher).json()["document"]["status"] == "superseded"
     err(upload(client, director, content=b"invalid fork", replaces_document_id=document["id"]), 409, "INVALID_TRANSITION")
+    keep = upload(client, teacher, content=b"keep me").json()["document"]
+    failed = upload(client, teacher, filename="[실패] new.txt", content=b"broken", replaces_document_id=keep["id"])
+    assert failed.status_code == 202 and failed.json()["document"]["supersedes_id"] is None
+    assert client.get(f"{BASE}/documents/{keep['id']}", headers=teacher).json()["document"]["status"] == "active"
     err(upload(client, teacher, **{"classroom_ids[]": str(seed.CLASS_SUN)}), 404, "NOT_FOUND")
     err(upload(client, parent), 403, "FORBIDDEN_ROLE")
     err(upload(client, teacher, doc_type="invalid"), 422, "VALIDATION_FAILED")

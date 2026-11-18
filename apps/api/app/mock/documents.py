@@ -42,11 +42,11 @@ def upload(user, filename, data, doc_type, visibility, classroom_ids, effective_
             raise ApiError(409, "INVALID_TRANSITION")
         failed = "[실패]" in filename
         doc = Document(uuid4(), user.org_id, filename, doc_type, visibility, digest, effective_from, store.now(),
-                       source="uploaded", supersedes_id=old.id if old else None, uploaded_by=user.id,
+                       source="uploaded", supersedes_id=old.id if old and not failed else None, uploaded_by=user.id,
                        ingest_status="failed" if failed else "succeeded")
         store.state().documents[doc.id] = doc
         store.state().document_classrooms[doc.id] = classroom_ids
-        if old:
+        if old and not failed:          # 새 판 적재가 실패하면 옛 판을 그대로 쓴다
             old.status = "superseded"
         if failed:
             store.add_event(None, "tool_failed", org_id=user.org_id, document_id=doc.id,
