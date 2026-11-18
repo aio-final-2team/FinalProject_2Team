@@ -6,10 +6,10 @@
 | --- | --- |
 | 작업 | T13 API 설계 문서(FastAPI·Function Calling 도구 계약)·모의 API (#170) |
 | 작성 | 태웅 · 검토 인혜 |
-| 기준 문서 | 기획서 1117판 3장 FR-01~FR-13 · T04 흐름·권한 명세(PR #234) · [입출력 계약표](입출력_계약표_초안.md) v0.7(T10 회의 11/18 합의) · [DB 스키마 설계서](DB_스키마_설계서.md) v0.7 |
+| 기준 문서 | 기획서 1117판 3장 FR-01~FR-13 · T04 흐름·권한 명세(PR #234) · [입출력 계약표](입출력_계약표_초안.md) v0.8(T10 회의 11/18 합의 v0.7 + 이 문서 3.7의 화면용 칸) · [DB 스키마 설계서](DB_스키마_설계서.md) v0.7 |
 | 따른 가이드 | 강사님 'API 설계 문서 작성법' 11/18 수정본. 1~6장이 가이드의 '문서에 들어가는 여섯 가지' 순서다 |
 
-이 문서는 T10 계약표에서 합의한 필드·권한·오류를 엔드포인트와 도구 단위로 펼친 것이다. 계약표와 이 문서가 다르면 계약표를 먼저 고치고 두 문서의 판을 같이 올린다. 구현이 시작되면 FastAPI의 `/docs`와 대조해 판을 올린다(계약표 1.1 규칙 1). 이 판(v0.1)은 API 목록 전체, 핵심 6개의 상세 명세, 도구 전체의 실패 처리, 실행 규칙을 담는다. 모의 API와 `contracts/openapi.yaml`은 v0.2(11/20 제출본)에서 붙인다.
+이 문서는 T10 계약표에서 합의한 필드·권한·오류를 엔드포인트와 도구 단위로 펼친 것이다. 계약표와 이 문서가 다르면 계약표를 먼저 고치고 두 문서의 판을 같이 올린다. 구현이 시작되면 FastAPI의 `/docs`와 대조해 판을 올린다(계약표 1.1 규칙 1). 이 판(v0.1)은 API 목록 전체, 핵심 6개의 상세 명세, 화면이 쓰는 조회 응답 칸(3.7), 도구 전체의 실패 처리, 실행 규칙을 담는다. 모의 API와 `contracts/openapi.yaml`은 v0.2(11/20 제출본)에서 붙인다.
 
 **목차.** 1. 공통 정보와 인증 · 2. API 목록 · 3. 엔드포인트 상세 명세 · 4. 검증과 권한 규칙 · 5. Tool 정의와 호출 흐름 · 6. 실행 규칙 · 7. API 필드와 DB 컬럼 대응 · 8. 설정값 · 부록 A. 예시 ID · 변경 이력
 
@@ -19,7 +19,7 @@
 | --- | --- |
 | 구현할 API가 모두 목록 표에 있고 요구사항 ID와 연결된다 | 2장(29개, 요구사항 열) |
 | 서버 주소·인증·오류 형식·/docs·변경 이력이 있다 | 1장, 끝의 변경 이력 |
-| 구현할 API마다 상세 명세와 필드 명세 표가 있다 | 3장(v0.1은 핵심 6개. 나머지는 v0.2에서 채움) |
+| 구현할 API마다 상세 명세와 필드 명세 표가 있다 | 3장(v0.1은 핵심 6개와 화면용 조회 칸. 나머지는 v0.2에서 채움) |
 | 형식 오류(422)와 권한·승인 오류(403)를 나눠 적었다 | 4.1 |
 | 202를 쓰는 API는 작업 상태·결과·실패 조회가 있다 | 6.3 |
 | Tool마다 성공·실패 출력과 실패 후 처리가 있다 | 5.2, 5.4 |
@@ -109,19 +109,19 @@
 
 | # | 메서드 | 경로 | 인증·역할 | 설명 | 성공 | 요구사항 | 상세 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | POST | `/api/v1/auth/login` | 없음 | 로그인, 토큰 발급 | 200 | FR-01 | |
-| 2 | GET | `/api/v1/me` | JWT | 내 정보·내 아이(학부모)·담당 반(교직원) | 200 | FR-01 | |
+| 1 | POST | `/api/v1/auth/login` | 없음 | 로그인, 토큰 발급 | 200 | FR-01 | 3.7 |
+| 2 | GET | `/api/v1/me` | JWT | 내 정보·내 아이(학부모)·담당 반(교직원) | 200 | FR-01 | 3.7 |
 | 3 | POST | `/api/v1/requests` | 학부모 | 요청 만들기(AI 처리 접수) | 202 | FR-02, FR-03 | 3.1 |
 | 4 | GET | `/api/v1/requests` | 학부모(자기 것) | 내 요청 목록 | 200 | FR-02 | |
-| 5 | GET | `/api/v1/requests/{request_id}` | 학부모(자기 것) · 교직원(우리 반) | 요청 상세·대화·진행 기록 | 200 | FR-02, FR-11 | 3.2 |
+| 5 | GET | `/api/v1/requests/{request_id}` | 학부모(자기 것) · 교직원(우리 반) | 요청 상세·대화·진행 기록 | 200 | FR-02, FR-11 | 3.2, 3.7 |
 | 6 | GET | `/api/v1/requests/{request_id}/stream` | 학부모(자기 것) | AI 진행 스트림(SSE) | 200 | NFR-10 | 3.2 |
 | 7 | POST | `/api/v1/requests/{request_id}/messages` | 학부모(자기 것) | 대화 이어 쓰기 | 201 | FR-02 | |
 | 8 | POST | `/api/v1/requests/{request_id}/slot-choices` | 학부모(자기 것) | 상담 가능 시간 체크 | 200 | FR-05 | 3.4 |
 | 9 | POST | `/api/v1/requests/{request_id}/confirm` | 학부모(자기 민원) | 민원 회신 '확인했어요' | 200 | FR-07 | 3.5 |
 | 10 | GET | `/api/v1/notifications` | JWT(자기 것) | 알림 목록 | 200 | FR-12 | |
 | 11 | POST | `/api/v1/notifications/{notification_id}/read` | JWT(자기 것) | 알림 읽음 | 200 | FR-12 | |
-| 12 | GET | `/api/v1/cards` | 담임·원장 | 받은함(필터 6개·필터별 건수) | 200 | FR-09 | |
-| 13 | GET | `/api/v1/cards/{card_id}` | 담임(우리 반)·원장 | 카드 상세(초안·근거·반복 수·이력) | 200 | FR-04, FR-07, FR-09, FR-11 | |
+| 12 | GET | `/api/v1/cards` | 담임·원장 | 받은함(필터 6개·종류 필터·필터별 건수) | 200 | FR-09 | 3.7 |
+| 13 | GET | `/api/v1/cards/{card_id}` | 담임(우리 반)·원장 | 카드 상세(초안·근거·반복 수·이력) | 200 | FR-04, FR-07, FR-09, FR-11 | 3.7 |
 | 14 | GET | `/api/v1/cards/{card_id}/stream` | 담임(우리 반)·원장 | 카드 AI 진행 스트림(초안 글자 포함) | 200 | NFR-10 | |
 | 15 | POST | `/api/v1/cards/{card_id}/decisions` | 담임(우리 반)·원장 | 카드 결정(승인·거절·보류·재개·반려·처리 완료·원장님께 올리기) | 200 | FR-05~FR-09 | 3.3 |
 | 16 | POST | `/api/v1/cards/{card_id}/reclassify` | 담임(우리 반)·원장 | 민원 위험 등급 다시 분류 | 200 | FR-03, FR-07 | |
@@ -132,7 +132,7 @@
 | 21 | GET | `/api/v1/overview` | 원장·원감 | 원장 현황(미배정·대기·지연·완료·학부모 미확인 완료) | 200 | FR-09, FR-19 | |
 | 22 | POST | `/api/v1/daily-notes/drafts` | 담임 | 알림장 초안 만들기(AI 처리 접수) | 202 | FR-10 | |
 | 23 | GET | `/api/v1/daily-notes/drafts/{input_id}` | 담임(우리 반) | 알림장 초안 진행 상태 | 200 | FR-10 | |
-| 24 | GET | `/api/v1/daily-notes` | 학부모(내 아이, 보낸 것) · 담임(우리 반) | 알림장 보기 | 200 | FR-10 | |
+| 24 | GET | `/api/v1/daily-notes` | 학부모(내 아이, 보낸 것) · 담임(우리 반) | 알림장 보기 | 200 | FR-10 | 3.7 |
 | 25 | PATCH | `/api/v1/daily-notes/{note_id}` | 담임(우리 반) | 알림장 고치기·확인 | 200 | FR-10 | |
 | 26 | POST | `/api/v1/daily-notes/send` | 담임(우리 반) | 반 알림장 한 번에 보내기 | 200 | FR-10 | 3.6 |
 | 27 | POST | `/api/v1/documents` | 원장·담임 | 자료 올리기(적재 접수) | 202 | FR-13 | |
@@ -223,7 +223,7 @@ X-Request-ID: 6b0f1c2e-9a7d-4c1e-8f3a-2d5b7e9c1a40
 | ③ 경로·쿼리 | `request_id`(경로, UUID, 필수) |
 | ④ 요청 본문 | 없음 |
 | ⑤ 검증·권한 | 학부모는 자기 요청만, 담임은 우리 반 요청(대체 담임은 기간 안)과 재배정받은 카드의 요청만, 원장은 원 전체. 범위 밖이면 404 |
-| ⑥ 정상 응답 | 200. 학부모에게는 위험 등급(T04 7.1)·보류 이유(교직원끼리만, DB 설계서 2.2 `cards.hold_until`)·도구 호출을 넣지 않고, 처리 이력은 학부모용 요약만 준다(T04 7.1) |
+| ⑥ 정상 응답 | 200. 학부모에게는 위험 등급·보류 이유·도구 호출·처리한 교직원을 넣지 않고, 처리 이력은 학부모용 요약만 준다(계약표 2.1, T04 7.1). 반려 이유와 답변 출처는 준다(3.7) |
 | ⑦ 오류 응답 | 401, 404, 422(UUID 형식이 아님) |
 | ⑧ 실행 규칙 | 조회라 재시도해도 된다. 스트림이 끊기면 상세를 다시 불러 상태를 맞춘 뒤 다시 연결한다 |
 
@@ -441,8 +441,88 @@ HTTP/1.1 200 OK
 ```json
 { "error": { "code": "NOTE_BATCH_BLOCKED", "message": "확인이 안 끝난 알림장이 있어요.",
              "trace_id": "…", "details": { "blocked": [ { "note_id": "…", "child_id": "00000000-0000-4000-8000-000000000502",
-             "open_checks": ["준비물 날짜가 식단표와 달라요"] } ] } } }
+             "open_checks": [ { "id": "c1", "item_key": "supplies", "problem": "준비물 날짜가 식단표와 달라요" } ] } ] } } }
 ```
+
+### 3.7 화면이 쓰는 조회 응답 칸
+
+T12 화면 지도(성주, PR #254)를 계약표 v0.7과 대조했을 때 화면에는 있는데 계약표에 없던 칸이다(#254 리뷰). 계약표 2장에도 같은 이름으로 더했다(계약표 v0.8). 모두 서버가 조회할 때 채우고, 새 DB 칸은 없다.
+
+**로그인·내 정보** (`POST /auth/login`, `GET /me`)
+
+| 필드 | 타입 | 누구 | 설명 | DB |
+| --- | --- | --- | --- | --- |
+| `user.classroom_ids[]` | string[](UUID) | 담임 | 오늘 볼 수 있는 반. 대체 담임은 기간 안인 반만. 원장·원감·학부모는 빈 목록 | `classroom_staff`(`valid_from`~`valid_to`) |
+| `children[] { id, display_name, classroom_id }` | 목록 | 학부모 | 내 아이(이미 계약표에 있던 칸의 모양) | `child_guardians` → `children` |
+
+**받은함 목록** (`GET /api/v1/cards`)
+
+쿼리 파라미터. 화면의 종류 필터(전체·긴급·민원·상담·문의)는 카드 종류(`kind`)가 아니라 요청 유형으로 받는다. `kind`는 `reply_draft`·`director_report` 같은 카드 종류라 화면의 '종류'와 뜻이 다르기 때문이다.
+
+| 파라미터 | 타입 | 필수 | 값 | 설명 |
+| --- | --- | --- | --- | --- |
+| `filter` | string | 선택 | `unassigned`·`needs_review`·`uncertain`·`on_hold`·`in_progress`·`done` | 받은함 필터 6개(T04 2.2). 없으면 끝나지 않은 카드 전부 |
+| `request_type` | string | 선택 | `complaint`·`consultation`·`inquiry` | 종류 필터 '민원·상담·문의'. 없으면 '전체' |
+| `risk_level` | string | 선택 | `urgent` | 종류 필터 '긴급' |
+| `kind` | string | 선택 | 카드 종류 6개 | 카드 종류로 거를 때(원장 보고만 보기 등) |
+| `assignee` | string | 선택 | `me` | 내 담당만 |
+| `page`·`size` | integer | 선택 | 기본 1·20, `size` 최대 100 | 목록 규칙(1.5) |
+
+`counts {}`는 필터 6개의 건수이고, `request_type`·`risk_level`을 준 경우 그 조건 안에서 센다. 필터와 건수는 서버가 계산한다.
+
+| 더한 필드(`items[]`) | 타입 | 언제 | 설명 | DB |
+| --- | --- | --- | --- | --- |
+| `request_id` | string(UUID) | 요청이 있는 카드 | 알림장 묶음·규칙 제안 카드는 `null` | `cards.request_id` |
+| `risk_category` | string | 긴급 민원만 | 긴급 사유 4가지(`child_safety`·`staff_attack`·`legal_external`·`privacy_leak`) | `requests.risk_category` |
+| `repeat_count` | integer | 민원만 | 같은 반·최근 30일·같은 주제 민원 수. `topic_key = other`면 `null` | 조회 때 셈(`requests_repeat_idx`) |
+| `check { passed, issue_count }` | 객체 | 검사가 끝난 카드 | 검사 AI 결과 요약. 검사를 못 했으면 `null` | `cards.check_result` |
+| `parent_choice_count` | integer | 상담 후보 카드 | 학부모가 체크한 시간 수(지금 회차) | `consultation_slots`(`status = chosen_by_parent`) 개수 |
+| `classroom { id, name }` | 객체 | 항상 | 반 이름. 원장 화면에서 반을 구분하려고 준다 | `requests.classroom_id` → `classrooms.name` |
+
+**카드 상세** (`GET /api/v1/cards/{card_id}`)
+
+| 더한 필드 | 타입 | 언제 | 설명 | DB |
+| --- | --- | --- | --- | --- |
+| `card.summary` | string | AI가 만든 카드 | AI 요약(`create_card`의 `summary`) | `cards.draft->>'summary'` |
+| `evidence[].is_current` | boolean | 근거가 있을 때 | 근거 문서가 지금 판이면 참. 옛 판(`superseded`)·충돌 확인 대기(`conflict_pending`)·적용 기간이 지난 문서면 거짓 | `documents.status`·`effective_to` |
+| `warnings[]` | string[] | 항상(없으면 빈 목록) | 화면 경고. `stale_evidence`(옛 판 근거가 있음) · `no_evidence`(근거 없음) · `law_unchecked`(법령 확인 못 함) · `check_unavailable`(검사 못 함) | `evidence[].is_current`, 자료 AI 결과(`cards.draft`), `cards.check_result` |
+| `parent_choices[] { slot_id, period, room, chosen_at, hold_expires_at }` | 목록 | 상담 후보 카드 | 학부모가 체크한 시간. `hold_expires_at` = `chosen_at` + 24시간(계약표 6장 ⑥) | `consultation_slots`(`chosen_by_parent`) |
+| `rule { id, reason_code, rule_text, status }` | 객체 | `kind = rule_proposal` | 개인 규칙 제안 내용. 켜기·거절은 20번 API | `cards.subject_id` → `memory_rules` |
+| `director_instruction { text, by, at }` | 객체 | 원장 지시가 있는 담임 카드 | 원장 지시 메모 | 같은 요청의 원장 보고 카드에 남은 `approvals`(`decision = instruct`)의 `reason_text`·`decided_by`·`created_at` |
+
+**요청 상세(학부모)** (`GET /api/v1/requests/{request_id}`, 3.2에 더함)
+
+| 더한 필드 | 타입 | 언제 | 설명 | DB |
+| --- | --- | --- | --- | --- |
+| `consultation.slots[] { id, period, room, status }` | 목록 | 상담 요청 | 후보 시각과 장소(3.2에 이미 있음). 방식(대면·화상)은 MVP가 상담실 대면 하나라 칸을 두지 않고, 화상상담(FR-18, 최종)에서 `mode`를 더한다 | `consultation_slots`, `rooms.name` |
+| `request.hold_until` | date | 보류 중 | 보류 예정일(3.2에 이미 있음). 이유는 주지 않음 | `cards.hold_until` |
+| `rejection { reason_code, reason_text }` | 객체 | 반려된 요청 | 반려 이유. T04 2장 학부모 표시 '처리할 수 없는 요청이에요 (이유)'에 쓴다. 담임 화면은 반려할 때 이 글이 학부모에게 보인다고 알려야 한다 | `approvals`(`decision = dismiss`) |
+| `sources[] { document_title, location, effective_from }` | 목록 | 회신이 나간 문의·민원 | 답변 출처. 학부모에게 공개된 문서(`visibility`가 `parents`·`all`)만 | 승인된 카드의 `card_evidence` → `document_chunks` → `documents` |
+
+**알림장** (`GET /api/v1/daily-notes`의 `content`, `open_checks[]`)
+
+`daily_notes.content`(`jsonb`)의 모양을 정한다. 화면은 줄마다 값과 출처를 보여 줄 수 있다.
+
+```json
+{
+  "items": [
+    { "key": "day", "label": "오늘 하루", "value": "블록 놀이와 바깥 산책을 했어요.", "source": { "type": "teacher_input" } },
+    { "key": "meal", "label": "식사", "value": "점심 카레라이스를 다 먹었어요.",
+      "source": { "type": "document", "document_id": "…", "document_title": "12월 식단표" } },
+    { "key": "supplies", "label": "준비물", "value": "내일 실내화", "source": { "type": "teacher_input" } }
+  ]
+}
+```
+
+| 필드 | 값 | 설명 |
+| --- | --- | --- |
+| `items[].key` | `day`·`meal`·`medication`·`pickup`·`supplies` | 줄 종류. 투약·귀가 줄은 그 요청(T46)이 있을 때만 |
+| `items[].source.type` | `teacher_input`·`document`·`request` | 담임 입력(`daily_note_inputs`), 원 자료(식단·일정), 학부모 요청(투약·귀가) |
+| `items[].source.document_id`·`document_title` | — | `document`일 때 |
+| `items[].source.request_id` | — | `request`일 때 |
+| `open_checks[] { id, item_key, problem }` | — | 검사 AI가 짚은 확인 필요 항목과 그 줄. 알림장 고치기의 `resolved_checks[]`는 이 `id`를 보낸다 |
+
+학부모가 받는 알림장(`sent`)에는 `open_checks`가 늘 빈 목록이다(DB 제약).
 
 ## 4. 검증과 권한 규칙
 
@@ -699,7 +779,7 @@ def decide(card_id: UUID, body: CardDecision, user: User = Depends(current_staff
 
 ## 7. API 필드와 DB 컬럼 대응
 
-이름이 다른 곳만 '대응'에 적었다. ID 형식은 DB 설계서 2.0과 같다.
+이름이 다른 곳만 '대응'에 적었다. ID 형식은 DB 설계서 2.0과 같다. 3.7의 화면용 칸은 그 표의 'DB' 열에 적었다.
 
 | API 필드 | DB 컬럼 | 대응 |
 | --- | --- | --- |
@@ -773,4 +853,4 @@ def decide(card_id: UUID, body: CardDecision, user: User = Depends(current_staff
 
 | 판 | 날짜 | 내용 | 작성 |
 | --- | --- | --- | --- |
-| v0.1 | 2026-11-18 | 초안. API 목록 29개, 핵심 6개 상세 명세, 검증·권한 규칙, 도구 실패 코드·실패 후 처리, 실행 규칙(기한 계산·알림 발송 시각 포함, T10 회의 결과), API 필드↔DB 컬럼 대응, 설정값 | 태웅 |
+| v0.1 | 2026-11-18 | 초안. API 목록 29개, 핵심 6개 상세 명세, 화면용 조회 칸(3.7, T12 #254 리뷰), 검증·권한 규칙, 도구 실패 코드·실패 후 처리, 실행 규칙(기한 계산·알림 발송 시각 포함, T10 회의 결과), API 필드↔DB 컬럼 대응, 설정값 | 태웅 |
