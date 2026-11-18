@@ -108,7 +108,7 @@ CREATE TABLE requests (
     risk_category    text CHECK (risk_category IN ('child_safety', 'staff_attack',
                                                    'legal_external', 'privacy_leak')),  -- 긴급 4가지
     risk_confidence  real CHECK (risk_confidence BETWEEN 0 AND 1),  -- 기준값은 T06 평가로 정함
-    topic_key        text,                 -- 감독 AI가 붙인 민원 주제. 같은 주제 반복 횟수 계산용
+    topic_key        text,                 -- 감독 AI가 정해진 목록(계약표 6장 ②)에서 고른 민원 주제. 같은 주제 반복 횟수 계산용('other'는 안 셈)
     parent_confirmed_at timestamptz,       -- 민원 회신에 학부모가 '확인했어요'를 누른 시각(T04 합의 2)
     missing_fields   jsonb NOT NULL DEFAULT '[]',
     assignee_id      uuid,
