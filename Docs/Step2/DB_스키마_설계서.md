@@ -1020,7 +1020,7 @@ MVP(12/08) 기능 FR-01~FR-13이 쓰는 표를 모두 정의한다. 최종(반�
 | --- | --- | --- | --- | --- |
 | 회신 | 답변 도착 [확인했어요] / 진행 중 | 카드 결정 `approve`(또는 `edit_approve`) → 회신 발송 | `approvals.decision = approve` · `requests.status = sent_or_booked` · 받은함 `in_progress` | 주제는 정해진 10개 + `other`(설정값이라 CHECK 없음) · F2-1, F2-2 |
 | 학부모 확인 | 확인함 · 선생님이 마무리하고 있어요 / 확인 필요(처리 완료 대기) | '확인했어요' → `request { status, parent_confirmed_at }` | `requests.parent_confirmed_at` 기록, 상태는 `sent_or_booked` 그대로 · 받은함 `needs_review` | 민원이 아닌 요청엔 저장 거부(CHECK) · F2-3, F2-4 |
-| 처리 완료 | 완료 / 완료 | 카드 결정 `complete`. 학부모 미확인이면 `reason_text` 필수(없으면 422) | `approvals.decision = complete` · `requests.status = completed` | 학부모 미확인 + 이유 없음 거부(트리거, v0.7) · F2-5, F2-6, F2-7. 원장 현황 '학부모 미확인 완료' 수 · F2-8 |
+| 처리 완료 | 완료 / 완료 | 카드 결정 `complete`. 학부모 미확인이면 `reason_text` 필수(없으면 409 `REASON_REQUIRED`) | `approvals.decision = complete` · `requests.status = completed` | 학부모 미확인 + 이유 없음 거부(트리거, v0.7) · F2-5, F2-6, F2-7. 원장 현황 '학부모 미확인 완료' 수 · F2-8 |
 
 **긴급 건 전달: 긴급 분류 → 원장 보고 → 원장 지시**
 
