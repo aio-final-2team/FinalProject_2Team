@@ -1,0 +1,189 @@
+{
+  "name": "감독 AI 민원 주제 분류 평가 문항 (T14)",
+  "spec_version": "t14-topic-v0.1",
+  "created": "2026-11-18",
+  "status": "주제 목록은 T10 회의(2026-11-18) A안으로 확정. 문항은 앱 실행 시작 뒤에는 바꾸지 않음",
+  "basis": "계약표 v0.5 6장 ②·4.1, T04 합의 3, FR-07, 팀 자체 30문항 v0.5 create_card.topic_key",
+  "wbs": {
+    "task": "T14",
+    "feedback": "FB-004-2",
+    "owner": "영민"
+  },
+  "topic_key_enum": [
+    "safety",
+    "meal",
+    "teacher",
+    "belongings",
+    "fee",
+    "pickup_bus",
+    "peer_conflict",
+    "health_hygiene",
+    "photo_record",
+    "communication",
+    "other"
+  ],
+  "scoring": {
+    "match": "topic_key exact",
+    "also_required": "type == complaint",
+    "not_scored": [
+      "risk_level",
+      "urgency",
+      "summary"
+    ]
+  },
+  "cases": [
+    {
+      "case_id": "TK-01",
+      "question": "요즘 차량 타는 시간이 40분이 넘어요. 아이가 너무 힘들어해요.",
+      "expected": {
+        "type": "complaint",
+        "topic_key": "pickup_bus"
+      },
+      "checks": "기본"
+    },
+    {
+      "case_id": "TK-02",
+      "question": "하원 차량이 정류장에 15분씩 늦게 와요. 벌써 세 번째예요.",
+      "expected": {
+        "type": "complaint",
+        "topic_key": "pickup_bus"
+      },
+      "checks": "'세 번째'라는 말이 있어도 주제만 고름"
+    },
+    {
+      "case_id": "TK-03",
+      "question": "같은 반 친구가 계속 우리 아이를 때린대요.",
+      "expected": {
+        "type": "complaint",
+        "topic_key": "peer_conflict"
+      },
+      "checks": "기본"
+    },
+    {
+      "case_id": "TK-04",
+      "question": "친구들이 안 놀아 준다고 아이가 유치원에 가기 싫대요.",
+      "expected": {
+        "type": "complaint",
+        "topic_key": "peer_conflict"
+      },
+      "checks": "다침 없는 친구 관계"
+    },
+    {
+      "case_id": "TK-05",
+      "question": "친구가 밀어서 넘어져 무릎을 다쳤어요.",
+      "expected": {
+        "type": "complaint",
+        "topic_key": "peer_conflict"
+      },
+      "checks": "규칙 2: 다쳤어도 친구가 원인이면 `safety` 아님"
+    },
+    {
+      "case_id": "TK-06",
+      "question": "아이 약을 챙겨 보냈는데 안 먹이셨더라고요.",
+      "expected": {
+        "type": "complaint",
+        "topic_key": "health_hygiene"
+      },
+      "checks": "기본(투약 실수)"
+    },
+    {
+      "case_id": "TK-07",
+      "question": "낮잠 이불을 한 번도 안 빨아 주시는 것 같아요.",
+      "expected": {
+        "type": "complaint",
+        "topic_key": "health_hygiene"
+      },
+      "checks": "청결"
+    },
+    {
+      "case_id": "TK-08",
+      "question": "반에 수족구가 돌았는데 왜 알려 주지 않으셨어요?",
+      "expected": {
+        "type": "complaint",
+        "topic_key": "health_hygiene"
+      },
+      "checks": "규칙 3: 감염병이 있으면 `communication` 아님"
+    },
+    {
+      "case_id": "TK-09",
+      "question": "우리 아이 사진만 거의 없어요.",
+      "expected": {
+        "type": "complaint",
+        "topic_key": "photo_record"
+      },
+      "checks": "기본"
+    },
+    {
+      "case_id": "TK-10",
+      "question": "알림장이 매일 한 줄이라 아이가 뭘 했는지 모르겠어요.",
+      "expected": {
+        "type": "complaint",
+        "topic_key": "photo_record"
+      },
+      "checks": "알림장 내용"
+    },
+    {
+      "case_id": "TK-11",
+      "question": "선생님께 문자를 드렸는데 이틀째 답이 없어요.",
+      "expected": {
+        "type": "complaint",
+        "topic_key": "communication"
+      },
+      "checks": "기본"
+    },
+    {
+      "case_id": "TK-12",
+      "question": "차량 노선이 바뀐다는 안내문을 못 받았어요. 미리 알려 주셨으면 좋겠어요.",
+      "expected": {
+        "type": "complaint",
+        "topic_key": "communication"
+      },
+      "checks": "규칙 3: 차량 이야기지만 안내 없음만 문제"
+    },
+    {
+      "case_id": "TK-13",
+      "question": "하원 차량에서 아이 모자를 잃어버렸어요.",
+      "expected": {
+        "type": "complaint",
+        "topic_key": "belongings"
+      },
+      "checks": "규칙 2: 차량 중이어도 물건 문제"
+    },
+    {
+      "case_id": "TK-14",
+      "question": "놀이터 미끄럼틀 나사가 빠져 있어서 아이가 손을 긁혔어요.",
+      "expected": {
+        "type": "complaint",
+        "topic_key": "safety"
+      },
+      "checks": "규칙 2: 친구·교사 원인 없는 다침"
+    },
+    {
+      "case_id": "TK-15",
+      "question": "선생님이 낮잠 안 잔다고 아이를 복도에 세워 두셨대요.",
+      "expected": {
+        "type": "complaint",
+        "topic_key": "teacher"
+      },
+      "checks": "낮잠 이야기지만 교사 행동이 원인"
+    },
+    {
+      "case_id": "TK-16",
+      "question": "유치원 앞 주차장이 좁아서 등원할 때 불편해요.",
+      "expected": {
+        "type": "complaint",
+        "topic_key": "other"
+      },
+      "checks": "규칙 4: 억지로 `pickup_bus`로 넣지 않음"
+    },
+    {
+      "case_id": "TK-17",
+      "question": "행사 때 틀어 주는 음악이 너무 시끄러워요.",
+      "expected": {
+        "type": "complaint",
+        "topic_key": "other"
+      },
+      "checks": "규칙 4: 목록에 없는 주제"
+    }
+  ]
+}
