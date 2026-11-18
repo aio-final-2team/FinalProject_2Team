@@ -25,9 +25,9 @@
 | 문서 쪽 값 | DB 쪽 값 | 규칙 |
 | --- | --- | --- |
 | `kindergarten_id: KG-DEMO-01` | `documents.org_id` | 시드의 `KG-DEMO-01` 기관 UUID |
-| `classroom_keys: []` (`classroom: "전체"`) | `documents.classroom_id = NULL` | 원 공통 자료 |
-| `classroom_keys: [C5]` 처럼 하나 | `documents.classroom_id` = 그 반 UUID | 아래 반 표로 연결 |
-| `classroom_keys: [C4, C5]` 처럼 둘 이상 | 아래 '복수 반' 참고 | 해당: `NT-2026-30` 김장 체험 |
+| `classroom_keys: []` (`classroom: "전체"`) | `document_classrooms` 줄 없음 | 원 전체 자료 |
+| `classroom_keys: [C5]` 처럼 하나 | `document_classrooms` 한 줄 `(document_id, C5 반 UUID)` | 아래 반 표로 연결 |
+| `classroom_keys: [C4, C5]` 처럼 둘 이상 | `document_classrooms` 반마다 한 줄 | 해당: `NT-2026-30` 김장 체험 → 두 줄 |
 | `staff_busy_blocks.json`의 `teacher_id: T-DEMO-0N` | `staff_busy_blocks.user_id` | 시드의 교사 계정 UUID |
 | `title`·`doc_type`·`effective_from`·`visibility`·`source`·`is_virtual` | 같은 이름의 열 | 그대로 |
 | 본문의 `## 1쪽 …`·`## 2쪽 준비물` 제목 | `document_chunks.location` | 제목 단위로 조각을 나누고 제목을 위치로 씀 |
@@ -40,8 +40,8 @@
 | C4 | 만 4세 별빛반 | 4 | T-DEMO-02 |
 | C5 | 만 5세반(햇살반) | 5 | T-DEMO-01 |
 
-**복수 반 문서 (확인 필요: 태웅·#238)**
-`documents.classroom_id`는 반 하나만 담고, `UNIQUE (org_id, content_sha256)` 때문에 같은 문서를 반마다 한 줄씩 넣을 수도 없습니다. 제안: 지금은 `classroom_id = NULL`(원 공통)로 넣고 본문의 '대상 반'으로 구분합니다. 반별 검색 필터가 꼭 필요해지면 `document_classrooms(document_id, classroom_id)` 연결 표를 #238에 추가하는 안을 태웅님과 정합니다.
+**복수 반 문서 (#238 T09 v0.6 `f9188b7` 기준, 태웅님 확인)**
+`documents`에는 반 칸이 없고, 대상 반은 연결 표 `document_classrooms (document_id, classroom_id)`에 반마다 한 줄씩 넣습니다. 줄이 없으면 원 전체 자료입니다. 문서는 `documents`에 한 번만 넣으므로 `UNIQUE (org_id, content_sha256)`와 부딪히지 않습니다. 학부모 근거 검색은 원 전체 자료와 우리 아이 반 자료만 찾습니다(설계서 3.3 ①). 그래서 `NT-2026-30`(만 4·5세반 김장 체험)은 만 3세반 학부모 검색에 나오지 않습니다.
 
 ## 의도한 시험 장치
 - **문서 충돌(FR-04)**: 겨울방학 시작일 — 통신문 `NT-2026-25` 12/24 vs 학사 일정표 `SC-2026-2H` 12/26 → 단정하지 않고 담임 카드(YC-F03)
