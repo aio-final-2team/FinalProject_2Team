@@ -6,8 +6,10 @@
 
 | 확인할 내용 | Word·Excel 원본 | Markdown 열람용 |
 |---|---|---|
-| 서비스 정의·요구사항·검증 기준 | [유치온 기획서 1117](유치온_기획서_1117.docx) | [기획서 Markdown](유치온_기획서_1117.md) |
-| 담당자·일정·선행 작업·진척 현황 | [유치온 WBS 1117](유치온_WBS_1117.xlsx) | [WBS Markdown](유치온_WBS_1117.md) |
+| 서비스 정의·요구사항·검증 기준 | [기획서 Word](기획서.docx) | [기획서 Markdown](기획서.md) |
+| 담당자·일정·선행 작업·진척 현황 | [WBS Excel](WBS.xlsx) | [WBS Markdown](WBS.md) |
+
+날짜 없는 위 네 파일을 최신 기준 문서로 사용합니다. 파일명에 날짜가 붙은 문서는 해당 시점의 기록입니다.
 
 ## 핵심 반영 내용
 
@@ -33,6 +35,8 @@
 - T04 업무 흐름과 권한 기준을 1117 기획서 Word·Markdown에 반영했습니다. WBS에는 담당 성주, 검토 지혜, 실제 시작 11/17, 실제 완료 11/18을 기록하고 상태와 간트를 완료로 갱신했습니다. [참고 #234](https://github.com/aio-final-2team/FinalProject_2Team/pull/234) · [문서 병합 #244](https://github.com/aio-final-2team/FinalProject_2Team/pull/244)
 - 1117 WBS의 T06 요구사항에 AC-07을 추가했습니다. BFCL과 팀 자체 평가는 별도 분모로 채점하고, T05 반복 실측에 사용한 팀 v0.3과 #235의 v0.5 평가 자료를 구분해 기록했습니다. [참고 #235](https://github.com/aio-final-2team/FinalProject_2Team/pull/235) · [문서 병합 #244](https://github.com/aio-final-2team/FinalProject_2Team/pull/244)
 - [피드백 안내](../Feedback/README.md)에 담당자별 메모 폴더와 `[문서]`·`[작업]` 항목의 처리 절차를 정리했습니다. [#240](https://github.com/aio-final-2team/FinalProject_2Team/pull/240) · [#241](https://github.com/aio-final-2team/FinalProject_2Team/pull/241) · [#243](https://github.com/aio-final-2team/FinalProject_2Team/pull/243)
+
+- FB-001-5의 AWS 개발 기간 비용 추정(약 $133)과 실제 청구액 확인 방법을 기획서 §11에, 크레딧 초과 위험과 대응을 §10에 반영했습니다. WBS T66에는 개발 기간 추정치·실제 청구액·유치원 운영 월비용을 구분하는 기준을 추가했습니다. [원본 메모 PR #242](https://github.com/aio-final-2team/FinalProject_2Team/pull/242) · [통합 PR #259](https://github.com/aio-final-2team/FinalProject_2Team/pull/259) · [반영 메모](../Feedback/jihye/FB-001-5.md)
 
 ## 문서 갱신 기준
 
