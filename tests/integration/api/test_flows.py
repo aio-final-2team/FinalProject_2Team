@@ -69,6 +69,15 @@ def test_unconfirmed_complete_needs_reason_and_overview_counts(client, parent, t
     err(client.get(BASE + "/overview", headers=teacher), 403, "FORBIDDEN_ROLE")
 
 
+
+def test_director_cannot_approve_or_complete_complaint_reply(client, parent, teacher, director):
+    rid, cid = create(client, parent)
+    err(decision(client, director, cid), 403, "FORBIDDEN_ROLE")
+    err(decision(client, director, cid, "edit_approve", edited_content={"text": "원장이 쓴 답"}), 403, "FORBIDDEN_ROLE")
+    assert decision(client, teacher, cid).status_code == 200
+    err(decision(client, director, cid, "complete", version=2, reason_text="원장 마무리"), 403, "FORBIDDEN_ROLE")
+    assert decision(client, teacher, cid, "complete", version=2, reason_text="전화로 마무리함").status_code == 200
+
 def test_notify_failed_warning_keeps_urgent_card_visible(client, parent, teacher):
     _, cid = create(client, parent, body="아이가 다쳤어요")
     assert "notify_failed" not in client.get(f"{BASE}/cards/{cid}", headers=teacher).json()["warnings"]

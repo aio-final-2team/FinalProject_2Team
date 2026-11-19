@@ -62,6 +62,10 @@ def decide(user, card_id, body):
         version(card, body.version)
         req = store.state().requests.get(card.request_id)
         decision = body.decision
+        # T04 3.2: 민원 회신의 승인·완료는 교사가 한다. 원장은 지시·재배정(API 설계 4.2).
+        if (user.role == "director" and req and req.type == "complaint" and card.kind == "reply_draft"
+                and decision in ("approve", "edit_approve", "complete")):
+            raise ApiError(403, "FORBIDDEN_ROLE")
         valid = req is not None and req.status not in ("completed", "rejected")
         if decision == "complete":
             valid = valid and card.kind == "reply_draft" and req.type == "complaint" and req.status == "sent_or_booked"

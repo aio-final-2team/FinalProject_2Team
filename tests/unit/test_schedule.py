@@ -68,14 +68,14 @@ def test_other_card_kinds_and_settings(monkeypatch):
         config.load_settings()
 
 @pytest.mark.parametrize("start,risk,category,delivery,due", [
-    ("2025-12-19T18:30:00", "normal", None, "2025-12-22T09:00:00", "2025-12-22T18:30:00"),
-    ("2025-12-24T17:30:00", "normal", None, "2025-12-24T17:30:00", "2025-12-26T17:30:00"),
-    ("2025-12-24T18:30:00", "normal", None, "2025-12-26T09:00:00", "2025-12-26T18:30:00"),
-    ("2025-12-19T20:00:00", "urgent", "child_safety", "2025-12-19T20:00:00", "2025-12-19T22:00:00"),
-    ("2025-12-19T20:00:00", "urgent", "staff_attack", "2025-12-22T09:00:00", "2025-12-19T22:00:00"),
+    ("2026-12-18T18:30:00", "normal", None, "2026-12-21T09:00:00", "2026-12-21T18:30:00"),
+    ("2026-12-24T17:30:00", "normal", None, "2026-12-24T17:30:00", "2026-12-28T17:30:00"),
+    ("2026-12-24T18:30:00", "normal", None, "2026-12-28T09:00:00", "2026-12-28T18:30:00"),
+    ("2026-12-18T20:00:00", "urgent", "child_safety", "2026-12-18T20:00:00", "2026-12-18T22:00:00"),
+    ("2026-12-18T20:00:00", "urgent", "staff_attack", "2026-12-21T09:00:00", "2026-12-18T22:00:00"),
 ])
 def test_documented_holiday_notification_examples(monkeypatch, start, risk, category, delivery, due):
-    monkeypatch.setattr(schedule, "settings", replace(config.settings, holidays=(date(2025, 12, 25),)))
+    monkeypatch.setattr(schedule, "settings", replace(config.settings, holidays=(date(2026, 12, 25),)))
     assert schedule.deliver_after(at(start), "teacher", risk, category) == at(delivery)
     assert schedule.deliver_after(at(start), "parent", risk, category) == at(start)
     deadline = schedule.due_at(at(start), "complaint", risk)
