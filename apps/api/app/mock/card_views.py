@@ -96,6 +96,8 @@ def detail(user, card_id):
             warnings.append("law_unchecked")
         if card.check_result is None:
             warnings.append("check_unavailable")
+        if card.draft.get("notify_failed"):
+            warnings.append("notify_failed")
         instructions = [a for a in store.state().approvals if a.decision == "instruct"
                         and store.state().cards[a.card_id].request_id == card.request_id] if req else []
         instruction = instructions[-1] if instructions and card.kind != "director_report" else None

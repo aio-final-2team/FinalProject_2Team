@@ -69,6 +69,14 @@ def test_unconfirmed_complete_needs_reason_and_overview_counts(client, parent, t
     err(client.get(BASE + "/overview", headers=teacher), 403, "FORBIDDEN_ROLE")
 
 
+def test_notify_failed_warning_keeps_urgent_card_visible(client, parent, teacher):
+    _, cid = create(client, parent, body="아이가 다쳤어요")
+    assert "notify_failed" not in client.get(f"{BASE}/cards/{cid}", headers=teacher).json()["warnings"]
+    store.state().cards[UUID(cid)].draft["notify_failed"] = True
+    detail = client.get(f"{BASE}/cards/{cid}", headers=teacher).json()
+    assert {"notify_failed", "no_evidence", "check_unavailable"}.issubset(detail["warnings"])
+    assert cid in [c["id"] for c in client.get(BASE + "/cards", headers=teacher).json()["items"]]
+
 def test_version_conflict_and_duplicate_decision(client, parent, teacher):
     _, cid = create(client, parent)
     conflict = decision(client, teacher, cid, version=9)
