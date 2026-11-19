@@ -1,6 +1,6 @@
 # 유치온 API 설계 문서 (T13)
 
-문서 버전 v0.2 | 작성 상태: 모의 API와 대조 끝
+문서 버전 v0.3 | 작성 상태: 모의 API와 대조 끝
 
 | 항목 | 내용 |
 | --- | --- |
@@ -1236,7 +1236,7 @@ def decide(card_id: UUID, body: CardDecision, user: User = Depends(current_staff
 
 | 확인 | 방법 | 실패하면 |
 | --- | --- | --- |
-| ① 에이전트 허용 목록 | 5.4의 '부르는 AI' 열에 없는 도구는 부르지 못함 | `FORBIDDEN_SCOPE` |
+| ① 에이전트 허용 목록 | 5.4의 '부르는 AI' 열에 없는 도구는 부르지 못함. 이 열은 다섯 에이전트로 나눈 뒤(T43)부터 적용한다. 그 전 단일 에이전트(T29)는 에이전트가 하나라 `book_slot`을 뺀 도구를 모두 부른다(30문항이 `find_consult_slots`·`search_documents` 직접 호출을 채점) | `FORBIDDEN_SCOPE` |
 | ② 요청한 사용자의 권한 | 학부모 요청에서 나온 호출은 그 학부모가 볼 수 있는 범위만. 교직원 쪽 도구(`book_slot`)는 담임의 확정 API에서만 부름 | `FORBIDDEN_SCOPE` |
 | ③ 데이터 소유권 | 기관·반·학부모 ID는 모델 인자가 아니라 지금 요청에서 백엔드가 채움(계약표 4장 '(백엔드)' 값). 모델이 다른 ID를 넣어도 범위 밖이면 거부 | `NOT_FOUND` |
 | ④ 사람 승인 상태 | 학부모에게 나가는 일(회신 발송·예약 확정·알림장 발송)은 도구로 하지 않는다. 담임의 결정 API가 승인 기록(`approvals`)을 남긴 뒤에만 일어난다 | 도구 목록에 없음 |
@@ -1248,7 +1248,7 @@ def decide(card_id: UUID, body: CardDecision, user: User = Depends(current_staff
 | 도구 | 부르는 AI | 실행 조건 | 성공 `data` | 실패 코드 | 실패 후 처리(기본) |
 | --- | --- | --- | --- | --- | --- |
 | `route_request` | 감독 | 요청이 `received`·`classified` | 분류 결과를 저장 | `UPSTREAM_UNAVAILABLE`·`SAVE_FAILED`(참), `INVALID_TRANSITION`(거짓) | 1번 다시 → 실패면 담당 없는 사람 카드(받은함 '미배정') |
-| `create_card` | 감독·자료 | 요청이 끝나지 않음 | `card_id` | `SAVE_FAILED`(참), `VALIDATION_FAILED`·`INVALID_TRANSITION`(거짓) | 1번 다시 → 실패면 초안 없는 사람 카드 |
+| `create_card` | 감독·자료 | 요청이 끝나지 않음 | `card_id` | `SAVE_FAILED`(참), `VALIDATION_FAILED`·`INVALID_TRANSITION`(거짓) | 1번 다시 → 실패면 학부모에게 '저장 오류로 접수가 안 됐어요, 잠시 뒤 다시 보내거나 원으로 전화 주세요'라고 솔직히 안내(30문항 YC-F04, '접수됐어요'라고 하지 않음). 요청 자체는 `POST /requests` 때 저장돼 있어서 서버 점검 작업이 '미배정' 카드로 다시 올림(6.3) |
 | `notify_staff` | 감독 | 카드가 있음 | `notification_id` | `SAVE_FAILED`(참), `NOT_FOUND`(거짓) | 1번 다시 → 실패해도 카드는 받은함에 남으므로 이력만 남김 |
 | `search_documents` | 자료 | 요청 기관 자료만, 학부모면 원 전체 + 아이 반 자료 | `chunks[]` | `TOOL_TIMEOUT`·`UPSTREAM_UNAVAILABLE`(참), `VALIDATION_FAILED`·`NOT_FOUND`(거짓) | 1번 다시 → 실패하거나 근거가 없으면 추측하지 않고 담임 카드(`no_evidence`) |
 | `get_law_article` | 자료 | 법령 이름·조문이 있음 | `text`, `source_url`, `fetched_at` | `UPSTREAM_UNAVAILABLE`(참), `NOT_FOUND`(거짓) | 1번 다시 → 실패면 법령 인용 없이 초안, 카드에 '법령 확인 못 함' 표시 |
@@ -1256,7 +1256,7 @@ def decide(card_id: UUID, body: CardDecision, user: User = Depends(current_staff
 | `propose_rule` | 기억 | 같은 이유 코드 3번 | `rule_id`(이미 있으면 기존 ID) | `SAVE_FAILED`(참), `VALIDATION_FAILED`(거짓) | 1번 다시 → 실패면 제안 안 함(다음에 다시 셈) |
 | `check_draft` | 검사 | 초안이 있는 카드·알림장 | 검사 결과를 저장 | `TOOL_TIMEOUT`·`UPSTREAM_UNAVAILABLE`(참) | 1번 다시 → 실패면 '검사 못 함' 표시하고 사람 카드 |
 | `return_to_step` | 검사 | `check_attempts` < 2 | `attempt` | `INVALID_TRANSITION`(거짓, 3번째) | 3번째는 오류 대신 사람 카드로 넘김(FR-08) |
-| `find_consult_slots` | 코드 | 상담 요청, 담임 일정이 있음 | `slots[]`(회차마다 최대 3개) | `SAVE_FAILED`(참), `NOT_FOUND`(거짓) | 빈 목록이면 다른 날을 묻거나 담임 카드 |
+| `find_consult_slots` | 코드 | 상담 요청, 담임 일정이 있음 | `slots[]`(회차마다 최대 3개) | `TOOL_TIMEOUT`·`SAVE_FAILED`(참), `NOT_FOUND`(거짓) | 1번 다시 → 실패면 시간을 지어내지 않고 '지금 확인할 수 없음' 안내(30문항 YC-F01). 빈 목록이면 다른 날을 묻거나 담임 카드 |
 | `request_consultation` | 감독 | 상담 요청이 `needs_info` | `slots[]`, `request_status` | `SAVE_FAILED`(참), `INVALID_TRANSITION`(거짓) | 1번 다시 → 실패면 학부모에게 화면에서 다시 고르게 안내 |
 | `book_slot` | 코드 | 담임 확정 API 안에서만 | `booking_id` | `SLOT_TAKEN`·`SLOT_NOT_CHOSEN`(거짓), `SAVE_FAILED`(참) | 담임 화면에 409를 그대로 보여 주고 후보 다시 내기 안내 |
 | `get_my_requests` | 감독 | 요청한 학부모 본인 것만 | `items[]` | `SAVE_FAILED`(참) | 1번 다시 → 실패면 '요청 목록 화면에서 확인' 안내 |
@@ -1332,6 +1332,8 @@ def decide(card_id: UUID, body: CardDecision, user: User = Depends(current_staff
 | 요청 만들기 | `GET /requests/{id}` + 스트림 | `received`·`classified`·`assigned` | `needs_info`(학부모 차례) 또는 `awaiting_review`(카드 생김) | 재시도 뒤에도 실패하면 초안 없는 사람 카드로 넘기고 `awaiting_review`. 넘긴 이유(`ai_failed`)는 이력 `events.detail.handoff_reason`, 교직원 스트림에 `error` 이벤트. 요청은 버리지 않음 |
 | 알림장 초안 | `GET /daily-notes/drafts/{input_id}` | `draft_status = queued·running` | `succeeded`. 아이별 초안은 `GET /daily-notes?classroom_id=&date=`로 받음(계약표 2.2) | `failed` + `error { code, message }`(이유는 `events`의 `tool_failed`) |
 | 자료 올리기 | `GET /documents/{document_id}` | `ingest_status = queued·running` | `succeeded` + `chunk_count`(조각 수), 충돌이면 `status = conflict_pending` + `conflicts[]` | `failed` + `error { code, message }` |
+
+**카드가 끝내 안 생긴 요청.** 요청은 `POST /requests`에서 먼저 저장되므로, AI가 카드 만들기(`create_card`)까지 실패하거나 처리 중에 멈춰도 요청은 남아 있다. 서버 점검 작업이 1분마다 진행 중 상태(`received`·`classified`·`assigned`)로 5분 넘게 카드가 없는 요청을 찾아, 초안 없는 카드를 담당 없이 만들고(받은함 '미배정') 요청을 `awaiting_review`로 바꾼다. 넘긴 이유 `card_missing`은 이력 `events.detail.handoff_reason`에 남긴다. 그래서 학부모가 '접수가 안 됐다'는 안내를 받고 다시 보내면 같은 내용이 두 건 보일 수 있는데, 담임은 반복 표시(`repeat_count`)로 알아본다. 모의 API는 이 점검 작업을 돌리지 않고, 실제 서버의 백그라운드 워커에서 돈다.
 
 ```json
 { "input_id": "00000000-0000-4000-8000-000000000a01", "draft_status": "failed",
@@ -1410,7 +1412,7 @@ def decide(card_id: UUID, body: CardDecision, user: User = Depends(current_staff
 | `notes[].status` · `content` · `open_checks[]` | `daily_notes.status` · `content` · `open_checks` | 같음 |
 | `ingest_status` | `documents.ingest_status` | 같음 |
 | `chunk_count` | — | 저장하지 않음. 그 문서의 `document_chunks` 개수 |
-| 넘긴 이유(`ai_timeout`·`ai_failed`, 분류 결과의 `handoff_reason`) | `events.detail->>'handoff_reason'` | 칸을 따로 두지 않고 이력에 넣음 |
+| 넘긴 이유(`ai_timeout`·`ai_failed`·`card_missing`, 분류 결과의 `handoff_reason`) | `events.detail->>'handoff_reason'` | 칸을 따로 두지 않고 이력에 넣음 |
 | `notification.kind` · `read_at` | `notifications.kind` · `read_at` | 같음 |
 | `completed_unconfirmed` 등 원장 현황 숫자 | `director_overview` 뷰 | 뷰의 칸 이름 그대로 |
 | `trace_id` · `X-Request-ID` | `events.detail->>'trace_id'` | 칸을 따로 두지 않고 이력 `detail`에 넣음 |
@@ -1465,3 +1467,4 @@ def decide(card_id: UUID, body: CardDecision, user: User = Depends(current_staff
 | --- | --- | --- | --- |
 | v0.1 | 2026-11-18 | 초안. API 목록 29개, 핵심 6개 상세 명세, 화면용 조회 칸(3.7, T12 #254 리뷰), 검증·권한 규칙, 도구 실패 코드·실패 후 처리, 실행 규칙(기한 계산·알림 발송 시각 포함, T10 회의 결과), API 필드↔DB 컬럼 대응, 설정값 | 태웅 |
 | v0.2 | 2026-11-18 | 나머지 API 상세 명세(3.8~3.23)를 모의 API·OpenAPI와 대조해 채움. 29개 상세 절 연결, 모의 API 안내·설정값·데모 ID 보완 | 태웅 |
+| v0.3 | 2026-11-20 | 영민 #256 리뷰 반영: `find_consult_slots` 실패 코드에 `TOOL_TIMEOUT` 추가(YC-F01), 에이전트 허용 목록은 T43부터 적용(5.3 ①), `create_card` 끝내 실패 시 학부모 안내와 서버의 미배정 재올림(5.4·6.3) | 태웅 |
