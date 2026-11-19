@@ -1248,7 +1248,7 @@ def decide(card_id: UUID, body: CardDecision, user: User = Depends(current_staff
 | 도구 | 부르는 AI | 실행 조건 | 성공 `data` | 실패 코드 | 실패 후 처리(기본) |
 | --- | --- | --- | --- | --- | --- |
 | `route_request` | 감독 | 요청이 `received`·`classified` | 분류 결과를 저장 | `UPSTREAM_UNAVAILABLE`·`SAVE_FAILED`(참), `INVALID_TRANSITION`(거짓) | 1번 다시 → 실패면 담당 없는 사람 카드(받은함 '미배정') |
-| `create_card` | 감독·자료 | 요청이 끝나지 않음 | `card_id` | `SAVE_FAILED`(참), `VALIDATION_FAILED`·`INVALID_TRANSITION`(거짓) | 1번 다시 → 실패면 학부모에게 '저장 오류로 접수가 안 됐어요, 잠시 뒤 다시 보내거나 원으로 전화 주세요'라고 솔직히 안내(30문항 YC-F04, '접수됐어요'라고 하지 않음). 요청 자체는 `POST /requests` 때 저장돼 있어서 서버 점검 작업이 '미배정' 카드로 다시 올림(6.3) |
+| `create_card` | 감독·자료 | 요청이 끝나지 않음 | `card_id` | `SAVE_FAILED`(참), `VALIDATION_FAILED`·`INVALID_TRANSITION`(거짓) | 1번 다시 → 실패면 학부모에게 '말씀하신 내용은 받았는데 선생님께 넘기는 중에 저장 오류가 났어요. 확인이 늦어질 수 있으니 급하시면 원으로 전화 주세요'라고 솔직히 안내('선생님께 전달했어요'라고 하지 않음, 30문항 YC-F04). 요청은 `POST /requests` 때 이미 저장돼 '내 요청' 화면에 '접수됨'으로 보이므로 '접수가 안 됐어요'라고도 하지 않음. 카드는 서버 점검 작업이 '미배정'으로 다시 올림(6.3) |
 | `notify_staff` | 감독 | 카드가 있음 | `notification_id` | `SAVE_FAILED`(참), `NOT_FOUND`(거짓) | 1번 다시 → 실패해도 카드는 받은함에 남으므로 이력만 남김 |
 | `search_documents` | 자료 | 요청 기관 자료만, 학부모면 원 전체 + 아이 반 자료 | `chunks[]` | `TOOL_TIMEOUT`·`UPSTREAM_UNAVAILABLE`(참), `VALIDATION_FAILED`·`NOT_FOUND`(거짓) | 1번 다시 → 실패하거나 근거가 없으면 추측하지 않고 담임 카드(`no_evidence`) |
 | `get_law_article` | 자료 | 법령 이름·조문이 있음 | `text`, `source_url`, `fetched_at` | `UPSTREAM_UNAVAILABLE`(참), `NOT_FOUND`(거짓) | 1번 다시 → 실패면 법령 인용 없이 초안, 카드에 '법령 확인 못 함' 표시 |
@@ -1333,7 +1333,7 @@ def decide(card_id: UUID, body: CardDecision, user: User = Depends(current_staff
 | 알림장 초안 | `GET /daily-notes/drafts/{input_id}` | `draft_status = queued·running` | `succeeded`. 아이별 초안은 `GET /daily-notes?classroom_id=&date=`로 받음(계약표 2.2) | `failed` + `error { code, message }`(이유는 `events`의 `tool_failed`) |
 | 자료 올리기 | `GET /documents/{document_id}` | `ingest_status = queued·running` | `succeeded` + `chunk_count`(조각 수), 충돌이면 `status = conflict_pending` + `conflicts[]` | `failed` + `error { code, message }` |
 
-**카드가 끝내 안 생긴 요청.** 요청은 `POST /requests`에서 먼저 저장되므로, AI가 카드 만들기(`create_card`)까지 실패하거나 처리 중에 멈춰도 요청은 남아 있다. 서버 점검 작업이 1분마다 진행 중 상태(`received`·`classified`·`assigned`)로 5분 넘게 카드가 없는 요청을 찾아, 초안 없는 카드를 담당 없이 만들고(받은함 '미배정') 요청을 `awaiting_review`로 바꾼다. 넘긴 이유 `card_missing`은 이력 `events.detail.handoff_reason`에 남긴다. 그래서 학부모가 '접수가 안 됐다'는 안내를 받고 다시 보내면 같은 내용이 두 건 보일 수 있는데, 담임은 반복 표시(`repeat_count`)로 알아본다. 모의 API는 이 점검 작업을 돌리지 않고, 실제 서버의 백그라운드 워커에서 돈다.
+**카드가 끝내 안 생긴 요청.** 요청은 `POST /requests`에서 먼저 저장되므로, AI가 카드 만들기(`create_card`)까지 실패하거나 처리 중에 멈춰도 요청은 남아 있다. 서버 점검 작업이 1분마다 진행 중 상태(`received`·`classified`·`assigned`)로 5분 넘게 카드가 없는 요청을 찾아, 초안 없는 카드를 담당 없이 만들고(받은함 '미배정') 요청을 `awaiting_review`로 바꾼다. 넘긴 이유 `card_missing`은 이력 `events.detail.handoff_reason`에 남긴다. 학부모 화면에는 그동안에도 '접수됨'이 보이고, 채팅 안내도 '받았지만 선생님 확인이 늦어질 수 있음'이라 화면과 말이 어긋나지 않는다. 모의 API는 이 점검 작업을 돌리지 않고, 실제 서버의 백그라운드 워커에서 돈다.
 
 ```json
 { "input_id": "00000000-0000-4000-8000-000000000a01", "draft_status": "failed",
@@ -1467,4 +1467,4 @@ def decide(card_id: UUID, body: CardDecision, user: User = Depends(current_staff
 | --- | --- | --- | --- |
 | v0.1 | 2026-11-18 | 초안. API 목록 29개, 핵심 6개 상세 명세, 화면용 조회 칸(3.7, T12 #254 리뷰), 검증·권한 규칙, 도구 실패 코드·실패 후 처리, 실행 규칙(기한 계산·알림 발송 시각 포함, T10 회의 결과), API 필드↔DB 컬럼 대응, 설정값 | 태웅 |
 | v0.2 | 2026-11-18 | 나머지 API 상세 명세(3.8~3.23)를 모의 API·OpenAPI와 대조해 채움. 29개 상세 절 연결, 모의 API 안내·설정값·데모 ID 보완 | 태웅 |
-| v0.3 | 2026-11-20 | 영민 #256 리뷰 반영: `find_consult_slots` 실패 코드에 `TOOL_TIMEOUT` 추가(YC-F01), 에이전트 허용 목록은 T43부터 적용(5.3 ①), `create_card` 끝내 실패 시 학부모 안내와 서버의 미배정 재올림(5.4·6.3) | 태웅 |
+| v0.3 | 2026-11-20 | 영민 #256 리뷰 반영: `find_consult_slots` 실패 코드에 `TOOL_TIMEOUT` 추가(YC-F01), 에이전트 허용 목록은 T43부터 적용(5.3 ①), `create_card` 끝내 실패 시 학부모 안내('받았지만 늦어질 수 있음', 화면의 '접수됨'과 같게)와 서버의 미배정 재올림(5.4·6.3) | 태웅 |
