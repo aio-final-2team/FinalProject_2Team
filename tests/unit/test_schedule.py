@@ -1,7 +1,7 @@
 """API 설계 문서 6.5 예시와 6.6 표를 그대로 고정한다."""
 
-from datetime import datetime, date
-from types import SimpleNamespace
+from datetime import datetime, date, time, timedelta
+from dataclasses import replace
 
 import pytest
 
@@ -38,7 +38,7 @@ def test_notification_table_inside_and_outside_hours(role, risk, category, immed
 
 
 def test_holidays_and_start_before_work(monkeypatch):
-    monkeypatch.setattr(schedule, "settings", SimpleNamespace(holidays=(date(2026, 12, 7),)))
+    monkeypatch.setattr(schedule, "settings", replace(config.settings, holidays=(date(2026, 12, 7),)))
     assert schedule.due_at(at("2026-12-04T18:00:00"), "complaint", "normal") == at("2026-12-08T18:00:00")
     assert schedule.deliver_after(at("2026-12-04T19:00:00"), "teacher") == at("2026-12-08T09:00:00")
     assert schedule.deliver_after(at("2026-12-08T08:59:59"), "teacher") == at("2026-12-08T09:00:00")
@@ -53,9 +53,36 @@ def test_other_card_kinds_and_settings(monkeypatch):
     assert schedule.due_at(start, "complaint", "normal", "director_report") == schedule.due_at(start, "complaint", "normal")
     monkeypatch.setenv("HOLIDAYS", "2026-12-25, 2027-01-01")
     monkeypatch.setenv("MOCK_STREAM_DELAY_MS", "0")
+    monkeypatch.setenv("WORK_HOURS", "10:30-16:30")
+    monkeypatch.setenv("IMMEDIATE_RISK_CATEGORIES", "child_safety, staff_attack")
     settings = config.load_settings()
     assert settings.holidays == (date(2026, 12, 25), date(2027, 1, 1))
     assert settings.mock_stream_delay_ms == 0
+    assert settings.work_hours == (time(10, 30), time(16, 30)) and settings.immediate_risk_categories == ("child_safety", "staff_attack")
+    monkeypatch.setattr(schedule, "settings", settings)
+    assert schedule.deliver_after(start, "teacher") == at("2026-12-01T10:30:00")
+    assert schedule.deliver_after(at("2026-12-04T16:30:00"), "teacher") == at("2026-12-07T10:30:00")
+    assert schedule.deliver_after(start, "teacher", "urgent", "staff_attack") == start
     monkeypatch.setenv("HOLIDAYS", "bad-date")
+    with pytest.raises(ValueError):
+        config.load_settings()
+
+@pytest.mark.parametrize("start,risk,category,delivery,due", [
+    ("2025-12-19T18:30:00", "normal", None, "2025-12-22T09:00:00", "2025-12-22T18:30:00"),
+    ("2025-12-24T17:30:00", "normal", None, "2025-12-24T17:30:00", "2025-12-26T17:30:00"),
+    ("2025-12-24T18:30:00", "normal", None, "2025-12-26T09:00:00", "2025-12-26T18:30:00"),
+    ("2025-12-19T20:00:00", "urgent", "child_safety", "2025-12-19T20:00:00", "2025-12-19T22:00:00"),
+    ("2025-12-19T20:00:00", "urgent", "staff_attack", "2025-12-22T09:00:00", "2025-12-19T22:00:00"),
+])
+def test_documented_holiday_notification_examples(monkeypatch, start, risk, category, delivery, due):
+    monkeypatch.setattr(schedule, "settings", replace(config.settings, holidays=(date(2025, 12, 25),)))
+    assert schedule.deliver_after(at(start), "teacher", risk, category) == at(delivery)
+    assert schedule.deliver_after(at(start), "parent", risk, category) == at(start)
+    deadline = schedule.due_at(at(start), "complaint", risk)
+    assert deadline == at(due) and not (deadline < at(due)) and deadline < at(due) + timedelta(microseconds=1)
+
+@pytest.mark.parametrize("name,value", [("WORK_HOURS", v) for v in ("9:00-18:00", "24:00-25:00", "18:00-09:00", "09:00-09:00")] + [("IMMEDIATE_RISK_CATEGORIES", v) for v in ("", "typo", "child_safety,")])
+def test_invalid_schedule_settings(monkeypatch, name, value):
+    monkeypatch.setenv(name, value)
     with pytest.raises(ValueError):
         config.load_settings()

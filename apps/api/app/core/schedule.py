@@ -34,8 +34,9 @@ def due_at(start: datetime, request_type=None, risk_level=None, kind=None):
 
 def deliver_after(start: datetime, role: str, risk_level=None, risk_category=None):
     start = start.astimezone(KST)
-    if role == "parent" or (risk_level == "urgent" and risk_category == "child_safety"):
+    if role == "parent" or (risk_level == "urgent" and risk_category in settings.immediate_risk_categories):
         return start
-    while not working_day(start.date()) or start.time() >= time(18):
-        start = datetime.combine(start.date() + timedelta(days=1), time(9), KST)
-    return max(start, datetime.combine(start.date(), time(9), KST))
+    opening, closing = settings.work_hours
+    while not working_day(start.date()) or start.time() >= closing:
+        start = datetime.combine(start.date() + timedelta(days=1), opening, KST)
+    return max(start, datetime.combine(start.date(), opening, KST))
