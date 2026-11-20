@@ -1287,8 +1287,9 @@ confirm에 pickup_snapshot·version·care_decision, 추가 대화의 returned에
 
 `POST /api/v1/consultations/{booking_id}/delay`는 JWT를 가진 그 반의 예약 담임만 호출해요.
 반 배정 기간과 기관·요청 범위도 확인해요. 학부모·원장은 403 FORBIDDEN_ROLE,
-다른 반·기관·없는 예약은 404 NOT_FOUND예요. 확정 예약이고 요청이 sent_or_booked여야 하며,
-그 밖의 상태는 409 INVALID_TRANSITION이에요.
+다른 반·기관·없는 예약은 404 NOT_FOUND예요.
+같은 반의 다른 교사도 예약 담임이 아니면 403 FORBIDDEN_ROLE예요.
+확정 예약이고 요청이 sent_or_booked여야 하며, 그 밖의 상태는 409 INVALID_TRANSITION이에요.
 
 본문은 `{ "expected_end_at": "2026-11-16T09:55:00+09:00" }`예요.
 오프셋을 포함한 시각이어야 해요. 상담 시작 이후에만 기록할 수 있고,
@@ -1306,7 +1307,7 @@ confirm에 pickup_snapshot·version·care_decision, 추가 대화의 returned에
 `affected_bookings`는 같은 기관에서 담임 또는 상담실을 함께 쓰며,
 새 예상 종료와 시작이 겹치는 뒤 확정 예약 수예요. 사람 수·알림 수가 아니에요.
 동일 시각을 다시 보내면 지연 이력과 같은 시각의 알림을 늘리지 않아요.
-예약의 period·확정 상태는 바꾸지 않아요. 저장 뒤 알림 점검을 한 번 실행하므로 mock에서도
+예약의 period·확정 상태는 바꾸지 않아요. 저장 뒤 해당 예약 담임의 같은 한국 날짜 예약만 한 번 점검하므로 mock에서도
 이 API → 알림 목록으로 지연 시 대체 시간 제안을 재현할 수 있어요. DB에서는 Beat도 점검해요.
 점검이 잠겨 있으면 다음 Beat가 처리하므로 응답의 수는 발송 완료를 뜻하지 않아요.
 
@@ -1636,6 +1637,7 @@ Beat가 1분마다 시작이 하루 이내인 확정 예약을 읽어요. 실제
 같은 값의 재실행은 중복을 만들지 않아요. 지연이 바뀌면 새 종료 알림과 대체 시간을 다시 계산해요.
 옛 pending 알림은 held로 돌리고, 보낸 알림은 보존해요. 옛 제안은 `consultation_reminded` 이력에
 `outcome=superseded`와 알림 ID를 한 번 남겨요. 새 생성 이력에는 until·제안 시각을 남겨요.
+지연 값이 그대로인 채 끝나면 superseded 이력을 남기지 않아요.
 대체 시간 알림은 기존 교직원 근무 시간 규칙을 유지하고, 미룬 시각이 예약 종료 이상이면 만들지 않아요.
 발송·재시도 때 종료·완료·취소됐거나 현재 지연 값과 어긋난 알림은 held로 남겨요.
 **발송 기록만 held, 목록 노출은 유지**해요. 목록은 원래 deliver_after 기준이에요.

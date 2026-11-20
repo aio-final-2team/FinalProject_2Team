@@ -9,6 +9,7 @@ from app.api.schemas.requests import (RequestAccepted, RequestAcceptedOut,
                                       RequestCreateIn, RequestDetailOut)
 from app.core.auth import CurrentUser, current_user, require_roles
 from app.core.errors import trace_id_of
+from app.core.schedule import KST
 from app import backend
 from app.api.schemas.actions import MessageIn, SlotChoicesIn, ConsultationDelayIn
 from app.api.schemas.requests import RequestStatus
@@ -102,6 +103,7 @@ def confirm_request(request_id: UUID, user: CurrentUser = Depends(require_roles(
 def consultation_delay(booking_id: UUID, body: ConsultationDelayIn,
                        user: CurrentUser = Depends(require_roles("teacher"))):
     result = backend.consultation_reminders.report_delay(user, booking_id, body.expected_end_at)
-    # mock은 Beat가 없으므로 입력 직후에도 알림 시나리오를 재현해요.
-    backend.consultation_reminders.sweep_consultation_notifications()
+    # 입력 직후에는 이 예약 담임의 같은 한국 날짜만 점검해요. DB 전체 점검은 Beat가 맡아요.
+    backend.consultation_reminders.sweep_consultation_notifications(
+        teacher_id=user.id, day=result["booking"]["period"]["start"].astimezone(KST).date())
     return result

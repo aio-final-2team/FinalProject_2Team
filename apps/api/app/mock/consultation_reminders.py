@@ -88,7 +88,7 @@ def alternatives(booking, until, now):
     return result
 
 
-def sweep_consultation_notifications(now=None):
+def sweep_consultation_notifications(now=None, *, teacher_id=None, day=None):
     now = (now or store.now()).astimezone(KST)
     count = 0
     with store._lock:
@@ -96,13 +96,17 @@ def sweep_consultation_notifications(now=None):
         rows = [{**b.__dict__, "start": b.period["start"], "scheduled_end": b.period["end"],
                  "end": b.expected_end_at or b.period["end"], "requester_id": state.requests[b.request_id].requester_id}
                 for b in state.bookings.values() if state.requests[b.request_id].status == "sent_or_booked"
-                and state.requests[b.request_id].type == "consultation"]
+                and state.requests[b.request_id].type == "consultation"
+                and (teacher_id is None or b.teacher_id == teacher_id)
+                and (day is None or b.period["start"].astimezone(KST).date() == day)]
         due = list(alerts(rows, now))
         delayed = {b["id"]: [notification_key(b, kind, until, recipient)
                               for recipient in (b["teacher_id"], b["requester_id"])]
                    for b, kind, until in due if kind == DELAYED}
         for row in rows:
-            supersede(row, DELAYED, delayed.get(row["id"], []))
+            # 현재 지연 대상이 없으면 자연 종료를 제안 변경으로 기록하지 않아요.
+            if row["id"] in delayed:
+                supersede(row, DELAYED, delayed[row["id"]])
         for booking, kind, until in due:
             recipients = [booking["teacher_id"]] if kind == ENDING else [booking["teacher_id"], booking["requester_id"]]
             keys = [notification_key(booking, kind, until, recipient) for recipient in recipients]

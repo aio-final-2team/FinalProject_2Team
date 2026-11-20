@@ -1,6 +1,6 @@
 """T48 알림 생성. 담임의 명시된 지연과 시각별 알림을 저장해요."""
 
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 
 from sqlalchemy import text
 
@@ -92,8 +92,16 @@ def alternatives(connection, booking, until, now):
     return result[:3]
 
 
-def sweep_consultation_notifications(now=None):
+def sweep_consultation_notifications(now=None, *, teacher_id=None, day=None):
     now = (now or datetime.now(KST)).astimezone(KST)
+    filters, params = "", {"now": now}
+    if teacher_id is not None:
+        filters += " AND b.teacher_id=:teacher"
+        params["teacher"] = teacher_id
+    if day is not None:
+        filters += " AND lower(b.period)>=:day_start AND lower(b.period)<:day_end"
+        params["day_start"] = datetime.combine(day, time.min, KST)
+        params["day_end"] = params["day_start"] + timedelta(days=1)
     count = 0
     with transaction() as connection:
         # 중복 Beat·수동 재실행과 지연 수정을 같은 자문 잠금으로 맞춰요.
@@ -106,14 +114,15 @@ def sweep_consultation_notifications(now=None):
             WHERE b.status='confirmed' AND r.status='sent_or_booked' AND r.type='consultation'
               AND (upper(b.period)>:now OR b.expected_end_at>:now)
               AND lower(b.period)<:now+interval '1 day'
-            ORDER BY b.id
-        """), {"now": now}).mappings()]
+        """ + filters + " ORDER BY b.id"), params).mappings()]
         due = list(alerts(rows, now))
         delayed = {b["id"]: [notification_key(b, kind, until, recipient)
                               for recipient in (b["teacher_id"], b["requester_id"])]
                    for b, kind, until in due if kind == DELAYED}
         for row in rows:
-            supersede(connection, row, DELAYED, delayed.get(row["id"], []))
+            # 현재 지연 대상이 없으면 자연 종료를 제안 변경으로 기록하지 않아요.
+            if row["id"] in delayed:
+                supersede(connection, row, DELAYED, delayed[row["id"]])
         for booking, kind, until in due:
             recipients = [booking["teacher_id"]] if kind == ENDING else [booking["teacher_id"], booking["requester_id"]]
             keys = [notification_key(booking, kind, until, recipient) for recipient in recipients]

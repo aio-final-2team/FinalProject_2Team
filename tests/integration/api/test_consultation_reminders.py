@@ -245,6 +245,32 @@ def test_extended_delay_replaces_old_alternatives_once(reminders, old_status):
         assert sum(e.detail.get("outcome") == "superseded" for e in store.state().events) == 2
 
 
+@pytest.mark.parametrize("old_status", ["pending", "sent"])
+def test_unchanged_delay_ending_does_not_supersede_alternatives(reminders, old_status):
+    first, _ = booking(reminders)
+    booking(reminders, NOW+timedelta(minutes=10))
+    until = NOW+timedelta(minutes=35)
+    reminders.module.report_delay(user(), first, until, now=NOW)
+    assert reminders.module.sweep_consultation_notifications(NOW) == 2
+    if reminders.engine:
+        with reminders.engine.begin() as c:
+            c.execute(text("UPDATE notifications SET status=:status,sent_at=CASE WHEN :status='sent' THEN :now END "
+                           "WHERE kind='consultation_delayed'"), {"status": old_status, "now": NOW})
+    else:
+        for n in store.state().notifications.values():
+            if n.kind == "consultation_delayed":
+                n.status = old_status
+    for minutes in (1, 2):
+        reminders.module.sweep_consultation_notifications(until+timedelta(minutes=minutes))
+    rows = [n for n in notices(reminders) if n["kind"] == "consultation_delayed"]
+    assert len(rows) == 2 and all(n["status"] == old_status for n in rows)
+    if reminders.engine:
+        with reminders.engine.connect() as c:
+            assert c.scalar(text("SELECT count(*) FROM events WHERE detail->>'outcome'='superseded'")) == 0
+    else:
+        assert not any(e.detail.get("outcome") == "superseded" for e in store.state().events)
+
+
 def test_http_delay_generates_alternatives_and_notifications(reminders, client, teacher, parent):
     bid, _ = booking(reminders)
     _, target = booking(reminders, NOW+timedelta(minutes=10))
@@ -259,6 +285,56 @@ def test_http_delay_generates_alternatives_and_notifications(reminders, client, 
     assert len(rows) == 1 and rows[0]["request_id"] == str(target) and "대체 시간 제안:" in rows[0]["body"]
     assert client.post(f"{BASE}/consultations/{bid}/delay", headers=teacher, json=data).json() == result
     assert len(notices(reminders)) == 2
+
+
+def test_http_delay_sweeps_only_booking_teacher_and_kst_day(reminders, client, teacher, monkeypatch):
+    first, _ = booking(reminders)
+    target, _ = booking(reminders, NOW+timedelta(minutes=10))
+    tomorrow, _ = booking(reminders, NOW+timedelta(hours=23))
+    other_room = uuid4()
+    if reminders.engine:
+        with reminders.engine.begin() as c:
+            c.execute(text("INSERT INTO rooms(id,org_id,name) VALUES (:id,:org,'[TEST] 다른 상담실')"),
+                      {"id": other_room, "org": seed.ORG})
+    else:
+        store.state().rooms[other_room] = store.Room(other_room, seed.ORG, "[TEST] 다른 상담실")
+    other, other_request = booking(reminders, teacher=seed.TEACHER_OTHER, room=other_room)
+    seen = []
+    actual_alerts = reminders.module.alerts
+    def inspect_rows(rows, now):
+        seen.append({row["id"] for row in rows})
+        return actual_alerts(rows, now)
+    monkeypatch.setattr(reminders.module, "alerts", inspect_rows)
+    response = client.post(f"{BASE}/consultations/{first}/delay", headers=teacher,
+                           json={"expected_end_at": (NOW+timedelta(minutes=35)).isoformat()})
+    assert response.status_code == 200, response.text
+    assert seen == [{first, target}]
+    assert tomorrow not in seen[0] and other not in seen[0]
+    assert len(notices(reminders)) == 2
+    assert not any(n["request_id"] == other_request for n in notices(reminders))
+    # 인자 없는 Beat 점검은 다른 담임까지 계속 처리해요.
+    assert reminders.module.sweep_consultation_notifications(NOW) == 1
+    assert any(n["request_id"] == other_request and n["recipient_id"] == seed.TEACHER_OTHER
+               for n in notices(reminders))
+
+
+def test_http_same_class_other_teacher_cannot_report_delay(reminders, client, teacher_other):
+    bid, _ = booking(reminders)
+    if reminders.engine:
+        with reminders.engine.begin() as c:
+            c.execute(text("INSERT INTO classroom_staff(org_id,classroom_id,user_id) VALUES (:org,:class,:user)"),
+                      {"org": seed.ORG, "class": seed.CLASS_STAR, "user": seed.TEACHER_OTHER})
+    else:
+        store.state().classroom_staff.append(store.ClassroomStaff(seed.CLASS_STAR, seed.TEACHER_OTHER))
+    response = client.post(f"{BASE}/consultations/{bid}/delay", headers=teacher_other,
+                           json={"expected_end_at": (NOW+timedelta(minutes=35)).isoformat()})
+    assert response.status_code == 403 and response.json()["error"]["code"] == "FORBIDDEN_ROLE"
+    assert not notices(reminders)
+    if reminders.engine:
+        with reminders.engine.connect() as c:
+            assert c.scalar(text("SELECT expected_end_at FROM consultation_bookings WHERE id=:id"), {"id": bid}) is None
+    else:
+        assert store.state().bookings[bid].expected_end_at is None
 
 
 @pytest.mark.parametrize("actor,expected", [("parent", 403), ("director", 403), ("teacher_other", 404)])
