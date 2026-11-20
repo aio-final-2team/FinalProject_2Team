@@ -18,13 +18,13 @@
 - **이어지는 메모**: 아라(`C4-08`)는 11/17 미열 → 11/18 결석 → 11/19 열 없음, 별하(`C4-06`)는 11/16 무릎 긁힘 → 11/17 상처 확인처럼 날짜를 넘어 이어져요.
 - **비슷한 이름**: 지아(`C4-12`)·지안(`C4-13`)은 일부러 비슷하게 지었어요. 이름을 헷갈리는지 봐요(평가 ND-09·ND-10).
 
-## API·DB와 연결 (제안, 태웅님·성주님과 맞출 것)
+## API·DB와 연결 (API 설계 v0.4, 태웅님 `taewoong-next` 기준)
 
 | 이 데이터 | API·DB | 상태 |
 | --- | --- | --- |
 | `class_days[].activities`·`supplies` | API 22 요청 본문 · `daily_note_inputs.activities`·`supplies` | 지금 있음 |
-| `child_memos[]` (하루치) | API 22 `child_memos[] {child_id, memo}` · `daily_note_inputs.child_memos` jsonb | 성주님 계획, 아직 없음 |
-| `roster_c4.children[]` | `children` 표 시드 (`display_name`, `is_virtual = true`) | 고정 UUID는 시드(T13)에서 정함. 지금 모의 시드는 반마다 1~2명 |
+| `child_memos[]` (하루치) | API 22 `child_memos[] {child_id, memo}` · `daily_note_inputs.child_memos` jsonb | API 설계 v0.4. **빈 메모(`""`)는 보내지 않아요**(memo 1~500자) |
+| `roster_c4.children[]` | `children` 표 시드 · API 30 반 아이 목록 | `child_id` = `…54NN` (`C4-NN`과 번호 같음). 별빛반은 이 18명 + 시험용 하늘·노을 = 20명 |
 | `meal_source`·`snack_source` | `content.items[key=meal].source = {type: document, …}` | 검색으로 찾음. 여기 값은 평가 정답 확인용 |
 
 - 반·담임은 모의 API 시드(PR #256)에 맞췄어요: `T-DEMO-01`(계약표 부록의 '우리 반 담임', 30문항의 담임)이 담임인 **만 4세 별빛반**이에요. 그래서 팀원 문서를 고치지 않아도 돼요.

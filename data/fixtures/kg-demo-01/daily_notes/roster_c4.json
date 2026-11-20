@@ -5,94 +5,113 @@
   "classroom_name": "만 4세 별빛반",
   "homeroom_teacher_id": "T-DEMO-01",
   "is_virtual": true,
+  "child_id_rule": "C4-NN → 00000000-0000-4000-8000-0000000054NN (태웅님 시드, API 설계 부록 A)",
   "children": [
     {
       "child_key": "C4-01",
+      "child_id": "00000000-0000-4000-8000-000000005401",
       "display_name": "가온",
       "is_virtual": true
     },
     {
       "child_key": "C4-02",
+      "child_id": "00000000-0000-4000-8000-000000005402",
       "display_name": "나래",
       "is_virtual": true
     },
     {
       "child_key": "C4-03",
+      "child_id": "00000000-0000-4000-8000-000000005403",
       "display_name": "다온",
       "is_virtual": true
     },
     {
       "child_key": "C4-04",
+      "child_id": "00000000-0000-4000-8000-000000005404",
       "display_name": "라온",
       "is_virtual": true
     },
     {
       "child_key": "C4-05",
+      "child_id": "00000000-0000-4000-8000-000000005405",
       "display_name": "마루",
       "is_virtual": true
     },
     {
       "child_key": "C4-06",
+      "child_id": "00000000-0000-4000-8000-000000005406",
       "display_name": "별하",
       "is_virtual": true
     },
     {
       "child_key": "C4-07",
+      "child_id": "00000000-0000-4000-8000-000000005407",
       "display_name": "새봄",
       "is_virtual": true
     },
     {
       "child_key": "C4-08",
+      "child_id": "00000000-0000-4000-8000-000000005408",
       "display_name": "아라",
       "is_virtual": true
     },
     {
       "child_key": "C4-09",
+      "child_id": "00000000-0000-4000-8000-000000005409",
       "display_name": "여름",
       "is_virtual": true
     },
     {
       "child_key": "C4-10",
+      "child_id": "00000000-0000-4000-8000-000000005410",
       "display_name": "윤슬",
       "is_virtual": true
     },
     {
       "child_key": "C4-11",
+      "child_id": "00000000-0000-4000-8000-000000005411",
       "display_name": "이든",
       "is_virtual": true
     },
     {
       "child_key": "C4-12",
+      "child_id": "00000000-0000-4000-8000-000000005412",
       "display_name": "지아",
       "is_virtual": true
     },
     {
       "child_key": "C4-13",
+      "child_id": "00000000-0000-4000-8000-000000005413",
       "display_name": "지안",
       "is_virtual": true
     },
     {
       "child_key": "C4-14",
+      "child_id": "00000000-0000-4000-8000-000000005414",
       "display_name": "채온",
       "is_virtual": true
     },
     {
       "child_key": "C4-15",
+      "child_id": "00000000-0000-4000-8000-000000005415",
       "display_name": "하람",
       "is_virtual": true
     },
     {
       "child_key": "C4-16",
+      "child_id": "00000000-0000-4000-8000-000000005416",
       "display_name": "한결",
       "is_virtual": true
     },
     {
       "child_key": "C4-17",
+      "child_id": "00000000-0000-4000-8000-000000005417",
       "display_name": "해든",
       "is_virtual": true
     },
     {
       "child_key": "C4-18",
+      "child_id": "00000000-0000-4000-8000-000000005418",
       "display_name": "로아",
       "is_virtual": true
     }

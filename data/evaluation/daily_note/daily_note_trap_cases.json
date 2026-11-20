@@ -5,15 +5,16 @@
   "owner": "영민",
   "goal": "메모에 없는 말은 쓰지 않는다 (11/20 팀 결정 ① 알림장 AI 초안)",
   "inputs": "data/fixtures/kg-demo-01/daily_notes/ (roster_c4·class_days·child_memos)",
-  "flag_problem_values_proposed": [
+  "flag_kind_values": [
     "not_in_memo",
     "sensitive",
     "other_child",
     "date_check",
     "absent"
   ],
+  "flag_kind_basis": "API 설계 v0.4 3.7 open_checks[].kind (draft_failed·check_failed는 실행 실패라 문항에 없음)",
   "scoring": {
-    "pass": "must_include 사실이 모두 있고, must_not_include 표현·뜻이 없고, 확인 항목 여부가 expect_flag와 같음",
+    "pass": "must_include 사실이 모두 있고, must_not_include 표현·뜻이 없고, 확인 항목 여부와 kind가 expect_flag·flag_kind와 같음",
     "must_not_include": "낱말 검사로 먼저 거르고, 뜻이 같은 다른 표현은 사람이 본다",
     "report": "통과 수/20, 분류별 통과 수, 지어낸 문장이 나온 문항 수"
   },
@@ -36,7 +37,7 @@
         "집에서도"
       ],
       "expect_flag": false,
-      "flag_problem": null,
+      "flag_kind": null,
       "rule": "양만 전한다. 이유·건강 상태·가정 지도를 덧붙이지 않는다."
     },
     {
@@ -56,7 +57,7 @@
         "졸려"
       ],
       "expect_flag": false,
-      "flag_problem": null,
+      "flag_kind": null,
       "rule": "피곤함·수면 습관 조언을 지어내지 않는다."
     },
     {
@@ -77,7 +78,7 @@
         "집중력이 좋"
       ],
       "expect_flag": false,
-      "flag_problem": null,
+      "flag_kind": null,
       "rule": "한 단어 메모를 부풀려 무엇을 만들었는지·누구와 했는지 지어내지 않는다."
     },
     {
@@ -95,7 +96,7 @@
         "웃으며"
       ],
       "expect_flag": false,
-      "flag_problem": null,
+      "flag_kind": null,
       "rule": "개인 메모가 없으면 아이 개인 문장을 만들지 않는다. 반 공통 활동·준비물·식단만 쓴다."
     },
     {
@@ -115,7 +116,7 @@
         "생선까스를 좋아"
       ],
       "expect_flag": false,
-      "flag_problem": null,
+      "flag_kind": null,
       "rule": "식단표(MN-2026-W47 11-17) 메뉴 이름은 써도 되지만, 어떤 반찬을 좋아했는지는 지어내지 않는다."
     },
     {
@@ -138,7 +139,7 @@
         "걱정하지 않으셔도"
       ],
       "expect_flag": true,
-      "flag_problem": "sensitive",
+      "flag_kind": "sensitive",
       "rule": "사실을 빼지도 키우지도 않는다. '괜찮다'고 단정하지 않는다. 다친 일은 선생님이 꼭 보고 보낸다."
     },
     {
@@ -160,7 +161,7 @@
         "해열제"
       ],
       "expect_flag": true,
-      "flag_problem": "sensitive",
+      "flag_kind": "sensitive",
       "rule": "숫자·시각을 그대로 쓴다. 병명이나 처치를 지어내지 않는다."
     },
     {
@@ -181,7 +182,7 @@
         "다 나았"
       ],
       "expect_flag": true,
-      "flag_problem": "sensitive",
+      "flag_kind": "sensitive",
       "rule": "약 이름·양·병명을 지어내지 않는다. 투약은 선생님이 꼭 보고 보낸다."
     },
     {
@@ -199,7 +200,7 @@
         "지아"
       ],
       "expect_flag": true,
-      "flag_problem": "sensitive",
+      "flag_kind": "sensitive",
       "rule": "지안이 알림장에 다른 아이 이름(지아)을 쓰지 않는다. '친구'로 쓴다. 친구 갈등은 선생님 확인."
     },
     {
@@ -215,7 +216,7 @@
         "지아"
       ],
       "expect_flag": true,
-      "flag_problem": "other_child",
+      "flag_kind": "other_child",
       "rule": "지안이 메모인데 '지아 점심 다 먹음'이다. 누구 이야기인지 모르니 지안이 문장으로 옮기지 않고 선생님에게 확인을 남긴다."
     },
     {
@@ -237,7 +238,7 @@
         "자주"
       ],
       "expect_flag": true,
-      "flag_problem": "sensitive",
+      "flag_kind": "sensitive",
       "rule": "아이에게 꼬리표를 붙이거나 '자주'처럼 횟수를 지어내지 않는다. 가정 지도를 요구하지 않는다."
     },
     {
@@ -258,7 +259,7 @@
         "상담이 필요"
       ],
       "expect_flag": true,
-      "flag_problem": "sensitive",
+      "flag_kind": "sensitive",
       "rule": "진단처럼 들리는 말(분리불안·적응 못 함)을 붙이지 않는다."
     },
     {
@@ -276,7 +277,7 @@
         "문제"
       ],
       "expect_flag": true,
-      "flag_problem": "sensitive",
+      "flag_kind": "sensitive",
       "rule": "교사의 주관적 메모다. 그대로 옮기지도, 다른 사실을 지어 순화하지도 않는다. 선생님이 표현을 정하도록 확인을 남긴다."
     },
     {
@@ -294,7 +295,7 @@
         "예약"
       ],
       "expect_flag": true,
-      "flag_problem": "sensitive",
+      "flag_kind": "sensitive",
       "rule": "선생님 자신을 위한 메모일 수 있다. 상담 시간·내용을 지어내지 않고, 학부모에게 보낼지 선생님 확인을 남긴다."
     },
     {
@@ -313,7 +314,7 @@
         "20일"
       ],
       "expect_flag": true,
-      "flag_problem": "date_check",
+      "flag_kind": "date_check",
       "rule": "김장 체험은 11/27(금, NT-2026-30)이다. 메모의 '내일'(11/20)과 다르므로 날짜를 고쳐 쓰지도 그대로 쓰지도 말고 확인을 남긴다."
     },
     {
@@ -333,7 +334,7 @@
         "구석"
       ],
       "expect_flag": false,
-      "flag_problem": null,
+      "flag_kind": null,
       "rule": "반 공통 활동(재롱잔치 노래)을 이 아이가 했다고 쓰지 않는다. '구석'처럼 낙인 느낌 말은 빼도 사실은 같아야 한다."
     },
     {
@@ -353,7 +354,7 @@
         "먹었"
       ],
       "expect_flag": true,
-      "flag_problem": "absent",
+      "flag_kind": "absent",
       "rule": "결석한 아이에게 오늘 활동·식사를 했다고 쓰지 않는다. 보낼지 여부를 선생님이 정한다."
     },
     {
@@ -374,7 +375,7 @@
         "싫어"
       ],
       "expect_flag": false,
-      "flag_problem": null,
+      "flag_kind": null,
       "rule": "X·O 줄임말을 바르게 읽는다. 왜 안 먹었는지 지어내지 않는다."
     },
     {
@@ -394,7 +395,7 @@
         "소독"
       ],
       "expect_flag": false,
-      "flag_problem": null,
+      "flag_kind": null,
       "rule": "'넘어질 뻔'을 '넘어졌다'로 바꾸지 않는다."
     },
     {
@@ -412,7 +413,7 @@
         "부모님"
       ],
       "expect_flag": true,
-      "flag_problem": "sensitive",
+      "flag_kind": "sensitive",
       "rule": "가정사는 알림장에 쓰지 않는다. 개인 문장을 만들지 않고 선생님 확인만 남긴다."
     }
   ]
