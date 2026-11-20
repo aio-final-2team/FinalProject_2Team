@@ -29,6 +29,12 @@ def reminders(request, monkeypatch):
         engine = None
         from app.mock import consultation_reminders as module, notifications
         users = store
+    monkeypatch.setattr(backend, "consultation_reminders", module)
+    class FrozenDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return NOW.astimezone(tz)
+    monkeypatch.setattr(module, "datetime", FrozenDatetime)
     monkeypatch.setattr(backend, "users", users)
     monkeypatch.setattr(backend, "notifications", notifications)
     return SimpleNamespace(module=module, engine=engine)
@@ -165,11 +171,130 @@ def test_finished_or_cancelled_booking_never_gets_ending_reminder(reminders, sta
     assert reminders.module.sweep_consultation_notifications(NOW) == 0
 
 
-def test_ending_outside_work_hours_is_not_queued_for_tomorrow(reminders):
+def test_ending_outside_work_hours_is_immediate(reminders):
     booking(reminders, NOW.replace(hour=19, minute=0))
-    assert reminders.module.sweep_consultation_notifications(NOW.replace(hour=19, minute=20)) == 0
+    assert reminders.module.sweep_consultation_notifications(NOW.replace(hour=19, minute=20)) == 1
 
 
 def test_no_new_ending_alert_is_created_after_window(reminders):
     booking(reminders)
     assert reminders.module.sweep_consultation_notifications(NOW+timedelta(minutes=10)) == 0
+
+
+@pytest.mark.parametrize("until", [NOW+timedelta(days=2), NOW+timedelta(hours=3, minutes=10, microseconds=1)])
+def test_delay_upper_bound_is_rejected_without_effect(reminders, until):
+    bid, _ = booking(reminders)
+    with pytest.raises(ApiError) as error:
+        reminders.module.report_delay(user(), bid, until, now=NOW)
+    assert error.value.code == "VALIDATION_FAILED"
+    assert not notices(reminders)
+
+
+def test_delay_accepts_exact_three_hour_limit_and_rejects_next_kst_day(reminders):
+    bid, _ = booking(reminders)
+    reminders.module.report_delay(user(), bid, NOW+timedelta(hours=3, minutes=10), now=NOW)
+    late, _ = booking(reminders, NOW.replace(hour=23, minute=0))
+    with pytest.raises(ApiError) as error:
+        reminders.module.report_delay(user(), late, NOW.replace(hour=23, minute=40)+timedelta(minutes=30),
+                                      now=NOW.replace(hour=23, minute=20))
+    assert error.value.code == "VALIDATION_FAILED"
+
+
+def test_end_reminder_after_delay_change_supersedes_previous_pending(reminders):
+    bid, _ = booking(reminders)
+    sweep = reminders.module.sweep_consultation_notifications
+    assert sweep(NOW) == 1
+    reminders.module.report_delay(user(), bid, NOW+timedelta(minutes=30), now=NOW+timedelta(minutes=5))
+    assert notices(reminders)[0]["status"] == "held"
+    assert sweep(NOW+timedelta(minutes=20)) == 1
+    assert sweep(NOW+timedelta(minutes=21)) == 0
+    rows = notices(reminders)
+    assert len({n["dedupe_key"] for n in rows}) == 2
+    assert "09:50" in rows[1]["body"] and rows[1]["status"] == "pending"
+
+
+@pytest.mark.parametrize("old_status", ["pending", "sent"])
+def test_extended_delay_replaces_old_alternatives_once(reminders, old_status):
+    # 두 대역 모두 처음 제안한 15시를 다음 지연이 덮도록 해요.
+    first, _ = booking(reminders, NOW.replace(hour=14, minute=0))
+    _, target = booking(reminders, NOW.replace(hour=14, minute=30))
+    now = NOW.replace(hour=14, minute=20)
+    sweep = reminders.module.sweep_consultation_notifications
+    reminders.module.report_delay(user(), first, now.replace(hour=14, minute=50), now=now)
+    assert sweep(now) == 2
+    if reminders.engine:
+        with reminders.engine.begin() as c:
+            c.execute(text("UPDATE notifications SET status=:status,sent_at=CASE WHEN :status='sent' THEN :now END "
+                           "WHERE kind='consultation_delayed'"), {"status": old_status, "now": now})
+    else:
+        for n in store.state().notifications.values():
+            if n.kind == "consultation_delayed":
+                n.status = old_status
+    reminders.module.report_delay(user(), first, now.replace(hour=15, minute=20), now=now+timedelta(minutes=2))
+    assert sweep(now+timedelta(minutes=2)) == 2
+    assert sweep(now+timedelta(minutes=3)) == 0
+    rows = [n for n in notices(reminders) if n["request_id"] == target]
+    assert len(rows) == 4
+    assert all("11/16 15:00~15:30" in n["body"] for n in rows[:2])
+    assert all("11/16 15:00~15:30" not in n["body"] for n in rows[2:])
+    assert all(n["status"] == ("held" if old_status == "pending" else "sent") for n in rows[:2])
+    if reminders.engine:
+        with reminders.engine.connect() as c:
+            assert c.scalar(text("SELECT count(*) FROM events WHERE detail->>'outcome'='superseded'")) == 2
+    else:
+        assert sum(e.detail.get("outcome") == "superseded" for e in store.state().events) == 2
+
+
+def test_http_delay_generates_alternatives_and_notifications(reminders, client, teacher, parent):
+    bid, _ = booking(reminders)
+    _, target = booking(reminders, NOW+timedelta(minutes=10))
+    data = {"expected_end_at": (NOW+timedelta(minutes=35)).astimezone(timezone.utc).isoformat()}
+    response = client.post(f"{BASE}/consultations/{bid}/delay", headers=teacher, json=data)
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert result["affected_bookings"] == 1 and result["booking"]["id"] == str(bid)
+    assert result["booking"]["expected_end_at"].endswith("+09:00")
+    response = client.get(BASE+"/notifications", headers=parent)
+    rows = [n for n in response.json()["items"] if n["kind"] == "consultation_delayed"]
+    assert len(rows) == 1 and rows[0]["request_id"] == str(target) and "대체 시간 제안:" in rows[0]["body"]
+    assert client.post(f"{BASE}/consultations/{bid}/delay", headers=teacher, json=data).json() == result
+    assert len(notices(reminders)) == 2
+
+
+@pytest.mark.parametrize("actor,expected", [("parent", 403), ("director", 403), ("teacher_other", 404)])
+def test_http_delay_enforces_booking_teacher(reminders, client, request, actor, expected):
+    bid, _ = booking(reminders)
+    auth = request.getfixturevalue(actor)
+    response = client.post(f"{BASE}/consultations/{bid}/delay", headers=auth,
+                           json={"expected_end_at": (NOW+timedelta(hours=1)).isoformat()})
+    assert response.status_code == expected, response.text
+    assert not notices(reminders)
+
+
+@pytest.mark.parametrize("value", ["2026-11-16T09:55:00", "2026-11-18T09:55:00+09:00", "not a date"])
+def test_http_invalid_delay_has_common_error(reminders, client, teacher, value):
+    bid, _ = booking(reminders)
+    response = client.post(f"{BASE}/consultations/{bid}/delay", headers=teacher, json={"expected_end_at": value})
+    assert response.status_code == 422 and response.json()["error"]["code"] == "VALIDATION_FAILED"
+    assert not notices(reminders)
+
+
+
+def test_expired_teacher_assignment_cannot_use_old_card_to_report_delay(reminders):
+    bid, rid = booking(reminders)
+    if reminders.engine:
+        with reminders.engine.begin() as c:
+            c.execute(text("INSERT INTO cards(org_id,request_id,kind,assignee_id) "
+                           "VALUES (:org,:req,'consult_slots',:teacher)"),
+                      {"org": seed.ORG, "req": rid, "teacher": seed.TEACHER})
+            c.execute(text("UPDATE classroom_staff SET valid_to='2020-01-01' WHERE user_id=:user"),
+                      {"user": seed.TEACHER})
+    else:
+        store._new_card(store.state().requests[rid], "consult_slots", seed.TEACHER)
+        for assignment in store.state().classroom_staff:
+            if assignment.user_id == seed.TEACHER:
+                assignment.valid_to = NOW.date()-timedelta(days=1)
+    with pytest.raises(ApiError) as error:
+        reminders.module.report_delay(user(), bid, NOW+timedelta(hours=1), now=NOW)
+    assert error.value.code == "NOT_FOUND"
+    assert not notices(reminders)

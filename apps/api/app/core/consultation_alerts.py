@@ -1,10 +1,24 @@
 """예약 시간과 담임이 기록한 지연만 읽어요. 시간이 지났다고 지연을 추측하지 않아요."""
 
-from datetime import timedelta
+from datetime import timezone, timedelta
+
+from app.core.schedule import KST
 
 ENDING = "consultation_ending"
 DELAYED = "consultation_delayed"
 KINDS = (ENDING, DELAYED)
+
+
+def valid_delay(start, scheduled_end, expected_end, now):
+    return (expected_end.tzinfo is not None and start <= now
+            and expected_end > max(scheduled_end, now)
+            and expected_end <= scheduled_end + timedelta(hours=3)
+            and expected_end.astimezone(KST).date() == start.astimezone(KST).date())
+
+
+def notification_key(booking, kind, until, recipient):
+    revision = (until or booking["end"]).astimezone(timezone.utc).isoformat()
+    return f"consultation:{booking['id']}:{kind}:{revision}:{recipient}"
 
 
 def alerts(bookings, now):

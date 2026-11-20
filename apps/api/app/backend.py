@@ -7,8 +7,10 @@ from app.core.config import settings
 
 if settings.data_backend == "mock":
     from app.mock import cards, card_views, documents, memories, notes, notifications, request_actions, store
+    from app.mock import consultation_reminders
     users = store
 else:
+    from app.modules.consultations import reminders as consultation_reminders
     from app.core import users
     from app.modules.daily_notes import notes
     from app.modules.documents import documents

@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import text
 
 from app.core.db import transaction
-from app.core.consultation_alerts import KINDS
+from app.core.consultation_alerts import ENDING, KINDS, alerts, notification_key
 from app.core.schedule import KST, deliver_after
 
 MAX_ATTEMPTS = 3
@@ -50,14 +50,19 @@ def deliver_pending(now=None):
             ORDER BY n.deliver_after,n.id LIMIT 100 FOR UPDATE OF n SKIP LOCKED
         """), {"now": now, "max": MAX_ATTEMPTS}).mappings().all()
         for row in rows:
-            if row["kind"] in KINDS and not connection.scalar(text("""
-                SELECT EXISTS (SELECT 1 FROM consultation_bookings b
-                  JOIN requests r ON (r.id,r.org_id)=(b.request_id,b.org_id)
-                  WHERE b.org_id=:org AND b.request_id=:request AND b.status='confirmed'
-                    AND r.status='sent_or_booked' AND coalesce(b.expected_end_at,upper(b.period))>:now
-                    AND :key='consultation:' || b.id::text || ':' || :kind || ':' || CAST(:recipient AS text))
-            """), {"org": row["org_id"], "request": row["request_id"], "now": now,
-                   "key": row["dedupe_key"], "kind": row["kind"], "recipient": row["recipient_id"]}):
+            current = True
+            if row["kind"] in KINDS:
+                bookings = [dict(b) for b in connection.execute(text("""
+                    SELECT b.*,lower(b.period) AS start,upper(b.period) AS scheduled_end,
+                           coalesce(b.expected_end_at,upper(b.period)) AS end
+                    FROM consultation_bookings b JOIN requests r ON (r.id,r.org_id)=(b.request_id,b.org_id)
+                    WHERE b.org_id=:org AND b.status='confirmed' AND r.status='sent_or_booked'
+                      AND r.type='consultation' AND coalesce(b.expected_end_at,upper(b.period))>:now
+                      AND lower(b.period)<:now+interval '1 day'
+                """), {"org": row["org_id"], "now": now}).mappings()]
+                current = any(notification_key(b, kind, until, row["recipient_id"]) == row["dedupe_key"]
+                              for b, kind, until in alerts(bookings, now))
+            if not current:
                 connection.execute(text("""
                     UPDATE notifications SET status='held',last_error='CONSULTATION_ENDED' WHERE id=:id
                 """), {"id": row["id"]})
@@ -71,7 +76,7 @@ def deliver_pending(now=None):
                 """), {"id": row["id"]})
                 _failure(connection, row, "RECIPIENT_UNAVAILABLE", row["attempts"])
                 continue
-            after = deliver_after(now, row["role"], row["risk_level"], row["risk_category"])
+            after = now if row["kind"] == ENDING else deliver_after(now, row["role"], row["risk_level"], row["risk_category"])
             if after > now:
                 connection.execute(text("UPDATE notifications SET next_attempt_at=:after WHERE id=:id"),
                                    {"id": row["id"], "after": after})
@@ -82,8 +87,9 @@ def deliver_pending(now=None):
                 sent += 1
             except Exception:
                 attempts = row["attempts"] + 1
-                after = deliver_after(now + timedelta(seconds=RETRY_SECONDS * 2 ** (attempts-1)),
-                                      row["role"], row["risk_level"], row["risk_category"])
+                retry_at = now + timedelta(seconds=RETRY_SECONDS * 2 ** (attempts-1))
+                after = retry_at if row["kind"] == ENDING else deliver_after(
+                    retry_at, row["role"], row["risk_level"], row["risk_category"])
                 # 예외 원문에는 개인정보가 섞일 수 있어 고정 실패 코드만 남겨요.
                 connection.execute(text("""
                     UPDATE notifications SET attempts=:attempts,last_error='DELIVERY_FAILED',

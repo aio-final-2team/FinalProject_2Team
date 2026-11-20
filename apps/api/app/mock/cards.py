@@ -205,7 +205,8 @@ def book(user, card_id, body):
         if slot.period["start"] <= store.now():
             raise ApiError(409, "SLOT_PAST")
         for booking in store.state().bookings.values():
-            overlaps = slot.period["start"] < booking.period["end"] and booking.period["start"] < slot.period["end"]
+            overlaps = (slot.period["start"] < (booking.expected_end_at or booking.period["end"])
+                        and booking.period["start"] < slot.period["end"])
             if booking.status == "confirmed" and (booking.request_id == req.id or (overlaps
                     and (booking.room_id == slot.room_id or booking.teacher_id == slot.teacher_id))):
                 raise ApiError(409, "SLOT_TAKEN")

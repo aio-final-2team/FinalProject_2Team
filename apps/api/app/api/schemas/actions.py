@@ -164,3 +164,7 @@ class NotePatchIn(BaseModel):
     content: NoteContent | None = None
     resolved_checks: list[str] = Field(default_factory=list)
     confirm: bool = False
+
+
+class ConsultationDelayIn(BaseModel):
+    expected_end_at: datetime

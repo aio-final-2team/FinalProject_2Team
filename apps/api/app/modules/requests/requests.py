@@ -145,7 +145,8 @@ def choices(user, request_id, body):
                     SELECT EXISTS (
                       SELECT 1 FROM consultation_bookings b
                       WHERE b.org_id=:org AND b.status='confirmed' AND b.request_id<>:request
-                        AND (b.teacher_id=:teacher OR b.room_id=:room) AND b.period && :period
+                        AND (b.teacher_id=:teacher OR b.room_id=:room)
+                        AND tstzrange(lower(b.period),coalesce(b.expected_end_at,upper(b.period)),'[)') && :period
                       UNION ALL
                       SELECT 1 FROM consultation_slots s JOIN cards c ON c.id=s.card_id
                       WHERE s.org_id=:org AND c.request_id<>:request AND s.status='chosen_by_parent'

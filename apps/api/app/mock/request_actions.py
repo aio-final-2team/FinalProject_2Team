@@ -98,7 +98,7 @@ def choices(user, request_id, body):
                            and s.chosen_at > store.now()-timedelta(hours=24)
                            and store.state().cards[s.card_id].org_id == req.org_id]
                 if any((other.teacher_id == slot.teacher_id or other.room_id == slot.room_id)
-                       and slot.period["start"] < other.period["end"]
+                       and slot.period["start"] < (getattr(other, "expected_end_at", None) or other.period["end"])
                        and other.period["start"] < slot.period["end"] for other in others):
                     raise ApiError(409, "SLOT_TAKEN")
             for slot in chosen:

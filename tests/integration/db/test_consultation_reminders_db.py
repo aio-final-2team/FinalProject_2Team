@@ -146,3 +146,88 @@ def test_revision_round_trip_preserves_booking_old_notifications_and_old_events(
     command.upgrade(alembic_config, "head")
     with ctx.engine.connect() as c:
         assert c.scalar(text("SELECT expected_end_at FROM consultation_bookings WHERE id=:id"), {"id": bid}) is None
+
+
+def test_delay_bounds_constraint_and_round_trip(ctx, alembic_config):
+    from sqlalchemy.exc import IntegrityError
+    bid, _ = booking(ctx)
+    for value in (NOW+timedelta(days=2), NOW+timedelta(hours=3, minutes=11)):
+        with pytest.raises(IntegrityError) as error, ctx.engine.begin() as c:
+            c.execute(text("UPDATE consultation_bookings SET expected_end_at=:until WHERE id=:id"),
+                      {"id": bid, "until": value})
+        assert error.value.orig.diag.constraint_name == "consultation_bookings_delay_bounds_check"
+    until = NOW+timedelta(hours=3, minutes=10)
+    reminders.report_delay(user(), bid, until, now=NOW)
+    command.downgrade(alembic_config, "0008")
+    with ctx.engine.connect() as c:
+        assert c.scalar(text("SELECT expected_end_at FROM consultation_bookings WHERE id=:id"), {"id": bid}) == until
+    command.upgrade(alembic_config, "head")
+    with ctx.engine.connect() as c:
+        assert c.scalar(text("SELECT expected_end_at FROM consultation_bookings WHERE id=:id"), {"id": bid}) == until
+
+
+def test_evening_ending_notification_is_created_and_delivered_immediately(ctx):
+    bid, _ = booking(ctx, NOW.replace(hour=17, minute=30))
+    reminders.report_delay(user(), bid, NOW.replace(hour=18, minute=20), now=NOW.replace(hour=17, minute=50))
+    now = NOW.replace(hour=18, minute=10)
+    assert reminders.sweep_consultation_notifications(now) == 1
+    assert delivery.deliver_pending(now) == 1
+    with ctx.engine.connect() as c:
+        n = c.execute(text("SELECT * FROM notifications WHERE kind='consultation_ending'")).mappings().one()
+        assert n["deliver_after"] == now and n["sent_at"] == now
+
+
+def test_future_booking_lock_does_not_block_sweep(ctx):
+    booking(ctx)
+    far, _ = booking(ctx, NOW+timedelta(days=2))
+    with ctx.engine.begin() as c:
+        c.execute(text("SELECT id FROM consultation_bookings WHERE id=:id FOR UPDATE"), {"id": far})
+        with ThreadPoolExecutor(1) as pool:
+            assert pool.submit(reminders.sweep_consultation_notifications, NOW).result(3) == 1
+
+
+def test_non_alert_booking_today_is_not_locked_by_sweep(ctx):
+    booking(ctx)
+    later, _ = booking(ctx, NOW+timedelta(hours=3))
+    with ctx.engine.begin() as c:
+        c.execute(text("SELECT id FROM consultation_bookings WHERE id=:id FOR UPDATE"), {"id": later})
+        with ThreadPoolExecutor(1) as pool:
+            assert pool.submit(reminders.sweep_consultation_notifications, NOW).result(3) == 1
+
+
+def test_sweep_and_delay_update_are_serialized_without_stale_pending(ctx):
+    from tests.integration.api.test_consultation_reminders import notices
+    bid, _ = booking(ctx)
+    entered, release = Event(), Event()
+    def pause(connection, cursor, statement, parameters, context, many):
+        if "INSERT INTO notifications" in statement:
+            entered.set()
+            assert release.wait(10)
+    event.listen(ctx.engine, "before_cursor_execute", pause)
+    try:
+        with ThreadPoolExecutor(2) as pool:
+            first = pool.submit(reminders.sweep_consultation_notifications, NOW)
+            try:
+                assert entered.wait(5)
+                second = pool.submit(reminders.report_delay, user(), bid, NOW+timedelta(minutes=30), now=NOW)
+                assert not second.done()
+            finally:
+                release.set()
+            assert first.result(5) == 1
+            second.result(5)
+    finally:
+        event.remove(ctx.engine, "before_cursor_execute", pause)
+    assert notices(ctx)[0]["status"] == "held"
+    assert reminders.sweep_consultation_notifications(NOW+timedelta(minutes=20)) == 1
+    assert delivery.deliver_pending(NOW+timedelta(minutes=20)) == 1
+
+
+
+def test_inactive_recipient_booking_is_not_locked_by_sweep(ctx):
+    bid, _ = booking(ctx)
+    with ctx.engine.begin() as c:
+        c.execute(text("UPDATE users SET is_active=false WHERE id=:id"), {"id": seed.TEACHER})
+    with ctx.engine.begin() as c:
+        c.execute(text("SELECT id FROM consultation_bookings WHERE id=:id FOR UPDATE"), {"id": bid})
+        with ThreadPoolExecutor(1) as pool:
+            assert pool.submit(reminders.sweep_consultation_notifications, NOW).result(3) == 0

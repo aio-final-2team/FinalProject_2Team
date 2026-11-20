@@ -1,15 +1,17 @@
 # 유치온 데이터베이스 스키마 설계서 (T09)
 
-문서 버전 v0.14 | 작성 상태: T46 팀 확인 전 초안 알림(11/20) 반영
+문서 버전 v0.15 | 작성 상태: 상담 지연 상한(11/21) 반영
 
 | 항목 | 내용 |
 | --- | --- |
 | 작업 | T09 데이터베이스 스키마 설계서 (#166) |
 | 작성 | 태웅 · 검토 영민 |
-| 판 | v0.14 · 2026-11-20. 0008로 투약·귀가 접수/확인 알림을 더했어요. v0.13 · 2026-11-20. 0007로 상담 예상 종료 시각·알림·이력을 더했어요. v0.12 · 2026-11-20. 0006으로 요청 에이전트 재전달 이력을 더했어요. v0.11 · 2026-11-20. 0005로 알림 다음 발송 시각을 더했어요. v0.10 · 2026-11-20. 0004로 회신 후 민원 카드를 처리 완료 전까지 받은함에 남겨요. v0.9 · 2026-11-20. 0003 알림장 원본·이력 연결을 더했어요. v0.8 · 2026-11-20. 아이별 메모 배열과 0002를 더했어요(아래 변경 이력). v0.7 · 2026-11-18. T10 회의 결과(FB-014) 반영: 학부모 미확인 민원은 이유 글이 있어야 처리 완료(트리거 `approvals_unconfirmed_complete_reason`), 202로 접수하는 자료 올리기·알림장 초안의 진행 상태 칸(`ingest_status`·`draft_status`, 강사님 API 작성법 11/18 수정본 '202는 상태 조회가 있어야 함'), 원장 현황에 '학부모 미확인 완료' 수(`completed_unconfirmed`), `topic_key` 주제 10개 + `other`, 처리 기한은 주말·공휴일 제외, 근무 시간 밖 긴급 알림은 아이 안전만 바로. 강사 피드백 FB-001-3에 따라 세 흐름의 화면·API·DB 상태 대조(8.3)와 흐름별 DB 시험 23개(9.1)를 더함. v0.6 · 2026-11-18. `topic_key` = 에이전트 `create_card`의 `topic_key` 인자(계약표 v0.6 4.2). T10 계약표 v0.5의 영민 리뷰 반영(`topic_key` 정해진 목록·`other`는 반복 수 제외, 같은 질문 묶기 MVP 제외). 여러 반 대상 자료를 위해 `documents.classroom_id`를 연결 표 `document_classrooms`로 바꾸고 근거 검색에 반 조건을 더함(FB-003-2). v0.5 · 2026-11-17. T10 계약표 v0.3의 정한 규칙·기본값에 맞춤(알림 종류·자동 재개·거절 이유·처리 기한). v0.4는 강사님 'DB 스키마 설계서 작성법'(11/16)의 목차·체크리스트 반영, v0.1~v0.3은 초안 1~3(T04 합의·대조 검토 반영) |
+| 판 | v0.15 · 2026-11-21. 0009로 상담 예상 종료의 당일·3시간 상한을 더했어요. v0.14 · 2026-11-20. 0008로 투약·귀가 접수/확인 알림을 더했어요. v0.13 · 2026-11-20. 0007로 상담 예상 종료 시각·알림·이력을 더했어요. v0.12 · 2026-11-20. 0006으로 요청 에이전트 재전달 이력을 더했어요. v0.11 · 2026-11-20. 0005로 알림 다음 발송 시각을 더했어요. v0.10 · 2026-11-20. 0004로 회신 후 민원 카드를 처리 완료 전까지 받은함에 남겨요. v0.9 · 2026-11-20. 0003 알림장 원본·이력 연결을 더했어요. v0.8 · 2026-11-20. 아이별 메모 배열과 0002를 더했어요(아래 변경 이력). v0.7 · 2026-11-18. T10 회의 결과(FB-014) 반영: 학부모 미확인 민원은 이유 글이 있어야 처리 완료(트리거 `approvals_unconfirmed_complete_reason`), 202로 접수하는 자료 올리기·알림장 초안의 진행 상태 칸(`ingest_status`·`draft_status`, 강사님 API 작성법 11/18 수정본 '202는 상태 조회가 있어야 함'), 원장 현황에 '학부모 미확인 완료' 수(`completed_unconfirmed`), `topic_key` 주제 10개 + `other`, 처리 기한은 주말·공휴일 제외, 근무 시간 밖 긴급 알림은 아이 안전만 바로. 강사 피드백 FB-001-3에 따라 세 흐름의 화면·API·DB 상태 대조(8.3)와 흐름별 DB 시험 23개(9.1)를 더함. v0.6 · 2026-11-18. `topic_key` = 에이전트 `create_card`의 `topic_key` 인자(계약표 v0.6 4.2). T10 계약표 v0.5의 영민 리뷰 반영(`topic_key` 정해진 목록·`other`는 반복 수 제외, 같은 질문 묶기 MVP 제외). 여러 반 대상 자료를 위해 `documents.classroom_id`를 연결 표 `document_classrooms`로 바꾸고 근거 검색에 반 조건을 더함(FB-003-2). v0.5 · 2026-11-17. T10 계약표 v0.3의 정한 규칙·기본값에 맞춤(알림 종류·자동 재개·거절 이유·처리 기한). v0.4는 강사님 'DB 스키마 설계서 작성법'(11/16)의 목차·체크리스트 반영, v0.1~v0.3은 초안 1~3(T04 합의·대조 검토 반영) |
 | 대상 DB | PostgreSQL 16 + pgvector 0.8 (`compose.yaml`의 `pgvector/pgvector:pg16`). Supabase를 쓰지 않는 이유는 5.1 |
-| DDL | [`db_schema_draft.sql`](db_schema_draft.sql) — 최종 설계 모양이에요. 실제 적용은 `apps/api/migrations`의 0001 → 0002 → 0003 → 0004 → 0005 → 0006 → 0007 → 0008로 해요 |
+| DDL | [`db_schema_draft.sql`](db_schema_draft.sql) — 최종 설계 모양이에요. 실제 적용은 `apps/api/migrations`의 0001 → 0002 → 0003 → 0004 → 0005 → 0006 → 0007 → 0008 → 0009로 해요 |
 | 기준 문서 | 기획서 1116판 3장 FR-01~FR-13, 4장 NFR, 6장 공통 상태, 7장 기술과 데이터 · T04 흐름·권한 명세(11/17 팀 합의, PR #234) · T10 [입출력 계약표](입출력_계약표_초안.md) v0.7(1.1 정한 규칙, 6장 11/18 회의 확정) |
+
+변경 이력: **v0.15 · 2026-11-21** — 0009는 상담 예상 종료를 원래 종료 + 3시간 이내·예약 시작과 같은 KST 날짜로 제한해요. 표·뷰·트리거·FK·컬럼 수는 같아요. 지연 변경에 따른 옛 알림은 consultation_reminded.detail.outcome=superseded로 남겨요.
 
 변경 이력: **v0.14 · 2026-11-20** — T46 팀 확인 전 초안이에요. 0008은 notifications.kind에 care_requested·care_confirmed를 더해요. 인계자 UUID는 접수 events.detail.pickup_guardian_id, 실제 확인/완료는 care_decision·actor·created_at에 저장해요. requests.status는 received→assigned→completed예요. 알림장 request_status는 저장하지 않는 조회 값이에요. head는 표 27·뷰 2·트리거 2·FK 58·컬럼 271개로 같아요.
 
@@ -581,7 +583,7 @@ FK를 걸 수 없는 참조는 두 곳이다. `cards.subject_id`와 `notificatio
 | `consultation_bookings` | `status` | `text` / NOT NULL, 값: confirmed·cancelled·done, 기본값 'confirmed' | 확정·취소·끝남 |
 | `consultation_bookings` | `confirmed_by` | `uuid` / NOT NULL, FK (confirmed_by, org_id) → users | 확정한 담임 |
 | `consultation_bookings` | `created_at` | `timestamptz` / NOT NULL, 기본값 now() | 확정 시각 |
-| `consultation_bookings` | `expected_end_at` | `timestamptz` / NULL 허용, 유한한 시각·예정 종료 뒤 | 담임이 기록한 예상 종료. 비면 지연으로 판단하지 않아요(v0.13) |
+| `consultation_bookings` | `expected_end_at` | `timestamptz` / NULL 허용, 유한한 시각·예정 종료 뒤, 원래 종료 + 3시간 이내·예약 시작과 같은 KST 날짜 | 담임이 기록한 예상 종료. 비면 지연으로 판단하지 않아요(v0.13) |
 
 - `rooms` 표 제약: `UNIQUE (id, org_id)` · `UNIQUE (org_id, name)`
 - `consultation_slots` 표 제약: `CHECK ((status <> 'chosen_by_parent') OR (chosen_at IS NOT NULL))` · `UNIQUE (card_id, round, rank)` · `UNIQUE (id, org_id)`

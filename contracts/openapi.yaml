@@ -633,6 +633,65 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
           description: Unprocessable Entity
+  /api/v1/consultations/{booking_id}/delay:
+    post:
+      tags:
+      - 학부모 요청
+      summary: 상담 지연 기록 ([제안] v0.6 T48)
+      operationId: consultation_delay_api_v1_consultations__booking_id__delay_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: booking_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Booking Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConsultationDelayIn'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConsultationDelayResponse'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
   /api/v1/cards:
     get:
       tags:
@@ -2545,6 +2604,29 @@ components:
       required:
       - request
       title: ConfirmResponse
+    ConsultationDelayIn:
+      properties:
+        expected_end_at:
+          type: string
+          format: date-time
+          title: Expected End At
+      type: object
+      required:
+      - expected_end_at
+      title: ConsultationDelayIn
+    ConsultationDelayResponse:
+      properties:
+        booking:
+          $ref: '#/components/schemas/DelayedBooking'
+        affected_bookings:
+          type: integer
+          minimum: 0.0
+          title: Affected Bookings
+      type: object
+      required:
+      - booking
+      - affected_bookings
+      title: ConsultationDelayResponse
     ConsultationOut:
       properties:
         slots:
@@ -2634,6 +2716,29 @@ components:
       required:
       - card
       title: DecisionResponse
+    DelayedBooking:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        period:
+          $ref: '#/components/schemas/Period'
+        status:
+          type: string
+          const: confirmed
+          title: Status
+        expected_end_at:
+          type: string
+          format: date-time
+          title: Expected End At
+      type: object
+      required:
+      - id
+      - period
+      - status
+      - expected_end_at
+      title: DelayedBooking
     DocumentList:
       properties:
         total:

@@ -10,10 +10,10 @@ from app.api.schemas.requests import (RequestAccepted, RequestAcceptedOut,
 from app.core.auth import CurrentUser, current_user, require_roles
 from app.core.errors import trace_id_of
 from app import backend
-from app.api.schemas.actions import MessageIn, SlotChoicesIn
+from app.api.schemas.actions import MessageIn, SlotChoicesIn, ConsultationDelayIn
 from app.api.schemas.requests import RequestStatus
 from app.api.schemas.requests import CareDecisionIn, CareDecisionOut, PickupGuardiansOut
-from app.api.schemas.views import RequestList, MessageResponse, ChoicesResponse, ConfirmResponse
+from app.api.schemas.views import RequestList, MessageResponse, ChoicesResponse, ConfirmResponse, ConsultationDelayResponse
 from fastapi import Query
 from typing import Literal
 
@@ -94,3 +94,13 @@ def choose_slots(request_id: UUID, body: SlotChoicesIn, user: CurrentUser = Depe
 @router.post("/requests/{request_id}/confirm", response_model=ConfirmResponse, responses=errors(401, 403, 404, 409, 422))
 def confirm_request(request_id: UUID, user: CurrentUser = Depends(require_roles("parent"))):
     return backend.request_actions.confirm(user, request_id)
+
+
+@router.post("/consultations/{booking_id}/delay", response_model=ConsultationDelayResponse,
+             responses=errors(401, 403, 404, 409, 422), summary="상담 지연 기록 ([제안] v0.6 T48)")
+def consultation_delay(booking_id: UUID, body: ConsultationDelayIn,
+                       user: CurrentUser = Depends(require_roles("teacher"))):
+    result = backend.consultation_reminders.report_delay(user, booking_id, body.expected_end_at)
+    # mock은 Beat가 없으므로 입력 직후에도 알림 시나리오를 재현해요.
+    backend.consultation_reminders.sweep_consultation_notifications()
+    return result

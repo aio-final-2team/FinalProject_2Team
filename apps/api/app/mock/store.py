@@ -395,7 +395,8 @@ def _propose_slots(card: Card, teacher: UUID | None, round_no: int = 1) -> list[
                 return start < period["end"] and period["start"] < end
 
             if any(b.org_id == card.org_id and b.status == "confirmed"
-                   and (b.teacher_id == teacher or b.room_id == room) and overlaps(b.period)
+                   and (b.teacher_id == teacher or b.room_id == room)
+                   and overlaps({"start": b.period["start"], "end": b.expected_end_at or b.period["end"]})
                    for b in _state.bookings.values()):
                 continue
             if any(s.org_id == card.org_id and overlaps(s.period) and (

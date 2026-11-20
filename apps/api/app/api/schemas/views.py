@@ -340,3 +340,15 @@ class DocumentResponse(BaseModel):
 
 class DocumentList(Page):
     items: list[DocumentView]
+
+
+class DelayedBooking(BaseModel):
+    id: UUID
+    period: Period
+    status: Literal["confirmed"]
+    expected_end_at: datetime
+
+
+class ConsultationDelayResponse(BaseModel):
+    booking: DelayedBooking
+    affected_bookings: int = Field(ge=0)

@@ -2,7 +2,7 @@
 
 from datetime import datetime, time, timedelta
 
-from app.core.consultation_alerts import ENDING, alerts, message
+from app.core.consultation_alerts import DELAYED, ENDING, alerts, message, notification_key, valid_delay
 from app.core.constants import NOTIFICATION_TITLES
 from app.core.errors import ApiError
 from app.core.schedule import KST, deliver_after, working_day
@@ -19,16 +19,41 @@ def report_delay(user, booking_id, expected_end_at, *, now=None):
         req = store.request_in_scope(user, booking.request_id)
         if user.role != "teacher" or booking.teacher_id != user.id:
             raise ApiError(403, "FORBIDDEN_ROLE")
+        store.classroom_in_scope(user, req.classroom_id)
         if booking.status != "confirmed" or req.status != "sent_or_booked":
             raise ApiError(409, "INVALID_TRANSITION")
-        if (expected_end_at.tzinfo is None or booking.period["start"] > now
-                or expected_end_at <= max(booking.period["end"], now)):
+        if not valid_delay(booking.period["start"], booking.period["end"], expected_end_at, now):
             raise ApiError(422, "VALIDATION_FAILED")
         expected_end_at = expected_end_at.astimezone(KST)
         if booking.expected_end_at != expected_end_at:
             booking.expected_end_at = expected_end_at
             store.add_event(req, "consultation_delay_reported", actor_type="user", actor_id=user.id,
                             booking_id=str(booking_id), expected_end_at=expected_end_at.isoformat())
+            current = {**booking.__dict__, "end": expected_end_at}
+            supersede(current, ENDING, [notification_key(current, ENDING, None, user.id)])
+        affected = sum(b.status == "confirmed" and b.org_id == booking.org_id and b.id != booking.id
+                       and state_req.status == "sent_or_booked" and state_req.type == "consultation"
+                       and booking.period["end"] <= b.period["start"] < expected_end_at
+                       and (b.expected_end_at or b.period["end"]) > now
+                       and (b.teacher_id == booking.teacher_id or b.room_id == booking.room_id)
+                       for b in store.state().bookings.values()
+                       for state_req in [store.state().requests[b.request_id]])
+        return {"booking": {"id": booking_id, "period": booking.period, "status": booking.status,
+                            "expected_end_at": expected_end_at}, "affected_bookings": affected}
+
+
+def supersede(booking, kind, keys):
+    state = store.state()
+    for n in list(state.notifications.values()):
+        if (n.request_id != booking["request_id"] or n.kind != kind
+                or not n.dedupe_key.startswith(f"consultation:{booking['id']}:{kind}:") or n.dedupe_key in keys
+                or any(e.action == "consultation_reminded" and e.detail.get("outcome") == "superseded"
+                       and e.detail.get("notification_id") == n.id for e in state.events)):
+            continue
+        if n.status == "pending":
+            n.status = "held"
+        store.add_event(state.requests[booking["request_id"]], "consultation_reminded",
+                        booking_id=str(booking["id"]), kind=kind, notification_id=n.id, outcome="superseded")
 
 
 def alternatives(booking, until, now):
@@ -72,16 +97,25 @@ def sweep_consultation_notifications(now=None):
                  "end": b.expected_end_at or b.period["end"], "requester_id": state.requests[b.request_id].requester_id}
                 for b in state.bookings.values() if state.requests[b.request_id].status == "sent_or_booked"
                 and state.requests[b.request_id].type == "consultation"]
-        for booking, kind, until in alerts(rows, now):
+        due = list(alerts(rows, now))
+        delayed = {b["id"]: [notification_key(b, kind, until, recipient)
+                              for recipient in (b["teacher_id"], b["requester_id"])]
+                   for b, kind, until in due if kind == DELAYED}
+        for row in rows:
+            supersede(row, DELAYED, delayed.get(row["id"], []))
+        for booking, kind, until in due:
             recipients = [booking["teacher_id"]] if kind == ENDING else [booking["teacher_id"], booking["requester_id"]]
+            keys = [notification_key(booking, kind, until, recipient) for recipient in recipients]
+            if all(any(n.dedupe_key == key for n in state.notifications.values()) for key in keys):
+                continue
+            supersede(booking, kind, keys)
             saved, candidates = 0, alternatives(booking, until, now) if until else []
-            for recipient in recipients:
-                key = f"consultation:{booking['id']}:{kind}:{recipient}"
+            for recipient, key in zip(recipients, keys):
                 user = state.users.get(recipient)
                 if (user is None or not user.is_active or user.org_id != booking["org_id"]
                         or any(n.dedupe_key == key for n in state.notifications.values())):
                     continue
-                after = deliver_after(now, user.role)
+                after = now if kind == ENDING else deliver_after(now, user.role)
                 if after >= booking["end"]:
                     continue
                 row = Notification(id=state.next_int(), org_id=booking["org_id"], recipient_id=recipient,
@@ -91,6 +125,7 @@ def sweep_consultation_notifications(now=None):
                 saved += 1
             if saved:
                 store.add_event(state.requests[booking["request_id"]], "consultation_reminded",
-                                booking_id=str(booking["id"]), kind=kind)
+                                booking_id=str(booking["id"]), kind=kind, until=(until or booking["end"]).isoformat(),
+                                candidates=[{k: v.isoformat() for k, v in candidate.items()} for candidate in candidates])
                 count += saved
     return count
