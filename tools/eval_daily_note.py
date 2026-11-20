@@ -13,7 +13,6 @@
 
 import argparse
 import json
-import re
 import sys
 import time
 from pathlib import Path
@@ -46,14 +45,9 @@ class Echo:
 
 
 def menu_for(day: str) -> dict:
-    """식단표 MN-2026-W47의 그날 행(점심·간식)을 입구 함수의 menu 모양으로."""
-    text = (DATA / "menu/MN-2026-W47.md").read_text(encoding="utf-8")
-    mmdd = day[5:]
-    row = next(line for line in text.splitlines() if line.startswith(f"| {mmdd}("))
-    _, lunch, snack = [cell.strip() for cell in row.strip("|").split("|")]
-    clean = lambda s: re.sub(r"[①-⑳]", "", s)
-    return {"document_id": "MN-2026-W47", "title": "11월 3주 식단표 (11/16~11/20)",
-            "text": f"점심: {clean(lunch)} / 간식: {clean(snack)}"}
+    """백엔드처럼 식단 문서 본문 전체(한 주 표)를 menu.text로 넘긴다. 그날 행 고르기는 그래프가 한다."""
+    text = (DATA / "menu/MN-2026-W47.md").read_text(encoding="utf-8").split("---", 2)[-1].strip()
+    return {"document_id": "MN-2026-W47", "title": "11월 3주 식단표 (11/16~11/20)", "text": text}
 
 
 def payloads() -> list[dict]:
