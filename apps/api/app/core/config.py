@@ -16,6 +16,7 @@ class Settings:
     work_hours: tuple[time, time] = (time(9), time(18))
     immediate_risk_categories: tuple[str, ...] = ("child_safety",)
     data_backend: str = "mock"
+    daily_note_writer: str = "app.modules.daily_notes.stub_writer:write"
 
 
 def load_settings() -> Settings:
@@ -40,6 +41,7 @@ def load_settings() -> Settings:
         mock_stream_delay_ms=max(0, int(os.getenv("MOCK_STREAM_DELAY_MS", "300"))),
         work_hours=work_hours, immediate_risk_categories=categories,
         data_backend=backend,
+        daily_note_writer=os.getenv("DAILY_NOTE_WRITER", "app.modules.daily_notes.stub_writer:write"),
     )
 
 

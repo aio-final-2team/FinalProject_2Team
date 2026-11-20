@@ -154,7 +154,8 @@ def test_seed_twice_keeps_same_rows_and_password_hash(db_engine, alembic_config)
     def run_seed():
         subprocess.run([sys.executable, "-m", "db.seeds.demo"], cwd=root, env=env,
                        capture_output=True, text=True, check=True)
-    tables = ("organizations", "classrooms", "users", "classroom_staff", "children", "child_guardians", "rooms")
+    tables = ("organizations", "classrooms", "users", "classroom_staff", "children", "child_guardians", "rooms",
+              "documents", "document_chunks", "requests")
 
     def snapshot():
         with db_engine.connect() as connection:
@@ -165,7 +166,7 @@ def test_seed_twice_keeps_same_rows_and_password_hash(db_engine, alembic_config)
     first = snapshot()
     run_seed()
     assert snapshot() == first
-    assert {table: len(rows) for table, rows in first.items()} == dict(zip(tables, (1, 2, 5, 2, 21, 3, 1), strict=True))
+    assert {table: len(rows) for table, rows in first.items()} == dict(zip(tables, (1, 2, 5, 2, 21, 3, 1, 3, 3, 2), strict=True))
     classrooms = {row["id"]: row for row in first["classrooms"]}
     assert (classrooms[seed.CLASS_STAR]["name"], classrooms[seed.CLASS_STAR]["age_group"]) == ("만 4세 별빛반", 4)
     assert (classrooms[seed.CLASS_SUN]["name"], classrooms[seed.CLASS_SUN]["age_group"]) == ("만 5세 햇님반", 5)
@@ -194,6 +195,15 @@ def test_seed_twice_keeps_same_rows_and_password_hash(db_engine, alembic_config)
         for row in seed.CLASSROOM_STAFF}
     assert {(row["child_id"], row["user_id"]) for row in first["child_guardians"]} == {
         (child["id"], guardian) for child in seed.CHILDREN for guardian in child["guardian_ids"]}
+    requests = {row["id"]: row for row in first["requests"]}
+    for expected in seed.DEMO_NOTE_REQUESTS:
+        assert all(requests[expected["id"]][key] == value for key, value in expected.items())
+        assert requests[expected["id"]]["org_id"] == seed.ORG
+    documents = {row["id"]: row for row in first["documents"]}
+    chunks = {row["document_id"]: row["content"] for row in first["document_chunks"]}
+    for document_id, title, kind, status, content in seed.DEMO_DOCUMENTS:
+        assert (documents[document_id]["title"], documents[document_id]["doc_type"],
+                documents[document_id]["status"], chunks[document_id]) == (title, kind, status, content)
 
 
 def test_transaction_commits_and_rolls_back(db_engine, alembic_config):

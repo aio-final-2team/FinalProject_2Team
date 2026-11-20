@@ -4,16 +4,17 @@ from datetime import date as Date
 from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, Query, Response, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Query, Response, UploadFile
 
 from app.api.schemas.actions import NoteDraftIn, NoteBatchIn, NotePatchIn
 from app.api.schemas.auth import ChildList
 from app.api.schemas.views import (NotificationList, NotificationResponse, DraftResponse, NoteList, NoteResponse,
                                   SendResponse, DocumentResponse, DocumentList)
 from app.api.schemas.common import errors
-from app.core.auth import CurrentUser
+from app.core.auth import CurrentUser, current_user as note_user, require_roles as note_roles
 from app.core.workflows import workflow_user as current_user, require_workflow_roles as require_roles
-from app.backend import store, notifications, notes, documents
+from app import backend
+from app.backend import store, notifications, documents
 
 router = APIRouter(tags=["알림장·자료"])
 Sort = Literal["-created_at", "created_at"]
@@ -39,45 +40,39 @@ def notification_read(notification_id: int, user: CurrentUser = Depends(current_
 
 
 @router.get("/classrooms/{classroom_id}/children", response_model=ChildList, responses=errors(401, 403, 404, 422))
-def classroom_children(classroom_id: UUID, user: CurrentUser = Depends(require_roles("teacher", "director"))):
-    with store._lock:
-        children = store.classroom_children(user, classroom_id)
-        return {"items": [{"id": child.id, "display_name": child.display_name, "classroom_id": child.classroom_id}
-                          for child in sorted(children, key=lambda child: child.display_name)]}
+def classroom_children(classroom_id: UUID, user: CurrentUser = Depends(note_roles("teacher", "director"))):
+    return backend.notes.classroom_children(user, classroom_id)
 
 
 @router.post("/daily-notes/drafts", status_code=202, response_model=DraftResponse,
              responses={200: {"model": DraftResponse}, **errors(401, 403, 404, 422)})
-def draft_notes(body: NoteDraftIn, response: Response, user: CurrentUser = Depends(require_roles("teacher"))):
-    result, created = notes.draft(user, body)
+def draft_notes(body: NoteDraftIn, response: Response, background_tasks: BackgroundTasks,
+                user: CurrentUser = Depends(note_roles("teacher"))):
+    result, created = backend.notes.draft(user, body, background_tasks)
     if not created:
         response.status_code = 200
     return result
 
 
 @router.get("/daily-notes/drafts/{input_id}", response_model=DraftResponse, responses=errors(401, 403, 404, 422))
-def draft_status(input_id: UUID, user: CurrentUser = Depends(require_roles("teacher"))):
-    return notes.draft_view(notes.input_in_scope(user, input_id))
+def draft_status(input_id: UUID, user: CurrentUser = Depends(note_roles("teacher"))):
+    return backend.notes.draft_view(backend.notes.input_in_scope(user, input_id))
 
 
 @router.get("/daily-notes", response_model=NoteList, responses=errors(401, 403, 404, 422))
 def note_list(date: Date, classroom_id: UUID | None = None, page: int = Query(1, ge=1), size: int = Query(20, ge=1, le=100),
-              sort: Sort = "-created_at", user: CurrentUser = Depends(current_user)):
-    with store._lock:
-        items = notes.visible(user, date, classroom_id)
-        result = page_of(items, page, size, sort)
-        result["items"] = [notes.view(n) for n in result["items"]]
-        return result
+              sort: Sort = "-created_at", user: CurrentUser = Depends(note_user)):
+    return backend.notes.list_notes(user, date, classroom_id, page, size, sort)
 
 
 @router.patch("/daily-notes/{note_id}", response_model=NoteResponse, responses=errors(401, 403, 404, 409, 422))
-def patch_note(note_id: UUID, body: NotePatchIn, user: CurrentUser = Depends(require_roles("teacher"))):
-    return notes.patch(user, note_id, body)
+def patch_note(note_id: UUID, body: NotePatchIn, user: CurrentUser = Depends(note_roles("teacher"))):
+    return backend.notes.patch(user, note_id, body)
 
 
 @router.post("/daily-notes/send", response_model=SendResponse, responses=errors(401, 403, 404, 409, 422))
-def send_notes(body: NoteBatchIn, user: CurrentUser = Depends(require_roles("teacher"))):
-    return notes.send(user, body)
+def send_notes(body: NoteBatchIn, user: CurrentUser = Depends(note_roles("teacher"))):
+    return backend.notes.send(user, body)
 
 
 @router.post("/documents", status_code=202, response_model=DocumentResponse,

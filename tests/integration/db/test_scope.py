@@ -54,8 +54,8 @@ def records(seeded_db):
                 VALUES (:input,:org,:class,CURRENT_DATE,:teacher)
             """), values)
             connection.execute(text("""
-                INSERT INTO daily_notes (id,org_id,input_id,child_id,note_date,status,confirmed_by,confirmed_at)
-                VALUES (:note,:org,:input,:child,CURRENT_DATE,'sent',:teacher,now())
+                INSERT INTO daily_notes (id,org_id,input_id,child_id,note_date,status,confirmed_by,confirmed_at,content)
+                VALUES (:note,:org,:input,:child,CURRENT_DATE,'sent',:teacher,now(),'{"items": []}')
             """), values)
         connection.execute(text("""
             INSERT INTO cards (id,org_id,request_id,kind,assignee_id)
@@ -72,7 +72,8 @@ def test_http_foreign_scope_is_404_and_commits_audit(db_client, records, seeded_
     paths = {"request": f"/requests/{records['local_request']}", "card": f"/cards/{records['local_card']}",
              "input": f"/daily-notes/drafts/{records['local_input']}", "note": f"/daily-notes/{records['local_note']}"}
     headers = {"Authorization": "Bearer " + issue_token(user), "X-Request-ID": "scope-trace"}
-    response = db_client.request("PATCH" if resource == "note" else "GET", "/api/v1" + paths[resource], headers=headers)
+    response = db_client.request("PATCH" if resource == "note" else "GET", "/api/v1" + paths[resource],
+                                 headers=headers, **({"json": {}} if resource == "note" else {}))
     assert response.status_code == 404
     assert response.json()["error"] == {"code": "NOT_FOUND", "message": "찾는 자료가 없어요.",
                                          "trace_id": "scope-trace", "details": {}}
@@ -212,9 +213,9 @@ def test_invalid_password_hash_is_401(db_client, seeded_db):
 
 @pytest.mark.parametrize("path", ["/classrooms/{classroom}/children",
                                    "/daily-notes?date=2026-11-20&classroom_id={classroom}"])
-def test_classroom_urls_check_scope_before_501(db_client, records, path):
+def test_classroom_urls_check_scope(db_client, records, path):
     headers = {"Authorization": "Bearer " + issue_token(users.get_user(seed.TEACHER))}
-    for classroom, status in ((seed.CLASS_STAR, 501), (seed.CLASS_SUN, 404), (records["class"], 404)):
+    for classroom, status in ((seed.CLASS_STAR, 200), (seed.CLASS_SUN, 404), (records["class"], 404)):
         response = db_client.get("/api/v1" + path.format(classroom=classroom), headers=headers)
         assert response.status_code == status, response.text
 
@@ -237,12 +238,6 @@ def test_classroom_urls_check_scope_before_501(db_client, records, path):
     ("POST", "/cards/{local_card}/reassign", seed.DIRECTOR),
     ("POST", "/memory-rules/{local_card}/decision", seed.TEACHER),
     ("GET", "/overview", seed.DIRECTOR),
-    ("POST", "/daily-notes/drafts", seed.TEACHER),
-    ("GET", "/daily-notes/drafts/{local_input}", seed.TEACHER),
-    ("GET", "/daily-notes?date=2026-11-20", seed.PARENT),
-    ("PATCH", "/daily-notes/{local_note}", seed.TEACHER),
-    ("POST", "/daily-notes/send", seed.TEACHER),
-    ("GET", "/classrooms/{local_class}/children", seed.TEACHER),
     ("POST", "/documents", seed.TEACHER),
     ("GET", "/documents", seed.TEACHER),
     ("GET", "/documents/{local_card}", seed.TEACHER),

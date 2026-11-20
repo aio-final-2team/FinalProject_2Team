@@ -1,6 +1,6 @@
 """백엔드 선택은 여기서만 한다. 기본 mock은 기존 구현을 그대로 쓴다.
 
-T24는 DB 인증·범위 검사까지다. 알림장·요청 업무는 다음 항목에서 하나씩 연결한다.
+DB 업무는 영역별로 연결한다. 아직 연결하지 않은 API는 workflows에서 막는다.
 """
 
 from app.core.config import settings
@@ -10,6 +10,7 @@ if settings.data_backend == "mock":
     users = store
 else:
     from app.core import users
+    from app.modules.daily_notes import notes
     store = users
     # 미구현 업무는 core/workflows.py에서 인증·범위를 검사한 뒤 501로 막는다.
-    cards = card_views = documents = notes = notifications = request_actions = None
+    cards = card_views = documents = notifications = request_actions = None
