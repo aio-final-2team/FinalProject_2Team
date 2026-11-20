@@ -13,7 +13,7 @@ from app import backend
 from app.api.schemas.actions import MessageIn, SlotChoicesIn, ConsultationDelayIn
 from app.api.schemas.requests import RequestStatus
 from app.api.schemas.requests import CareDecisionIn, CareDecisionOut, PickupGuardiansOut
-from app.api.schemas.views import RequestList, MessageResponse, ChoicesResponse, ConfirmResponse, ConsultationDelayResponse
+from app.api.schemas.views import CareRequestList, RequestList, MessageResponse, ChoicesResponse, ConfirmResponse, ConsultationDelayResponse
 from fastapi import Query
 from typing import Literal
 
@@ -26,13 +26,14 @@ def pickup_guardians(child_id: UUID, user: CurrentUser = Depends(current_user)):
     return backend.request_actions.care.guardians(user, child_id)
 
 
-@router.get("/care-requests", response_model=RequestList, responses=errors(401, 403, 404, 422),
+@router.get("/care-requests", response_model=CareRequestList, responses=errors(401, 403, 404, 422),
             summary="교직원 투약·귀가 요청 목록 (T46 팀 확인 전 초안)")
 def care_requests(classroom_id: UUID | None = None,
                   status: Literal["received", "assigned", "completed"] | None = None,
                   page: int = Query(1, ge=1), size: int = Query(20, ge=1, le=100),
+                  sort: Literal["-created_at", "created_at", "-updated_at", "updated_at"] = "-created_at",
                   user: CurrentUser = Depends(require_roles("teacher", "director"))):
-    return backend.request_actions.care.listing(user, classroom_id, status, page, size)
+    return backend.request_actions.care.listing(user, classroom_id, status, page, size, sort)
 
 
 @router.post("/requests/{request_id}/care-decisions", response_model=CareDecisionOut,

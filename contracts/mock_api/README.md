@@ -107,6 +107,12 @@ API 33 POST /daily-notes/drafts/{input_id}/regenerate는 저장한 반 입력으
 
 투약·귀가 등록, 등록 인계자 조회(API 34), 교직원 목록(API 35)·실제 확인/완료(API 36)를 열었어요.
 자기 요청 목록·상세·대화·SSE에서도 보여요. 실제 완료는 교직원 confirm 뒤 complete로만 기록해요.
-귀가는 child_guardians의 활성 보호자 pickup_guardian_id를 접수·확인·완료 때 대조해요.
+[제안] 귀가는 등록 pickup_guardian_id 또는 미등록 pickup_name·pickup_relation을 받아요.
+미등록도 접수·확인하고 unregistered_pickup=true·별도 확인 이력·원장 알림을 남겨요.
+투약 세 칸 medication_name·medication_dose·medication_time 누락은 missing_fields로 표시해요.
+교직원은 상세 care.version 또는 목록 version을 confirm·complete에 반드시 보내요.
+보호자 새 글마다 version을 올리고 received로 돌려 confirmed_at을 지워요. 옛 판은 CARD_VERSION_CONFLICT예요.
+확인 당시 인계자로 완료를 기록하므로 확인 뒤 비활성·연결 해제도 complete는 가능해요.
+귀가 알림은 근무 밖·주말과 실패 재시도에도 즉시예요. 목록 sort는 다른 목록과 같아요.
 알림장 medication·pickup 줄에 읽기 전용 request_status가 붙고 원문·AI 원본은 그대로예요.
-필드·권한·오류·이름만 있는 옛 시드의 제한은 T13 3.27을 따라요.
+필드·권한·오류·이름만 있는 옛 시드의 처리는 T13 3.27을 따라요.

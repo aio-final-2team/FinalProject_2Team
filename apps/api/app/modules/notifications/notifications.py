@@ -3,7 +3,7 @@
 from sqlalchemy import text
 
 from app.api.labels import parent_label
-from app.core.constants import CARE_REQUEST_TYPES, NOTIFICATION_TITLES as TITLES
+from app.core.constants import CARE_REQUEST_TYPES, CARE_MESSAGE_NOTICE, UNREGISTERED_PICKUP_CHECK, NOTIFICATION_TITLES as TITLES
 from app.core.schedule import deliver_after
 
 
@@ -21,7 +21,7 @@ def enqueue(connection, event, req, recipient_id, kind, body=None):
     """), {"org": org_id, "recipient": recipient_id, "request": req["id"] if req else None, "card": event["card_id"],
            "kind": kind, "title": TITLES[kind], "body": body, "key": f"event:{event['id']}:{recipient_id}",
            "deliver": deliver_after(event["created_at"], recipient["role"], req["risk_level"] if req else None,
-                                    req["risk_category"] if req else None)})
+                                    req["risk_category"] if req else None, request_type=req.get("type") if req else None)})
 
 
 def notify_event(connection, event, req, card):
@@ -31,7 +31,17 @@ def notify_event(connection, event, req, card):
         return
     to, action = event["to_status"], event["action"]
     if req.get("type") in CARE_REQUEST_TYPES:
-        if action == "created" and to == "received":
+        if event["detail"].get("unregistered_pickup"):
+            director = connection.scalar(text(
+                "SELECT id FROM users WHERE org_id=:org AND role='director' AND is_active ORDER BY id LIMIT 1"),
+                {"org": req["org_id"]})
+            enqueue(connection, event, req, director, "care_requested", UNREGISTERED_PICKUP_CHECK)
+        elif event["detail"].get("care_message"):
+            recipient = req["assignee_id"] or connection.scalar(text(
+                "SELECT id FROM users WHERE org_id=:org AND role='director' AND is_active ORDER BY id LIMIT 1"),
+                {"org": req["org_id"]})
+            enqueue(connection, event, req, recipient, "care_requested", CARE_MESSAGE_NOTICE)
+        elif action == "created" and to == "received":
             recipient = req["assignee_id"] or connection.scalar(text(
                 "SELECT id FROM users WHERE org_id=:org AND role='director' AND is_active ORDER BY id LIMIT 1"),
                 {"org": req["org_id"]})

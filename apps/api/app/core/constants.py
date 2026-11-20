@@ -11,6 +11,9 @@ NOTIFICATION_TITLES = {
     "consultation_ending": "상담 종료가 가까워요", "consultation_delayed": "상담 대체 시간을 확인해 주세요",
 }
 CARE_REQUEST_TYPES = ("medication", "pickup")
+MEDICATION_FIELDS = ("medication_name", "medication_dose", "medication_time")
+UNREGISTERED_PICKUP_CHECK = "미등록 인계자 확인"
+CARE_MESSAGE_NOTICE = "보호자가 내용을 추가했어요. 다시 확인해 주세요."
 REJECTION_RULE_THRESHOLD = 3
 
 # 자유 글에서 시간·선호를 추측하지 않는 기억 대역이에요. 구체적인 조건 추출은 기억 AI가 맡아요.

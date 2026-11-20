@@ -287,7 +287,7 @@ def set_request_status(req: Request, to: str, **event_kw) -> None:
 
 def create_request(user, *, client_request_id: str, type: str, body: str, child_id: UUID,
                    previous_request_id: UUID | None, trace_id: str | None,
-                   pickup_guardian_id: UUID | None = None) -> tuple[Request, bool]:
+                   pickup_guardian_id: UUID | None = None, **care_fields) -> tuple[Request, bool]:
     """(요청, 새로 만들었는지). 같은 client_request_id면 처음 요청을 돌려준다(6.4)."""
     with _lock:
         for r in _state.requests.values():
@@ -296,9 +296,12 @@ def create_request(user, *, client_request_id: str, type: str, body: str, child_
         child = _state.children.get(child_id)
         if child is None or child.org_id != user.org_id or user.id not in child.guardian_ids:
             raise ApiError(404, "NOT_FOUND")
-        if type == "pickup":
+        from app.core.care import input_detail
+        from app.core.constants import MEDICATION_FIELDS
+        detail = input_detail(type, pickup_guardian_id=pickup_guardian_id, **care_fields)
+        if type == "pickup" and pickup_guardian_id is not None:
             from app.mock.care import validate_guardian
-            validate_guardian(user, child_id, pickup_guardian_id)
+            detail = validate_guardian(user, child_id, pickup_guardian_id)
         if previous_request_id is not None:
             prev = request_in_scope(user, previous_request_id)
             if prev.status not in ("completed", "rejected"):
@@ -306,13 +309,15 @@ def create_request(user, *, client_request_id: str, type: str, body: str, child_
         req = Request(id=uuid4(), org_id=user.org_id, classroom_id=child.classroom_id, child_id=child.id,
                       requester_id=user.id, client_request_id=client_request_id, type=type, body=body,
                       title=body.split("\n")[0][:40], previous_request_id=previous_request_id)
+        if type == "medication":
+            req.missing_fields = [key for key in MEDICATION_FIELDS if not (detail.get(key) or "").strip()]
         _state.requests[req.id] = req
         _state.messages.append(Message(id=_state.next_int(), request_id=req.id, sender_type="user",
                                        sender_id=user.id, body=body))
         if type in CARE_REQUEST_TYPES:
             req.assignee_id = homeroom_teacher(req.classroom_id)
         add_event(req, "created", actor_type="user", actor_id=user.id, to_status="received", trace_id=trace_id,
-                  **({"pickup_guardian_id": str(pickup_guardian_id)} if type == "pickup" else {}))
+                  **detail)
         if type not in CARE_REQUEST_TYPES:
             _run_mock_ai(req, trace_id)
         return req, True

@@ -4,9 +4,10 @@ from sqlalchemy import text
 
 from app.core import scope
 from app.core.care import care_view, check_decision
+from app.core.constants import UNREGISTERED_PICKUP_CHECK
 from app.core.db import transaction
 from app.core.errors import ApiError
-from app.modules.requests.events import set_status
+from app.modules.requests.events import record, set_status
 
 
 def view(connection, req):
@@ -14,12 +15,12 @@ def view(connection, req):
         SELECT action,to_status,detail,created_at FROM events
         WHERE request_id=:id AND org_id=:org AND card_id IS NULL ORDER BY id
     """), {"id": req["id"], "org": req["org_id"]}).mappings().all()
-    return care_view(rows)
+    return care_view(rows, req["type"])
 
 
 def _guardians(connection, org_id, child_id):
     return [dict(row) for row in connection.execute(text("""
-        SELECT u.id,u.display_name FROM child_guardians g JOIN users u ON (u.id,u.org_id)=(g.user_id,g.org_id)
+        SELECT u.id,u.display_name,g.relation FROM child_guardians g JOIN users u ON (u.id,u.org_id)=(g.user_id,g.org_id)
         WHERE g.org_id=:org AND g.child_id=:child AND u.role='parent' AND u.is_active
         ORDER BY u.display_name,u.id
     """), {"org": org_id, "child": child_id}).mappings()]
@@ -32,8 +33,11 @@ def guardians(user, child_id):
 
 
 def validate_guardian(connection, user, child_id, guardian_id):
-    if str(guardian_id) not in {str(g["id"]) for g in _guardians(connection, user.org_id, child_id)}:
+    guardian = next((g for g in _guardians(connection, user.org_id, child_id) if str(g["id"]) == str(guardian_id)), None)
+    if guardian is None:
         raise ApiError(422, "VALIDATION_FAILED", field="pickup_guardian_id")
+    return {"pickup_guardian_id": str(guardian["id"]), "pickup_name": guardian["display_name"],
+            "pickup_relation": guardian["relation"]}
 
 
 def decision(user, request_id, body):
@@ -41,19 +45,27 @@ def decision(user, request_id, body):
         scope.request_in_scope(user, request_id, connection=connection)
         req = dict(connection.execute(text("SELECT * FROM requests WHERE id=:id FOR NO KEY UPDATE"),
                                       {"id": request_id}).mappings().one())
-        target = check_decision(req["type"], req["status"], view(connection, req), body)
-        if req["type"] == "pickup":
-            validate_guardian(connection, user, req["child_id"], body.pickup_guardian_id)
+        current = view(connection, req)
+        target = check_decision(req["type"], req["status"], current, body)
+        snapshot = {}
+        if target and req["type"] == "pickup" and body.decision == "confirm":
+            snapshot = {k: current.get(k) for k in ("pickup_guardian_id", "pickup_name", "pickup_relation")}
+            if body.pickup_guardian_id is not None:
+                snapshot = validate_guardian(connection, user, req["child_id"], body.pickup_guardian_id)
         if target:
             connection.execute(text("UPDATE requests SET assignee_id=:user WHERE id=:id"),
                                {"id": request_id, "user": user.id})
             req["assignee_id"] = user.id
             set_status(connection, req, target, action="checked" if body.decision == "confirm" else "completed",
-                       actor_type="user", actor_id=user.id, care_decision=body.decision)
+                       actor_type="user", actor_id=user.id, care_decision=body.decision,
+                       version=current["version"], pickup_snapshot=snapshot)
+            if body.decision == "confirm" and current["unregistered_pickup"]:
+                record(connection, req, "checked", actor_type="user", actor_id=user.id,
+                       unregistered_pickup=True, label=UNREGISTERED_PICKUP_CHECK, version=current["version"])
         return {"request": {"id": req["id"], "status": req["status"]}, "care": view(connection, req)}
 
 
-def listing(user, classroom_id, status, page, size):
+def listing(user, classroom_id, status, page, size, sort):
     from app.api.labels import staff_label
 
     with transaction() as connection:
@@ -70,7 +82,10 @@ def listing(user, classroom_id, status, page, size):
             ORDER BY r.created_at DESC,r.id DESC
         """), {"org": user.org_id, "class": classroom_id, "status": status,
                "user": user.id, "director": user.role == "director"}).mappings().all()
+        rows = sorted(rows, key=lambda r: (r[sort.lstrip("-")], str(r["id"])), reverse=sort.startswith("-"))
         return {"items": [{**{k: r[k] for k in ("id", "type", "title", "status", "updated_at")},
                            "status_label": staff_label(r["status"], r["type"]),
+                           **{k: v for k, v in view(connection, r).items()
+                              if k in ("version", "unregistered_pickup", "missing_fields")},
                            "next_action": "confirm" if r["status"] == "received" else "complete" if r["status"] == "assigned" else None}
                           for r in rows[(page-1)*size:page*size]], "total": len(rows), "page": page, "size": size}

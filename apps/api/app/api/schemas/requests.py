@@ -20,17 +20,27 @@ class RequestCreateIn(BaseModel):
     body: str = Field(min_length=1, max_length=2000)
     child_id: UUID
     previous_request_id: UUID | None = Field(default=None, description="끝난 요청을 다시 열 때(T04 2.1)")
-    pickup_guardian_id: UUID | None = Field(default=None, description="귀가 요청의 등록된 인계자(T46 팀 확인 전 초안)")
+    pickup_guardian_id: UUID | None = Field(default=None, description="귀가 요청의 등록된 인계자. 미등록이면 생략해요")
+    pickup_name: str | None = Field(default=None, max_length=100)
+    pickup_relation: str | None = Field(default=None, max_length=100)
+    medication_name: str | None = Field(default=None, max_length=100)
+    medication_dose: str | None = Field(default=None, max_length=100)
+    medication_time: str | None = Field(default=None, max_length=100)
 
     @model_validator(mode="after")
     def pickup_guardian(self):
-        if (self.type == "pickup") != (self.pickup_guardian_id is not None):
-            raise ValueError("귀가 요청에만 pickup_guardian_id가 필요해요")
+        if self.type != "pickup" and any(v is not None for v in (
+                self.pickup_guardian_id, self.pickup_name, self.pickup_relation)):
+            raise ValueError("인계자 정보는 귀가 요청에만 보내요")
+        if self.type != "medication" and any(v is not None for v in (
+                self.medication_name, self.medication_dose, self.medication_time)):
+            raise ValueError("투약 정보는 투약 요청에만 보내요")
         return self
 
 
 class CareDecisionIn(BaseModel):
     decision: Literal["confirm", "complete"]
+    version: int = Field(ge=1, description="교직원이 본 care.version. 보호자 새 글마다 증가해요")
     pickup_guardian_id: UUID | None = None
 
 
@@ -44,7 +54,15 @@ class PickupGuardiansOut(BaseModel):
 
 
 class CareOut(BaseModel):
+    version: int = Field(ge=1)
     pickup_guardian_id: UUID | None = None
+    pickup_name: str | None = None
+    pickup_relation: str | None = None
+    unregistered_pickup: bool = False
+    medication_name: str | None = None
+    medication_dose: str | None = None
+    medication_time: str | None = None
+    missing_fields: list[str] = Field(default_factory=list)
     confirmed_at: datetime | None = None
     completed_at: datetime | None = None
 

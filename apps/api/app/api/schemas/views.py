@@ -26,6 +26,16 @@ class RequestList(Page):
     items: list[RequestItem]
 
 
+class CareRequestItem(RequestItem):
+    version: int
+    unregistered_pickup: bool
+    missing_fields: list[str]
+
+
+class CareRequestList(Page):
+    items: list[CareRequestItem]
+
+
 class MessageResponse(BaseModel):
     message: MessageOut
 

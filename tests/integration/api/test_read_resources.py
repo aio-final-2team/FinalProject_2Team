@@ -45,7 +45,10 @@ def test_seed_request_has_first_guardian_message(client, request_id, request_typ
     assert set(data) == {"request", "messages", "timeline", "consultation", "rejection", "sources", "care"}
     req = data["request"]
     assert (req["id"], req["type"], req["title"], req["status"]) == (str(request_id), request_type, body, "received")
-    assert req["missing_fields"] == [] and req["hold_until"] is None
+    # 원문만 있는 투약 시드는 구조화 필수값을 추측하지 않고 누락으로 표시해요(T46 15a).
+    assert req["missing_fields"] == (["medication_name", "medication_dose", "medication_time"]
+                                     if request_type == "medication" else [])
+    assert req["hold_until"] is None
     assert req["parent_confirmed_at"] is None
     assert all(req[key].endswith("+09:00") for key in ("created_at", "updated_at"))
     assert "risk_level" not in req and "assignee_id" not in req

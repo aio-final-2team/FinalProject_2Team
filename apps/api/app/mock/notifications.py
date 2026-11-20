@@ -3,7 +3,7 @@
 from dataclasses import replace
 
 from app.api.labels import parent_label
-from app.core.constants import CARE_REQUEST_TYPES, NOTIFICATION_TITLES as TITLES
+from app.core.constants import CARE_REQUEST_TYPES, CARE_MESSAGE_NOTICE, UNREGISTERED_PICKUP_CHECK, NOTIFICATION_TITLES as TITLES
 from app.core.schedule import deliver_after
 from app.core.errors import ApiError
 from app.mock import store
@@ -25,7 +25,7 @@ def create(ev, recipient_id, kind, body=None, subject_id=None):
         body=body, dedupe_key=key, request_id=ev.request_id, card_id=ev.card_id,
         subject_type="daily_note" if subject_id else None, subject_id=subject_id, created_at=ev.created_at,
         deliver_after=deliver_after(ev.created_at, recipient.role, req.risk_level if req else None,
-                                    req.risk_category if req else None))
+                                    req.risk_category if req else None, request_type=req.type if req else None))
     state.notifications[notification.id] = notification
 
 
@@ -39,7 +39,11 @@ def notify_event(ev, req, card):
                 create(ev, guardian, "note_sent", subject_id=note.id)
         return
     if req.type in CARE_REQUEST_TYPES:
-        if ev.action == "created" and ev.to_status == "received":
+        if ev.detail.get("unregistered_pickup"):
+            create(ev, store.director_of(req.org_id), "care_requested", UNREGISTERED_PICKUP_CHECK)
+        elif ev.detail.get("care_message"):
+            create(ev, req.assignee_id or store.director_of(req.org_id), "care_requested", CARE_MESSAGE_NOTICE)
+        elif ev.action == "created" and ev.to_status == "received":
             create(ev, req.assignee_id or store.director_of(req.org_id), "care_requested")
         elif ev.detail.get("care_decision") in ("confirm", "complete"):
             create(ev, req.requester_id, "care_confirmed" if ev.to_status == "assigned" else "completed",

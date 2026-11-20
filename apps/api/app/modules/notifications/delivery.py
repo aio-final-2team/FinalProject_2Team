@@ -42,7 +42,7 @@ def deliver_pending(now=None):
     sent = 0
     with transaction() as connection:
         rows = connection.execute(text("""
-            SELECT n.*,u.role,u.is_active,r.risk_level,r.risk_category
+            SELECT n.*,u.role,u.is_active,r.risk_level,r.risk_category,r.type AS request_type
             FROM notifications n JOIN users u ON (u.id,u.org_id)=(n.recipient_id,n.org_id)
             LEFT JOIN requests r ON (r.id,r.org_id)=(n.request_id,n.org_id)
             WHERE n.status='pending' AND n.attempts<:max
@@ -76,7 +76,8 @@ def deliver_pending(now=None):
                 """), {"id": row["id"]})
                 _failure(connection, row, "RECIPIENT_UNAVAILABLE", row["attempts"])
                 continue
-            after = now if row["kind"] == ENDING else deliver_after(now, row["role"], row["risk_level"], row["risk_category"])
+            after = now if row["kind"] == ENDING else deliver_after(
+                now, row["role"], row["risk_level"], row["risk_category"], request_type=row["request_type"])
             if after > now:
                 connection.execute(text("UPDATE notifications SET next_attempt_at=:after WHERE id=:id"),
                                    {"id": row["id"], "after": after})
@@ -89,7 +90,7 @@ def deliver_pending(now=None):
                 attempts = row["attempts"] + 1
                 retry_at = now + timedelta(seconds=RETRY_SECONDS * 2 ** (attempts-1))
                 after = retry_at if row["kind"] == ENDING else deliver_after(
-                    retry_at, row["role"], row["risk_level"], row["risk_category"])
+                    retry_at, row["role"], row["risk_level"], row["risk_category"], request_type=row["request_type"])
                 # 예외 원문에는 개인정보가 섞일 수 있어 고정 실패 코드만 남겨요.
                 connection.execute(text("""
                     UPDATE notifications SET attempts=:attempts,last_error='DELIVERY_FAILED',

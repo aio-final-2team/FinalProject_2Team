@@ -145,13 +145,25 @@ paths:
           minimum: 1
           default: 20
           title: Size
+      - name: sort
+        in: query
+        required: false
+        schema:
+          enum:
+          - -created_at
+          - created_at
+          - -updated_at
+          - updated_at
+          type: string
+          default: -created_at
+          title: Sort
       responses:
         '200':
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RequestList'
+                $ref: '#/components/schemas/CareRequestList'
         '401':
           content:
             application/json:
@@ -2440,6 +2452,11 @@ components:
           - confirm
           - complete
           title: Decision
+        version:
+          type: integer
+          minimum: 1.0
+          title: Version
+          description: 교직원이 본 care.version. 보호자 새 글마다 증가해요
         pickup_guardian_id:
           anyOf:
           - type: string
@@ -2449,6 +2466,7 @@ components:
       type: object
       required:
       - decision
+      - version
       title: CareDecisionIn
     CareDecisionOut:
       properties:
@@ -2463,12 +2481,50 @@ components:
       title: CareDecisionOut
     CareOut:
       properties:
+        version:
+          type: integer
+          minimum: 1.0
+          title: Version
         pickup_guardian_id:
           anyOf:
           - type: string
             format: uuid
           - type: 'null'
           title: Pickup Guardian Id
+        pickup_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Pickup Name
+        pickup_relation:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Pickup Relation
+        unregistered_pickup:
+          type: boolean
+          title: Unregistered Pickup
+          default: false
+        medication_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Medication Name
+        medication_dose:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Medication Dose
+        medication_time:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Medication Time
+        missing_fields:
+          items:
+            type: string
+          type: array
+          title: Missing Fields
         confirmed_at:
           anyOf:
           - type: string
@@ -2482,7 +2538,109 @@ components:
           - type: 'null'
           title: Completed At
       type: object
+      required:
+      - version
       title: CareOut
+    CareRequestItem:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        type:
+          type: string
+          enum:
+          - inquiry
+          - consultation
+          - complaint
+          - medication
+          - pickup
+          title: Type
+        title:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Title
+        status:
+          type: string
+          enum:
+          - received
+          - classified
+          - needs_info
+          - assigned
+          - awaiting_review
+          - approved
+          - sent_or_booked
+          - completed
+          - on_hold
+          - escalated
+          - rejected
+          title: Status
+        status_label:
+          type: string
+          title: Status Label
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+        next_action:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Next Action
+        hold_until:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Hold Until
+        version:
+          type: integer
+          title: Version
+        unregistered_pickup:
+          type: boolean
+          title: Unregistered Pickup
+        missing_fields:
+          items:
+            type: string
+          type: array
+          title: Missing Fields
+      type: object
+      required:
+      - id
+      - type
+      - title
+      - status
+      - status_label
+      - updated_at
+      - next_action
+      - version
+      - unregistered_pickup
+      - missing_fields
+      title: CareRequestItem
+    CareRequestList:
+      properties:
+        total:
+          type: integer
+          title: Total
+        page:
+          type: integer
+          title: Page
+        size:
+          type: integer
+          title: Size
+        items:
+          items:
+            $ref: '#/components/schemas/CareRequestItem'
+          type: array
+          title: Items
+      type: object
+      required:
+      - total
+      - page
+      - size
+      - items
+      title: CareRequestList
     CareState:
       properties:
         id:
@@ -3988,7 +4146,37 @@ components:
             format: uuid
           - type: 'null'
           title: Pickup Guardian Id
-          description: 귀가 요청의 등록된 인계자(T46 팀 확인 전 초안)
+          description: 귀가 요청의 등록된 인계자. 미등록이면 생략해요
+        pickup_name:
+          anyOf:
+          - type: string
+            maxLength: 100
+          - type: 'null'
+          title: Pickup Name
+        pickup_relation:
+          anyOf:
+          - type: string
+            maxLength: 100
+          - type: 'null'
+          title: Pickup Relation
+        medication_name:
+          anyOf:
+          - type: string
+            maxLength: 100
+          - type: 'null'
+          title: Medication Name
+        medication_dose:
+          anyOf:
+          - type: string
+            maxLength: 100
+          - type: 'null'
+          title: Medication Dose
+        medication_time:
+          anyOf:
+          - type: string
+            maxLength: 100
+          - type: 'null'
+          title: Medication Time
       type: object
       required:
       - client_request_id

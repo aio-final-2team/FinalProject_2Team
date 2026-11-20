@@ -30,15 +30,17 @@ def detail(user, request_id):
                 for s in store.slots_of_request(req.id) if s.status != "discarded"
             ], booking=BookingOut(id=booking.id, room=store.room_name(booking.room_id), period=Period(**booking.period))
                 if booking else None)
+        care_state = care.view(req) if req.type in CARE_REQUEST_TYPES else None
         return RequestDetailOut(
             request=RequestView(id=req.id, type=req.type, title=req.title, status=req.status,
-                                status_label=label(req.status, req.type), missing_fields=req.missing_fields,
+                                status_label=label(req.status, req.type),
+                                missing_fields=care_state["missing_fields"] if care_state else req.missing_fields,
                                 hold_until=store.hold_until_of(req.id), parent_confirmed_at=req.parent_confirmed_at,
                                 created_at=req.created_at, updated_at=req.updated_at),
             messages=[MessageOut(id=m.id, sender_type=m.sender_type, body=m.body, created_at=m.created_at)
                       for m in store.messages_of(req.id)],
             timeline=timeline, consultation=consultation,
-            care=care.view(req) if req.type in CARE_REQUEST_TYPES else None,
+            care=care_state,
             rejection=store.rejection_of(req.id) if req.status == "rejected" else None,
             sources=[source for card in store.approved_cards_of(req.id)
                      for source in documents.evidence(card, parent=user.role == "parent")]
@@ -53,7 +55,11 @@ def message(user, request_id, body, *, background_tasks=None):
             raise ApiError(409, "INVALID_TRANSITION")
         msg = store.Message(store.state().next_int(), req.id, "user", user.id, body)
         store.state().messages.append(msg)
-        store.add_event(req, "created", actor_type="user", actor_id=user.id, message_id=msg.id)
+        if req.type in CARE_REQUEST_TYPES:
+            store.set_request_status(req, "received", action="returned", actor_type="user", actor_id=user.id,
+                                     care_message=True, message_id=msg.id, version=care.view(req)["version"] + 1)
+        else:
+            store.add_event(req, "created", actor_type="user", actor_id=user.id, message_id=msg.id)
         req.updated_at = store.now()
         if req.type == "complaint" and req.status == "sent_or_booked":
             req.parent_confirmed_at = None

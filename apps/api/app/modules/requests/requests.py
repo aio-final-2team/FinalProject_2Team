@@ -1,10 +1,13 @@
 """학부모 요청·대화·확인. 범위 검사와 SQL 변경을 같은 트랜잭션에서 해요."""
 
+import json
+
 from sqlalchemy import text
 
 from app.api.labels import parent_label, staff_label
 from app.core import scope
-from app.core.constants import CARE_REQUEST_TYPES
+from app.core.constants import CARE_REQUEST_TYPES, MEDICATION_FIELDS
+from app.core.care import input_detail
 from app.core.db import transaction
 from app.core.errors import ApiError
 from app.modules.requests.events import record, set_status
@@ -17,7 +20,7 @@ def _lock(connection, request_id):
                                    {"id": request_id}).mappings().one())
 
 
-def create(user, *, background_tasks, client_request_id, type, body, child_id, previous_request_id, trace_id, pickup_guardian_id=None):
+def create(user, *, background_tasks, client_request_id, type, body, child_id, previous_request_id, trace_id, pickup_guardian_id=None, **care_fields):
     with transaction() as connection:
         values = {"org": user.org_id, "user": user.id, "key": client_request_id}
         old = connection.execute(text("SELECT * FROM requests WHERE requester_id=:user AND client_request_id=:key"),
@@ -26,18 +29,21 @@ def create(user, *, background_tasks, client_request_id, type, body, child_id, p
             scope.request_in_scope(user, old["id"], connection=connection)
             return old, False
         child = scope.child_in_scope(user, child_id, connection=connection)
-        if type == "pickup":
-            care.validate_guardian(connection, user, child_id, pickup_guardian_id)
+        detail = input_detail(type, pickup_guardian_id=pickup_guardian_id, **care_fields)
+        if type == "pickup" and pickup_guardian_id is not None:
+            detail = care.validate_guardian(connection, user, child_id, pickup_guardian_id)
         if previous_request_id is not None:
             prev = scope.request_in_scope(user, previous_request_id, connection=connection)
             if prev["status"] not in ("completed", "rejected"):
                 raise ApiError(409, "INVALID_TRANSITION")
         row = connection.execute(text("""
-            INSERT INTO requests (org_id,classroom_id,child_id,requester_id,client_request_id,type,body,title,previous_request_id)
-            VALUES (:org,:class,:child,:user,:key,:type,:body,:title,:previous)
+            INSERT INTO requests (org_id,classroom_id,child_id,requester_id,client_request_id,type,body,title,previous_request_id,missing_fields)
+            VALUES (:org,:class,:child,:user,:key,:type,:body,:title,:previous,CAST(:missing AS jsonb))
             ON CONFLICT (requester_id,client_request_id) DO NOTHING RETURNING *
         """), {**values, "class": child["classroom_id"], "child": child_id, "type": type, "body": body,
-               "title": body.split("\n")[0][:40], "previous": previous_request_id}).mappings().one_or_none()
+               "title": body.split("\n")[0][:40], "previous": previous_request_id,
+               "missing": json.dumps([k for k in MEDICATION_FIELDS if not (detail.get(k) or "").strip()]
+                                     if type == "medication" else [])}).mappings().one_or_none()
         if row is None:
             old = connection.execute(text("SELECT * FROM requests WHERE requester_id=:user AND client_request_id=:key"),
                                      values).mappings().one()
@@ -60,7 +66,7 @@ def create(user, *, background_tasks, client_request_id, type, body, child_id, p
             connection.execute(text("UPDATE requests SET assignee_id=:teacher WHERE id=:id"),
                                {"id": req["id"], "teacher": teacher})
         record(connection, req, "created", actor_type="user", actor_id=user.id, to_status="received", trace_id=trace_id,
-               **({"pickup_guardian_id": str(pickup_guardian_id)} if type == "pickup" else {}))
+               **detail)
     if type not in CARE_REQUEST_TYPES:
         dispatch("request", req["id"], background_tasks)
     return req, True
@@ -170,6 +176,9 @@ def detail(user, request_id):
     with transaction() as connection:
         req = dict(scope.request_in_scope(user, request_id, connection=connection))
         req = _expire(connection, req)
+        if req["type"] in CARE_REQUEST_TYPES:
+            # 대화와 입력 판을 같은 순간으로 읽어요. 새 글이 판 조회 사이에 끼지 않게 해요.
+            req = _lock(connection, request_id)
         values = {"id": request_id, "org": user.org_id, "parent": user.role == "parent"}
         messages = connection.execute(text("""
             SELECT id,sender_type,body,created_at FROM request_messages
@@ -214,12 +223,15 @@ def detail(user, request_id):
                           AND a.decision IN ('approve','edit_approve'))
             ORDER BY c.created_at,c.id,e.rank,ch.id
         """), values).mappings().all() if req["status"] in ("sent_or_booked", "completed") else []
+        care_state = care.view(connection, req) if req["type"] in CARE_REQUEST_TYPES else None
+        if care_state:
+            req["missing_fields"] = care_state["missing_fields"]
         return {"request": {**{key: req[key] for key in (
                     "id", "type", "title", "status", "missing_fields", "parent_confirmed_at", "created_at", "updated_at")},
                     "status_label": label(req["status"], req["type"]), "hold_until": _hold_until(connection, req)},
                 "messages": [dict(row) for row in messages], "sources": [dict(row) for row in sources],
                 "timeline": timeline, "consultation": consultation,
-                "care": care.view(connection, req) if req["type"] in CARE_REQUEST_TYPES else None, "rejection": dict(rejection) if rejection else None}
+                "care": care_state, "rejection": dict(rejection) if rejection else None}
 
 
 def listing(user, status, page, size, sort):
@@ -257,7 +269,12 @@ def message(user, request_id, body, *, background_tasks):
             VALUES (:org,:id,'user',:user,:body) RETURNING id,sender_type,body,created_at
         """), {"org": user.org_id, "id": request_id, "user": user.id, "body": body}).mappings().one())
         connection.execute(text("UPDATE requests SET updated_at=clock_timestamp() WHERE id=:id"), {"id": request_id})
-        record(connection, req, "created", actor_type="user", actor_id=user.id, message_id=msg["id"])
+        if req["type"] in CARE_REQUEST_TYPES:
+            version = care.view(connection, req)["version"] + 1
+            set_status(connection, req, "received", action="returned", actor_type="user", actor_id=user.id,
+                       care_message=True, message_id=msg["id"], version=version)
+        else:
+            record(connection, req, "created", actor_type="user", actor_id=user.id, message_id=msg["id"])
         if req["type"] == "complaint" and req["status"] == "sent_or_booked":
             row = connection.execute(text("""
                 SELECT * FROM cards WHERE request_id=:id AND kind='reply_draft' ORDER BY created_at DESC,id DESC LIMIT 1 FOR UPDATE

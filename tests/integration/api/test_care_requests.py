@@ -36,8 +36,10 @@ def create(client, parent, kind="medication", **extra):
 
 
 def decide(client, actor, rid, decision="confirm", **extra):
+    detail = client.get(f"{BASE}/requests/{rid}", headers=actor).json()
+    version = (detail.get("care") or {}).get("version", 1)
     return client.post(f"{BASE}/requests/{rid}/care-decisions", headers=actor,
-                       json={"decision": decision, **extra})
+                       json={"decision": decision, "version": version, **extra})
 
 
 def events(mode, rid):
@@ -101,9 +103,9 @@ def test_care_requires_human_confirm_then_complete_and_keeps_original(client, pa
     assert str(staff_notice["recipient_id"]) == str(seed.TEACHER)
 
 
-@pytest.mark.parametrize("kind,guardian", [("pickup", None), ("pickup", str(seed.PARENT_OTHER)),
+@pytest.mark.parametrize("kind,guardian", [("pickup", str(seed.PARENT_OTHER)),
                                            ("pickup", str(seed.TEACHER)), ("medication", str(seed.PARENT))])
-def test_pickup_guardian_is_required_registered_and_only_for_pickup(client, parent, kind, guardian):
+def test_explicit_guardian_id_must_belong_to_child_and_only_for_pickup(client, parent, kind, guardian):
     err(create(client, parent, kind, pickup_guardian_id=guardian), 422, "VALIDATION_FAILED")
 
 
@@ -112,15 +114,16 @@ def test_pickup_rechecks_current_registration_and_matching_identity(client, pare
     for guardian in (None, seed.PARENT_OTHER):
         err(decide(client, teacher, rid, pickup_guardian_id=str(guardian) if guardian else None), 422, "VALIDATION_FAILED")
     assert decide(client, teacher, rid, pickup_guardian_id=str(seed.PARENT)).status_code == 200
-    # 등록 뒤 보호자 연결이 지워지면 실제 인계 완료를 기록하지 못해요.
+    # 확인 뒤 연결이 지워져도 확인 당시 인계자로 실제 완료를 기록해요.
     if care_backend == "mock":
         store.state().children[seed.CHILD].guardian_ids = []
     else:
         with transaction() as connection:
             connection.execute(text("DELETE FROM child_guardians WHERE child_id=:child AND user_id=:user"),
                                {"child": seed.CHILD, "user": seed.PARENT})
-    err(decide(client, teacher, rid, "complete", pickup_guardian_id=str(seed.PARENT)), 422, "VALIDATION_FAILED")
-    assert client.get(f"{BASE}/requests/{rid}", headers=teacher).json()["request"]["status"] == "assigned"
+    completed = decide(client, teacher, rid, "complete", pickup_guardian_id=str(seed.PARENT))
+    assert completed.status_code == 200, completed.text
+    assert completed.json()["request"]["status"] == "completed"
 
 
 def test_care_scope_staff_queue_and_guardian_list(client, parent, parent_other, teacher, teacher_other, director):
@@ -187,10 +190,14 @@ def test_note_lines_show_current_care_state_without_rewriting_draft(client, pare
             assert row["content"] == row["ai_original"]
 
 
-def test_non_care_and_seed_pickup_without_registered_id_cannot_be_fulfilled(client, teacher):
+def test_non_care_rejected_but_seed_grandmother_pickup_can_be_confirmed(client, teacher):
     err(decide(client, teacher, str(seed.REQUEST_COUGH)), 409, "INVALID_TRANSITION")
-    err(decide(client, teacher, str(seed.REQUEST_PICKUP), pickup_guardian_id=str(seed.PARENT_OTHER)),
-        422, "VALIDATION_FAILED")
+    before = client.get(f"{BASE}/requests/{seed.REQUEST_PICKUP}", headers=teacher).json()
+    assert before["messages"][0]["body"] == "오늘 할머니가 데리러 가요"
+    assert before["care"]["unregistered_pickup"] is True
+    result = decide(client, teacher, str(seed.REQUEST_PICKUP))
+    assert result.status_code == 200, result.text
+    assert result.json()["care"]["confirmed_at"] is not None
 
 
 def test_inactive_registered_guardian_is_hidden_and_rejected(client, parent, care_backend):
@@ -237,3 +244,161 @@ def test_note_care_line_requires_matching_request_type_and_source(client, parent
         line = {"key": "pickup", "label": "[TEST] 귀가", "value": "[TEST] 잘못된 출처", "source": source}
         err(client.patch(f"{BASE}/daily-notes/{note['id']}", headers=teacher,
                          json={"content": {"items": [line]}}), 422, "VALIDATION_FAILED")
+
+
+def notices(mode, rid):
+    if mode == "mock":
+        return [n.__dict__ for n in store.state().notifications.values() if str(n.request_id) == str(rid)]
+    with transaction() as connection:
+        return [dict(n) for n in connection.execute(text("SELECT * FROM notifications WHERE request_id=:id ORDER BY id"),
+                                                   {"id": rid}).mappings()]
+
+
+def test_unregistered_pickup_is_marked_and_director_notified_once(client, parent, teacher, care_backend):
+    result = create(client, parent, "pickup", pickup_guardian_id=None, pickup_name="[TEST] 할머니",
+                    pickup_relation="할머니")
+    assert result.status_code == 202, result.text
+    rid = result.json()["request"]["id"]
+    detail = client.get(f"{BASE}/requests/{rid}", headers=teacher).json()
+    assert detail["care"]["pickup_name"] == "[TEST] 할머니"
+    assert detail["care"]["pickup_relation"] == "할머니"
+    assert detail["care"]["unregistered_pickup"] is True
+    queue = client.get(BASE + "/care-requests?size=100", headers=teacher).json()["items"]
+    item = next(r for r in queue if r["id"] == rid)
+    assert item["unregistered_pickup"] and item["version"] == 1 and item["next_action"] == "confirm"
+    for _ in range(2):
+        assert decide(client, teacher, rid).status_code == 200
+    warnings = [e for e in events(care_backend, rid) if e["detail"].get("unregistered_pickup")]
+    assert len(warnings) == 1 and warnings[0]["detail"]["label"] == "미등록 인계자 확인"
+    assert str(warnings[0]["actor_id"]) == str(seed.TEACHER)
+    director_notices = [n for n in notices(care_backend, rid) if str(n["recipient_id"]) == str(seed.DIRECTOR)]
+    assert len(director_notices) == 1 and director_notices[0]["body"] == "미등록 인계자 확인"
+    assert decide(client, teacher, rid, "complete").status_code == 200
+
+
+@pytest.mark.parametrize("fields,missing", [({}, ["medication_name", "medication_dose", "medication_time"]),
+    ({"medication_name": "[TEST] 약", "medication_dose": "  "}, ["medication_dose", "medication_time"]),
+    ({"medication_name": "[TEST] 약", "medication_dose": "2.5mL", "medication_time": "점심 뒤"}, [])])
+def test_medication_missing_values_are_shown_without_guessing(client, parent, teacher, fields, missing):
+    result = create(client, parent, **fields)
+    assert result.status_code == 202, result.text
+    rid = result.json()["request"]["id"]
+    detail = client.get(f"{BASE}/requests/{rid}", headers=teacher).json()
+    assert detail["request"]["missing_fields"] == detail["care"]["missing_fields"] == missing
+    assert detail["care"]["medication_time"] == fields.get("medication_time")
+    item = next(r for r in client.get(BASE + "/care-requests?size=100", headers=teacher).json()["items"] if r["id"] == rid)
+    assert item["missing_fields"] == missing
+    assert decide(client, teacher, rid).status_code == 200
+
+
+@pytest.mark.parametrize("kind", ["medication", "pickup"])
+def test_parent_correction_clears_confirmation_and_rejects_seen_old_version(client, parent, teacher, care_backend, kind):
+    rid = create(client, parent, kind).json()["request"]["id"]
+    pickup = {"pickup_guardian_id": str(seed.PARENT)} if kind == "pickup" else {}
+    confirmed = decide(client, teacher, rid, **pickup)
+    assert confirmed.status_code == 200, confirmed.text
+    count = len(notices(care_backend, rid))
+    posted = client.post(f"{BASE}/requests/{rid}/messages", headers=parent,
+                         json={"body": "[TEST] 정정: 5mL 말고 2.5mL예요. 취소할게요."})
+    assert posted.status_code == 201, posted.text
+    changed = client.get(f"{BASE}/requests/{rid}", headers=teacher).json()
+    assert changed["request"]["status"] == "received"
+    assert changed["care"]["confirmed_at"] is None and changed["care"]["version"] == 2
+    assert len(changed["messages"]) == 2
+    item = next(r for r in client.get(BASE + "/care-requests?size=100", headers=teacher).json()["items"] if r["id"] == rid)
+    assert item["version"] == 2 and item["next_action"] == "confirm"
+    updated = notices(care_backend, rid)
+    assert len(updated) == count + 1
+    notice = next(n for n in updated if n["body"] == "보호자가 내용을 추가했어요. 다시 확인해 주세요.")
+    assert str(notice["recipient_id"]) == str(seed.TEACHER)
+    for action in ("confirm", "complete"):
+        err(decide(client, teacher, rid, action, version=1, **pickup), 409, "CARD_VERSION_CONFLICT")
+    assert decide(client, teacher, rid, **pickup).status_code == 200
+    assert decide(client, teacher, rid, "complete", **pickup).status_code == 200
+
+
+def test_received_message_also_changes_version_and_decisions_require_it(client, parent, teacher):
+    rid = create(client, parent).json()["request"]["id"]
+    assert client.post(f"{BASE}/requests/{rid}/messages", headers=parent, json={"body": "[TEST] 취소"}).status_code == 201
+    err(decide(client, teacher, rid, version=1), 409, "CARD_VERSION_CONFLICT")
+    err(client.post(f"{BASE}/requests/{rid}/care-decisions", headers=teacher, json={"decision": "confirm"}),
+        422, "VALIDATION_FAILED")
+
+
+@pytest.mark.parametrize("change", ["inactive", "unlinked"])
+def test_completion_uses_confirmed_pickup_snapshot(client, parent, teacher, care_backend, change):
+    rid = create(client, parent, "pickup").json()["request"]["id"]
+    confirmed = decide(client, teacher, rid, pickup_guardian_id=str(seed.PARENT))
+    assert confirmed.status_code == 200
+    snapshot = confirmed.json()["care"]
+    if care_backend == "mock":
+        if change == "inactive":
+            store.state().users[seed.PARENT].is_active = False
+        else:
+            store.state().children[seed.CHILD].guardian_ids = []
+    else:
+        with transaction() as connection:
+            connection.execute(text("UPDATE users SET is_active=false WHERE id=:user") if change == "inactive" else text(
+                "DELETE FROM child_guardians WHERE user_id=:user AND child_id=:child"),
+                {"user": seed.PARENT, "child": seed.CHILD})
+    result = decide(client, teacher, rid, "complete", pickup_guardian_id=str(seed.PARENT))
+    assert result.status_code == 200, result.text
+    assert result.json()["care"]["pickup_name"] == snapshot["pickup_name"]
+    assert result.json()["care"]["confirmed_at"] == snapshot["confirmed_at"]
+
+
+def test_pickup_change_is_immediate_after_hours(client, parent, teacher, care_backend, monkeypatch):
+    from datetime import datetime
+    from app.core.schedule import KST
+
+    evening = datetime(2026, 11, 20, 19, 15, tzinfo=KST)
+    if care_backend == "mock":
+        monkeypatch.setattr(store, "now", lambda: evening)
+    rid = create(client, parent, "pickup").json()["request"]["id"]
+    assert decide(client, teacher, rid, pickup_guardian_id=str(seed.PARENT)).status_code == 200
+    assert client.post(f"{BASE}/requests/{rid}/messages", headers=parent, json={"body": "[TEST] 귀가 변경"}).status_code == 201
+    row = next(n for n in notices(care_backend, rid) if n["body"] == "보호자가 내용을 추가했어요. 다시 확인해 주세요.")
+    assert row["deliver_after"] == row["created_at"]
+
+
+@pytest.mark.parametrize("sort", ["created_at", "-created_at", "updated_at", "-updated_at"])
+def test_care_list_sort_is_shared_with_other_lists(client, parent, teacher, sort):
+    ids = [create(client, parent).json()["request"]["id"] for _ in range(3)]
+    assert client.post(f"{BASE}/requests/{ids[0]}/messages", headers=parent, json={"body": "[TEST] 변경"}).status_code == 201
+    result = client.get(BASE + "/care-requests?size=100", headers=teacher, params={"sort": sort})
+    assert result.status_code == 200, result.text
+    ordered = [r["id"] for r in result.json()["items"] if r["id"] in ids]
+    expected = [ids[1], ids[2], ids[0]] if sort.lstrip("-") == "updated_at" else ids
+    assert ordered == (list(reversed(expected)) if sort.startswith("-") else expected)
+
+
+def test_concurrent_confirm_and_cancellation_never_confirm_after_cancel_20_rounds(client, parent, teacher, care_backend):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        for _ in range(20):
+            rid = create(client, parent).json()["request"]["id"]
+            gate = Barrier(2)
+            def send(cancel):
+                with TestClient(app) as concurrent_client:
+                    gate.wait(timeout=5)
+                    if cancel:
+                        return concurrent_client.post(f"{BASE}/requests/{rid}/messages", headers=parent,
+                                                      json={"body": "[TEST] 취소할게요"})
+                    return concurrent_client.post(f"{BASE}/requests/{rid}/care-decisions", headers=teacher,
+                                                  json={"decision": "confirm", "version": 1})
+            confirmation, cancellation = pool.submit(send, False), pool.submit(send, True)
+            checked, cancelled = confirmation.result(timeout=10), cancellation.result(timeout=10)
+            assert checked.status_code in (200, 409), checked.text
+            assert cancelled.status_code == 201, cancelled.text
+            if checked.status_code == 409:
+                assert checked.json()["error"]["code"] == "CARD_VERSION_CONFLICT"
+            audit = events(care_backend, rid)
+            cancel_id = next(e["id"] for e in audit if e["detail"].get("care_message"))
+            assert all(e["id"] < cancel_id for e in audit if e["detail"].get("care_decision") == "confirm")
+            final = client.get(f"{BASE}/requests/{rid}", headers=teacher).json()
+            assert final["request"]["status"] == "received" and final["care"]["confirmed_at"] is None
+            assert final["care"]["version"] == 2

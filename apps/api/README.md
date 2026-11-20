@@ -290,12 +290,21 @@ DB는 입력 행의 PostgreSQL xmin을 실행 판으로 써서 이전 작업의 
 
 ### 투약·귀가 시연 — 팀 확인 전 초안
 
-학부모가 GET /children/{child_id}/pickup-guardians에서 등록 인계자를 골라 POST /requests에
-유형 medication·pickup과 원문을 보내요. pickup에만 pickup_guardian_id가 필요해요.
-교직원은 GET /care-requests에서 목록을 보고 POST /requests/{id}/care-decisions에 confirm을 보낸 뒤,
-실제 수행을 마치고 complete를 보내요. 귀가는 두 번 모두 같은 pickup_guardian_id를 현장에서 확인해요.
-확인 전 완료는 막고, 등록이 해제된 인계자도 다시 검사해요. 투약 수치·신원은 AI가 추측하지 않아요.
-별도 인계자 등록·자유 입력 대리인은 아직 없고 기존 child_guardians의 활성 보호자 계정만 허용해요.
-이름만 적힌 옛 귀가 시드는 읽기/알림장 출처로 유지하며 새 요청으로 다시 등록해야 실제 완료할 수 있어요.
-알림장 medication·pickup 줄의 읽기 전용 request_status는 현재 요청 상태예요. 원문·AI 원본은 바꾸지 않아요.
-알림장 확인·발송과 투약·귀가 수행 완료는 각각 기록해요. 화면 연결은 후속 작업이에요.
+[제안] 학부모가 POST /requests에 유형 medication·pickup과 원문을 보내요. FR-16·AC-09에 맞춰 미등록 인계자·투약 누락을 표시해요.
+등록 인계자는 pickup_guardian_id, 미등록이면 pickup_name·pickup_relation을 보내요. 각 문자열은 100자 이하예요.
+이름만 있거나 기존 원문만 있는 귀가도 받아요. 상세 care와 교직원 목록의 unregistered_pickup=true로 경고해요.
+투약 medication_name·medication_dose·medication_time이 없거나 공백이면 missing_fields에 표시해요.
+AI로 원문을 해석해 채우지 않아요. 누락은 422로 막지 않고 교직원이 확인해요.
+GET /children/{id}/pickup-guardians는 현재 활성 등록 인계자를 보여요.
+GET /care-requests는 교직원 목록이며 version·unregistered_pickup·missing_fields를 포함해요.
+sort는 다른 목록과 같은 created_at·updated_at 오름/내림차순이에요.
+POST /requests/{id}/care-decisions에 decision=confirm·complete, 교직원이 본 care.version(필수)을 보내요.
+등록 인계자면 같은 UUID를 다시 보내고, 미등록이면 생략해요. 미등록 confirm은 별도 확인 이력과 원장 알림 1건을 남겨요.
+확인 당시 인계자를 보존하므로 이후 비활성·연결 해제가 complete를 막지 않아요.
+version은 최초 1·보호자 추가 글마다 +1이에요. 확인 뒤 정정·취소 글이 오면 received·confirmed_at=null로 돌아가요.
+담당자에게 알리고 교직원이 새 대화 전체를 읽고 다시 확인해요. 옛 판 결정은 CARD_VERSION_CONFLICT예요.
+원문·구조화 입력은 보존하고 자동 취소하지 않아요. 새 글·결정은 요청 잠금 안에서 이력·알림과 함께 저장해요.
+귀가 알림은 근무 밖·주말에도 즉시이며 실패 재시도도 미루지 않아요. 투약 교직원 알림은 기존 근무 시간을 따라요.
+알림장 medication·pickup 줄의 읽기 전용 request_status는 현재 상태예요. 원문·AI 원본은 바꾸지 않아요.
+목록은 한 연결에서 출처 요청 상태를 한 번에 읽어요. 새 DDL 없이 head 0009예요.
+팀 확인 전 초안의 상세 필드·오류·결정은 T13 3.27·T10 v0.17을 따라요.
