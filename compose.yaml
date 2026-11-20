@@ -1,6 +1,7 @@
 services:
   api:
     image: yuchion-api:local
+    pull_policy: never
     build:
       context: .
       dockerfile: apps/api/Dockerfile
@@ -56,6 +57,7 @@ services:
 
   worker:
     image: yuchion-api:local
+    pull_policy: never
     restart: unless-stopped
     profiles: [worker]
     environment: *api-environment
@@ -76,6 +78,7 @@ services:
 
   beat:
     image: yuchion-api:local
+    pull_policy: never
     restart: unless-stopped
     profiles: [worker]
     environment: *api-environment
