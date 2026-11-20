@@ -15,7 +15,7 @@
 | `weather.py` | `WeatherClient.get_daily_forecast(nx, ny, day)` |
 | `common.py` | 10초 시간 제한, 실패를 도구 실패 코드로 바꾸기, 공통 출력 형식 |
 | `check.py` | 실제 호출 확인 명령 |
-| `tests/` | 녹화한 응답(`fixtures/`)으로만 하는 시험. 실제 호출은 하지 않아요 |
+| `tests/unit/public_apis/` (레포 시험 폴더) | 녹화한 응답(`fixtures/`)으로만 하는 시험. 실제 호출은 하지 않아요 |
 
 ## 쓰는 법
 
@@ -96,7 +96,7 @@ WeatherClient().get_daily_forecast(60, 127)   # 격자 nx·ny, 날짜를 안 주
 ## 시험
 
 ```bash
-pytest -q tools/public_apis
+pytest -q tests/unit/public_apis
 ```
 
-녹화한 응답만 써서 키와 인터넷이 없어도 돌아요. 레포 기본 `pytest -q`는 `tests/` 폴더만 모아서, 이 시험은 경로를 줘야 돌아요.
+녹화한 응답만 써서 키와 인터넷이 없어도 돌아요. 레포 루트에서 `pytest -q`만 쳐도 같이 돌아요.
