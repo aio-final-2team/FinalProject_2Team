@@ -185,3 +185,30 @@ def test_medication_request_line_always_gets_teacher_check():
     [note] = draft_daily_notes(payload([kid("a", "로아", "", [req])]), writer, Script(OK))
     [check] = note["open_checks"]
     assert check["kind"] == "sensitive" and check["item_key"] == "medication" and check["request_id"] == "r1"
+
+
+def test_concurrent_run_keeps_child_order_and_same_result():
+    import threading
+    import time
+
+    class Slow:
+        def __init__(self):
+            self.active = self.peak = 0
+            self.lock = threading.Lock()
+
+        def json(self, system, user):
+            with self.lock:
+                self.active += 1
+                self.peak = max(self.peak, self.active)
+            time.sleep(0.02)
+            with self.lock:
+                self.active -= 1
+            return {"checks": []} if '"draft"' in user else {"child": "문장", "requests": []}
+
+    children = [kid(str(i), f"아이{i}", "메모") for i in range(8)]
+    model = Slow()
+    together = draft_daily_notes(payload(children), model, model, workers=4)
+    one_by_one = draft_daily_notes(payload(children), Slow(), Slow(), workers=1)
+    assert [n["child_id"] for n in together] == [str(i) for i in range(8)]
+    assert together == one_by_one
+    assert 1 < model.peak <= 4

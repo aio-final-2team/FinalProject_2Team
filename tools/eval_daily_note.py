@@ -15,6 +15,7 @@ import argparse
 import json
 import re
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -117,6 +118,7 @@ def main():
     roster = json.loads((DATA / "daily_notes/roster_c4.json").read_text(encoding="utf-8"))
     key_to_id = {c["child_key"]: c["child_id"] for c in roster["children"]}
     notes = {}
+    started = time.monotonic()
     for payload in payloads():
         for note in draft_daily_notes(payload, writer, checker):
             notes[(payload["note_date"], note["child_id"])] = note
@@ -132,7 +134,8 @@ def main():
     req_results = [score_request(r, notes[(r["note_date"], key_to_id[r["child_key"]])]) for r in reqs]
     passed = sum(r["pass"] for r in results)
     req_passed = sum(r["pass"] for r in req_results)
-    print(f"모델 {args.model}: 메모 함정 {passed}/{len(results)} · 보호자 요청 {req_passed}/{len(req_results)} 통과")
+    seconds = round(time.monotonic() - started, 1)
+    print(f"모델 {args.model}: 메모 함정 {passed}/{len(results)} · 보호자 요청 {req_passed}/{len(req_results)} 통과 · {seconds}초")
     for r in results:
         mark = "O" if r["pass"] else "X"
         why = "" if r["pass"] else f"  금지어 {r['banned_hits']} · 확인 항목 {'맞음' if r['flag_ok'] else '틀림'} {r['kinds']}"
@@ -146,7 +149,8 @@ def main():
         Path(args.out).parent.mkdir(parents=True, exist_ok=True)
         Path(args.out).write_text(json.dumps({"model": args.model, "passed": passed, "total": len(results),
                                               "results": results, "request_passed": req_passed,
-                                              "request_total": len(req_results), "request_results": req_results},
+                                              "request_total": len(req_results), "request_results": req_results,
+                                              "seconds": seconds},
                                              ensure_ascii=False, indent=2), encoding="utf-8")
 
 

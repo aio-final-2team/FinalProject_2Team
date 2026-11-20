@@ -5,9 +5,12 @@
 
 - 반 공통 줄(day·supplies·meal)은 코드가 그대로 만든다. AI는 아이 메모 줄과 보호자 요청 줄만 쓴다.
 - 쓰기·검사는 각각 1번 다시 한다. 메모에 없는 말·요청 누락은 자료 AI로 최대 2번 돌려보낸다.
+- 아이들은 동시에 처리한다. 동시 실행 수는 NOTE_DRAFT_CONCURRENCY(기본 5)로 묶는다(흐름 문서 5장).
 """
 
 import json
+import os
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from agents.llm import JsonModel, ModelError, OpenAIModel
@@ -49,16 +52,26 @@ def section(file: str, heading: str) -> str:
     return text[text.index(heading):]
 
 
-def draft_daily_notes(payload: dict, writer: JsonModel | None = None, checker: JsonModel | None = None) -> list[dict]:
+def concurrency() -> int:
+    return max(1, int(os.getenv("NOTE_DRAFT_CONCURRENCY", "5")))
+
+
+def draft_daily_notes(payload: dict, writer: JsonModel | None = None, checker: JsonModel | None = None,
+                      workers: int | None = None) -> list[dict]:
     """입구 함수. payload = {input_id, note_date, classroom, activities, supplies, children[], menu}.
 
-    돌려주는 값: 아이마다 {child_id, content: {items[]}, open_checks[]}.
+    돌려주는 값: 아이마다 {child_id, content: {items[]}, open_checks[]}. 순서는 입력 children 순서와 같다.
     """
     writer = writer or OpenAIModel("DOCUMENT")
     checker = checker or OpenAIModel("CHECKER")
     names = [child["display_name"] for child in payload["children"]]
     common = common_lines(payload)
-    return [draft_child(payload, child, common, names, writer, checker) for child in payload["children"]]
+    run = lambda child: draft_child(payload, child, common, names, writer, checker)
+    workers = workers or concurrency()
+    if workers == 1:
+        return [run(child) for child in payload["children"]]
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        return list(pool.map(run, payload["children"]))
 
 
 def common_lines(payload: dict) -> dict:
