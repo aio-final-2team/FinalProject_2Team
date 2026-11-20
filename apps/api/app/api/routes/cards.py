@@ -12,7 +12,8 @@ from app.api.schemas.views import (CardList, CardDetail, DecisionResponse, Recla
                                   ReassignResponse, RuleResponse, Overview)
 from app.api.schemas.common import errors
 from app.api.streams import stream
-from app.core.auth import CurrentUser, current_user, require_roles
+from app.core.auth import CurrentUser
+from app.core.workflows import workflow_user as current_user, require_workflow_roles as require_roles
 from app.backend import cards, card_views, store
 
 router = APIRouter(tags=["교직원 받은함"])

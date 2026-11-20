@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[2]
 @pytest.mark.parametrize("backend,success,message", [
     (None, True, "mock_without_db"),
     ("mock", True, "mock_without_db"),
-    ("db", False, "T24·T27"),
+    ("db", True, "db_without_mock"),
     ("typo", False, "DATA_BACKEND"),
 ])
 def test_backend_selection(backend, success, message):
@@ -22,8 +22,9 @@ def test_backend_selection(backend, success, message):
     env["PYTHONPATH"] = str(ROOT / "apps/api")
     if backend is not None:
         env["DATA_BACKEND"] = backend
-    result = subprocess.run([sys.executable, "-c", "import sys; from app.main import app; "
-                             "assert 'app.core.db' not in sys.modules; print('mock_without_db')"],
+    check = ("assert 'app.mock.store' not in sys.modules; print('db_without_mock')" if backend == "db"
+             else "assert 'app.core.db' not in sys.modules; print('mock_without_db')")
+    result = subprocess.run([sys.executable, "-c", "import sys; from app.main import app; " + check],
                             cwd=ROOT, env=env, capture_output=True, text=True)
     assert (result.returncode == 0) is success
     assert message in result.stdout + result.stderr

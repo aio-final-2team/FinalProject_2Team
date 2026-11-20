@@ -11,7 +11,8 @@ from app.api.schemas.auth import ChildList
 from app.api.schemas.views import (NotificationList, NotificationResponse, DraftResponse, NoteList, NoteResponse,
                                   SendResponse, DocumentResponse, DocumentList)
 from app.api.schemas.common import errors
-from app.core.auth import CurrentUser, current_user, require_roles
+from app.core.auth import CurrentUser
+from app.core.workflows import workflow_user as current_user, require_workflow_roles as require_roles
 from app.backend import store, notifications, notes, documents
 
 router = APIRouter(tags=["알림장·자료"])

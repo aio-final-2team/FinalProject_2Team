@@ -28,6 +28,7 @@ DEFAULT_MESSAGES = {
     "VALIDATION_FAILED": "입력한 값을 다시 확인해 주세요.",
     "INTERNAL_ERROR": "잠시 뒤 다시 시도해 주세요.",
     "UPSTREAM_UNAVAILABLE": "잠시 뒤 다시 처리할게요.",
+    "NOT_IMPLEMENTED": "DB 모드에서는 아직 준비 중인 기능이에요.",
 }
 
 

@@ -31,7 +31,7 @@ port=${port##*:}
 export TEST_DATABASE_URL="postgresql+psycopg://yuchion:yuchion_test@127.0.0.1:$port/yuchion_test"
 export DATABASE_URL="$TEST_DATABASE_URL"
 export TEST_DB_CONTAINER="$container"
-export DATA_BACKEND=mock
+export DATA_BACKEND=db
 
 ready=0
 for (( attempt=0; attempt<60; attempt++ )); do
@@ -48,3 +48,5 @@ if (( ! ready )); then
 fi
 echo "임시 DB: $container, 포트 $port"
 python -m pytest -q -rs tests/integration/db "$@"
+# 기존 인증 HTTP 시험은 fixture로 mock·DB를 고른다. 별도 프로세스로 설정을 분리한다.
+DATA_BACKEND=mock python -m pytest -q -rs tests/integration/api/test_auth.py "$@"

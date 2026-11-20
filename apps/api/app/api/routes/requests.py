@@ -8,7 +8,8 @@ from app.api.labels import parent_label, staff_label
 from app.api.schemas.common import Period, errors
 from app.api.schemas.requests import (ConsultationOut, MessageOut, RequestAccepted, RequestAcceptedOut,
                                       RequestCreateIn, RequestDetailOut, RequestView, SlotOut, TimelineItem)
-from app.core.auth import CurrentUser, current_user, require_roles
+from app.core.auth import CurrentUser
+from app.core.workflows import workflow_user as current_user, require_workflow_roles as require_roles
 from app.core.errors import trace_id_of
 from app.backend import store, request_actions, documents
 from app.api.schemas.actions import MessageIn, SlotChoicesIn
