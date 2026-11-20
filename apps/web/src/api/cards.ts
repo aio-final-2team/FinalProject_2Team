@@ -1,0 +1,113 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { InboxFilter, RequestType, Status } from "@/domain/status";
+import type { Card, CardAction, HistoryItem, Role, Slot, Source } from "@/domain/types";
+import { api } from "./client";
+
+type ApiRequestType = "inquiry" | "consultation" | "complaint";
+type ApiInboxFilter = "unassigned" | "needs_review" | "uncertain" | "on_hold" | "in_progress" | "done";
+type Person = { id: string; display_name: string };
+type Period = { start: string; end: string };
+type CardItem = {
+  id: string; kind: string; status: string; status_label: string; version: number;
+  request_id: string | null; request_type: ApiRequestType | null; title: string;
+  urgency: string | null; risk_level: string | null; risk_category: string | null; is_urgent: boolean;
+  repeat_count: number | null; check: { passed: boolean; issue_count: number } | null;
+  parent_choice_count: number | null; classroom: { id: string; name: string }; assignee: Person | null;
+  due_at: string | null; is_delayed: boolean; hold_until: string | null;
+};
+type CardList = {
+  total: number; page: number; size: number; items: CardItem[];
+  counts: Record<ApiInboxFilter, number>; type_counts: Record<string, number>;
+};
+type CardDetail = {
+  card: { id: string; kind: string; status: string; version: number; summary: string; draft: Record<string, unknown>; check_result: { passed?: boolean; issues?: unknown[]; note?: string } | null; check_attempts: number };
+  request: null | { id: string; type: ApiRequestType | "pickup"; title: string | null; body: string; status: Status; risk_level: string | null; risk_category: string | null; repeat_count: number | null; parent_confirmed_at: string | null; classroom_id: string; created_at: string; updated_at: string };
+  evidence: Array<{ document_title: string; location: string | null; effective_from: string | null; quote: string; is_current: boolean }>;
+  warnings: string[];
+  parent_choices: Array<{ slot_id: number; period: Period; room: string; chosen_at: string; hold_expires_at: string }>;
+  director_instruction: null | { text: string; by: Person; at: string };
+  timeline: Array<{ action: string; actor_type: string; agent_name: string | null; created_at: string }>;
+};
+
+export type CardsResult = { items: Card[]; counts: Record<InboxFilter, number> };
+const UI_TO_API_FILTER: Record<InboxFilter, ApiInboxFilter> = { review: "needs_review", judge: "uncertain", unassigned: "unassigned", hold: "on_hold", progress: "in_progress", done: "done" };
+const API_TO_UI_FILTER: Record<ApiInboxFilter, InboxFilter> = { needs_review: "review", uncertain: "judge", unassigned: "unassigned", on_hold: "hold", in_progress: "progress", done: "done" };
+const requestType = (value: ApiRequestType | "pickup" | null | undefined): RequestType => value === "consultation" ? "consult" : value === "complaint" ? "complaint" : "inquiry";
+const risk = (value: string | null | undefined) => (value === "urgent" ? "urgent" : value === "uncertain" ? "judge" : "normal") as Card["risk"];
+
+const statusFromItem = (item: CardItem, filter: InboxFilter): Status => {
+  if (filter === "unassigned") return "classified";
+  if (filter === "hold") return "on_hold";
+  if (filter === "done") return item.status === "rejected" ? "rejected" : "completed";
+  if (item.status === "done") return "completed";
+  return item.risk_level === "urgent" ? "escalated" : "awaiting_review";
+};
+
+const cardFromItem = (item: CardItem, filter: InboxFilter): Card => ({
+  id: item.id, version: item.version, kind: item.kind, inboxFilter: filter,
+  requestId: item.request_id ?? "-", type: requestType(item.request_type), status: statusFromItem(item, filter), risk: risk(item.risk_level),
+  urgentReason: item.risk_category ?? undefined, title: item.title || item.status_label, childName: "", guardianName: "보호자",
+  className: item.classroom.name, createdAt: item.due_at ?? new Date().toISOString(), original: item.title, sources: [],
+  check: item.check ? { passed: item.check.passed, note: item.check.issue_count ? `확인 항목 ${item.check.issue_count}개` : undefined } : undefined,
+  repeatCount: item.repeat_count ?? undefined, escalated: item.risk_level === "urgent" || item.kind === "director_report",
+  assigned: !!item.assignee, slots: item.parent_choice_count ? [] : undefined, history: [],
+});
+
+const formatPeriod = (period: Period) => new Date(period.start).toLocaleString("ko-KR", { month: "numeric", day: "numeric", weekday: "short", hour: "2-digit", minute: "2-digit" });
+const actorName = (actor: string, agent: string | null) => agent ? `${agent} AI` : actor === "user" ? "교직원" : actor === "agent" ? "AI" : "시스템";
+
+const cardFromDetail = (data: CardDetail): Card => {
+  const req = data.request;
+  const sources: Source[] = data.evidence.map((e) => ({ doc: e.document_title, where: e.location ?? "", effective: e.effective_from ?? "", old: !e.is_current }));
+  const slots: Slot[] | undefined = data.parent_choices.length ? data.parent_choices.map((s) => ({ id: String(s.slot_id), at: formatPeriod(s.period), mode: "대면", picked: true })) : undefined;
+  const history: HistoryItem[] = data.timeline.map((e) => ({ at: e.created_at, who: actorName(e.actor_type, e.agent_name), what: e.action }));
+  const draft = typeof data.card.draft.text === "string" ? data.card.draft.text : undefined;
+  return {
+    id: data.card.id, version: data.card.version, kind: data.card.kind, requestId: req?.id ?? "-", type: requestType(req?.type),
+    status: req?.status ?? (data.card.status === "done" ? "completed" : "awaiting_review"), risk: risk(req?.risk_level),
+    urgentReason: req?.risk_category ?? undefined, title: req?.title ?? data.card.summary, childName: "", guardianName: "보호자",
+    className: "담당 반", createdAt: req?.created_at ?? new Date().toISOString(), original: req?.body ?? data.card.summary,
+    summary: data.card.summary || undefined, draft, sources,
+    check: data.card.check_result ? { passed: !!data.card.check_result.passed, note: data.card.check_result.note } : undefined,
+    repeatCount: req?.repeat_count ?? undefined, escalated: req?.status === "escalated" || data.card.kind === "director_report",
+    assigned: true, parentConfirmedAt: req?.parent_confirmed_at ?? undefined, slots, directorNote: data.director_instruction?.text, history,
+  };
+};
+
+export const useCards = (filter: InboxFilter) => useQuery({
+  queryKey: ["cards", "list", filter],
+  queryFn: async (): Promise<CardsResult> => {
+    const apiFilter = UI_TO_API_FILTER[filter];
+    const result = await api<CardList>(`/api/v1/cards?filter=${apiFilter}&size=100`);
+    const counts = Object.fromEntries(Object.entries(result.counts).map(([key, value]) => [API_TO_UI_FILTER[key as ApiInboxFilter], value])) as Record<InboxFilter, number>;
+    return { items: result.items.map((item) => cardFromItem(item, filter)), counts };
+  },
+});
+
+export const useCard = (id: string | undefined) => useQuery({ queryKey: ["cards", "detail", id], queryFn: () => api<CardDetail>(`/api/v1/cards/${id}`).then(cardFromDetail), enabled: !!id });
+type ActionResponse = { card?: { id?: string; status?: string; version?: number } };
+
+/** 카드 행동을 API 계약의 기능별 엔드포인트와 요청 본문으로 변환한다. */
+export function useCardAction(id: string, _role: Role) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ body, card }: { body: CardAction; card: Card; key: string }) => {
+      const version = card.version ?? 1;
+      if (body.action === "reclassify") return api<ActionResponse>(`/api/v1/cards/${id}/reclassify`, { method: "POST", body: JSON.stringify({ version, risk_level: body.risk, risk_category: body.risk === "urgent" ? body.riskCategory : null, reason: body.reason }) });
+      if (body.action === "confirm_slot") return api<ActionResponse>(`/api/v1/cards/${id}/bookings`, { method: "POST", body: JSON.stringify({ version, slot_id: Number(body.slotId) }) });
+      if (body.action === "note") return api<ActionResponse>(`/api/v1/cards/${id}/instructions`, { method: "POST", body: JSON.stringify({ version, instruction: body.text }) });
+      const decision = body.action === "approve_send" ? (body.draft ? "edit_approve" : "approve") : body.action === "reject" ? "dismiss" : body.action;
+      const payload: Record<string, unknown> = { version, decision };
+      if (body.action === "approve_send" && body.draft) payload.edited_content = { text: body.draft };
+      if (body.action === "reject") Object.assign(payload, { reason_code: "other", reason_text: body.reason });
+      if (body.action === "hold") Object.assign(payload, { reason_text: body.reason, hold_until: body.until });
+      if (body.action === "complete" && body.reason) payload.reason_text = body.reason;
+      return api<ActionResponse>(`/api/v1/cards/${id}/decisions`, { method: "POST", body: JSON.stringify(payload) });
+    },
+    onSuccess: async () => {
+      await Promise.all([qc.invalidateQueries({ queryKey: ["cards", "detail", id] }), qc.invalidateQueries({ queryKey: ["cards", "list"] })]);
+    },
+  });
+}
+
+export const newKey = () => crypto.randomUUID();

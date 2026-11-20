@@ -35,3 +35,6 @@ postgres_data/
 
 # Local-only workbench and archives (never publish site checkouts or chat context)
 /.local/
+
+# macOS metadata
+.DS_Store
