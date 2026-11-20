@@ -3142,6 +3142,8 @@ components:
           - note_sent
           - slot_hold_expired
           - hold_resumed
+          - consultation_ending
+          - consultation_delayed
           title: Kind
         title:
           type: string

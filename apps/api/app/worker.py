@@ -23,6 +23,8 @@ celery_app.conf.update(
                                      "options": {"expires": 290}},
         "notifications": {"task": "yuchion.deliver_notifications", "schedule": 60.0,
                           "options": {"expires": 55}},
+        "consultation-reminders": {"task": "yuchion.consultation_reminders", "schedule": 60.0,
+                                   "options": {"expires": 55}},
     },
 )
 
@@ -71,4 +73,12 @@ def deliver_notifications():
     if enabled():
         from app.modules.notifications.delivery import deliver_pending
         return deliver_pending()
+    return 0
+
+
+@celery_app.task(name="yuchion.consultation_reminders")
+def consultation_reminders():
+    if enabled():
+        from app.modules.consultations.reminders import sweep_consultation_notifications
+        return sweep_consultation_notifications()
     return 0

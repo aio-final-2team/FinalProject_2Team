@@ -335,8 +335,9 @@ def test_foreign_scope_paths_and_required_parameters(client, parent, parent_othe
     err(client.post(f"{BASE}/requests/{seed.REQUEST_CONSULT}/confirm", headers=parent), 409, "INVALID_TRANSITION")
 
 
-def test_all_notification_kinds_and_trace_audit(client, parent, teacher):
+def test_request_notification_kinds_and_trace_audit(client, parent, teacher):
     from app.mock.notifications import TITLES
+    from app.core.consultation_alerts import KINDS
     store.reset()
     rid, cid = create(client, parent)
     until = (store.now().date() + timedelta(days=1)).isoformat()
@@ -363,7 +364,8 @@ def test_all_notification_kinds_and_trace_audit(client, parent, teacher):
                             json={"confirm": True, "resolved_checks": [c["id"] for c in note.open_checks]}).status_code == 200
     assert client.post(BASE + "/daily-notes/send", headers=teacher,
                        json={k: body[k] for k in ("classroom_id", "note_date")}).status_code == 200
-    assert {n.kind for n in store.state().notifications.values()} == set(TITLES)
+    # 시간·지연 기록으로 만드는 두 종류는 test_consultation_reminders에서 양쪽 저장소로 검사해요.
+    assert {n.kind for n in store.state().notifications.values()} == set(TITLES) - set(KINDS)
 
 
 def test_permission_denial_is_audited_without_parent_leak(client, parent_other, parent, teacher):

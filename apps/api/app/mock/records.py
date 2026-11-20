@@ -32,6 +32,7 @@ class Booking:
     period: dict
     confirmed_by: UUID
     status: str = "confirmed"
+    expected_end_at: datetime | None = None
 
 
 @dataclass

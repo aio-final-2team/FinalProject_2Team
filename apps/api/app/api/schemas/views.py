@@ -229,7 +229,7 @@ class NotificationView(BaseModel):
     id: int
     kind: Literal["needs_info", "new_card", "urgent_complaint", "uncertain_complaint", "director_report",
                   "on_hold", "sent_or_booked", "parent_confirmed", "completed", "rejected", "note_sent",
-                  "slot_hold_expired", "hold_resumed"]
+                  "slot_hold_expired", "hold_resumed", "consultation_ending", "consultation_delayed"]
     title: str
     body: str | None
     request_id: UUID | None

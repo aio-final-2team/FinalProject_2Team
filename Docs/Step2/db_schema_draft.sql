@@ -1,6 +1,6 @@
--- 유치온 DB 스키마 초안 (T09) · 문서 버전 v0.12 (요청 에이전트 재전달 이력 11/20 반영)
+-- 유치온 DB 스키마 초안 (T09) · 문서 버전 v0.13 (상담 지연 기록·종료 알림 11/20 반영)
 -- 설계서: Docs/Step2/DB_스키마_설계서.md
--- 이 파일은 최종 설계 모양이다. 실제 적용은 apps/api/migrations의 0001 → 0002 → 0003 → 0004 → 0005 → 0006으로 한다.
+-- 이 파일은 최종 설계 모양이다. 실제 적용은 apps/api/migrations의 0001 → 0002 → 0003 → 0004 → 0005 → 0006 → 0007으로 한다.
 -- 대상: PostgreSQL 16 + pgvector 0.8 (compose.yaml의 pgvector/pgvector:pg16). Supabase는 쓰지 않는다(설계서 5.1)
 -- 기관 경계: 기관에 속한 표끼리는 (id, org_id) 짝으로 참조해서 다른 원 행을 섞어 넣으면 DB가 거부한다
 
@@ -340,7 +340,8 @@ CREATE TABLE events (
                                    'tool_failed', 'permission_denied',
                                    'parent_confirmed', 'risk_reclassified', 'dismissed',
                                    'answered_from_saved', 'slot_hold_expired',
-                                   'daily_note_drafted', 'daily_note_edited', 'daily_note_confirmed', 'daily_note_sent', 'agent_requeued')),
+                                   'daily_note_drafted', 'daily_note_edited', 'daily_note_confirmed', 'daily_note_sent', 'agent_requeued',
+                                   'consultation_delay_reported', 'consultation_reminded')),
     -- 시스템이 한 일(보류 예정일 자동 재개, 상담 시간 잡아 두기 풀림)은 actor_type = 'system', actor_id = NULL
     from_status  text,
     to_status    text,
@@ -417,11 +418,14 @@ CREATE TABLE consultation_bookings (
                   CHECK (status IN ('confirmed', 'cancelled', 'done')),
     confirmed_by  uuid NOT NULL,
     created_at    timestamptz NOT NULL DEFAULT now(),
+    expected_end_at timestamptz,          -- 담임이 기록한 예상 종료. NULL이면 지연을 추측하지 않아요.
     FOREIGN KEY (request_id, org_id) REFERENCES requests(id, org_id),
     FOREIGN KEY (slot_id, org_id) REFERENCES consultation_slots(id, org_id),
     FOREIGN KEY (teacher_id, org_id) REFERENCES users(id, org_id),
     FOREIGN KEY (room_id, org_id) REFERENCES rooms(id, org_id),
     FOREIGN KEY (confirmed_by, org_id) REFERENCES users(id, org_id),
+    CONSTRAINT consultation_bookings_expected_end_check
+        CHECK (isfinite(expected_end_at) AND expected_end_at > upper(period)),
     EXCLUDE USING gist (room_id WITH =, period WITH &&) WHERE (status = 'confirmed'),
     EXCLUDE USING gist (teacher_id WITH =, period WITH &&) WHERE (status = 'confirmed')
 );
@@ -593,15 +597,16 @@ CREATE TABLE notifications (
     subject_type  text CHECK (subject_type IN ('daily_note')),  -- 요청·카드가 아닌 대상(알림장)
     subject_id    uuid,
     -- T04 9장 알림 시점 11가지 + 계약표 6장 기본값 2가지(⑥ 상담 시간 잡아 두기 풀림, ⑨ 보류 자동 재개)
-    -- 최종 기능(상담 지연 알림 T48 등)은 그때 값을 더함
+    -- T48 상담 예정 종료 10분 전·명시된 지연의 대체 시간 제안 2가지 추가(v0.13)
     kind          text NOT NULL
                   CHECK (kind IN ('needs_info', 'new_card', 'urgent_complaint', 'uncertain_complaint',
                                   'director_report', 'on_hold', 'sent_or_booked', 'parent_confirmed',
                                   'completed', 'rejected', 'note_sent',
-                                  'slot_hold_expired', 'hold_resumed')),
+                                  'slot_hold_expired', 'hold_resumed',
+                                  'consultation_ending', 'consultation_delayed')),
     title         text NOT NULL,
     body          text,
-    dedupe_key    text NOT NULL UNIQUE,    -- 'event:<events.id>:<받는 사람 ID>'(설계서 2.6). 같은 알림 두 번 안 감
+    dedupe_key    text NOT NULL UNIQUE,    -- 요청 이력 또는 상담 예약·종류·수신자 키(설계서 2.6). 같은 알림 두 번 안 감
     status        text NOT NULL DEFAULT 'pending'
                   CHECK (status IN ('pending', 'sent', 'failed', 'held')),
     attempts      smallint NOT NULL DEFAULT 0 CHECK (attempts BETWEEN 0 AND 3),

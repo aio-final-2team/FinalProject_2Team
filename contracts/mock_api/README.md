@@ -77,6 +77,11 @@ PR #269 `guardian_requests.json`의 가상 요청 20개(투약 5·귀가 7·문�
 - 처리 기한과 교직원 알림 시각은 API 설계 문서 6.5·6.6대로 계산합니다. 공휴일은 `HOLIDAYS=2026-12-25,2027-01-01`처럼 넣습니다.
 - 계약 파일 `contracts/openapi.yaml`은 앱에서 뽑은 생성물입니다. API를 바꾼 뒤에는 `python apps/api/scripts/export_openapi.py`로 다시 뽑습니다(시험이 둘이 같은지 봅니다).
 
+T48 알림 두 종류 `consultation_ending`·`consultation_delayed`를 알림 목록·읽음에서 받아요.
+종료 예정 10분 이내 담임 알림과, 명시된 상담 지연의 대체 시간 제안이에요.
+mock 시연은 `app.mock.consultation_reminders` 내부 입구로 만들어요. 주기 실행은 DB 워커만 해요.
+지연 입력의 공개 HTTP·화면 계약은 아직 없어요. 시간 경과만으로 지연을 만들어 내지 않아요.
+
 ## 알림장 v0.5.1·내 기억
 
 API 31 GET /memories는 담임 본인의 기억만 kind로 걸러 쪽을 나눠요. API 32 DELETE /memories/{memory_id}는 본인 기억을 지우고 204(본문 없음)로 답해요. 지운 기억은 목록에서 빠지고, 남의 기억은 404예요. 말투 기억은 미리 넣지 않아요.

@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import text
 
 from app.core.db import transaction
+from app.core.consultation_alerts import KINDS
 from app.core.schedule import KST, deliver_after
 
 MAX_ATTEMPTS = 3
@@ -49,6 +50,21 @@ def deliver_pending(now=None):
             ORDER BY n.deliver_after,n.id LIMIT 100 FOR UPDATE OF n SKIP LOCKED
         """), {"now": now, "max": MAX_ATTEMPTS}).mappings().all()
         for row in rows:
+            if row["kind"] in KINDS and not connection.scalar(text("""
+                SELECT EXISTS (SELECT 1 FROM consultation_bookings b
+                  JOIN requests r ON (r.id,r.org_id)=(b.request_id,b.org_id)
+                  WHERE b.org_id=:org AND b.request_id=:request AND b.status='confirmed'
+                    AND r.status='sent_or_booked' AND coalesce(b.expected_end_at,upper(b.period))>:now
+                    AND :key='consultation:' || b.id::text || ':' || :kind || ':' || CAST(:recipient AS text))
+            """), {"org": row["org_id"], "request": row["request_id"], "now": now,
+                   "key": row["dedupe_key"], "kind": row["kind"], "recipient": row["recipient_id"]}):
+                connection.execute(text("""
+                    UPDATE notifications SET status='held',last_error='CONSULTATION_ENDED' WHERE id=:id
+                """), {"id": row["id"]})
+                from app.modules.requests.events import record
+                record(connection, {"org_id": row["org_id"], "id": row["request_id"]}, "consultation_reminded",
+                       notification_id=row["id"], outcome="expired")
+                continue
             if not row["is_active"]:
                 connection.execute(text("""
                     UPDATE notifications SET status='failed',last_error='RECIPIENT_UNAVAILABLE' WHERE id=:id

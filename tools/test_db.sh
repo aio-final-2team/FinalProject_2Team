@@ -54,4 +54,5 @@ python -m pytest -q -rs tests/integration/db "$@"
 DATA_BACKEND=mock python -m pytest -q -rs tests/integration/api/test_auth.py tests/integration/api/test_daily_notes.py \
     tests/integration/api/test_read_resources.py tests/integration/api/test_note_v05.py tests/integration/api/test_requests.py \
     tests/integration/api/test_cards.py tests/integration/api/test_complaints.py \
-    tests/integration/api/test_consultations.py tests/integration/api/test_memories.py "$@"
+    tests/integration/api/test_consultations.py tests/integration/api/test_memories.py \
+    tests/integration/api/test_consultation_reminders.py "$@"
