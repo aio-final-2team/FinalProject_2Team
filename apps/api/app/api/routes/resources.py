@@ -15,7 +15,7 @@ from app.core.auth import CurrentUser, current_user as note_user, require_roles 
 # T27에서 걷을 목록: 자료·알림의 workflows 별칭. 알림장은 위 core.auth를 직접 쓴다.
 from app.core.workflows import workflow_user as current_user, require_workflow_roles as require_roles
 from app import backend
-from app.backend import store, notifications, documents
+from app.backend import notifications, documents
 
 router = APIRouter(tags=["알림장·자료"])
 Sort = Literal["-created_at", "created_at"]
@@ -93,12 +93,8 @@ def upload_document(response: Response, file: UploadFile = File(...),
 
 @router.get("/documents", response_model=DocumentList, responses=errors(401, 403, 422))
 def document_list(page: int = Query(1, ge=1), size: int = Query(20, ge=1, le=100), sort: Sort = "-created_at",
-                  user: CurrentUser = Depends(require_roles("teacher", "director"))):
-    with store._lock:
-        items = documents.visible(user)
-        result = page_of(items, page, size, sort)
-        result["items"] = [documents.view(d) for d in result["items"]]
-        return result
+                  user: CurrentUser = Depends(note_roles("teacher", "director"))):
+    return backend.documents.list_documents(user, page, size, sort)
 
 
 @router.get("/documents/{document_id}", response_model=DocumentResponse, responses=errors(401, 403, 404, 422))

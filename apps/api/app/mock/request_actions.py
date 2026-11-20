@@ -1,7 +1,45 @@
 """학부모의 대화·시간 체크·회신 확인."""
 
 from app.core.errors import ApiError
-from app.mock import store
+from app.api.labels import parent_label, staff_label
+from app.api.schemas.common import Period
+from app.api.schemas.requests import (BookingOut, ConsultationOut, MessageOut, RequestDetailOut,
+                                      RequestView, SlotOut, TimelineItem)
+from app.mock import documents, store
+
+
+def detail(user, request_id):
+    with store._lock:
+        req = store.request_in_scope(user, request_id)
+        label = parent_label if user.role == "parent" else staff_label
+        timeline: list[TimelineItem] = []
+        for e in store.events_of(req.id):
+            if e.to_status is None:
+                continue
+            text = label(e.to_status, req.type)
+            if not timeline or timeline[-1].label != text:
+                timeline.append(TimelineItem(label=text, at=e.created_at))
+        consultation = None
+        if req.type == "consultation":
+            booking = store.confirmed_booking_of(req.id)
+            consultation = ConsultationOut(slots=[
+                SlotOut(id=s.id, period=Period(**s.period), room=store.room_name(s.room_id), status=s.status)
+                for s in store.slots_of_request(req.id) if s.status != "discarded"
+            ], booking=BookingOut(id=booking.id, room=store.room_name(booking.room_id), period=Period(**booking.period))
+                if booking else None)
+        return RequestDetailOut(
+            request=RequestView(id=req.id, type=req.type, title=req.title, status=req.status,
+                                status_label=label(req.status, req.type), missing_fields=req.missing_fields,
+                                hold_until=store.hold_until_of(req.id), parent_confirmed_at=req.parent_confirmed_at,
+                                created_at=req.created_at, updated_at=req.updated_at),
+            messages=[MessageOut(id=m.id, sender_type=m.sender_type, body=m.body, created_at=m.created_at)
+                      for m in store.messages_of(req.id)],
+            timeline=timeline, consultation=consultation,
+            rejection=store.rejection_of(req.id) if req.status == "rejected" else None,
+            sources=[source for card in store.approved_cards_of(req.id)
+                     for source in documents.evidence(card, parent=user.role == "parent")]
+                     if req.status in ("sent_or_booked", "completed") else [],
+        )
 
 
 def message(user, request_id, body):

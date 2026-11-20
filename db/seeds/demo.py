@@ -66,10 +66,19 @@ def seed_demo(connection, *, refresh_note_requests=False):
         """), {"id": document_id, "org": seed.ORG, "content": content})
     for request in seed.DEMO_NOTE_REQUESTS:
         connection.execute(text("""
-            INSERT INTO requests (id,org_id,classroom_id,child_id,requester_id,client_request_id,type,body,created_at)
-            VALUES (:id,:org,:class,:child_id,:requester_id,:key,:type,:body,:now) ON CONFLICT DO NOTHING
+            INSERT INTO requests (id,org_id,classroom_id,child_id,requester_id,client_request_id,type,title,body,created_at)
+            VALUES (:id,:org,:class,:child_id,:requester_id,:key,:type,:body,:body,:now)
+            ON CONFLICT (id) DO UPDATE SET title=coalesce(requests.title, EXCLUDED.title)
         """), {**request, "org": seed.ORG, "class": seed.CLASS_STAR, "key": f"demo:{request['id']}",
                "now": request.get("created_at", datetime.now(KST))})
+        # 이전 데모 DB에도 첫 보호자 메시지를 한 번만 채워요. 이미 있는 대화는 덮어쓰지 않아요.
+        connection.execute(text("""
+            INSERT INTO request_messages (request_id,org_id,sender_type,sender_id,body,created_at)
+            SELECT r.id,r.org_id,'user',r.requester_id,r.body,r.created_at FROM requests r
+            WHERE r.id=:id AND r.org_id=:org AND NOT EXISTS (
+                SELECT 1 FROM request_messages m WHERE (m.request_id,m.org_id)=(r.id,r.org_id)
+                  AND m.sender_type='user' AND m.sender_id=r.requester_id)
+        """), {"id": request["id"], "org": seed.ORG})
     if refresh_note_requests:
         now = datetime.now(KST)
         latest = max(r["created_at"].astimezone(KST).date() for r in seed.DEMO_NOTE_REQUESTS if "created_at" in r)

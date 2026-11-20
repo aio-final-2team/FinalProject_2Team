@@ -242,7 +242,6 @@ def test_parent_note_classroom_filter_does_not_deny_or_log(db_client, records, s
 @pytest.mark.parametrize("method,path,actor", [
     ("POST", "/requests", seed.PARENT),
     ("GET", "/requests", seed.PARENT),
-    ("GET", "/requests/{local_request}", seed.PARENT),
     ("GET", "/requests/{local_request}/stream", seed.PARENT),
     ("POST", "/requests/{local_request}/messages", seed.PARENT),
     ("POST", "/requests/{local_request}/slot-choices", seed.PARENT),
@@ -258,7 +257,6 @@ def test_parent_note_classroom_filter_does_not_deny_or_log(db_client, records, s
     ("POST", "/memory-rules/{local_card}/decision", seed.TEACHER),
     ("GET", "/overview", seed.DIRECTOR),
     ("POST", "/documents", seed.TEACHER),
-    ("GET", "/documents", seed.TEACHER),
     ("GET", "/documents/{local_card}", seed.TEACHER),
     ("GET", "/notifications", seed.PARENT),
     ("POST", "/notifications/1/read", seed.PARENT),
