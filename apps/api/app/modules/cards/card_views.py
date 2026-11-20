@@ -9,19 +9,10 @@ from app.api.labels import staff_label
 from app.core import scope
 from app.core.db import transaction
 from app.core.schedule import KST
+from app.modules.requests.complaints import repeat_count
 from app.modules.requests.requests import _expire, _hold_until
 
 FILTERS = ("unassigned", "needs_review", "uncertain", "on_hold", "in_progress", "done")
-
-
-def repeat_count(connection, req):
-    if req["type"] != "complaint" or req["topic_key"] in (None, "other"):
-        return None
-    return connection.scalar(
-        text("""SELECT count(*) FROM requests WHERE org_id=:org AND classroom_id=:class
-        AND type='complaint' AND topic_key=:topic AND created_at>=now()-interval '30 days' """),
-        {"org": req["org_id"], "class": req["classroom_id"], "topic": req["topic_key"]},
-    )
 
 
 def staff_request(connection, req):

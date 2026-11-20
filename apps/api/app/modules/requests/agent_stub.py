@@ -11,6 +11,7 @@ from sqlalchemy import text
 from app.core.db import transaction
 from app.core.request_rules import classify
 from app.core.schedule import KST, due_at
+from app.modules.requests.complaints import repeat_count
 from app.modules.requests.events import record, set_status
 
 
@@ -60,6 +61,11 @@ def run_request(request_id):
         if has_card and (req["status"] != "needs_info" or req["type"] == "consultation"):
             return
         fields = classify(req["type"], req["body"])
+        if req["type"] == "complaint" and fields["topic_key"] != "other":
+            # 서로 다른 요청의 동시 분류도 앞선 커밋을 포함해 세 번째를 셀 수 있어야 해요.
+            # FK가 잡는 반 행 잠금과 충돌하지 않도록 묶음별 트랜잭션 자문 잠금을 써요.
+            connection.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))"), {
+                "key": f"complaint:{req['org_id']}:{req['classroom_id']}:{fields['topic_key']}"})
         req.update(fields)
         connection.execute(text("""
             UPDATE requests SET topic_key=:topic_key,urgency=:urgency,risk_level=:risk_level,risk_category=:risk_category
@@ -91,10 +97,7 @@ def run_request(request_id):
             connection.execute(text("UPDATE cards SET check_result=CAST(:check AS jsonb) WHERE id=:id"),
                                {"id": card["id"], "check": json.dumps(card["check_result"])})
         record(connection, req, "drafted", card=card, actor_type="agent", agent_name="document")
-        repeated = req["type"] == "complaint" and req["topic_key"] != "other" and connection.scalar(text("""
-            SELECT count(*)>=3 FROM requests WHERE org_id=:org AND classroom_id=:class
-              AND type='complaint' AND topic_key=:topic AND created_at>=now()-interval '30 days'
-        """), {"org": req["org_id"], "class": req["classroom_id"], "topic": req["topic_key"]})
+        repeated = (repeat_count(connection, req) or 0) >= 3
         director = connection.scalar(text("""
             SELECT id FROM users WHERE org_id=:org AND role='director' AND is_active ORDER BY id LIMIT 1
         """), {"org": req["org_id"]})
