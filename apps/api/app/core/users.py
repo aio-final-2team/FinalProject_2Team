@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import date, datetime
+from secrets import token_urlsafe
 from types import SimpleNamespace
 from uuid import UUID
 
@@ -13,6 +14,7 @@ from app.core.db import transaction
 from app.core.schedule import KST
 
 _passwords = PasswordHasher()
+_DUMMY_PASSWORD_HASH = _passwords.hash(token_urlsafe(32))
 
 
 @dataclass(frozen=True)
@@ -41,13 +43,13 @@ def authenticate(login_id: str, password: str) -> User | None:
     with transaction() as connection:
         user = _user(connection.execute(text("SELECT * FROM users WHERE login_id=:login_id"),
                                         {"login_id": login_id}).mappings().one_or_none())
-    if user is None or not user.is_active:
-        return None
+    active = user is not None and user.is_active
+    password_hash = user.password_hash if active else _DUMMY_PASSWORD_HASH
     try:
-        _passwords.verify(user.password_hash, password)
+        _passwords.verify(password_hash, password)
     except (VerificationError, InvalidHashError):
         return None
-    return user
+    return user if active else None
 
 
 def classroom_ids_of(teacher_id: UUID, on: date | None = None) -> list[UUID]:

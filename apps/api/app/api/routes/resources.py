@@ -12,6 +12,7 @@ from app.api.schemas.views import (NotificationList, NotificationResponse, Draft
                                   SendResponse, DocumentResponse, DocumentList)
 from app.api.schemas.common import errors
 from app.core.auth import CurrentUser, current_user as note_user, require_roles as note_roles
+# T27에서 걷을 목록: 자료·알림의 workflows 별칭. 알림장은 위 core.auth를 직접 쓴다.
 from app.core.workflows import workflow_user as current_user, require_workflow_roles as require_roles
 from app import backend
 from app.backend import store, notifications, documents

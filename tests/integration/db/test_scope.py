@@ -220,6 +220,25 @@ def test_classroom_urls_check_scope(db_client, records, path):
         assert response.status_code == status, response.text
 
 
+def test_parent_note_classroom_filter_does_not_deny_or_log(db_client, records, seeded_db):
+    headers = {"Authorization": "Bearer " + issue_token(users.get_user(seed.PARENT))}
+    with seeded_db.connect() as connection:
+        note_date = connection.scalar(text("SELECT note_date FROM daily_notes WHERE id=:id"),
+                                      {"id": records["local_note"]})
+        events_before = connection.scalar(text("SELECT count(*) FROM events WHERE action='permission_denied'"))
+    for classroom, total in ((None, 1), (seed.CLASS_STAR, 1), (seed.CLASS_SUN, 0),
+                             (records["class"], 0), (uuid4(), 0)):
+        params = {"date": note_date.isoformat()}
+        if classroom is not None:
+            params["classroom_id"] = str(classroom)
+        response = db_client.get("/api/v1/daily-notes", headers=headers, params=params)
+        assert response.status_code == 200, response.text
+        assert response.json()["total"] == total
+        assert [n["id"] for n in response.json()["items"]] == ([str(records["local_note"])] if total else [])
+    with seeded_db.connect() as connection:
+        assert connection.scalar(text("SELECT count(*) FROM events WHERE action='permission_denied'")) == events_before
+
+
 @pytest.mark.parametrize("method,path,actor", [
     ("POST", "/requests", seed.PARENT),
     ("GET", "/requests", seed.PARENT),

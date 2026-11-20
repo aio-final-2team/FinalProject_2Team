@@ -13,6 +13,7 @@ from app.api.schemas.views import (CardList, CardDetail, DecisionResponse, Recla
 from app.api.schemas.common import errors
 from app.api.streams import stream
 from app.core.auth import CurrentUser
+# T27에서 걷을 목록: 아래 두 workflows 별칭을 영역 구현과 함께 core.auth로 바꾼다.
 from app.core.workflows import workflow_user as current_user, require_workflow_roles as require_roles
 from app.backend import cards, card_views, store
 

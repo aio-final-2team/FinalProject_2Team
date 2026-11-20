@@ -9,6 +9,7 @@ from app.api.schemas.common import Period, errors
 from app.api.schemas.requests import (ConsultationOut, MessageOut, RequestAccepted, RequestAcceptedOut,
                                       RequestCreateIn, RequestDetailOut, RequestView, SlotOut, TimelineItem)
 from app.core.auth import CurrentUser
+# T27에서 걷을 목록: 아래 두 workflows 별칭을 영역 구현과 함께 core.auth로 바꾼다.
 from app.core.workflows import workflow_user as current_user, require_workflow_roles as require_roles
 from app.core.errors import trace_id_of
 from app.backend import store, request_actions, documents

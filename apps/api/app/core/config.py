@@ -5,6 +5,9 @@ import re
 from dataclasses import dataclass
 from datetime import date, time
 
+_MOCK_JWT_SECRET = "local-dev-only-change-me-32-bytes-min"
+_EXAMPLE_JWT_SECRET = "replace-with-a-local-random-value"
+
 
 @dataclass(frozen=True)
 class Settings:
@@ -23,6 +26,10 @@ def load_settings() -> Settings:
     backend = os.getenv("DATA_BACKEND", "mock")
     if backend not in ("mock", "db"):
         raise ValueError("DATA_BACKEND: mock 또는 db 필요")
+    jwt_secret = os.getenv("JWT_SECRET", _MOCK_JWT_SECRET)
+    if backend == "db" and (jwt_secret in (_MOCK_JWT_SECRET, _EXAMPLE_JWT_SECRET)
+                            or len(jwt_secret.encode("utf-8")) < 32):
+        raise ValueError("JWT_SECRET: DB 모드에서는 예시·기본값이 아닌 32바이트 이상 키 필요")
     origins = os.getenv("CORS_ORIGINS", "http://localhost:5173")
     hours = os.getenv("WORK_HOURS", "09:00-18:00").strip()
     if not re.fullmatch(r"\d{2}:\d{2}-\d{2}:\d{2}", hours):
@@ -34,7 +41,7 @@ def load_settings() -> Settings:
     if any(c not in ("child_safety", "staff_attack", "legal_external", "privacy_leak") for c in categories):
         raise ValueError("IMMEDIATE_RISK_CATEGORIES: 긴급 위험 종류 필요")
     return Settings(
-        jwt_secret=os.getenv("JWT_SECRET", "local-dev-only-change-me-32-bytes-min"),
+        jwt_secret=jwt_secret,
         jwt_access_ttl_hours=int(os.getenv("JWT_ACCESS_TTL_HOURS", "12")),
         cors_origins=tuple(o.strip() for o in origins.split(",") if o.strip()),
         holidays=tuple(date.fromisoformat(d.strip()) for d in os.getenv("HOLIDAYS", "").split(",") if d.strip()),

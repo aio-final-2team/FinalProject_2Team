@@ -52,7 +52,8 @@ def test_me_gives_teacher_classrooms_and_parent_children(client, teacher, parent
 
 @pytest.mark.parametrize("mutation", ["expired", "version", "inactive", "org", "role", "signature",
                                       "missing_exp", "missing_ver", "missing_sub", "missing_org",
-                                      "missing_role", "missing_iat", "bad_sub", "unknown_user"])
+                                      "missing_role", "missing_iat", "bad_sub", "bad_sub_string",
+                                      "null_sub", "number_sub", "unknown_user"])
 def test_auth_rejects_invalid_claims(client, mutation, auth_backend):
     user = backend.users.get_user(seed.TEACHER)
     claims = jwt.decode(issue_token(user), settings.jwt_secret, algorithms=["HS256"])
@@ -70,6 +71,12 @@ def test_auth_rejects_invalid_claims(client, mutation, auth_backend):
         claims.pop(mutation.removeprefix("missing_"))
     elif mutation == "bad_sub":
         claims["sub"] = ["not-a-uuid"]
+    elif mutation == "bad_sub_string":
+        claims["sub"] = "not-a-uuid"
+    elif mutation == "null_sub":
+        claims["sub"] = None
+    elif mutation == "number_sub":
+        claims["sub"] = 123
     elif mutation == "unknown_user":
         claims["sub"] = str(uuid4())
     key = "wrong-signature-key-32-characters-long" if mutation == "signature" else settings.jwt_secret
@@ -77,6 +84,20 @@ def test_auth_rejects_invalid_claims(client, mutation, auth_backend):
     response = client.get(BASE + "/me", headers={"Authorization": "Bearer " + token})
     assert response.status_code == 401
     assert response.json()["error"]["code"] == "UNAUTHENTICATED"
+
+
+@pytest.mark.parametrize("error_type", [TypeError, AttributeError, KeyError, ValueError])
+def test_account_storage_bug_is_500_instead_of_401(client, teacher, monkeypatch, error_type):
+    def broken_storage(user_id):
+        assert user_id == seed.TEACHER
+        raise error_type("[TEST] storage bug")
+
+    monkeypatch.setattr(backend.users, "get_user", broken_storage)
+    response = client.get(BASE + "/me", headers={**teacher, "X-Request-ID": "storage-bug"})
+    assert response.status_code == 500
+    assert response.json()["error"] == {
+        "code": "INTERNAL_ERROR", "message": "잠시 뒤 다시 시도해 주세요.",
+        "trace_id": "storage-bug", "details": {}}
 
 
 @pytest.mark.parametrize("login_id,password", [("missing", "demo1234"), ("teacher01", "wrong")])

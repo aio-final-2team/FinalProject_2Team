@@ -32,6 +32,8 @@ export TEST_DATABASE_URL="postgresql+psycopg://yuchion:yuchion_test@127.0.0.1:$p
 export DATABASE_URL="$TEST_DATABASE_URL"
 export TEST_DB_CONTAINER="$container"
 export DATA_BACKEND=db
+# 임시 DB 시험용 키만 만든다. 실제 환경의 키나 mock 기본값을 쓰지 않는다.
+export JWT_SECRET="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
 
 ready=0
 for (( attempt=0; attempt<60; attempt++ )); do

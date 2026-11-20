@@ -97,8 +97,12 @@ def test_batch_atomic_patch_and_parent_visibility(client, teacher, parent, paren
         visible = client.get(BASE + "/daily-notes", headers=headers, params={"date": batch()["note_date"]}).json()
         assert visible["total"] == 1 and visible["items"][0]["child_id"] == str(child_id)
         assert visible["items"][0]["status"] == "sent" and visible["items"][0]["open_checks"] == []
-        assert client.get(BASE + "/daily-notes", headers=headers,
-                          params={"date": batch()["note_date"], "classroom_id": str(seed.CLASS_SUN)}).json()["items"] == []
+        for classroom, total in ((seed.CLASS_STAR, 1), (seed.CLASS_SUN, 0), (uuid4(), 0)):
+            filtered = client.get(BASE + "/daily-notes", headers=headers, params={
+                "date": batch()["note_date"], "classroom_id": str(classroom)})
+            assert filtered.status_code == 200, filtered.text
+            assert filtered.json()["total"] == total
+            assert filtered.json()["items"] == (visible["items"] if total else [])
     assert client.get(BASE + "/daily-notes", headers=director, params={"date": batch()["note_date"]}).json()["total"] == 20
     if note_backend == "db":
         from app.core.db import transaction

@@ -20,6 +20,7 @@ ROOT = Path(__file__).resolve().parents[2]
 def test_backend_selection(backend, success, message):
     env = {key: value for key, value in os.environ.items() if key not in ("DATA_BACKEND", "DATABASE_URL")}
     env["PYTHONPATH"] = str(ROOT / "apps/api")
+    env["JWT_SECRET"] = "[TEST]-backend-selection-key-32-bytes-min"
     if backend is not None:
         env["DATA_BACKEND"] = backend
     check = ("assert 'app.mock.store' not in sys.modules; print('db_without_mock')" if backend == "db"
@@ -34,3 +35,29 @@ def test_initial_sql_is_immutable():
     # 설계 최신판이 바뀌어도 적용한 v0.7 SQL은 고치지 않는다.
     applied = (ROOT / "apps/api/migrations/sql/0001_initial.sql").read_bytes()
     assert sha256(applied).hexdigest() == "0aa90b95c718f50240e05ebf04aafc14cfe2a2f35e11a56016d9a412f6e155ee"
+
+
+@pytest.mark.parametrize("backend", ["mock", "db"])
+@pytest.mark.parametrize("secret,valid_for_db", [
+    (None, False),
+    ("", False),
+    ("local-dev-only-change-me-32-bytes-min", False),
+    (next(line.split("=", 1)[1] for line in (ROOT / ".env.example").read_text().splitlines()
+          if line.startswith("JWT_SECRET=")), False),
+    ("a" * 31, False),
+    ("가" * 10, False),
+    ("a" * 32, True),
+    ("가" * 11, True),
+], ids=["missing", "empty", "mock_default", "env_example", "31_bytes", "30_utf8_bytes",
+        "32_bytes", "33_utf8_bytes"])
+def test_app_startup_requires_separate_db_jwt_key(backend, secret, valid_for_db):
+    env = {key: value for key, value in os.environ.items()
+           if key not in ("JWT_SECRET", "DATABASE_URL")}
+    env.update(DATA_BACKEND=backend, PYTHONPATH=str(ROOT / "apps/api"))
+    if secret is not None:
+        env["JWT_SECRET"] = secret
+    result = subprocess.run([sys.executable, "-c", "from app.main import app"],
+                            cwd=ROOT, env=env, capture_output=True, text=True)
+    assert (result.returncode == 0) is (backend == "mock" or valid_for_db)
+    if backend == "db" and not valid_for_db:
+        assert "ValueError: JWT_SECRET:" in result.stderr

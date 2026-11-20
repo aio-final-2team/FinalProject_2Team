@@ -4,6 +4,8 @@ FastAPI 애플리케이션입니다. 태웅 담당의 인증·요청·상담·�
 
 `DATA_BACKEND` 기본값은 `mock`이에요. `db`는 PostgreSQL의 계정과 관계를 읽어요.
 DB 주소는 `DATABASE_URL`로 받아요. 마이그레이션·시드는 별도로 실행해요.
+DB 모드는 `JWT_SECRET`에 32바이트 이상의 별도 키가 필요해요. 값이 없거나 mock 기본값·
+`.env.example`의 예시 값이면 기동을 중단해요. mock의 개발용 기본값은 그대로 쓸 수 있어요.
 
 | 범위 | mock | db |
 | --- | --- | --- |

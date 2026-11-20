@@ -45,9 +45,12 @@ def current_user(cred: HTTPAuthorizationCredentials | None = Depends(_bearer)) -
     try:
         claims = jwt.decode(cred.credentials, settings.jwt_secret, algorithms=["HS256"],
                             options={"require": ["sub", "org", "role", "ver", "iat", "exp"]})
-        user = backend.users.get_user(UUID(claims["sub"]))
-    except (jwt.PyJWTError, KeyError, ValueError, TypeError, AttributeError):
+        if not isinstance(claims["sub"], str):
+            raise ValueError("sub: UUID 문자열 필요")
+        user_id = UUID(claims["sub"])
+    except (jwt.PyJWTError, KeyError, ValueError):
         raise ApiError(401, "UNAUTHENTICATED") from None
+    user = backend.users.get_user(user_id)
     if (user is None or not user.is_active or claims.get("ver") != user.token_version
             or claims.get("org") != str(user.org_id) or claims.get("role") != user.role):
         raise ApiError(401, "UNAUTHENTICATED")
