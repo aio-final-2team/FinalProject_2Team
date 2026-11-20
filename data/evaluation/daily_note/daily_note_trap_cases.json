@@ -12,7 +12,7 @@
     "date_check",
     "absent"
   ],
-  "flag_kind_basis": "API 설계 v0.4 3.7 open_checks[].kind (draft_failed·check_failed는 실행 실패라 문항에 없음)",
+  "flag_kind_basis": "API 설계 v0.4 3.7 open_checks[].kind 8값 중 메모로 시험하는 5값. draft_failed·check_failed는 실행 실패라, request_missed는 보호자 요청 가상 데이터가 아직 없어 문항에 없음",
   "scoring": {
     "pass": "must_include 사실이 모두 있고, must_not_include 표현·뜻이 없고, 확인 항목 여부와 kind가 expect_flag·flag_kind와 같음",
     "must_not_include": "낱말 검사로 먼저 거르고, 뜻이 같은 다른 표현은 사람이 본다",

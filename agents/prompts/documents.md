@@ -36,6 +36,8 @@
 - 날짜·반: {note_date}, {classroom_name}
 - 반 공통: 오늘 활동 {activities}, 준비물 {supplies}
 - 이 아이: 이름 {child_name}, 선생님 메모 {child_memo} (비어 있을 수 있음)
+- 이 아이 보호자의 그날 요청: {requests} — `[{request_id, type, text}]`, `type`은 `medication`·`pickup`·`inquiry` (없으면 빈 목록)
+- 그날 식단: {menu} — `{document_id, title, text}` 또는 없음
 - 담임 말투 기억(있으면): {teacher_style}
 - 검사 AI가 돌려보낸 문제(있으면): {review_issues}
 
@@ -45,9 +47,10 @@
 | `key` | `label` | 무엇을 쓰나 | `source` |
 | --- | --- | --- | --- |
 | `day` | 오늘 하루 | 반 공통 활동 | `{type: teacher_input}` |
-| `child` | 오늘 {child_name}는 | 이 아이 메모를 풀어 쓴 문장. 메모가 비면 이 줄을 넣지 않는다 | `{type: teacher_input}` |
+| `child` | 아이 메모 | 이 아이 메모를 풀어 쓴 문장. 메모가 비면 이 줄을 넣지 않는다 | `{type: teacher_input}` |
+| `medication`·`pickup`·`day` | 보호자 요청 | 보호자 요청마다 한 줄. 투약은 `medication`, 귀가는 `pickup`, 그 밖의 문의는 `day` | `{type: request, request_id}` |
 | `supplies` | 준비물 | 반 공통 준비물. 없으면 넣지 않는다 | `{type: teacher_input}` 또는 근거 통신문 `{type: document, …}` |
-| `meal` | 식사 | `search_documents(doc_type="menu")`로 찾은 그날 식단 | `{type: document, document_id, document_title}` |
+| `meal` | 식사 | 입력 {menu}의 그날 식단. 없으면 넣지 않는다 | `{type: document, document_id, document_title}` |
 
 ### 쓰는 규칙
 1. 메모에 있는 사실만 쓴다. 이유·느낌·평가·가정 지도("집에서도 ~해 주세요")를 덧붙이지 않는다. 예: "점심 조금 먹음" → "점심을 조금 먹었어요." (O) / "입맛이 없어 보였어요." (X)
@@ -60,7 +63,8 @@
 8. 메모의 날짜가 반 공통 준비물·통신문 날짜와 다르면 어느 쪽으로도 고쳐 쓰지 않는다.
 9. 이런 메모는 `child` 줄을 비워 둔다: 메모 속 이름이 이 아이가 아님(규칙 5), 가정사·선생님 혼자 보는 메모(규칙 7), 날짜가 다름(규칙 8), 사실 없이 선생님 판단만 있음(예: "말 안 들음"), 무슨 뜻인지 모름. 선생님 확인은 검사 AI가 남긴다.
 10. 말투 기억이 있으면 그 말투로, 없으면 "~했어요"체로 짧게 쓴다. 말투를 맞추려고 사실을 더하지 않는다.
-11. 검사 AI가 돌려보낸 문제가 있으면 그 줄만 고친다.
+11. 보호자 요청은 하나도 빠뜨리지 않고 한 줄씩 쓴다. 요청 내용만 옮기고, 처리 결과("약 먹였어요", "할머니께 인계했어요")는 선생님 메모에 있을 때만 쓴다.
+12. 검사 AI가 돌려보낸 문제가 있으면 그 줄만 고친다.
 
 ### 도구 실패
-- 식단 검색이 다시 해도 실패하면 `meal` 줄을 넣지 않는다. 식단을 지어내지 않는다.
+- 식단(`menu`)이 없으면 `meal` 줄을 넣지 않는다. 식단을 지어내지 않는다. (식단은 서버가 넣어 주므로 알림장에서는 도구를 부르지 않는다)
