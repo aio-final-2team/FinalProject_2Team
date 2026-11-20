@@ -7,7 +7,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import StreamingResponse
 
 from app.core.config import settings
-from app.mock import store
+from app.backend import store
 
 
 def stream(req, card=None):

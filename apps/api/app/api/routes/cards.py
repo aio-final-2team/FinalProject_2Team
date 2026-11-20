@@ -13,7 +13,7 @@ from app.api.schemas.views import (CardList, CardDetail, DecisionResponse, Recla
 from app.api.schemas.common import errors
 from app.api.streams import stream
 from app.core.auth import CurrentUser, current_user, require_roles
-from app.mock import cards, card_views, store
+from app.backend import cards, card_views, store
 
 router = APIRouter(tags=["교직원 받은함"])
 staff = require_roles("teacher", "director")
@@ -36,7 +36,7 @@ def get_card(card_id: UUID, user: CurrentUser = Depends(staff)):
             responses={200: {"content": {"text/event-stream": {"schema": {"type": "string"}}}}, **errors(401, 403, 404, 422)})
 def card_stream(card_id: UUID, user: CurrentUser = Depends(staff)):
     card = cards.in_scope(user, card_id)
-    return stream(store.state().requests.get(card.request_id), card)
+    return stream(store.get_request(card.request_id), card)
 
 
 @router.post("/cards/{card_id}/decisions", response_model=DecisionResponse, responses=errors(401, 403, 404, 409, 422))

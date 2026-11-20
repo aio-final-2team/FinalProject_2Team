@@ -6,7 +6,7 @@ from app.api.schemas.auth import ChildOut, LoginIn, LoginOut, MeOut, UserOut
 from app.api.schemas.common import errors
 from app.core.auth import CurrentUser, current_user, issue_token
 from app.core.errors import ApiError
-from app.mock import store
+from app.backend import store
 
 router = APIRouter(tags=["인증"])
 

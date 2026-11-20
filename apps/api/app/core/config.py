@@ -15,9 +15,13 @@ class Settings:
     mock_stream_delay_ms: int = 300
     work_hours: tuple[time, time] = (time(9), time(18))
     immediate_risk_categories: tuple[str, ...] = ("child_safety",)
+    data_backend: str = "mock"
 
 
 def load_settings() -> Settings:
+    backend = os.getenv("DATA_BACKEND", "mock")
+    if backend not in ("mock", "db"):
+        raise ValueError("DATA_BACKEND: mock 또는 db 필요")
     origins = os.getenv("CORS_ORIGINS", "http://localhost:5173")
     hours = os.getenv("WORK_HOURS", "09:00-18:00").strip()
     if not re.fullmatch(r"\d{2}:\d{2}-\d{2}:\d{2}", hours):
@@ -35,6 +39,7 @@ def load_settings() -> Settings:
         holidays=tuple(date.fromisoformat(d.strip()) for d in os.getenv("HOLIDAYS", "").split(",") if d.strip()),
         mock_stream_delay_ms=max(0, int(os.getenv("MOCK_STREAM_DELAY_MS", "300"))),
         work_hours=work_hours, immediate_risk_categories=categories,
+        data_backend=backend,
     )
 
 

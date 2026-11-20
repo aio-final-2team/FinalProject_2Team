@@ -14,7 +14,7 @@ from pydantic import BaseModel
 
 from app.core.config import settings
 from app.core.errors import ApiError
-from app.mock import store
+from app.backend import store
 
 Role = Literal["parent", "teacher", "director"]
 _bearer = HTTPBearer(auto_error=False)

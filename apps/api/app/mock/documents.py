@@ -17,6 +17,13 @@ def in_scope(user, document_id):
     return doc
 
 
+def visible(user):
+    allowed = set(store.classroom_ids_of(user.id))
+    return [d for d in store.state().documents.values() if d.org_id == user.org_id and (user.role == "director"
+            or not store.state().document_classrooms.get(d.id)
+            or allowed.intersection(store.state().document_classrooms[d.id]))]
+
+
 def chunks(doc):
     return [c for c in store.state().chunks.values() if c.document_id == doc.id]
 

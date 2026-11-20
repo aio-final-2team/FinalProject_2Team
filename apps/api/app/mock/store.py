@@ -400,6 +400,35 @@ def _propose_slots(card: Card, teacher: UUID | None, round_no: int = 1) -> list[
 
 # ---------- 조회 ----------
 
+def get_request(request_id: UUID | None) -> Request | None:
+    """이미 범위를 확인한 카드가 가리키는 요청. 요청 없는 카드면 None."""
+    return _state.requests.get(request_id)
+
+
+def requests_of(user, status=None) -> list[Request]:
+    return [r for r in _state.requests.values() if r.org_id == user.org_id and r.requester_id == user.id
+            and (status is None or r.status == status)]
+
+
+def room_name(room_id: UUID) -> str:
+    return _state.rooms[room_id].name
+
+
+def confirmed_booking_of(request_id: UUID) -> Booking | None:
+    return next((b for b in _state.bookings.values() if b.request_id == request_id and b.status == "confirmed"), None)
+
+
+def rejection_of(request_id: UUID) -> dict | None:
+    return next(({"reason_code": a.reason_code, "reason_text": a.reason_text}
+                 for a in reversed(_state.approvals) if a.decision == "dismiss"
+                 and _state.cards[a.card_id].request_id == request_id), None)
+
+
+def approved_cards_of(request_id: UUID) -> list[Card]:
+    return [card for card in cards_of(request_id)
+            if any(a.card_id == card.id and a.decision in ("approve", "edit_approve") for a in _state.approvals)]
+
+
 def messages_of(request_id: UUID) -> list[Message]:
     return [m for m in _state.messages if m.request_id == request_id]
 
