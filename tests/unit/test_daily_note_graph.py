@@ -177,3 +177,11 @@ def test_other_child_name_in_memo_is_caught_even_when_line_left_out():
     children = [kid("a", "지안", "지아 점심 다 먹음"), kid("b", "지아")]
     note = draft_daily_notes(payload(children), Script({"child": None}), Script(OK))[0]
     assert [c["kind"] for c in note["open_checks"]] == ["other_child"]
+
+
+def test_medication_request_line_always_gets_teacher_check():
+    req = {"request_id": "r1", "type": "medication", "text": "점심 먹고 시럽 2.5ml 먹여 주세요"}
+    writer = Script({"child": None, "requests": [{"request_id": "r1", "value": "점심 후 시럽 2.5ml를 먹여 달라는 요청이 있었어요."}]})
+    [note] = draft_daily_notes(payload([kid("a", "로아", "", [req])]), writer, Script(OK))
+    [check] = note["open_checks"]
+    assert check["kind"] == "sensitive" and check["item_key"] == "medication" and check["request_id"] == "r1"

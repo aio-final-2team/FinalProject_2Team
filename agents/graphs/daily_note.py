@@ -25,6 +25,7 @@ PROBLEM = {
     "request_missed": "보호자 요청이 초안에 없어요. 요청 내용을 넣어 주세요.",
     "other_child": "다른 아이 이름이 들어 있어요. 이 아이 알림장에서는 빼 주세요.",
     "memo_left_out": "선생님 메모를 알림장에 옮기지 않았어요. 메모를 보고 직접 확인해 주세요.",
+    "medication": "보호자 투약 요청이에요. 보내기 전에 직접 확인해 주세요.",
 }
 
 WRITE_FORMAT = """
@@ -142,6 +143,8 @@ def code_checks(own: list[dict], child: dict, names: list[str]) -> list[dict]:
     for req in child.get("requests") or []:
         if req["request_id"] not in covered:
             found.append(new_check(REQUEST_KEY[req["type"]], "request_missed", request_id=req["request_id"]))
+        elif req["type"] == "medication":  # 투약은 늘 사람이 본다(NFR-03)
+            found.append(new_check("medication", "sensitive", problem=PROBLEM["medication"], request_id=req["request_id"]))
     return found
 
 
