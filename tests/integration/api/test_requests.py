@@ -111,7 +111,7 @@ def test_other_parent_and_other_class_teacher_get_404(client, parent, parent_oth
 
 def test_validation_error_shape_and_trace_id(client, parent):
     res = client.post("/api/v1/requests", headers={**parent, "X-Request-ID": "trace-test-1"},
-                      json={"client_request_id": "short", "type": "medication", "body": "", "child_id": "x"})
+                      json={"client_request_id": "short", "type": "unknown", "body": "", "child_id": "x"})
     assert res.status_code == 422
     err = res.json()["error"]
     assert err["code"] == "VALIDATION_FAILED"

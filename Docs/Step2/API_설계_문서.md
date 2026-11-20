@@ -1,15 +1,17 @@
 # 유치온 API 설계 문서 (T13)
 
-문서 버전 v0.5.3 | 작성 상태: T48 상담 종료·대체 시간 알림을 모의·DB와 대조함
+**팀 확인 전 초안 — T46 투약·귀가 계약 v0.6**
+
+문서 버전 v0.6 | 작성 상태: 투약·귀가 요청 초안을 모의·DB와 대조해요
 
 | 항목 | 내용 |
 | --- | --- |
 | 작업 | T13 API 설계 문서(FastAPI·Function Calling 도구 계약)·모의 API (#170) |
 | 작성 | 태웅 · 검토 인혜 |
-| 기준 문서 | 기획서 1117판 3장 FR-01~FR-13 · T04 흐름·권한 명세(PR #234) · [입출력 계약표](입출력_계약표_초안.md) v0.14(T10 회의 11/18 합의 + 상담 알림 v0.5.3 반영) · [DB 스키마 설계서](DB_스키마_설계서.md) v0.9(0003 알림장 원본·이력 포함) |
+| 기준 문서 | 기획서 1117판 3장 FR-01~FR-13 · T04 흐름·권한 명세(PR #234) · [입출력 계약표](입출력_계약표_초안.md) v0.15(T46 팀 확인 전 초안) · [DB 스키마 설계서](DB_스키마_설계서.md) v0.14(0008 투약·귀가 알림 포함) |
 | 따른 가이드 | 강사님 'API 설계 문서 작성법' 11/18 수정본. 1~6장이 가이드의 '문서에 들어가는 여섯 가지' 순서다 |
 
-이 문서는 T10 계약표에서 합의한 필드·권한·오류를 엔드포인트와 도구 단위로 펼친 것이다. 계약표와 이 문서가 다르면 계약표를 먼저 고치고 두 문서의 판을 같이 올린다. 구현이 시작되면 FastAPI의 `/docs`와 대조해 판을 올린다(계약표 1.1 규칙 1). 이 판(v0.5.3)은 API 33개 전부의 상세 명세, 화면이 쓰는 조회 응답 칸(3.7), 도구 전체의 실패 처리, 업무 흐름(5.7), 실행 규칙과 대표 사례 대조(6.7)를 담는다. 모의 API와 생성물 `contracts/openapi.yaml`을 붙였으며, 쓰는 법과 데모 계정은 [모의 API 안내](../../contracts/mock_api/README.md)에 있다.
+이 문서는 T10 계약표에서 합의한 필드·권한·오류를 엔드포인트와 도구 단위로 펼친 것이다. 계약표와 이 문서가 다르면 계약표를 먼저 고치고 두 문서의 판을 같이 올린다. 구현이 시작되면 FastAPI의 `/docs`와 대조해 판을 올린다(계약표 1.1 규칙 1). 이 판(v0.6)은 API 36개 전부의 상세 명세, 화면이 쓰는 조회 응답 칸(3.7), 도구 전체의 실패 처리, 업무 흐름(5.7), 실행 규칙과 대표 사례 대조(6.7)를 담는다. 모의 API와 생성물 `contracts/openapi.yaml`을 붙였으며, 쓰는 법과 데모 계정은 [모의 API 안내](../../contracts/mock_api/README.md)에 있다.
 
 **목차.** 1. 공통 정보와 인증 · 2. API 목록 · 3. 엔드포인트 상세 명세 · 4. 검증과 권한 규칙 · 5. Tool 정의와 호출 흐름 · 6. 실행 규칙 · 7. API 필드와 DB 컬럼 대응 · 8. 설정값 · 부록 A. 예시 ID · 변경 이력
 
@@ -17,9 +19,9 @@
 
 | 체크리스트(가이드 33쪽) | 이 문서 |
 | --- | --- |
-| 구현할 API가 모두 목록 표에 있고 요구사항 ID와 연결된다 | 2장(33개, 요구사항 열) |
+| 구현할 API가 모두 목록 표에 있고 요구사항 ID와 연결된다 | 2장(36개, 요구사항 열) |
 | 서버 주소·인증·오류 형식·/docs·변경 이력이 있다 | 1장, 끝의 변경 이력 |
-| 구현할 API마다 상세 명세와 필드 명세 표가 있다 | 3장(33개 전부) |
+| 구현할 API마다 상세 명세와 필드 명세 표가 있다 | 3장(36개 전부) |
 | 형식 오류(422)와 권한·승인 오류(403)를 나눠 적었다 | 4.1 |
 | 202를 쓰는 API는 작업 상태·결과·실패 조회가 있다 | 6.3 |
 | Tool마다 성공·실패 출력과 실패 후 처리가 있다 | 5.2, 5.4, 5.7 |
@@ -36,7 +38,7 @@
 | 배포 서버 | `https://<배포 도메인>/api/v1` (AWS EC2, T36 첫 배포 때 확정해 이 칸을 고침) |
 | 자동 문서 | `http://localhost:8000/docs`, `http://localhost:8000/openapi.json`(버전 접두어 없이 앱 맨 위에 있음). 저장소에는 `/openapi.json`에서 뽑은 `contracts/openapi.yaml`을 생성물로 둔다 |
 | 상태 확인 | `GET /health` (인증 없음, 버전 접두어 없음) |
-| 모의 API | API 33개가 메모리 데모 데이터로 응답한다. 다시 켜면 초기화된다. 실행·계정·흐름은 [모의 API 안내](../../contracts/mock_api/README.md) 참고 |
+| 모의 API | API 36개가 메모리 데모 데이터로 응답한다. 다시 켜면 초기화된다. 실행·계정·흐름은 [모의 API 안내](../../contracts/mock_api/README.md) 참고 |
 
 ### 1.2 인증
 
@@ -106,7 +108,7 @@
 
 ## 2. API 목록
 
-인증 열의 '자기 것'·'우리 반'은 4.2의 범위 규칙을 뜻한다. 상세 열은 30개 API의 3장 절 번호를 가리킨다.
+인증 열의 '자기 것'·'우리 반'은 4.2의 범위 규칙을 뜻한다. 상세 열은 36개 API의 3장 절 번호를 가리킨다.
 
 | # | 메서드 | 경로 | 인증·역할 | 설명 | 성공 | 요구사항 | 상세 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -144,11 +146,15 @@
 | 32 | DELETE | `/api/v1/memories/{memory_id}` | 담임(본인) | 내 AI 기억 지우기 | 204 | FR-06 | 3.25 |
 | 33 | POST | `/api/v1/daily-notes/drafts/{input_id}/regenerate` | 담임(우리 반) | 미확인 알림장 다시 만들기 | 202 | FR-10 | 3.26 |
 
-SSE 두 개(6·14)는 실시간 진행 화면(NFR-10)이 쓰므로 넣었다. 투약·귀가(T46)와 최종 기능(FR-14 이후)은 그 작업에서 이 표에 더한다.
+| 34 | GET | `/api/v1/children/{child_id}/pickup-guardians` | 자기 아이 보호자·담임·원장 | 등록 인계자 목록(팀 확인 전 초안) | 200 | FR-14 | 3.27 |
+| 35 | GET | `/api/v1/care-requests` | 담임·원장 | 투약·귀가 교직원 목록(팀 확인 전 초안) | 200 | FR-14 | 3.27 |
+| 36 | POST | `/api/v1/requests/{request_id}/care-decisions` | 담임·원장 | 투약·인계 실제 확인·완료(팀 확인 전 초안) | 200 | FR-14 | 3.27 |
+
+SSE 두 개(6·14)는 실시간 진행 화면(NFR-10)이 쓰므로 넣었어요. 투약·귀가 SSE는 AI 단계 없이 현재 상태 done으로 끝나요(3.27).
 
 ## 3. 엔드포인트 상세 명세
 
-API 33개를 가이드의 여덟 칸으로 쓴다(계약표 1.1 규칙 8). 고정 예시 ID는 부록 A의 데모 ID다. 필드 표의 '빈값'은 `""`이나 `null`을 받아도 되는지다. 3.8 이후 예시는 주요 응답 필드와 목록 첫 항목만 줄여 보인다. 토큰과 새로 발급한 ID는 `…`로 줄이고, 경로의 `{card_id}`·`{input_id}`·`{note_id}`는 앞선 응답에서 받은 값을 쓴다.
+API 36개를 가이드의 여덟 칸으로 쓴다(계약표 1.1 규칙 8). 고정 예시 ID는 부록 A의 데모 ID다. 필드 표의 '빈값'은 `""`이나 `null`을 받아도 되는지다. 3.8 이후 예시는 주요 응답 필드와 목록 첫 항목만 줄여 보인다. 토큰과 새로 발급한 ID는 `…`로 줄이고, 경로의 `{card_id}`·`{input_id}`·`{note_id}`는 앞선 응답에서 받은 값을 쓴다.
 
 ### 3.1 요청 만들기 — `POST /api/v1/requests`
 
@@ -161,17 +167,18 @@ API 33개를 가이드의 여덟 칸으로 쓴다(계약표 1.1 규칙 8). 고�
 | ⑤ 검증·권한 | 형식은 Pydantic(422). 역할이 학부모가 아니면 403. `child_id`가 내 아이(`child_guardians`)가 아니면 404. `previous_request_id`는 내 요청이고 끝난 상태(`completed`·`rejected`)여야 하며, 아니면 404 또는 409 `INVALID_TRANSITION` |
 | ⑥ 정상 응답 | 202 + 요청 ID·상태·스트림 주소. 같은 `client_request_id`로 다시 보내면 200 + 처음 만든 요청 |
 | ⑦ 오류 응답 | 아래 오류 표 |
-| ⑧ 실행 규칙 | 저장만 하고 바로 답한다(10초 안). 중복 제출은 `(requester_id, client_request_id)` DB 유니크로 막는다. AI 처리가 실패해도 요청은 남고, 재시도 뒤에도 실패하면 사람 카드로 넘긴다(6.3) |
+| ⑧ 실행 규칙 | 저장만 하고 바로 답한다(10초 안). 중복 제출은 `(requester_id, client_request_id)` DB 유니크로 막는다. AI 처리가 실패해도 요청은 남고, 재시도 뒤에도 실패하면 사람 카드로 넘긴다(6.3). 투약·귀가는 AI를 실행하지 않고 교직원 목록에 남겨요(3.27) |
 
 **요청 본문 필드**
 
 | 필드 | 위치 | 타입 | 필수 | 빈값 | 제약 | 설명 |
 | --- | --- | --- | --- | --- | --- | --- |
 | `client_request_id` | 본문 | string | 필수 | 불가 | 8~64자, 화면이 만든 UUID 권장 | 같은 제출을 두 번 받지 않기 위한 키 |
-| `type` | 본문 | string | 필수 | 불가 | `inquiry`·`consultation`·`complaint` | 요청 유형. `medication`·`pickup`은 T46에서 연다 |
+| `type` | 본문 | string | 필수 | 불가 | `inquiry`·`consultation`·`complaint`·`medication`·`pickup` | 요청 유형. 투약·귀가는 팀 확인 전 초안(3.27) |
 | `body` | 본문 | string | 필수 | 불가 | 1~2,000자 | 질문·요청 내용 |
 | `child_id` | 본문 | string(UUID) | 필수 | 불가 | 내 아이 | 대상 아이. 반은 서버가 아이에서 정한다 |
 | `previous_request_id` | 본문 | string(UUID) | 선택 | `null` 가능 | 내 요청, 끝난 상태 | 끝난 요청을 다시 열 때 이전 요청(T04 2.1) |
+| `pickup_guardian_id` | 본문 | string(UUID) | pickup만 필수 | 다른 유형은 null | 같은 아이의 등록된 활성 보호자 | 실제 인계할 사람. T46 팀 확인 전 초안(3.27) |
 
 ```http
 POST /api/v1/requests
@@ -221,7 +228,7 @@ X-Request-ID: 6b0f1c2e-9a7d-4c1e-8f3a-2d5b7e9c1a40
 
 ### 3.2 요청 상세·스트림 — `GET /api/v1/requests/{request_id}`, `GET …/stream`
 
-T46 전까지 투약·귀가는 교직원 상세에서 알림장 출처용 최소 응답(유형·제목·첫 보호자 메시지, 나머지는 기본값)으로만 읽으며, 학부모 목록·total에서 제외하고 상세·대화 추가·스트림·확인은 404로 숨긴다. 등록 본문의 유형은 3.1 그대로다.
+투약·귀가도 자기 요청 목록·상세·대화·스트림에서 읽어요. 실제 확인·완료와 등록 인계자 계약은 3.27의 팀 확인 전 초안이에요. 민원용 confirm은 계속 409예요.
 
 | 칸 | 내용 |
 | --- | --- |
@@ -530,7 +537,7 @@ T12 화면 지도(성주, PR #254)를 계약표 v0.7과 대조했을 때 화면�
 
 | 필드 | 값 | 설명 |
 | --- | --- | --- |
-| `items[].key` | `day`·`meal`·`medication`·`pickup`·`supplies`·`child`·`inquiry` | 줄 종류. `child`는 아이별 메모를 풀어 쓴 줄이고 출처는 `teacher_input`이다. 메모가 없거나 공백뿐이면 이 줄이 없다. 보호자 문의는 반 공통 `day`와 다른 `inquiry` 줄, 투약·귀가는 `medication`·`pickup` 줄로 잇고 출처는 `request`다. 투약·귀가 요청 등록·인계 확인은 T46에서 연다 |
+| `items[].key` | `day`·`meal`·`medication`·`pickup`·`supplies`·`child`·`inquiry` | 줄 종류. `child`는 아이별 메모를 풀어 쓴 줄이고 출처는 `teacher_input`이다. 메모가 없거나 공백뿐이면 이 줄이 없다. 보호자 문의는 반 공통 `day`와 다른 `inquiry` 줄, 투약·귀가는 `medication`·`pickup` 줄로 잇고 출처는 `request`다. 투약·귀가 실제 확인은 3.27의 팀 확인 전 초안이고, 응답 request_status로 현재 상태를 보여요 |
 | `items[].source.type` | `teacher_input`·`document`·`request` | 담임 입력(`daily_note_inputs`), 원 자료(식단·일정), 학부모 요청(문의·투약·귀가) |
 | `items[].source.document_id`·`document_title` | — | `document`일 때 |
 | `items[].source.request_id` | — | `request`일 때 |
@@ -593,7 +600,7 @@ HTTP/1.1 200 OK
 | `status` | 쿼리 | string | 선택 | 생략 가능 | 3.2의 요청 상태 11개 | 생략하면 모든 상태 |
 | `page`·`size` | 쿼리 | integer | 선택 | 불가 | 기본 1·20, page ≥ 1, size 1~100 | 쪽 나누기 |
 | `sort` | 쿼리 | string | 선택 | 불가 | `-created_at`(기본)·`created_at`·`-updated_at`·`updated_at` | 생성·변경 시각 순 |
-| `items[].id`·`type`·`title`·`status`·`status_label`·`updated_at` | 응답 | UUID·string·datetime | 항상 | title은 null 가능 | 등록 유형 3개와 가상 귀가 시드 `pickup`·상태 11개 | 본인 요청의 요약 |
+| `items[].id`·`type`·`title`·`status`·`status_label`·`updated_at` | 응답 | UUID·string·datetime | 항상 | title은 null 가능 | 등록 유형 5개·상태 11개 | 본인 요청의 요약 |
 | `items[].next_action` | 응답 | string | 항상 | null 가능 | 정보 보완·시간 선택·민원 회신 확인 | needs_info면 보완 또는 시간 선택, 미확인 민원 회신이면 확인 안내 |
 | `items[].hold_until` | 응답 | date | 항상 | null 가능 | 보류 카드의 예정일 | 할 일·보류가 없으면 해당 칸은 null |
 | `total`·`page`·`size` | 응답 | integer | 항상 | 불가 | 전체 건수·요청한 쪽·크기 | 목록 공통 칸 |
@@ -1207,13 +1214,62 @@ HTTP/1.1 200 OK
 
 `daily_notes.ai_original`은 선생님이 받은 마지막 AI 초안이다. 선생님의 PATCH·확인·발송으로는 바꾸지 않고, 수정하지 않은 미확인 알림장을 재생성해 저장할 때 새 초안으로 갱신한다. 기존 공개 NoteView에는 추가하지 않는다. 0003 이전 행은 마이그레이션 시점의 content로 채운다. 그 전에 사라진 초안을 복원했다는 뜻은 아니다. 말투 규칙 추출은 기억 AI가 이 원본과 수정 결과를 이용해 맡는다. 백엔드는 저장·조회·이력만 제공한다.
 
+### 3.27 투약·귀가 요청 — T46 팀 확인 전 초안
+
+이 절과 API 34~36은 **팀 확인 전 초안**이에요. 기존 문의·상담·민원 계약은 그대로예요.
+투약 지시의 용량·시간은 보호자 본문을 그대로 보존해요. AI가 처방하거나 값을 채우지 않아요.
+
+| API | 입력 | 응답·권한 |
+| --- | --- | --- |
+| 기존 3 `POST /requests` | type에 `medication`·`pickup`을 더해요. body·child_id·client_request_id는 같아요. `pickup_guardian_id`는 pickup에만 필수 UUID예요. | 202 received, 같은 키는 기존 요청과 현재 상태를 200으로 돌려줘요. 자기 아이 보호자만 등록해요. |
+| 34 `GET /children/{child_id}/pickup-guardians` | 아이 UUID | 200 `{items:[{id,display_name}]}` 이름순이에요. 자기 아이 보호자·배정 기간 안 담임·같은 기관 원장만 읽어요. |
+| 35 `GET /care-requests` | 선택 classroom_id·status(`received`·`assigned`·`completed`), page=1·size=20(최대 100) | 교직원 목록이에요. 담임은 현재 담당 반, 원장은 기관 전체를 봐요. RequestList 모양·created_at 내림차순이고 next_action은 confirm·complete·null이에요. |
+| 36 `POST /requests/{request_id}/care-decisions` | `{decision:"confirm"|"complete", pickup_guardian_id?:UUID}` | 200 `{request:{id,status},care:{pickup_guardian_id,confirmed_at,completed_at}}`예요. 배정 기간 안 담임·같은 기관 원장만 실제 확인을 기록해요. |
+
+등록 인계자는 별도 자유 입력 이름이 아니라 같은 기관·아이의 `child_guardians`에 연결된 활성 학부모 계정이에요.
+목록에는 연락처·로그인 ID를 보내지 않아요. 미등록 대리인을 추가하는 기능은 이 초안에 없어요.
+귀가 접수와 confirm·complete 모두 등록 여부를 검사해요. 두 결정에는 접수 때 고른 같은 pickup_guardian_id가 필요해요.
+교직원이 현장에서 인계자를 대조한 뒤 complete를 보내요. UUID 대조가 현장 신원 확인을 대신하지는 않아요.
+이름만 적힌 기존 귀가 시드는 목록·출처로 읽되, 등록 인계자 ID가 없어 확인·완료할 수 없어요. 새 요청으로 등록해요.
+
+상태는 **received → assigned → completed**예요. confirm은 요청 내용을 확인하고 수행을 준비했다는 실제 기록이고,
+complete는 실제 투약·인계를 마친 기록이에요. confirm 이전 complete는 409 INVALID_TRANSITION이에요.
+같은 단계를 다시 보내면 기존 결과를 돌려주고 이력·알림은 늘리지 않아요. 완료 뒤 confirm으로 되돌릴 수 없어요.
+요청 행을 FOR NO KEY UPDATE로 잠그고 상태·이력·알림을 같은 트랜잭션에서 저장해요.
+이 흐름은 AI 카드 승인이 아니어서 cards·approvals를 만들지 않아요. 기록 주체는 events.actor_type=user·actor_id예요.
+
+학부모의 기존 목록·상세·대화·SSE에서도 자기 투약·귀가 요청이 보여요. 상세에 care 객체를 더하고 다른 유형은 null이에요.
+확인·완료 시각은 한국 시각이며 교직원 신원은 응답에 넣지 않아요. SSE는 AI 단계를 만들지 않고 현재 상태의 done 한 개로 끝나요.
+추가 대화는 요청 지시 원문을 바꾸지 않고 AI를 실행하지 않아요. 완료 뒤 대화 추가는 기존처럼 409예요.
+민원용 POST /confirm과 상담 시간 선택은 이 유형에 409 INVALID_TRANSITION이에요.
+
+학부모·교직원의 표시는 received=선생님 확인 대기, assigned=선생님 확인 완료,
+completed=투약 완료 또는 인계 완료예요. 교직원 목록은 AI 받은함과 별도예요.
+접수 때 담임(없으면 원장)에게 care_requested, confirm 때 신청 학부모에게 care_confirmed,
+완료 때 학부모에게 completed 알림을 한 번씩 남겨요. 교직원 근무 시간 연기 규칙은 같고 본문에 투약 지시를 싣지 않아요.
+
+알림장 초안은 같은 날 요청 원문과 request 출처를 기존처럼 medication·pickup 줄로 연결해요.
+응답의 `content.items[].request_status`를 더해 해당 출처 요청의 **현재** received·assigned·completed를 보여요.
+이 칸은 읽기 전용이에요. PATCH에 보내도 저장하지 않고 조회 때 다시 계산해요. 다른 줄은 null이에요.
+알림장 content·ai_original·발송 시점 본문을 고쳐 쓰지 않아요. 알림장 확인·발송이 투약·인계를 완료시키지 않아요.
+medication·pickup 줄은 같은 아이·같은 유형의 request 출처만 허용해요. teacher_input 출처나 다른 유형 연결은 422예요.
+
+오류는 기존 공통 형식이에요. 미인증 401, 학부모의 교직원 기능 호출 403 FORBIDDEN_ROLE,
+기관·반·아이·요청 범위 밖 404 NOT_FOUND, 단계·유형 불일치 409 INVALID_TRANSITION,
+등록되지 않았거나 일치하지 않는 인계자·잘못된 입력 422 VALIDATION_FAILED예요.
+인계자 검사 실패 details.field는 pickup_guardian_id예요. 형식·필수 칸 오류는 기존 details.fields예요.
+
+저장은 기존 requests·request_messages·events·notifications를 써요. 접수 events.detail.pickup_guardian_id에는 UUID만,
+확인·완료 이력에는 care_decision=confirm·complete만 남겨요. 시각은 events.created_at으로 읽어요.
+0008은 notifications.kind에 care_requested·care_confirmed만 더해요. 새 표·컬럼이나 0001 수정은 없어요.
+
 ## 4. 검증과 권한 규칙
 
 ### 4.1 형식 검사(422)와 서버 검사(403·404·409)를 나눈다
 
 | 검사 | 어디서 | 실패하면 | 예 |
 | --- | --- | --- | --- |
-| 형식: 타입·허용 값·길이·날짜 형식 | Pydantic(`Literal`·`Field`) | 422 `VALIDATION_FAILED` | `type = "medication"`, `body` 2,001자 |
+| 형식: 타입·허용 값·길이·날짜 형식 | Pydantic(`Literal`·`Field`) | 422 `VALIDATION_FAILED` | `type = "unknown"`, `body` 2,001자 |
 | 본문 안에서 함께 와야 하는 칸 | Pydantic `model_validator` | 422 | `hold`인데 `hold_until` 없음 |
 | 역할 | 서버(인증 의존성) | 403 `FORBIDDEN_ROLE` | 학부모가 카드 결정 |
 | 소유·범위(기관·반·내 아이) | 서버(DB 조회) | 404 `NOT_FOUND` | 다른 반 카드, 남의 아이 |
@@ -1660,3 +1716,4 @@ MVP 설정값은 서버 설정(`.env`)으로 관리한다. `.env.example`에는 
 | v0.5.1 | 2026-11-20 | 재생성 때 마지막 AI 초안을 저장하고 교사 수정본을 보존함. kept_edited·실행 중 재요청 재사용·요청자 기록·수정/확인 취소 이력을 구분함. T10 v0.12·모의·DB·OpenAPI를 맞춤 | 태웅 |
 | v0.5.2 | 2026-11-20 | 상담 SLOT_PAST·체크 충돌·보류/원장 보고 중 체크 보존·지시 후 확정과 동시 예약 잠금을 모의·DB·OpenAPI·T10 v0.13에 맞춤 | 태웅 |
 | v0.5.3 | 2026-11-20 | T48 상담 종료 10분 전·명시된 지연의 대체 시간 알림 2종과 내부 지연 기록 입구·주기·중복/만료 기준을 추가함. 공개 HTTP 경로는 유지하고 T10 v0.14·0007·OpenAPI를 맞춤 | 태웅 |
+| v0.6 초안 | 2026-11-20 | 팀 확인 전 T46 투약·귀가 등록·인계자 조회·교직원 확인/완료(API 34~36), 알림장 request_status·접수/확인 알림을 더했어요. | 태웅 |

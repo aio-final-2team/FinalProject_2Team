@@ -9,6 +9,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import text
 
 from app.core import scope
+from app.core.constants import CARE_REQUEST_TYPES
 from app.core.db import transaction
 from app.core.errors import ApiError, DEFAULT_MESSAGES
 from app.core.request_id import active_trace_id
@@ -22,15 +23,12 @@ def _encode(event, data):
 
 
 def stream_request(user, request_id):
-    from app.modules.requests.requests import _parent_readable
-
-    _parent_readable(user, scope.request_in_scope(user, request_id))
+    scope.request_in_scope(user, request_id)
     trace_id = active_trace_id.get()
 
     def read(cursor):
         with transaction() as connection:
             req = scope.request_in_scope(user, request_id, connection=connection)
-            _parent_readable(user, req)
             rows = connection.execute(text("""
                 SELECT id,action,card_id,agent_name,to_status,created_at FROM events
                 WHERE request_id=:id AND org_id=:org AND id>:cursor ORDER BY id
@@ -46,6 +44,9 @@ def stream_request(user, request_id):
                 code = error.code if isinstance(error, ApiError) else "INTERNAL_ERROR"
                 yield _encode("error", {"error": {"code": code, "message": DEFAULT_MESSAGES[code],
                                                  "trace_id": trace_id, "details": {}}})
+                return
+            if req["type"] in CARE_REQUEST_TYPES:
+                yield _encode("done", {"request_status": req["status"]})
                 return
             for row in rows:
                 cursor = row["id"]

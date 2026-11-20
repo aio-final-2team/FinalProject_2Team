@@ -57,6 +57,184 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
       security:
       - HTTPBearer: []
+  /api/v1/children/{child_id}/pickup-guardians:
+    get:
+      tags:
+      - 학부모 요청
+      summary: 등록 인계자 목록 (T46 팀 확인 전 초안)
+      operationId: pickup_guardians_api_v1_children__child_id__pickup_guardians_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: child_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Child Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PickupGuardiansOut'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+  /api/v1/care-requests:
+    get:
+      tags:
+      - 학부모 요청
+      summary: 교직원 투약·귀가 요청 목록 (T46 팀 확인 전 초안)
+      operationId: care_requests_api_v1_care_requests_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: classroom_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Classroom Id
+      - name: status
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - enum:
+            - received
+            - assigned
+            - completed
+            type: string
+          - type: 'null'
+          title: Status
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+          title: Page
+      - name: size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 20
+          title: Size
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestList'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+  /api/v1/requests/{request_id}/care-decisions:
+    post:
+      tags:
+      - 학부모 요청
+      summary: 투약·인계 실제 확인·완료 기록 (T46 팀 확인 전 초안)
+      operationId: care_decision_api_v1_requests__request_id__care_decisions_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: request_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Request Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CareDecisionIn'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CareDecisionOut'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
   /api/v1/requests:
     post:
       tags:
@@ -2195,6 +2373,83 @@ components:
       - check_result
       - check_attempts
       title: CardView
+    CareDecisionIn:
+      properties:
+        decision:
+          type: string
+          enum:
+          - confirm
+          - complete
+          title: Decision
+        pickup_guardian_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Pickup Guardian Id
+      type: object
+      required:
+      - decision
+      title: CareDecisionIn
+    CareDecisionOut:
+      properties:
+        request:
+          $ref: '#/components/schemas/CareState'
+        care:
+          $ref: '#/components/schemas/CareOut'
+      type: object
+      required:
+      - request
+      - care
+      title: CareDecisionOut
+    CareOut:
+      properties:
+        pickup_guardian_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Pickup Guardian Id
+        confirmed_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Confirmed At
+        completed_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Completed At
+      type: object
+      title: CareOut
+    CareState:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        status:
+          type: string
+          enum:
+          - received
+          - classified
+          - needs_info
+          - assigned
+          - awaiting_review
+          - approved
+          - sent_or_booked
+          - completed
+          - on_hold
+          - escalated
+          - rejected
+          title: Status
+      type: object
+      required:
+      - id
+      - status
+      title: CareState
     CheckSummary:
       properties:
         passed:
@@ -2900,6 +3155,17 @@ components:
       required:
       - items
       title: NoteContent
+    NoteContentOut:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/NoteLineOut'
+          type: array
+          title: Items
+      type: object
+      required:
+      - items
+      title: NoteContentOut
     NoteDraftIn:
       properties:
         classroom_id:
@@ -2960,6 +3226,53 @@ components:
       - value
       - source
       title: NoteLine
+    NoteLineOut:
+      properties:
+        key:
+          type: string
+          enum:
+          - day
+          - meal
+          - medication
+          - pickup
+          - supplies
+          - child
+          - inquiry
+          title: Key
+        label:
+          type: string
+          minLength: 1
+          title: Label
+        value:
+          type: string
+          title: Value
+        source:
+          $ref: '#/components/schemas/NoteSource'
+        request_status:
+          anyOf:
+          - type: string
+            enum:
+            - received
+            - classified
+            - needs_info
+            - assigned
+            - awaiting_review
+            - approved
+            - sent_or_booked
+            - completed
+            - on_hold
+            - escalated
+            - rejected
+          - type: 'null'
+          title: Request Status
+          description: 투약·귀가 출처 요청의 현재 상태(읽기 전용)
+      type: object
+      required:
+      - key
+      - label
+      - value
+      - source
+      title: NoteLineOut
     NoteList:
       properties:
         total:
@@ -3061,7 +3374,7 @@ components:
           - sent
           title: Status
         content:
-          $ref: '#/components/schemas/NoteContent'
+          $ref: '#/components/schemas/NoteContentOut'
         open_checks:
           items:
             $ref: '#/components/schemas/OpenCheck'
@@ -3144,6 +3457,8 @@ components:
           - hold_resumed
           - consultation_ending
           - consultation_delayed
+          - care_requested
+          - care_confirmed
           title: Kind
         title:
           type: string
@@ -3326,6 +3641,31 @@ components:
       - id
       - display_name
       title: Person
+    PickupGuardian:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        display_name:
+          type: string
+          title: Display Name
+      type: object
+      required:
+      - id
+      - display_name
+      title: PickupGuardian
+    PickupGuardiansOut:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/PickupGuardian'
+          type: array
+          title: Items
+      type: object
+      required:
+      - items
+      title: PickupGuardiansOut
     ReassignIn:
       properties:
         assignee_id:
@@ -3518,8 +3858,9 @@ components:
           - inquiry
           - consultation
           - complaint
+          - medication
+          - pickup
           title: Type
-          description: medication·pickup은 T46에서 연다
         body:
           type: string
           maxLength: 2000
@@ -3536,6 +3877,13 @@ components:
           - type: 'null'
           title: Previous Request Id
           description: 끝난 요청을 다시 열 때(T04 2.1)
+        pickup_guardian_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Pickup Guardian Id
+          description: 귀가 요청의 등록된 인계자(T46 팀 확인 전 초안)
       type: object
       required:
       - client_request_id
@@ -3570,6 +3918,10 @@ components:
             $ref: '#/components/schemas/SourceOut'
           type: array
           title: Sources
+        care:
+          anyOf:
+          - $ref: '#/components/schemas/CareOut'
+          - type: 'null'
       type: object
       required:
       - request
@@ -3589,6 +3941,8 @@ components:
           - inquiry
           - consultation
           - complaint
+          - medication
+          - pickup
           title: Type
         title:
           anyOf:

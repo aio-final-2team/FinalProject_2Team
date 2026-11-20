@@ -2,7 +2,7 @@
 
 태웅 담당 T19 마이그레이션입니다. SQLAlchemy 2.0 Core·psycopg 3·Alembic을 씁니다. 표 정의는 SQL에만 두고 ORM 모델은 만들지 않습니다.
 
-`sql/0001_initial.sql`은 `Docs/Step2/db_schema_draft.sql` v0.7의 적용본입니다. 머리 주석만 바꿨습니다. 초기 적용은 표 27개·뷰 2개·트리거 2개·FK 57개·컬럼 266개를 만듭니다. 0002는 아이별 메모 `daily_note_inputs.child_memos`와 배열 CHECK를 더해요. 0003은 AI 초안 ai_original·아이별 events.daily_note_id와 알림장 이력 네 종류를 더해요. 0004는 민원 회신 후 받은함 분류를 맞춰요. 0005는 알림 다음 발송 시각을 더해요. 0006은 요청 재전달 이력 agent_requeued를 허용해요. 0007은 상담 지연 시각·종료/대체 시간 알림과 이력을 더해요. 현재 head는 0007이고 설계 DDL v0.13과 같아요. head는 표 27개·뷰 2개·트리거 2개·FK 58개·컬럼 271개예요. Alembic 관리 표와 확장 객체는 이 수에서 빼요.
+`sql/0001_initial.sql`은 `Docs/Step2/db_schema_draft.sql` v0.7의 적용본입니다. 머리 주석만 바꿨습니다. 초기 적용은 표 27개·뷰 2개·트리거 2개·FK 57개·컬럼 266개를 만듭니다. 0002는 아이별 메모 `daily_note_inputs.child_memos`와 배열 CHECK를 더해요. 0003은 AI 초안 ai_original·아이별 events.daily_note_id와 알림장 이력 네 종류를 더해요. 0004는 민원 회신 후 받은함 분류를 맞춰요. 0005는 알림 다음 발송 시각을 더해요. 0006은 요청 재전달 이력 agent_requeued를 허용해요. 0007은 상담 지연 시각·종료/대체 시간 알림과 이력을 더해요. 0008은 T46 초안 접수·확인 알림 두 종류를 더해요. 현재 head는 0008이고 설계 DDL v0.14와 같아요. head는 표 27개·뷰 2개·트리거 2개·FK 58개·컬럼 271개예요. Alembic 관리 표와 확장 객체는 이 수에서 빼요.
 
 저장소 루트에서 실행합니다. `DATABASE_URL`은 **앱 전용 DB** 주소를 넣습니다. 중앙 automation DB를 쓰면 안 됩니다.
 
@@ -20,10 +20,10 @@ Compose의 DB 모드는 엔트리포인트가 설정 검사 → `alembic upgrade
 
 ## 새 마이그레이션을 더할 때
 
-적용한 0001·0002·0003·0004·0005·0006·0007은 고치지 않아요. 바꿀 표·컬럼이 생기면 다음 번호의 revision에 ALTER를 더하고 되돌리는 SQL도 함께 써요. ORM 자동 생성은 쓰지 않아요. 아래 0008은 현재 head 다음 번호예요. 새 head가 생기면 그다음 번호를 써요.
+적용한 0001·0002·0003·0004·0005·0006·0007·0008은 고치지 않아요. 바꿀 표·컬럼이 생기면 다음 번호의 revision에 ALTER를 더하고 되돌리는 SQL도 함께 써요. ORM 자동 생성은 쓰지 않아요. 아래 0009는 현재 head 다음 번호예요. 새 head가 생기면 그다음 번호를 써요.
 
 ```bash
-python -m alembic -c apps/api/alembic.ini revision --rev-id 0008 -m '변경 이유'
+python -m alembic -c apps/api/alembic.ini revision --rev-id 0009 -m '변경 이유'
 # 새 versions 파일의 upgrade()·downgrade()를 작성한 뒤
 python -m alembic -c apps/api/alembic.ini upgrade head
 ```
@@ -41,7 +41,7 @@ tools/test_db.sh
 
 첫 명령은 기존 mock 시험과 전환 시험을 돌립니다. `TEST_DATABASE_URL`이 없으면 DB 시험을 건너뛰고, `-rs`를 붙이면 이유를 볼 수 있습니다. 두 번째 명령은 `pgvector/pgvector:pg16`을 빈 호스트 포트에 띄웁니다. 이름은 `yuchion-test-pg-<랜덤>`이며 성공·실패·인터럽트 뒤 자기가 만든 컨테이너만 지웁니다. Docker가 필요하고 로그의 각 줄에는 `[TEST]`가 붙습니다.
 
-DB 시험은 upgrade → downgrade → upgrade의 카탈로그 수와 `pg_dump --schema-only`를 비교합니다. pg_dump가 매번 만드는 `\restrict`·`\unrestrict` 보호 키만 비교에서 뺍니다. head와 설계 DDL v0.13의 스키마도 비교해요. 기존 0001 입력을 0002로 올릴 때 빈 배열이 채워지는지, 메모 배열 원문이 보존되는지, 배열이 아닌 JSON과 SQL NULL을 거부하는지, 0001로 되돌린 뒤 다시 올려도 다른 입력 칸이 같은지 확인해요. 시드 CLI 두 번 실행 뒤 모든 기본 행·비밀번호 해시와 모의 시드의 계정·반·21명·보호자 연결이 같은지, 트랜잭션 커밋과 롤백도 확인해요. 인증·알림장 HTTP 시험은 mock·DB 두 모드로 돌아요. 새로 DB에 연결하는 영역도 같은 방식으로 더해요.
+DB 시험은 upgrade → downgrade → upgrade의 카탈로그 수와 `pg_dump --schema-only`를 비교합니다. pg_dump가 매번 만드는 `\restrict`·`\unrestrict` 보호 키만 비교에서 뺍니다. head와 설계 DDL v0.14의 스키마도 비교해요. 기존 0001 입력을 0002로 올릴 때 빈 배열이 채워지는지, 메모 배열 원문이 보존되는지, 배열이 아닌 JSON과 SQL NULL을 거부하는지, 0001로 되돌린 뒤 다시 올려도 다른 입력 칸이 같은지 확인해요. 시드 CLI 두 번 실행 뒤 모든 기본 행·비밀번호 해시와 모의 시드의 계정·반·21명·보호자 연결이 같은지, 트랜잭션 커밋과 롤백도 확인해요. 인증·알림장 HTTP 시험은 mock·DB 두 모드로 돌아요. 새로 DB에 연결하는 영역도 같은 방식으로 더해요.
 
 직접 전용 시험 DB를 쓸 때는 `TEST_DATABASE_URL`을 넣고 `python -m pytest -q -rs tests/integration/db`를 실행합니다. 이 시험은 스키마를 지우므로 데이터를 남길 DB를 쓰면 안 됩니다. 직접 실행에는 호스트의 호환 버전 `pg_dump`가 필요합니다. 로컬 기본 포트 5432는 시험 fixture가 거부합니다.
 
@@ -52,3 +52,5 @@ DB 시험은 upgrade → downgrade → upgrade의 카탈로그 수와 `pg_dump -
 0006은 events.action CHECK에 agent_requeued를 더해요. 0005로 내리면 이 종류의 이력만 지우고 이전 CHECK를 복구해요. 요청·카드·다른 이력은 유지해요.
 
 0007은 consultation_bookings.expected_end_at과 알림 종류 두 개·이력 두 개를 더해요. 기존 예약은 NULL이고 지연을 추측하지 않아요. 0006으로 내리면 이 기능의 새 알림·이력·시각만 지우고 예약과 기존 알림·이력은 남겨요. 다시 올려도 지연 시각은 복원되지 않아요.
+
+0008을 0007로 내리면 care_requested·care_confirmed 알림만 지워요. 요청·확인/완료 이력·completed 알림은 남겨요. 다시 올려도 지운 알림은 복원하지 않아요.

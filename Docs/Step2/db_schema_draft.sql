@@ -1,6 +1,6 @@
--- 유치온 DB 스키마 초안 (T09) · 문서 버전 v0.13 (상담 지연 기록·종료 알림 11/20 반영)
+-- 유치온 DB 스키마 초안 (T09) · 문서 버전 v0.14 (T46 팀 확인 전 초안 알림 11/20 반영)
 -- 설계서: Docs/Step2/DB_스키마_설계서.md
--- 이 파일은 최종 설계 모양이다. 실제 적용은 apps/api/migrations의 0001 → 0002 → 0003 → 0004 → 0005 → 0006 → 0007으로 한다.
+-- 이 파일은 최종 설계 모양이다. 실제 적용은 apps/api/migrations의 0001 → 0002 → 0003 → 0004 → 0005 → 0006 → 0007 → 0008로 한다.
 -- 대상: PostgreSQL 16 + pgvector 0.8 (compose.yaml의 pgvector/pgvector:pg16). Supabase는 쓰지 않는다(설계서 5.1)
 -- 기관 경계: 기관에 속한 표끼리는 (id, org_id) 짝으로 참조해서 다른 원 행을 섞어 넣으면 DB가 거부한다
 
@@ -598,12 +598,13 @@ CREATE TABLE notifications (
     subject_id    uuid,
     -- T04 9장 알림 시점 11가지 + 계약표 6장 기본값 2가지(⑥ 상담 시간 잡아 두기 풀림, ⑨ 보류 자동 재개)
     -- T48 상담 예정 종료 10분 전·명시된 지연의 대체 시간 제안 2가지 추가(v0.13)
+    -- T46 투약·귀가 접수·교직원 확인 2가지 추가(v0.14, 팀 확인 전 초안)
     kind          text NOT NULL
                   CHECK (kind IN ('needs_info', 'new_card', 'urgent_complaint', 'uncertain_complaint',
                                   'director_report', 'on_hold', 'sent_or_booked', 'parent_confirmed',
                                   'completed', 'rejected', 'note_sent',
                                   'slot_hold_expired', 'hold_resumed',
-                                  'consultation_ending', 'consultation_delayed')),
+                                  'consultation_ending', 'consultation_delayed', 'care_requested', 'care_confirmed')),
     title         text NOT NULL,
     body          text,
     dedupe_key    text NOT NULL UNIQUE,    -- 요청 이력 또는 상담 예약·종류·수신자 키(설계서 2.6). 같은 알림 두 번 안 감

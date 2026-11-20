@@ -4,21 +4,12 @@ from sqlalchemy import text
 
 from app.api.labels import parent_label, staff_label
 from app.core import scope
-from app.core.constants import DEFERRED_REQUEST_TYPES
+from app.core.constants import CARE_REQUEST_TYPES
 from app.core.db import transaction
 from app.core.errors import ApiError
 from app.modules.requests.events import record, set_status
 from app.core.jobs import dispatch
-
-
-def _readable(req):
-    if req["type"] == "medication":
-        raise ApiError(501, "NOT_IMPLEMENTED")
-
-
-def _parent_readable(user, req):
-    if user.role == "parent" and req["type"] in DEFERRED_REQUEST_TYPES:
-        scope._checked(user, req, False, "request", req["id"], request_id=req["id"])
+from app.modules.requests import care
 
 
 def _lock(connection, request_id):
@@ -26,7 +17,7 @@ def _lock(connection, request_id):
                                    {"id": request_id}).mappings().one())
 
 
-def create(user, *, background_tasks, client_request_id, type, body, child_id, previous_request_id, trace_id):
+def create(user, *, background_tasks, client_request_id, type, body, child_id, previous_request_id, trace_id, pickup_guardian_id=None):
     with transaction() as connection:
         values = {"org": user.org_id, "user": user.id, "key": client_request_id}
         old = connection.execute(text("SELECT * FROM requests WHERE requester_id=:user AND client_request_id=:key"),
@@ -35,6 +26,8 @@ def create(user, *, background_tasks, client_request_id, type, body, child_id, p
             scope.request_in_scope(user, old["id"], connection=connection)
             return old, False
         child = scope.child_in_scope(user, child_id, connection=connection)
+        if type == "pickup":
+            care.validate_guardian(connection, user, child_id, pickup_guardian_id)
         if previous_request_id is not None:
             prev = scope.request_in_scope(user, previous_request_id, connection=connection)
             if prev["status"] not in ("completed", "rejected"):
@@ -55,8 +48,21 @@ def create(user, *, background_tasks, client_request_id, type, body, child_id, p
             INSERT INTO request_messages (org_id,request_id,sender_type,sender_id,body)
             VALUES (:org,:request,'user',:user,:body)
         """), {**values, "request": req["id"], "body": body})
-        record(connection, req, "created", actor_type="user", actor_id=user.id, to_status="received", trace_id=trace_id)
-    dispatch("request", req["id"], background_tasks)
+        if type in CARE_REQUEST_TYPES:
+            teacher = connection.scalar(text("""
+                SELECT s.user_id FROM classroom_staff s JOIN users u ON (u.id,u.org_id)=(s.user_id,s.org_id)
+                WHERE s.org_id=:org AND s.classroom_id=:class AND u.role='teacher' AND u.is_active
+                  AND (s.valid_from IS NULL OR s.valid_from<=CURRENT_DATE)
+                  AND (s.valid_to IS NULL OR s.valid_to>=CURRENT_DATE)
+                ORDER BY s.is_homeroom DESC,s.created_at,s.user_id LIMIT 1
+            """), {"org": user.org_id, "class": child["classroom_id"]})
+            req["assignee_id"] = teacher
+            connection.execute(text("UPDATE requests SET assignee_id=:teacher WHERE id=:id"),
+                               {"id": req["id"], "teacher": teacher})
+        record(connection, req, "created", actor_type="user", actor_id=user.id, to_status="received", trace_id=trace_id,
+               **({"pickup_guardian_id": str(pickup_guardian_id)} if type == "pickup" else {}))
+    if type not in CARE_REQUEST_TYPES:
+        dispatch("request", req["id"], background_tasks)
     return req, True
 
 
@@ -162,16 +168,6 @@ def choices(user, request_id, body):
 def detail(user, request_id):
     with transaction() as connection:
         req = dict(scope.request_in_scope(user, request_id, connection=connection))
-        _parent_readable(user, req)
-        if req["type"] in DEFERRED_REQUEST_TYPES:
-            first = connection.execute(text("""
-                SELECT id,sender_type,body,created_at FROM request_messages
-                WHERE request_id=:id AND org_id=:org AND sender_type='user' ORDER BY id LIMIT 1
-            """), {"id": request_id, "org": user.org_id}).mappings().all()
-            return {"request": {**{key: req[key] for key in (
-                        "id", "type", "title", "status", "created_at", "updated_at")},
-                        "status_label": staff_label(req["status"], req["type"]), "missing_fields": []},
-                    "messages": [dict(row) for row in first], "timeline": [], "sources": []}
         req = _expire(connection, req)
         values = {"id": request_id, "org": user.org_id, "parent": user.role == "parent"}
         messages = connection.execute(text("""
@@ -221,7 +217,8 @@ def detail(user, request_id):
                     "id", "type", "title", "status", "missing_fields", "parent_confirmed_at", "created_at", "updated_at")},
                     "status_label": label(req["status"], req["type"]), "hold_until": _hold_until(connection, req)},
                 "messages": [dict(row) for row in messages], "sources": [dict(row) for row in sources],
-                "timeline": timeline, "consultation": consultation, "rejection": dict(rejection) if rejection else None}
+                "timeline": timeline, "consultation": consultation,
+                "care": care.view(connection, req) if req["type"] in CARE_REQUEST_TYPES else None, "rejection": dict(rejection) if rejection else None}
 
 
 def listing(user, status, page, size, sort):
@@ -229,14 +226,13 @@ def listing(user, status, page, size, sort):
         # 본인 요청의 만료를 먼저 반영한 뒤 상태·정렬·쪽 나누기를 적용해요.
         rows = connection.execute(text("""
             SELECT * FROM requests WHERE org_id=:org AND requester_id=:user
-              AND type IN ('inquiry','consultation','complaint') ORDER BY id
+              ORDER BY id
         """), {"org": user.org_id, "user": user.id}).mappings().all()
         requests = [_expire(connection, dict(row)) for row in rows]
         requests = [req for req in requests if status is None or req["status"] == status]
         requests.sort(key=lambda req: (req[sort.lstrip("-")], str(req["id"])), reverse=sort.startswith("-"))
         items = []
         for req in requests[(page-1)*size:page*size]:
-            _readable(req)
             action = None
             if req["status"] == "needs_info":
                 action = "시간을 골라 주세요" if req["type"] == "consultation" else "정보를 더 알려 주세요"
@@ -251,10 +247,8 @@ def listing(user, status, page, size, sort):
 def message(user, request_id, body, *, background_tasks):
     rerun = False
     with transaction() as connection:
-        initial = scope.request_in_scope(user, request_id, connection=connection)
-        _parent_readable(user, initial)
+        scope.request_in_scope(user, request_id, connection=connection)
         req = _expire(connection, _lock(connection, request_id))
-        _readable(req)
         if req["status"] in ("completed", "rejected"):
             raise ApiError(409, "INVALID_TRANSITION")
         msg = dict(connection.execute(text("""
@@ -276,7 +270,7 @@ def message(user, request_id, body, *, background_tasks):
             req["parent_confirmed_at"] = None
             connection.execute(text("UPDATE requests SET parent_confirmed_at=NULL WHERE id=:id"), {"id": request_id})
             set_status(connection, req, "awaiting_review", action="returned", card=card, actor_type="user", actor_id=user.id)
-        elif req["status"] == "needs_info" and req["type"] != "consultation":
+        elif req["status"] == "needs_info" and req["type"] not in (*CARE_REQUEST_TYPES, "consultation"):
             rerun = True
     if rerun:
         dispatch("request", request_id, background_tasks)
@@ -285,8 +279,7 @@ def message(user, request_id, body, *, background_tasks):
 
 def confirm(user, request_id):
     with transaction() as connection:
-        initial = scope.request_in_scope(user, request_id, connection=connection)
-        _parent_readable(user, initial)
+        scope.request_in_scope(user, request_id, connection=connection)
         req = _lock(connection, request_id)
         if req["type"] != "complaint" or req["status"] != "sent_or_booked":
             raise ApiError(409, "INVALID_TRANSITION")

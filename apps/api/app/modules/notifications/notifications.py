@@ -3,7 +3,7 @@
 from sqlalchemy import text
 
 from app.api.labels import parent_label
-from app.core.constants import NOTIFICATION_TITLES as TITLES
+from app.core.constants import CARE_REQUEST_TYPES, NOTIFICATION_TITLES as TITLES
 from app.core.schedule import deliver_after
 
 
@@ -30,6 +30,16 @@ def notify_event(connection, event, req, card):
             enqueue(connection, event, None, card["assignee_id"], "new_card")
         return
     to, action = event["to_status"], event["action"]
+    if req.get("type") in CARE_REQUEST_TYPES:
+        if action == "created" and to == "received":
+            recipient = req["assignee_id"] or connection.scalar(text(
+                "SELECT id FROM users WHERE org_id=:org AND role='director' AND is_active ORDER BY id LIMIT 1"),
+                {"org": req["org_id"]})
+            enqueue(connection, event, req, recipient, "care_requested")
+        elif event["detail"].get("care_decision") in ("confirm", "complete"):
+            enqueue(connection, event, req, req["requester_id"],
+                    "care_confirmed" if to == "assigned" else "completed", parent_label(to, req["type"]))
+        return
     parent_kinds = {"needs_info": "needs_info", "on_hold": "on_hold", "sent_or_booked": "sent_or_booked",
                     "rejected": "rejected"}
     if to == "completed" and req["type"] == "complaint":

@@ -3,7 +3,7 @@
 from dataclasses import replace
 
 from app.api.labels import parent_label
-from app.core.constants import NOTIFICATION_TITLES as TITLES
+from app.core.constants import CARE_REQUEST_TYPES, NOTIFICATION_TITLES as TITLES
 from app.core.schedule import deliver_after
 from app.core.errors import ApiError
 from app.mock import store
@@ -37,6 +37,13 @@ def notify_event(ev, req, card):
             note = store.state().notes[ev.daily_note_id]
             for guardian in store.state().children[note.child_id].guardian_ids:
                 create(ev, guardian, "note_sent", subject_id=note.id)
+        return
+    if req.type in CARE_REQUEST_TYPES:
+        if ev.action == "created" and ev.to_status == "received":
+            create(ev, req.assignee_id or store.director_of(req.org_id), "care_requested")
+        elif ev.detail.get("care_decision") in ("confirm", "complete"):
+            create(ev, req.requester_id, "care_confirmed" if ev.to_status == "assigned" else "completed",
+                   parent_label(ev.to_status, req.type))
         return
     parent_kinds = {"needs_info": "needs_info", "on_hold": "on_hold", "sent_or_booked": "sent_or_booked",
                     "rejected": "rejected"}

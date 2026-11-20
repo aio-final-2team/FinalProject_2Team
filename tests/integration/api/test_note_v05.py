@@ -26,6 +26,11 @@ def _memory_backend(note_backend, monkeypatch):
     monkeypatch.setattr(backend, "memories", memories)
 
 
+def saved_content(content):
+    """조회 전용 request_status를 빼고 저장 계약을 비교해요."""
+    return NoteContent.model_validate(content).model_dump(mode="json")
+
+
 def stored(note_backend, note_id):
     if note_backend == "mock":
         note = store.state().notes[UUID(note_id)]
@@ -63,7 +68,7 @@ def test_first_original_survives_edits_confirm_send_and_events_link_only_the_not
     assert response.status_code == 200, response.text
     confirm_all(client, teacher, [n for n in notes if n["id"] != note["id"]])
     assert client.post(BASE + "/daily-notes/send", headers=teacher, json=batch()).json() == {"sent_count": 20}
-    assert stored(note_backend, note["id"]) == {"content": edited, "ai_original": original}
+    assert stored(note_backend, note["id"]) == {"content": saved_content(edited), "ai_original": saved_content(original)}
     history = events(note_backend, note["id"])
     assert [e["action"] for e in history] == ["daily_note_drafted", "daily_note_edited",
                                              "daily_note_confirmed", "daily_note_sent"]
@@ -95,7 +100,7 @@ def test_regenerate_preserves_edited_notes_and_ready_including_check_ids(client,
     after = {n["id"]: n for n in note_list(client, teacher).json()["items"]}
     assert after.keys() == before.keys() and after[ready["id"]] == ready
     for note_id in before:
-        assert stored(note_backend, note_id)["ai_original"] == before[note_id]["content"]
+        assert stored(note_backend, note_id)["ai_original"] == saved_content(before[note_id]["content"])
         assert after[note_id]["content"] == (edited if note_id == target["id"] else before[note_id]["content"])
         history = events(note_backend, note_id)
         assert sum(e["action"] == "daily_note_drafted" for e in history) == (1 if note_id in (ready["id"], target["id"]) else 2)
@@ -139,12 +144,12 @@ def test_regenerate_updates_last_ai_original_then_teacher_edit_keeps_it(client, 
     assert regenerate(client, teacher, input_id).json()["kept_edited"] == 0
     after = next(n for n in note_list(client, teacher).json()["items"] if n["id"] == before["id"])
     assert after["content"] != before["content"]
-    assert stored(note_backend, after["id"])["ai_original"] == after["content"]
+    assert stored(note_backend, after["id"])["ai_original"] == saved_content(after["content"])
     edited = deepcopy(after["content"])
     edited["items"][0]["value"] = "[TEST] 새 초안을 받은 뒤 선생님 수정"
     assert client.patch(f"{BASE}/daily-notes/{after['id']}", headers=teacher, json={"content": edited}).status_code == 200
     assert regenerate(client, teacher, input_id).json()["kept_edited"] == 1
-    assert stored(note_backend, after["id"]) == {"content": edited, "ai_original": after["content"]}
+    assert stored(note_backend, after["id"]) == {"content": saved_content(edited), "ai_original": saved_content(after["content"])}
 
 
 @pytest.mark.parametrize("restored", [False, True])

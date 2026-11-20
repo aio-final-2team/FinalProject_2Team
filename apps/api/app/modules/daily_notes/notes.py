@@ -10,6 +10,7 @@ from app.core import scope
 from app.core.config import settings
 from app.core.db import transaction
 from app.core.errors import ApiError
+from app.core.care import note_content
 from app.core.jobs import dispatch
 from app.core.schedule import KST, deliver_after, due_at
 from app.modules.daily_notes.events import edited_child_ids, record
@@ -65,8 +66,13 @@ def draft(user, body, background_tasks):
 
 
 def view(note):
-    return {name: note[name] for name in ("id", "child_id", "note_date", "status", "content",
+    result = {name: note[name] for name in ("id", "child_id", "note_date", "status", "content",
                                          "open_checks", "confirmed_at", "sent_at")}
+    with transaction() as connection:
+        rows = connection.execute(text("SELECT id,type,status FROM requests WHERE org_id=:org AND child_id=:child"),
+                                  {"org": note["org_id"], "child": note["child_id"]}).mappings()
+        result["content"] = note_content(note["content"], {str(r["id"]): r for r in rows})
+    return result
 
 
 def regenerate(user, input_id, background_tasks):
@@ -134,7 +140,8 @@ def _check_sources(user, content, child_id, connection):
     for line in content.items:
         if line.source.type == "request":
             request = scope.request_in_scope(user, line.source.request_id, connection=connection)
-            if request["child_id"] != child_id:
+            if request["child_id"] != child_id or (
+                    line.key in ("medication", "pickup") and request["type"] != line.key):
                 raise ApiError(422, "VALIDATION_FAILED", field="content.items[].source.request_id")
         if line.source.type == "document":
             row = connection.execute(text("""
