@@ -3585,7 +3585,6 @@ components:
           - inquiry
           - consultation
           - complaint
-          - pickup
           title: Type
         title:
           anyOf:
@@ -3702,6 +3701,7 @@ components:
           - inquiry
           - consultation
           - complaint
+          - medication
           - pickup
           title: Type
         title:
@@ -3922,6 +3922,7 @@ components:
           - inquiry
           - consultation
           - complaint
+          - medication
           - pickup
           title: Type
         title:

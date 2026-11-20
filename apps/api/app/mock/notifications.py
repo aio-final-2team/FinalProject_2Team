@@ -61,7 +61,10 @@ def notify_event(ev, req, card):
     elif ev.to_status == "awaiting_review":
         automatic = ev.action == "resumed" and ev.detail.get("automatic")
         if ev.action != "resumed" or automatic:
-            create(ev, card.assignee_id if card else req.assignee_id, "hold_resumed" if automatic else "new_card")
+            recipient = card.assignee_id if card else req.assignee_id
+            if card and card.status == "unassigned" and recipient is None:
+                recipient = store.director_of(req.org_id)
+            create(ev, recipient, "hold_resumed" if automatic else "new_card")
 
 
 def visible(user):

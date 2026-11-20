@@ -7,13 +7,13 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from app.api.schemas.common import Page, Period
-from app.api.schemas.requests import MessageOut, RequestStatus, RequestType, RequestReadType, SourceOut, BookingOut, RequestView
+from app.api.schemas.requests import MessageOut, RequestStatus, RequestType, SourceOut, BookingOut, RequestView
 from app.api.schemas.actions import CardKind, NoteContent
 
 
 class RequestItem(BaseModel):
     id: UUID
-    type: RequestReadType
+    type: RequestType
     title: str | None
     status: RequestStatus
     status_label: str

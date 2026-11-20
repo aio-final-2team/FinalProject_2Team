@@ -1,4 +1,4 @@
-"""모의·DB 백엔드가 함께 쓰는 알림 문구예요."""
+"""모의·DB 백엔드가 함께 쓰는 알림 문구와 요청 유형이에요."""
 
 NOTIFICATION_TITLES = {
     "needs_info": "정보가 더 필요해요", "new_card": "새 카드가 왔어요",
@@ -8,3 +8,4 @@ NOTIFICATION_TITLES = {
     "completed": "처리 완료", "rejected": "처리할 수 없는 요청이에요", "note_sent": "오늘 알림장",
     "slot_hold_expired": "잡아 둔 시간이 풀렸어요", "hold_resumed": "보류 카드가 재개됐어요",
 }
+DEFERRED_REQUEST_TYPES = ("medication", "pickup")

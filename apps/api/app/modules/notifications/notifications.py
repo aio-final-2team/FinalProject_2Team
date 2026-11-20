@@ -54,7 +54,12 @@ def notify_event(connection, event, req, card):
     elif to == "awaiting_review":
         automatic = action == "resumed" and event["detail"].get("automatic")
         if action != "resumed" or automatic:
-            enqueue(connection, event, req, card["assignee_id"] if card else req["assignee_id"],
+            recipient = card["assignee_id"] if card else req["assignee_id"]
+            if card and card["status"] == "unassigned" and recipient is None:
+                recipient = connection.scalar(text("""
+                    SELECT id FROM users WHERE org_id=:org AND role='director' AND is_active ORDER BY id LIMIT 1
+                """), {"org": req["org_id"]})
+            enqueue(connection, event, req, recipient,
                     "hold_resumed" if automatic else "new_card")
 
 

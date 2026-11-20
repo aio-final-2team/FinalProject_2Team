@@ -80,6 +80,13 @@ def test_document_list_keeps_failure_details_and_defaults_missing_date(db_client
     assert menu["error"] == {"code": "UPSTREAM_UNAVAILABLE", "message": "[TEST] 자료 적재 실패"}
 
 
-def test_medication_read_stays_pending_until_contract_is_defined(db_client, teacher):
+def test_medication_staff_read_does_not_process_request(db_client, teacher, seeded_db):
+    with seeded_db.connect() as connection:
+        before = {table: connection.scalar(text(f"SELECT count(*) FROM {table}"))
+                  for table in ("cards", "events", "notifications")}
     response = db_client.get(f"/api/v1/requests/{seed.demo_id('7201')}", headers=teacher)
-    assert response.status_code == 501 and response.json()["error"]["code"] == "NOT_IMPLEMENTED"
+    assert response.status_code == 200, response.text
+    assert response.json()["request"]["status"] == "received"
+    with seeded_db.connect() as connection:
+        assert {table: connection.scalar(text(f"SELECT count(*) FROM {table}")) for table in before} == before
+        assert connection.scalar(text("SELECT status FROM requests WHERE id=:id"), {"id": seed.demo_id('7201')}) == "received"

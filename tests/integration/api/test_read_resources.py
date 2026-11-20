@@ -33,6 +33,8 @@ def read_backend(request, monkeypatch):
     (seed.REQUEST_COUGH, "inquiry", "기침해요", "director01"),
     (seed.REQUEST_COUGH, "inquiry", "기침해요", "parent01"),
     (seed.REQUEST_PICKUP, "pickup", "오늘 할머니가 데리러 가요", "teacher01"),
+    (seed.demo_id("7201"), "medication", "점심 먹고 약 먹여 주세요. 투약의뢰서 가방에 넣었어요.", "teacher01"),
+    (seed.demo_id("7201"), "medication", "점심 먹고 약 먹여 주세요. 투약의뢰서 가방에 넣었어요.", "director01"),
     (seed.demo_id("7214"), "inquiry", "요즘 기침을 조금 해요. 낮잠 때 잘 봐 주세요.", "teacher01"),
 ])
 def test_seed_request_has_first_guardian_message(client, request_id, request_type, body, actor):
@@ -51,6 +53,53 @@ def test_seed_request_has_first_guardian_message(client, request_id, request_typ
     assert data["messages"][0]["created_at"].endswith("+09:00")
     assert isinstance(data["messages"][0]["id"], int) and data["messages"][0]["id"] > 0
     assert data["sources"] == []
+
+
+@pytest.mark.parametrize("login,visible", [("parent-c4-12", 0), ("parent02", 0), ("parent-c4-04", 1)])
+def test_deferred_types_hidden_from_parent_detail_and_paginated_total(client, login, visible):
+    guardian = next(u for u in seed.USERS if u["login_id"] == login)
+    own = [r for r in seed.DEMO_NOTE_REQUESTS if r["requester_id"] == guardian["id"]]
+    token = client.post(BASE + "/auth/login", json={"login_id": login, "password": "demo1234"}).json()["access_token"]
+    headers = {"Authorization": "Bearer " + token}
+    for request in own:
+        if request["type"] in ("medication", "pickup"):
+            err(client.get(f"{BASE}/requests/{request['id']}", headers=headers), 404, "NOT_FOUND")
+    # 숨긴 요청보다 뒤에 생긴 공개 문의를 포함해 쪽 크기·total을 검사해요.
+    created = client.post(BASE + "/requests", headers=headers, json={
+        "client_request_id": str(uuid4()), "child_id": str(own[0]["child_id"]),
+        "type": "inquiry", "body": "[TEST] 오늘 준비물 문의"})
+    assert created.status_code == 202, created.text
+    ids = []
+    for page in range(1, visible + 3):
+        response = client.get(BASE + "/requests", headers=headers, params={"page": page, "size": 1})
+        assert response.status_code == 200, response.text
+        data = response.json()
+        assert data["total"] == visible + 1
+        assert all(r["type"] == "inquiry" for r in data["items"])
+        ids.extend(r["id"] for r in data["items"])
+    assert len(set(ids)) == visible + 1 and created.json()["request"]["id"] in ids
+
+
+@pytest.mark.parametrize("request_id", [seed.demo_id("7201"), seed.REQUEST_PICKUP])
+def test_deferred_staff_detail_keeps_scope_and_only_first_user_message(client, teacher, teacher_other, read_backend, request_id):
+    if read_backend == "mock":
+        for sender in ("agent", "user"):
+            store.state().messages.append(store.Message(store.state().next_int(), request_id, sender, seed.TEACHER,
+                                                        "[TEST] 최소판에서 숨길 후속 대화"))
+    else:
+        with transaction() as connection:
+            for sender in ("agent", "user"):
+                connection.execute(text("""
+                    INSERT INTO request_messages (org_id,request_id,sender_type,sender_id,body)
+                    VALUES (:org,:request,:sender,:teacher,'[TEST] 최소판에서 숨길 후속 대화')
+                """), {"org": seed.ORG, "request": request_id, "sender": sender, "teacher": seed.TEACHER})
+    response = client.get(f"{BASE}/requests/{request_id}", headers=teacher)
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert len(data["messages"]) == 1 and "숨길 후속 대화" not in response.text
+    assert data["timeline"] == [] and data["sources"] == [] and data["consultation"] is None
+    assert data["rejection"] is None and data["request"]["hold_until"] is None
+    err(client.get(f"{BASE}/requests/{request_id}", headers=teacher_other), 404, "NOT_FOUND")
 
 
 def test_request_read_checks_auth_scope_and_uuid(client, teacher, teacher_other, parent_other):

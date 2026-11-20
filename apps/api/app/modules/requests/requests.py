@@ -4,6 +4,7 @@ from sqlalchemy import text
 
 from app.api.labels import parent_label, staff_label
 from app.core import scope
+from app.core.constants import DEFERRED_REQUEST_TYPES
 from app.core.db import transaction
 from app.core.errors import ApiError
 from app.modules.requests.events import record, set_status
@@ -93,7 +94,17 @@ def _hold_until(connection, req):
 def detail(user, request_id):
     with transaction() as connection:
         req = dict(scope.request_in_scope(user, request_id, connection=connection))
-        _readable(req)
+        if req["type"] in DEFERRED_REQUEST_TYPES:
+            if user.role == "parent":
+                scope._checked(user, req, False, "request", request_id, request_id=request_id)
+            first = connection.execute(text("""
+                SELECT id,sender_type,body,created_at FROM request_messages
+                WHERE request_id=:id AND org_id=:org AND sender_type='user' ORDER BY id LIMIT 1
+            """), {"id": request_id, "org": user.org_id}).mappings().all()
+            return {"request": {**{key: req[key] for key in (
+                        "id", "type", "title", "status", "created_at", "updated_at")},
+                        "status_label": staff_label(req["status"], req["type"]), "missing_fields": []},
+                    "messages": [dict(row) for row in first], "timeline": [], "sources": []}
         req = _expire(connection, req)
         values = {"id": request_id, "org": user.org_id, "parent": user.role == "parent"}
         messages = connection.execute(text("""
@@ -150,7 +161,8 @@ def listing(user, status, page, size, sort):
     with transaction() as connection:
         # 본인 요청의 만료를 먼저 반영한 뒤 상태·정렬·쪽 나누기를 적용해요.
         rows = connection.execute(text("""
-            SELECT * FROM requests WHERE org_id=:org AND requester_id=:user ORDER BY id
+            SELECT * FROM requests WHERE org_id=:org AND requester_id=:user
+              AND type IN ('inquiry','consultation','complaint') ORDER BY id
         """), {"org": user.org_id, "user": user.id}).mappings().all()
         requests = [_expire(connection, dict(row)) for row in rows]
         requests = [req for req in requests if status is None or req["status"] == status]

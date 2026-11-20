@@ -110,6 +110,11 @@ def test_agent_failure_preserves_request_and_hands_off_without_private_error(db_
     detail = db_client.get(f"/api/v1/requests/{rid}", headers=parent)
     assert detail.status_code == 200 and "ai_failed" not in detail.text
     assert len(rows(seeded_db, "request_messages", rid)) == 1
+    notices = rows(seeded_db, "notifications", rid)
+    assert len(notices) == 1 and notices[0]["recipient_id"] == seed.DIRECTOR
+    assert notices[0]["kind"] == "new_card" and notices[0]["card_id"] == card["id"]
+    runner.run_request(UUID(rid))
+    assert rows(seeded_db, "notifications", rid) == notices
 
 
 def test_stub_transaction_rolls_back_then_handoff_once(db_client, parent, seeded_db, monkeypatch):
@@ -154,7 +159,7 @@ def test_sweep_exact_age_states_card_exclusion_and_concurrent_idempotency(seeded
         connection.execute(text("""
             INSERT INTO cards (org_id,request_id,kind) VALUES (:org,:id,'reply_draft')
         """), {"org": seed.ORG, "id": ids["has_card"]})
-    # 기존 시드도 오래된 received라 점검 대상이에요. 이 시험의 대상만 따로 확인해요.
+    # 시드의 문의도 점검 대상이에요. 투약·귀가는 아래 별도 시험에서 제외를 확인해요.
     with ThreadPoolExecutor(max_workers=2) as pool:
         list(pool.map(lambda _: runner.sweep_missing_cards(now), range(2)))
     assert runner.sweep_missing_cards(now) == 0
@@ -222,12 +227,82 @@ def test_sse_waits_for_persisted_completion_and_has_safe_timeout(db_client, pare
     assert response.status_code == 200 and "event: error" in response.text and "event: done" not in response.text
     assert '"trace_id": "stream-timeout"' in response.text and "UPSTREAM_UNAVAILABLE" in response.text
     monkeypatch.setattr(streams, "MAX_SECONDS", 5)
-    def finish(_):
+    async def finish(_):
         with seeded_db.begin() as connection:
             req = dict(connection.execute(text("SELECT * FROM requests WHERE id=:id FOR UPDATE"),
                                            {"id": seed.REQUEST_COUGH}).mappings().one())
             events.set_status(connection, req, "awaiting_review", action="checked", actor_type="agent", agent_name="checker")
-    monkeypatch.setattr(streams.time, "sleep", finish)
+    monkeypatch.setattr(streams.anyio, "sleep", finish)
     response = db_client.get(f"/api/v1/requests/{seed.REQUEST_COUGH}/stream", headers=parent)
     assert "event: stage" in response.text and "event: done" in response.text
     assert '"request_status": "awaiting_review"' in response.text
+
+
+def test_seed_sweep_only_inquiries_and_one_director_notice_per_handoff(seeded_db):
+    # 날짜와 무관하게 모든 시드가 5분을 넘긴 시점에서 검사해요.
+    with seeded_db.connect() as connection:
+        now = connection.scalar(text("SELECT max(created_at)+interval '6 minutes' FROM requests"))
+    assert runner.sweep_missing_cards(now) == 9
+    with seeded_db.connect() as connection:
+        counts = dict(connection.execute(text("""
+            SELECT r.type,count(*) FROM cards c JOIN requests r ON r.id=c.request_id GROUP BY r.type
+        """)).all())
+        assert counts == {"inquiry": 9}
+        notices = connection.execute(text("SELECT * FROM notifications")).mappings().all()
+        assert len(notices) == 9
+        assert all(n["recipient_id"] == seed.DIRECTOR and n["kind"] == "new_card" for n in notices)
+        assert len({n["card_id"] for n in notices}) == 9
+    assert runner.sweep_missing_cards(now) == 0
+    with seeded_db.connect() as connection:
+        assert connection.scalar(text("SELECT count(*) FROM notifications")) == 9
+
+
+def test_waiting_streams_leave_threads_available_for_me(db_client, parent, seeded_db, monkeypatch):
+    from httpx import ASGITransport, AsyncClient
+    from app.main import app
+
+    monkeypatch.setattr(streams, "MAX_SECONDS", 10)
+
+    async def exercise():
+        # 기본 40개 풀의 포화를 작은 풀로 재현해요. 스트림은 풀 크기의 두 배예요.
+        limiter = anyio.to_thread.current_default_thread_limiter()
+        previous = limiter.total_tokens
+        limiter.total_tokens = 4
+        started = 0
+        all_started = anyio.Event()
+
+        async def observed(scope, receive, send):
+            async def observed_send(message):
+                nonlocal started
+                if scope["path"].endswith("/stream") and message["type"] == "http.response.start":
+                    assert message["status"] == 200
+                    started += 1
+                    if started == 8:
+                        all_started.set()
+                await send(message)
+            await app(scope, receive, observed_send)
+
+        try:
+            async with AsyncClient(transport=ASGITransport(app=observed), base_url="http://test") as client:
+                async def stream():
+                    response = await client.get(f"/api/v1/requests/{seed.REQUEST_COUGH}/stream", headers=parent)
+                    assert response.status_code == 200 and "event: done" in response.text
+                async with anyio.create_task_group() as group:
+                    for _ in range(8):
+                        group.start_soon(stream)
+                    with anyio.fail_after(3):
+                        await all_started.wait()
+                    # 열려 있는 스트림이 실제 poll 대기에 들어갈 시간을 줘요.
+                    await anyio.sleep(0.1)
+                    with anyio.fail_after(2):
+                        response = await client.get("/api/v1/me", headers=parent)
+                    assert response.status_code == 200
+                    def finish():
+                        with seeded_db.begin() as connection:
+                            connection.execute(text("UPDATE requests SET status='awaiting_review' WHERE id=:id"),
+                                               {"id": seed.REQUEST_COUGH})
+                    await anyio.to_thread.run_sync(finish)
+        finally:
+            limiter.total_tokens = previous
+
+    anyio.run(exercise)

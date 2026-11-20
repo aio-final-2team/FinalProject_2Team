@@ -1,6 +1,7 @@
 """학부모의 대화·시간 체크·회신 확인."""
 
 from app.core.errors import ApiError
+from app.core.constants import DEFERRED_REQUEST_TYPES
 from app.api.labels import parent_label, staff_label
 from app.api.schemas.common import Period
 from app.api.schemas.requests import (BookingOut, ConsultationOut, MessageOut, RequestDetailOut,
@@ -12,6 +13,16 @@ def detail(user, request_id):
     with store._lock:
         req = store.request_in_scope(user, request_id)
         label = parent_label if user.role == "parent" else staff_label
+        if req.type in DEFERRED_REQUEST_TYPES:
+            if user.role == "parent":
+                store.deny(user, req=req)
+            first = next((m for m in store.messages_of(req.id) if m.sender_type == "user"), None)
+            return RequestDetailOut(
+                request=RequestView(id=req.id, type=req.type, title=req.title, status=req.status,
+                                    status_label=label(req.status, req.type), missing_fields=[],
+                                    created_at=req.created_at, updated_at=req.updated_at),
+                messages=[MessageOut(id=first.id, sender_type=first.sender_type, body=first.body,
+                                     created_at=first.created_at)] if first else [], timeline=[])
         timeline: list[TimelineItem] = []
         for e in store.events_of(req.id):
             if e.to_status is None:
@@ -109,7 +120,7 @@ def create(user, *, background_tasks=None, **values):
 def listing(user, status, page, size, sort):
     with store._lock:
         store.expire()
-        requests = store.requests_of(user, status)
+        requests = [r for r in store.requests_of(user, status) if r.type not in DEFERRED_REQUEST_TYPES]
         requests.sort(key=lambda r: getattr(r, sort.lstrip("-")), reverse=sort.startswith("-"))
         def item(r):
             action = None

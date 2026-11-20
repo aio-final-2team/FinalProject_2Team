@@ -3,6 +3,7 @@
 import json
 import time
 
+import anyio
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import StreamingResponse
 from sqlalchemy import text
@@ -24,16 +25,20 @@ def stream_request(user, request_id):
     scope.request_in_scope(user, request_id)
     trace_id = active_trace_id.get()
 
-    def events():
+    def read(cursor):
+        with transaction() as connection:
+            req = scope.request_in_scope(user, request_id, connection=connection)
+            rows = connection.execute(text("""
+                SELECT id,action,card_id,agent_name,to_status,created_at FROM events
+                WHERE request_id=:id AND org_id=:org AND id>:cursor ORDER BY id
+            """), {"id": request_id, "org": user.org_id, "cursor": cursor}).mappings().all()
+            return req, rows
+
+    async def events():
         cursor, deadline = 0, time.monotonic() + MAX_SECONDS
         while True:
             try:
-                with transaction() as connection:
-                    req = scope.request_in_scope(user, request_id, connection=connection)
-                    rows = connection.execute(text("""
-                        SELECT id,action,card_id,agent_name,to_status,created_at FROM events
-                        WHERE request_id=:id AND org_id=:org AND id>:cursor ORDER BY id
-                    """), {"id": request_id, "org": user.org_id, "cursor": cursor}).mappings().all()
+                req, rows = await anyio.to_thread.run_sync(read, cursor)
             except Exception as error:
                 code = error.code if isinstance(error, ApiError) else "INTERNAL_ERROR"
                 yield _encode("error", {"error": {"code": code, "message": DEFAULT_MESSAGES[code],
@@ -59,7 +64,7 @@ def stream_request(user, request_id):
                 yield _encode("error", {"error": {"code": "UPSTREAM_UNAVAILABLE",
                     "message": DEFAULT_MESSAGES["UPSTREAM_UNAVAILABLE"], "trace_id": trace_id, "details": {}}})
                 return
-            time.sleep(POLL_SECONDS)
+            await anyio.sleep(POLL_SECONDS)
 
     return StreamingResponse(events(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
