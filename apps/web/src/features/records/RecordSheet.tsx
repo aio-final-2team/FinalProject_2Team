@@ -44,6 +44,7 @@ export function RecordSheet({ name, entries, open, onClose, onSave }: { name: st
         <input
           value={text}
           onChange={(e) => setText(e.target.value)}
+          onFocus={() => !text && setText("블록으로 높은 탑을 쌓으며 집중했어요")}
           onKeyDown={(e) => e.key === "Enter" && save()}
           placeholder="예: 블록으로 탑을 높이 쌓음"
           maxLength={200}

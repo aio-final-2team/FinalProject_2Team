@@ -123,6 +123,7 @@ function Compose({ onStarted }: { onStarted: (id: string) => void }) {
         rows={3}
         value={activities}
         onChange={(e) => setActivities(e.target.value)}
+        onFocus={() => !activities && setActivities("가을 낙엽으로 왕관을 만들고 놀이터에서 술래잡기를 했어요")}
         placeholder="예: 가을 낙엽으로 왕관 만들기, 놀이터에서 술래잡기"
         className={`${field} resize-none py-2.5 ${err && !activities.trim() ? "border-danger" : "border-line"}`}
       />
@@ -132,7 +133,7 @@ function Compose({ onStarted }: { onStarted: (id: string) => void }) {
         </p>
       )}
       <Label>준비물</Label>
-      <input value={supplies} onChange={(e) => setSupplies(e.target.value)} placeholder="예: 11/27(금) 김장 체험: 앞치마, 팔토시" className={`${field} h-12 border-line`} />
+      <input value={supplies} onChange={(e) => setSupplies(e.target.value)} onFocus={() => !supplies && setSupplies("김장 체험: 앞치마, 팔토시") } placeholder="예: 11/27(금) 김장 체험: 앞치마, 팔토시" className={`${field} h-12 border-line`} />
 
       <Label>
         <span className="inline-flex items-center gap-1">

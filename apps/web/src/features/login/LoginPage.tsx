@@ -143,11 +143,11 @@ function LoginForm({ onEnter }: { onEnter: (r: Role) => void }) {
         <h1 className="text-large-title font-bold tracking-[-0.025em]">로그인</h1>
         <label className="grid gap-1.5">
           <span className="text-footnote font-semibold">아이디</span>
-          <input value={id} onChange={(e) => setId(e.target.value)} autoComplete="username" className={field} />
+          <input value={id} onChange={(e) => setId(e.target.value)} onFocus={() => DEMO && !id && setId(DEMO_ACCOUNTS.teacher)} autoComplete="username" className={field} />
         </label>
         <label className="grid gap-1.5">
           <span className="text-footnote font-semibold">비밀번호</span>
-          <input type="password" value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="current-password" className={field} />
+          <input type="password" value={pw} onChange={(e) => setPw(e.target.value)} onFocus={() => DEMO && !pw && setPw(DEMO_PASSWORD)} autoComplete="current-password" className={field} />
         </label>
         {err && (
           <p role="alert" className="text-footnote font-medium text-danger">
