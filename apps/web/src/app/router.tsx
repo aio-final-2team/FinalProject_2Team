@@ -6,6 +6,8 @@ import { LoginPage } from "@/features/login/LoginPage";
 import { NoteDetail } from "@/features/notes/NoteDetail";
 import { NotesPage } from "@/features/notes/NotesPage";
 import { TeacherHome } from "@/features/teacher/TeacherHome";
+import { RecordsPage } from "@/features/records/RecordsPage";
+import { ParentHome } from "@/features/parent/ParentHome";
 import { ParentLayout } from "@/layouts/ParentLayout";
 import { StaffLayout } from "@/layouts/StaffLayout";
 import { StateView } from "@/components/StateView";
@@ -24,7 +26,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <Navigate to="home" replace /> },
       { path: "home", element: <TeacherHome /> },
-      { path: "records", element: <Later audience="staff" title="오늘 기록" /> },
+      { path: "records", element: <RecordsPage /> },
       { path: "notes", element: <NotesPage /> },
       { path: "notes/:noteId", element: <NoteDetail /> },
       /* 문의·민원 받은함은 11/27 범위 밖(알림장과 따로). 주소만 남겨 둔다 */
@@ -54,7 +56,7 @@ export const router = createBrowserRouter([
     ),
     children: [
       { index: true, element: <Navigate to="home" replace /> },
-      { path: "home", element: <Later audience="parent" title="홈 피드" /> },
+      { path: "home", element: <ParentHome /> },
       { path: "requests", element: <Later audience="parent" title="요청" /> },
       { path: "requests/new", element: <Later audience="parent" title="새 요청" /> },
       { path: "requests/:requestId", element: <Later audience="parent" title="요청 상세" /> },

@@ -7,6 +7,7 @@ import { useSession } from "@/app/session";
 import { Dock, PrimaryButton, SubButton } from "@/components/Dock";
 import { Icon } from "@/components/Icon";
 import { useToast } from "@/components/Toast";
+import { useRecords } from "@/features/records/store";
 import { CHECK_KIND, NOTE_STATUS, SOURCE_LABEL, dateLabel, nameI, todayKST, type DailyNote, type NoteItem, type OpenCheck } from "@/domain/notes";
 
 /**
@@ -50,6 +51,9 @@ function Detail({ note, notes, name, names }: { note: DailyNote; notes: DailyNot
   const open = note.open_checks;
   const locked = note.status === "sent";
   const next = notes.find((n) => n.status === "needs_check" && n.id !== note.id);
+  const { records } = useRecords(cid, date);
+  const entries = records[note.child_id] ?? [];
+  const memoLine = note.content.items.find((i) => i.key === "child")?.value;
 
   const save = (body: Parameters<typeof patch.mutate>[0]["body"], done?: string) =>
     patch.mutate(
@@ -118,8 +122,26 @@ function Detail({ note, notes, name, names }: { note: DailyNote; notes: DailyNot
       </Link>
       <h1 className="text-large-title font-bold tracking-[-0.025em]">{nameI(name)} 알림장</h1>
       <p className="mb-4 mt-0.5 text-footnote font-medium text-ink2">
-        {dateLabel(note.note_date)} · <span className={`font-bold ${st.cls}`}>{st.label}</span>
+        {user?.display_name} · {dateLabel(note.note_date)} · <span className={`font-bold ${st.cls}`}>{st.label}</span>
       </p>
+
+      <div className="mb-2 px-1 text-footnote font-semibold text-ink2">오늘 기록</div>
+      <div className="mb-4 rounded-lg bg-g px-3 py-2.5 text-callout">
+        {entries.length ? (
+          <ul className="grid gap-1">
+            {entries.map((e, i) => (
+              <li key={i} className="flex gap-2">
+                <time className="text-footnote text-ink2 tabular-nums">{e.at}</time>
+                <span>{e.text}</span>
+              </li>
+            ))}
+          </ul>
+        ) : memoLine ? (
+          <span>{memoLine}</span>
+        ) : (
+          <span className="text-ink2">기록 없음 · 반 활동만 들어갔어요</span>
+        )}
+      </div>
 
       {open.length > 0 && (
         <section className="mb-4 grid gap-2">
