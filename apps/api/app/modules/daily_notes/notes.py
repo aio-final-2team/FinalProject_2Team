@@ -10,6 +10,7 @@ from app.core import scope
 from app.core.config import settings
 from app.core.db import transaction
 from app.core.errors import ApiError
+from app.core.jobs import dispatch
 from app.core.schedule import KST, deliver_after, due_at
 from app.modules.daily_notes.events import edited_child_ids, record
 
@@ -59,8 +60,7 @@ def draft(user, body, background_tasks):
                 SELECT * FROM daily_note_inputs WHERE org_id=:org AND classroom_id=:class AND note_date=:date
             """), values).mappings().one()
     if created:
-        from app.modules.daily_notes.runner import run_daily_note_drafts
-        background_tasks.add_task(run_daily_note_drafts, entry["id"])
+        dispatch("daily_note", entry["id"], background_tasks)
     return draft_view(entry), created
 
 
@@ -95,8 +95,7 @@ def regenerate(user, input_id, background_tasks):
             WHERE subject_type='daily_note_batch' AND subject_id=:id AND org_id=:org
         """), {**values, "detail": json.dumps({"draft_started_at": datetime.now(KST).isoformat(),
                                                "regenerated_by": str(user.id)})})
-    from app.modules.daily_notes.runner import run_daily_note_drafts
-    background_tasks.add_task(run_daily_note_drafts, input_id)
+    dispatch("daily_note", input_id, background_tasks)
     return {**draft_view(entry), "kept_edited": kept_edited}
 
 

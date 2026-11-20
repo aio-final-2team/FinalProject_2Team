@@ -1,6 +1,6 @@
--- 유치온 DB 스키마 초안 (T09) · 문서 버전 v0.10 (민원 회신 후 받은함 분류 11/20 반영)
+-- 유치온 DB 스키마 초안 (T09) · 문서 버전 v0.11 (알림 재시도 시각 11/20 반영)
 -- 설계서: Docs/Step2/DB_스키마_설계서.md
--- 이 파일은 최종 설계 모양이다. 실제 적용은 apps/api/migrations의 0001 → 0002 → 0003 → 0004로 한다.
+-- 이 파일은 최종 설계 모양이다. 실제 적용은 apps/api/migrations의 0001 → 0002 → 0003 → 0004 → 0005로 한다.
 -- 대상: PostgreSQL 16 + pgvector 0.8 (compose.yaml의 pgvector/pgvector:pg16). Supabase는 쓰지 않는다(설계서 5.1)
 -- 기관 경계: 기관에 속한 표끼리는 (id, org_id) 짝으로 참조해서 다른 원 행을 섞어 넣으면 DB가 거부한다
 
@@ -610,6 +610,7 @@ CREATE TABLE notifications (
     created_at    timestamptz NOT NULL DEFAULT now(),
     sent_at       timestamptz,
     read_at       timestamptz,
+    next_attempt_at timestamptz NOT NULL DEFAULT now(), -- 노출 시각은 유지하고 다음 발송·재시도를 예약해요.
     FOREIGN KEY (recipient_id, org_id) REFERENCES users(id, org_id),
     FOREIGN KEY (request_id, org_id) REFERENCES requests(id, org_id),
     FOREIGN KEY (card_id, org_id) REFERENCES cards(id, org_id),

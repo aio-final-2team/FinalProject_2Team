@@ -79,7 +79,7 @@ def notify_event(connection, event, req, card):
 def listing(user, page, size, sort):
     from app.core.db import transaction
     with transaction() as connection:
-        # 발송기는 워커에서 연결해요. 노출은 기존 계약의 deliver_after를 기준으로 해요.
+        # 발송·재시도 상태와 별개로 노출은 기존 계약의 deliver_after를 기준으로 해요.
         rows = [dict(row) for row in connection.execute(text('''
             SELECT * FROM notifications WHERE org_id=:org AND recipient_id=:user AND deliver_after<=now()
             ORDER BY created_at,id

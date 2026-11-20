@@ -31,6 +31,19 @@ Compose의 DB 서비스는 두 모드에서 함께 떠요. `docker compose down`
 DB 계정·비밀번호를 바꿀 때는 `.env`의 `POSTGRES_*`와 `DATABASE_URL`을 함께 맞춰요.
 이미 만들어진 DB 볼륨의 계정·비밀번호는 환경 변수를 바꿔도 자동으로 바뀌지 않아요.
 
+워커를 쓰려면 `.env`에 `DATA_BACKEND=db`·별도 `JWT_SECRET`·`RUN_IN=worker`를 넣고 실행해요.
+
+```sh
+docker compose --profile worker up --build
+```
+
+기본 `RUN_IN=api`는 기존 BackgroundTasks 실행을 유지해요. worker 프로필은 Redis·Celery worker·Beat를 더해요.
+API가 마이그레이션·시드를 끝내고 정상 응답한 뒤 worker·Beat가 시작해요. 두 서비스는 DB 초기화를 반복하지 않아요.
+`CELERY_BROKER_URL` 기본값은 Compose 내부 Redis 주소예요. Redis 포트는 호스트에 열지 않아요.
+Redis는 appendonly와 전용 볼륨을 써요. API·worker는 같은 DB·작성기·에이전트·근무 시간·모델 설정을 받아요.
+worker는 `solo`로 한 작업씩 처리해요. 지금은 API·worker·Beat를 각각 하나만 실행해요.
+mock은 메모리를 프로세스끼리 공유하지 않으므로 기존 API 안 대역만 쓰고, 워커 주기 작업은 DB를 열지 않아요.
+
 `DATA_BACKEND` 기본값은 `mock`이에요. `db`는 PostgreSQL의 계정과 관계를 읽어요.
 DB 주소는 `DATABASE_URL`로 받아요. Docker 밖에서는 마이그레이션·시드를 직접 실행해요.
 DB 모드는 `JWT_SECRET`에 32바이트 이상의 별도 키가 필요해요. 값이 없거나 mock 기본값·
@@ -49,6 +62,7 @@ DB 모드는 `JWT_SECRET`에 32바이트 이상의 별도 키가 필요해요. �
 | 민원 반복·고위험 원장 보고(T31) | 구현 | 같은 반·30일·주제 집계와 동시 분류·기한·알림 시각 검증 |
 | 상담 후보·시간 선택/확정(API 8·17, T35) | 구현 | 근무 시간·바쁜 일정·담임/상담실 충돌 계산, 동시 확정·알림 행 구현 |
 | 거절 이유 기억·규칙 제안/결정(API 20, T39) | 구현 | 개인 기억·세 번째 제안·주인 결정·승인 전 미적용 구현 |
+| 워커·서비스 안 알림(T26) | API 안 대역 유지 | Celery·Beat·중복 발송 잠금·최대 3회 시도/백오프 구현 |
 | 자료 올리기/상세 | 구현 | 다음 항목에서 차례로 연결해요 |
 
 아직 연결하지 않은 DB API는 인증·역할·상세 경로의 범위를 검사한 뒤 공통 오류
@@ -76,11 +90,12 @@ DB에서는 전체 대화와 상태 표시 이름만 담은 진행 기록, 상�
 
 DB 요청은 요청·첫 메시지·created 이력을 한 트랜잭션에서 저장하고 202로 접수해요.
 같은 (requester_id, client_request_id)로 재전송하면 새 메시지·작업 없이 기존 요청과 현재 상태를 200으로 줘요.
-FastAPI BackgroundTasks가 같은 API 프로세스에서 요청 대역을 불러요.
+`RUN_IN=api`면 FastAPI BackgroundTasks가 같은 API 프로세스에서 요청 대역을 불러요.
+`RUN_IN=worker`면 저장을 커밋한 뒤 Celery에 요청 UUID만 보내요.
 직접 실행할 때 REQUEST_AGENT=모듈:함수로 입구를 골라요. 기본값은
 app.modules.requests.agent_stub:run_request이고 인자는 요청 UUID 하나예요.
 입구는 카드 저장과 요청 상태 변경을 한 트랜잭션에서 처리해야 해요.
-Compose의 사용자 지정 입구 전달·Celery 주기 실행은 워커 항목에서 연결해요.
+Compose도 `REQUEST_AGENT`를 API·worker에 같이 전달해요. 기본 입구는 두 실행 모드에서 같아요.
 
 대역은 모의 낱말 분류와 카드 만들기를 DB로 옮긴 코드예요. 실제 모델·외부 API는 부르지 않아요.
 근거를 찾았다고 꾸미지 않고 card_evidence는 비우며 draft.no_evidence를 남겨요.
@@ -88,7 +103,14 @@ DB 상담 후보는 근무 시간·바쁜 일정·담임/상담실 예약·유�
 시간 선택·담임 확정 API도 DB에 연결했어요. 자세한 계산 범위는 [상담 모듈](app/modules/consultations/README.md)을 봐 주세요.
 위험 분류는 두 모드가 같은 낱말 대역을 써요. 실제 감독 AI의 분류 품질은 별도로 평가해요.
 요청 이력과 notifications 행은 상태 변경과 같은 트랜잭션에 저장해요.
-알림은 pending·dedupe_key·deliver_after를 채워요. 목록·읽음은 연결했고 발송기는 워커 항목에서 열어요.
+알림은 pending·dedupe_key·deliver_after를 채워요. 목록·읽음은 같은 기관의 본인 알림만 보여요.
+Beat는 1분마다 발송 작업을 넣어요. 앱 안 알림 행을 sent로 바꾸고 외부 알림은 보내지 않아요.
+행 잠금·SKIP LOCKED와 유니크 dedupe_key로 동시에 실행해도 한 번만 처리해요.
+발송은 총 3회까지 시도해요. 실패하면 60초·120초 뒤에 다시 시도하고 세 번째 실패는 failed로 남겨요.
+`next_attempt_at`만 바꿔 원래 노출 시각·읽은 시각을 유지해요. 실패 이유는 고정 코드만 남기고 tool_failed 이력을 기록해요.
+최종 실패는 연결 카드에 notify_failed를 남겨 기존 상세 경고로 보여요.
+비활성 수신자는 재시도 없이 failed로 남겨요. 성공 시 attempts를 올리고 sent_at을 처음 한 번 기록해요.
+발송 시점에도 근무 시간을 다시 검사해 늦어진 주기 작업·재시도가 퇴근 뒤 일반 알림을 보내지 않아요.
 
 학부모 스트림은 저장된 이력에서 단계만 읽고 완료 상태에서 done을 보내요.
 진행 중에는 짧게 다시 읽으며 최대 5분 후 공통 error로 닫아요. 초안·카드·내부 실패 이유는 보내지 않아요.
@@ -100,7 +122,8 @@ DB 읽기만 스레드에서 하고 poll 대기는 비동기로 기다려 다른
 시드의 보호자 문의는 받은함 대상이에요. 담당 없는 인계 카드가 생기면 같은 기관 원장에게 new_card 알림을 한 번 남겨요.
 T46 전까지 투약·귀가는 교직원이 알림장 출처용 상세(유형·제목·첫 보호자 메시지)만 읽어요.
 학부모의 내 요청 목록·total에서는 빼고 상세는 404로 숨겨요. 등록 계약은 열지 않아요.
-이 함수의 주기 실행은 아직 없어요. API 문서는 1분, 작업 계획 워커 항목은 5분으로 적혀 있어 연결 때 주기를 맞춰야 해요.
+Beat는 5분마다 누락 카드 점검과 알림장 복구를 실행해요. T13의 점검 주기도 5분으로 맞췄어요.
+큐 전달이 실패해도 접수 행은 남아요. 요청은 누락 카드 점검으로 인계하고 queued 알림장은 다시 전달해요.
 추가 대화와 확인은 요청 행을 먼저 잠가요. 민원 회신 뒤 추가 글은 확인을 지우고
 회신 카드를 pending으로 돌리며 version을 올려요. 확인 재시도는 처음 시각과 알림을 유지해요.
 범위 함수의 connection 인자로 호출 쪽 트랜잭션을 쓰고, 404 거부 이력만 별도로 커밋해요.
@@ -143,7 +166,7 @@ eval_runs는 기관 칸이 없는 공통 평가 기록이며 최근 20건을 보
 교직원 SSE는 저장 이력의 단계와 현재 카드 초안을 재생해요. 실시간 모델 토큰은 아직 없어요.
 요청 없는 카드도 상세·SSE로 읽고 done.request_status는 null이에요.
 알림 목록·읽음은 본인 기관·수신자·deliver_after를 검사하고 첫 read_at을 보존해요.
-DB 조회는 pending을 sent로 바꾸지 않아요. 실제 발송·재시도는 워커 항목에서 연결해요.
+DB 조회는 pending을 sent로 바꾸지 않아요. 발송·재시도는 별도 워커 작업이 처리해요. 목록·읽음 조회는 발송 상태를 바꾸지 않아요.
 
 ## 로컬 검사
 
@@ -176,7 +199,8 @@ DB 시험 변수가 셸에 남아 있어도 check는 mock만 실행해요. DB �
 
 ## 초안 실행과 데모
 
-DB 초안은 입력을 `queued`로 저장하고 같은 프로세스의 BackgroundTasks에서 실행해요.
+DB 초안은 입력을 `queued`로 저장해요. `RUN_IN=api`는 같은 프로세스의 BackgroundTasks,
+`RUN_IN=worker`는 Celery 태스크에서 같은 runner를 실행해요.
 `running`을 거쳐 `succeeded` 또는 `failed`가 돼요. `DAILY_NOTE_WRITER`는
 `모듈:함수` 형식이고 기본값은 `app.modules.daily_notes.stub_writer:write`예요.
 `DAILY_NOTE_WRITER=graph`로 고르면 영민님 그래프의 `draft_daily_notes(payload)`를 불러요.
@@ -192,8 +216,10 @@ DB 초안은 입력을 `queued`로 저장하고 같은 프로세스의 Backgroun
 수정·확인 요청의 `resolved_checks`에는 조회 응답의 ID를 보내요.
 그래프 연결 시험은 가짜 writer·checker를 주입하며 실제 모델은 부르지 않아요.
 
-지금은 **API 프로세스 하나**로 실행해요. 여러 worker나 API 복제본을 함께 띄우면 안 돼요.
-앱 시작 때 남은 `running`을 `queued`로 되돌리고 모든 `queued` 입력을 다시 실행해요.
+지금은 **API·worker·Beat 각각 하나**로 실행해요. API 안 실행 모드는 API 재시작 때
+남은 `running`을 `queued`로 되돌리고 모든 `queued` 입력을 다시 실행해요.
+worker 모드의 API 재시작·5분 점검은 작성기 시간 제한을 넘긴 `running`만 되돌려요.
+진행 중 worker 작업은 유지해요. queued 중복 전달은 runner의 원자적 상태 검사로 한 실행만 가져가요.
 기동을 기다리는 동안 초안을 전부 만들지는 않아요. 복구 작업도 뒤에서 차례로 실행해요.
 writer는 `DAILY_NOTE_WRITER_TIMEOUT`초(기본 300초) 안에 답해야 해요.
 시간이 지나면 기존 `failed`·`UPSTREAM_UNAVAILABLE` 경로로 끝내고 늦은 결과는 저장하지 않아요.
@@ -217,7 +243,7 @@ PYTHONPATH=apps/api python -m db.seeds.demo --refresh-note-requests
 0003부터 선생님이 받은 마지막 AI 초안은 `daily_notes.ai_original`에 보존해요. 교사 수정·확인·발송으로는 바꾸지 않고 미수정 초안을 재생성할 때 갱신해요. 기존 행은 적용 시점의 내용으로 채워요.
 수정·확인·발송·초안 저장은 `events.daily_note_id`로 아이별 이력을 남겨요.
 지금 발송은 `note_sent` 알림을
-`pending`으로 저장하고 `deliver_after`를 계산해요. 알림 발송기는 다음 워커 항목에서 연결해요.
+`pending`으로 저장하고 `deliver_after`를 계산해요. 워커가 보낼 시각 이후 sent로 바꿔요.
 
 `POST /daily-notes/drafts/{input_id}/regenerate`는 저장 입력으로 draft·needs_check만 다시 만들어요.
 ready와 교사 수정본(content ≠ ai_original 또는 daily_note_edited 이력)은 그대로 두고, sent가 하나라도 있으면 409예요.
@@ -231,6 +257,9 @@ DB는 입력 행의 PostgreSQL xmin을 실행 판으로 써서 이전 작업의 
 기억 AI의 말투 추출·규칙 생성은 이번 백엔드에 없으며, 말투 예시는 시드하지 않아요.
 
 알려진 한계:
+
+- worker·Beat는 `RUN_IN=worker`일 때만 DB 주기 작업을 해요. API 안 실행 모드의 기존 알림 조회는 유지하지만 예약 발송은 worker 모드로 켜야 해요.
+- 지금은 단일 worker라 긴 작성 작업이 주기 작업을 늦출 수 있어요. 여러 큐·복제본·작성 중 heartbeat는 별도 설계가 필요해요.
 
 - 시간 초과는 대기·결과 저장만 끝내요. 실행 중인 writer 스레드는 멈추지 않아서 모델 호출이 계속될 수 있어요. 호출별 제한·취소는 writer 쪽에서 처리해야 해요.
 - 알림장이 0개인 반을 보내면 `sent_count=0`이고 묶음 카드는 `pending`으로 남아요.

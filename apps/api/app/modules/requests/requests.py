@@ -8,7 +8,7 @@ from app.core.constants import DEFERRED_REQUEST_TYPES
 from app.core.db import transaction
 from app.core.errors import ApiError
 from app.modules.requests.events import record, set_status
-from app.modules.requests.runner import run_request
+from app.core.jobs import dispatch
 
 
 def _readable(req):
@@ -56,7 +56,7 @@ def create(user, *, background_tasks, client_request_id, type, body, child_id, p
             VALUES (:org,:request,'user',:user,:body)
         """), {**values, "request": req["id"], "body": body})
         record(connection, req, "created", actor_type="user", actor_id=user.id, to_status="received", trace_id=trace_id)
-    background_tasks.add_task(run_request, req["id"])
+    dispatch("request", req["id"], background_tasks)
     return req, True
 
 
@@ -279,7 +279,7 @@ def message(user, request_id, body, *, background_tasks):
         elif req["status"] == "needs_info" and req["type"] != "consultation":
             rerun = True
     if rerun:
-        background_tasks.add_task(run_request, request_id)
+        dispatch("request", request_id, background_tasks)
     return {"message": msg}
 
 

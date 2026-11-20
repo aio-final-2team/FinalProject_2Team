@@ -15,11 +15,14 @@ async def lifespan(app):
     if settings.data_backend == "mock":
         yield
         return
-    from app.modules.daily_notes.runner import requeue_daily_note_drafts, run_daily_note_drafts
-    pending = await anyio.to_thread.run_sync(requeue_daily_note_drafts)
+    from functools import partial
+    from app.core.jobs import dispatch
+    from app.modules.daily_notes.runner import requeue_daily_note_drafts
+    pending = await anyio.to_thread.run_sync(partial(requeue_daily_note_drafts,
+                                                   stale_only=settings.run_in == "worker"))
     tasks = BackgroundTasks()
     for input_id in pending:
-        tasks.add_task(run_daily_note_drafts, input_id)
+        dispatch("daily_note", input_id, tasks)
     async with anyio.create_task_group() as group:
         group.start_soon(tasks)
         yield
