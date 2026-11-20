@@ -1,0 +1,86 @@
+{
+  "notice": "※ 유치온 개발·평가용 가상 자료입니다. 실제 기관·인물·아동 정보가 아닙니다.",
+  "classroom_key": "C5",
+  "week": "2026-11-16 ~ 2026-11-20 (학부모 상담 주간, SC-2026-11)",
+  "days": [
+    {
+      "note_date": "2026-11-16",
+      "activities": "가을 낙엽을 모아 콜라주를 만들었어요. 바깥놀이 시간에는 놀이터에서 놀았어요.",
+      "supplies": "없음",
+      "supplies_source": null,
+      "meal_source": {
+        "document_id": "MN-2026-W47",
+        "row": "11-16(월)"
+      },
+      "snack_source": {
+        "document_id": "MN-2026-11-SNACK",
+        "row": "월"
+      }
+    },
+    {
+      "note_date": "2026-11-17",
+      "activities": "다음 주 김장 체험을 앞두고 배추와 무를 관찰했어요. 리듬 악기 놀이를 했어요.",
+      "supplies": "없음",
+      "supplies_source": null,
+      "meal_source": {
+        "document_id": "MN-2026-W47",
+        "row": "11-17(화)"
+      },
+      "snack_source": {
+        "document_id": "MN-2026-11-SNACK",
+        "row": "화"
+      }
+    },
+    {
+      "note_date": "2026-11-18",
+      "activities": "재롱잔치 노래를 처음 배웠어요. 블록으로 우리 동네를 만들었어요.",
+      "supplies": "11/27(금) 김장 체험: 앞치마, 팔토시 (없으면 원에서 빌려 드려요)",
+      "supplies_source": {
+        "document_id": "NT-2026-30",
+        "location": "1쪽 준비물"
+      },
+      "meal_source": {
+        "document_id": "MN-2026-W47",
+        "row": "11-18(수)"
+      },
+      "snack_source": {
+        "document_id": "MN-2026-11-SNACK",
+        "row": "수"
+      }
+    },
+    {
+      "note_date": "2026-11-19",
+      "activities": "다음 주 현장체험학습에서 할 고구마 캐기 이야기를 나눴어요. 바깥놀이로 술래잡기를 했어요.",
+      "supplies": "11/26(목) 현장체험학습: 도시락, 물병(이름 표시), 여벌옷 1벌, 편한 운동화, 모자",
+      "supplies_source": {
+        "document_id": "NT-2026-26",
+        "location": "2쪽 준비물"
+      },
+      "meal_source": {
+        "document_id": "MN-2026-W47",
+        "row": "11-19(목)"
+      },
+      "snack_source": {
+        "document_id": "MN-2026-11-SNACK",
+        "row": "목"
+      }
+    },
+    {
+      "note_date": "2026-11-20",
+      "activities": "11월 생일 친구 축하 잔치를 했어요. 겨울철 안전한 등·하원 교육을 했어요.",
+      "supplies": "11/26(목) 현장체험학습 도시락을 잊지 말아 주세요 (원에서 점심을 준비하지 않아요)",
+      "supplies_source": {
+        "document_id": "NT-2026-26",
+        "location": "2쪽 준비물"
+      },
+      "meal_source": {
+        "document_id": "MN-2026-W47",
+        "row": "11-20(금)"
+      },
+      "snack_source": {
+        "document_id": "MN-2026-11-SNACK",
+        "row": "금"
+      }
+    }
+  ]
+}
