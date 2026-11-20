@@ -1,4 +1,4 @@
-# 알림장 AI 초안용 가상 데이터 (햇살반 1주)
+# 알림장 AI 초안용 가상 데이터 (햇님반 1주)
 
 ※ 유치온 개발·평가용 가상 자료입니다. 실제 기관·인물·아동 정보가 아닙니다.
 
@@ -6,7 +6,7 @@
 
 | 파일 | 내용 | 양 |
 | --- | --- | --- |
-| `roster_c5.json` | 만 5세반(햇살반, `C5`) 가상 아이 명단. 담임 `T-DEMO-01` | 18명 (`C5-01`~`C5-18`) |
+| `roster_c5.json` | 만 5세 햇님반(`C5`) 가상 아이 명단. 담임 `T-DEMO-01` | 18명 (`C5-01`~`C5-18`) |
 | `class_days.json` | 반 공통 입력 `activities`·`supplies`와 근거 문서 | 5일 (2026-11-16~20) |
 | `child_memos.json` | 아이별 선생님 메모 `{note_date, child_key, memo, trap_case}` | 90개 (빈 메모 12개, 함정 20개) |
 
@@ -27,7 +27,7 @@
 | `roster_c5.children[]` | `children` 표 시드 (`display_name`, `is_virtual = true`) | 고정 UUID는 시드(T13)에서 정함. 지금 모의 시드는 반마다 1~2명 |
 | `meal_source`·`snack_source` | `content.items[key=meal].source = {type: document, …}` | 검색으로 찾음. 여기 값은 평가 정답 확인용 |
 
-- 반 이름은 T11 자료(`만 5세반(햇살반)`)를 따랐어요. 모의 API 시드는 `만 5세 햇님반`이라 이름 맞추기가 필요해요.
+- 반 이름은 모의 API 시드(`만 5세 햇님반`, PR #256)에 맞췄어요(11/20, T11 자료도 같이 바꿈).
 - 이 폴더는 `documents` 적재(T20) 대상이 아니에요. 검색에 넣지 않아요.
 
 ## 평가
