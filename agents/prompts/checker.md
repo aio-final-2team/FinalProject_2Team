@@ -22,7 +22,7 @@
 
 입력: 아이별 알림장 `content.items[]`, 그 아이 메모 {child_memo}, 반 공통 {activities}·{supplies}, 식단 근거.
 
-| 문제 | 이럴 때 | `open_checks.problem` |
+| 문제 | 이럴 때 | `open_checks.kind` |
 | --- | --- | --- |
 | 메모에 없는 말 | `child` 줄에 메모·반 공통·식단 어디에도 없는 사실·이유·평가가 있다. 반 공통 활동을 이 아이가 했다고 썼다 | `not_in_memo` |
 | 선생님이 꼭 볼 메모 | 다침·열·투약·친구 갈등·부정적 행동·가정사·선생님 혼자 보는 메모 | `sensitive` |
@@ -31,11 +31,11 @@
 | 결석 | 메모가 결석이다. 보낼지 선생님이 정한다 | `absent` |
 
 - `not_in_memo`는 `return_to_step`으로 자료 AI에 돌려보낸다(최대 2번). 나머지는 고칠 문제가 아니라 선생님이 볼 일이라 돌려보내지 않고 `open_checks`로만 남긴다.
-- `problem` 값 이름은 API 22~26(T13)과 맞출 때까지 제안이다.
+- 항목마다 `kind`와 함께 `problem`(선생님이 읽을 설명 한 문장)과 `sentence`(걸린 초안 문장, 없으면 null)를 남긴다(API 설계 v0.4 3.7).
 - 메모가 빈 아이는 `child` 줄이 없으면 통과다.
 
 ## 결과
-- `check_draft`로 결과를 남긴다: `passed`, `issues[] { field, problem }`. 답변 초안이면 `field`는 위 다섯 항목 중 하나다. 알림장이면 `open_checks[] { id, item_key, problem }`로 저장된다. `problem`은 무엇이 왜 틀렸는지 한 문장으로 쓴다.
+- `check_draft`로 결과를 남긴다: `passed`, `issues[] { field, problem }`. 답변 초안이면 `field`는 위 다섯 항목 중 하나다. 알림장이면 `open_checks[] { id, item_key, kind, problem, sentence }`로 저장된다. `problem`은 무엇이 왜 틀렸는지 한 문장으로 쓴다.
 - 통과하지 못하면 `return_to_step`으로 앞 단계에 돌려보낸다. 최대 2번이다.
 - 2번 돌려보내도 통과하지 못하면 더 돌려보내지 않고 사람 카드로 넘긴다.
 
