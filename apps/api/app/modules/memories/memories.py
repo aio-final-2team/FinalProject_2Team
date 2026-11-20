@@ -57,7 +57,12 @@ def remember_rejection(connection, user, card, decision, reason_code, reason_tex
         return
     connection.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))"),
                        {"key": f"memory-rule:{user.org_id}:{user.id}:{reason_code}"})
-    names = connection.scalars(text("SELECT display_name FROM children WHERE org_id=:org"), {"org": user.org_id})
+    classroom_id = connection.scalar(text("SELECT classroom_id FROM requests WHERE id=:id AND org_id=:org"),
+                                     {"id": card["request_id"], "org": user.org_id})
+    name_query = "SELECT display_name FROM children WHERE org_id=:org"
+    if classroom_id is not None:
+        name_query += " AND classroom_id=:class"
+    names = connection.scalars(text(name_query), {"org": user.org_id, "class": classroom_id})
     content = mask_child_names(reason_text or "거절 이유: " + reason_code, names)
     connection.execute(text("""
         INSERT INTO memories (org_id,owner_id,kind,reason_code,content,structured,source_card_id,created_at)

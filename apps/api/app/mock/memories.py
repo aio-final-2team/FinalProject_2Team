@@ -37,8 +37,11 @@ def remember_rejection(user, card, decision, reason_code, reason_text):
     if user.role != "teacher":
         return
     with store._lock:
+        req = store.state().requests.get(card.request_id)
+        classroom_id = req.classroom_id if req else None
         content = mask_child_names(reason_text or "거절 이유: " + reason_code,
-                                  (c.display_name for c in store.state().children.values() if c.org_id == user.org_id))
+                                  (c.display_name for c in store.state().children.values() if c.org_id == user.org_id
+                                   and (classroom_id is None or c.classroom_id == classroom_id)))
         memory = Memory(store.state().next_int(), user.org_id, user.id, "rejection_reason",
                         content, reason_code=reason_code,
                         structured={"decision": decision, "card_version": card.version},

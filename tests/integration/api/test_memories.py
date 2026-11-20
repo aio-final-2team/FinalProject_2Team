@@ -259,9 +259,52 @@ def test_personal_rule_inbox_uses_current_assignment_and_null_when_none(client, 
     assert classroom() is None
 
 
-def test_rejection_memory_masks_names_from_entire_organization(client, parent, teacher):
-    reject(client, parent, teacher, reason_text="[TEST] 하늘이와 노을이, 다른 반 바다도 확인해 주세요")
-    assert memories(client, teacher)[0]["content"] == "[TEST] ○○이와 ○○이, 다른 반 ○○도 확인해 주세요"
+@pytest.mark.parametrize("classroom_id,expected", [
+    (seed.CLASS_STAR, "[TEST] ○○이와 ○○이, 바다도 확인해 주세요"),
+    (seed.CLASS_SUN, "[TEST] 하늘이와 노을이, ○○도 확인해 주세요"),
+    (None, "[TEST] ○○이와 ○○이, ○○도 확인해 주세요"),
+])
+def test_rejection_memory_masks_names_from_source_request_classroom(
+    client, parent, teacher, memory_backend, classroom_id, expected
+):
+    rid, cid = create(client, parent, teacher, type="inquiry")
+    if memory_backend == "mock":
+        store.state().requests[UUID(rid)].classroom_id = classroom_id
+    else:
+        with transaction() as connection:
+            connection.execute(text("UPDATE requests SET classroom_id=:class WHERE id=:id"),
+                               {"class": classroom_id, "id": rid})
+    response = decision(client, teacher, cid, "reject", reason_code="other",
+                        reason_text="[TEST] 하늘이와 노을이, 바다도 확인해 주세요")
+    assert response.status_code == 200, response.text
+    assert memories(client, teacher)[0]["content"] == expected
+
+
+def test_rejection_memory_preserves_embedded_words_and_masks_names_with_particles(client, parent, teacher):
+    reject(client, parent, teacher, code="other",
+           reason_text="[TEST] 하늘색·무엇이든·마루에서·올라온·다가온·김하늘. 하늘이가 울었어요, 마루랑 (하늘)")
+    assert memories(client, teacher)[0]["content"] == (
+        "[TEST] 하늘색·무엇이든·마루에서·올라온·다가온·김하늘. ○○이가 울었어요, ○○랑 (○○)"
+    )
+
+
+def test_rejection_memory_without_source_request_masks_organization_names(client, parent, teacher, memory_backend):
+    from app.mock import memories as mock_memories
+    from app.modules.memories import memories as db_memories
+
+    _, cid = create(client, parent, teacher, type="inquiry")
+    user = store.get_user(seed.TEACHER)
+    reason = "[TEST] 하늘이와 다른 반 바다도 확인해 주세요"
+    if memory_backend == "mock":
+        card = store.state().cards[UUID(cid)]
+        card.request_id = None
+        mock_memories.remember_rejection(user, card, "reject", "other", reason)
+    else:
+        with transaction() as connection:
+            card = dict(connection.execute(text("SELECT * FROM cards WHERE id=:id"), {"id": cid}).mappings().one())
+            card["request_id"] = None
+            db_memories.remember_rejection(connection, user, card, "reject", "other", reason)
+    assert memories(client, teacher)[0]["content"] == "[TEST] ○○이와 다른 반 ○○도 확인해 주세요"
 
 
 def test_deleted_memory_erases_content_and_structured_but_keeps_audit_row(
