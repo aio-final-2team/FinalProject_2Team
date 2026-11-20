@@ -139,9 +139,22 @@ def test_eval_score_uses_only_ai_lines_and_flag_kind():
     case = {"id": "ND-17", "category": "반 공통과 섞임", "must_not_include": ["만들었"], "expect_flag": True,
             "flag_kind": "absent", "must_include": ["결석"]}
     note = {"content": {"items": [
-        {"key": "day", "value": "블록으로 동네를 만들었어요."},
-        {"key": "child", "value": "오늘은 결석했어요."}]},
+        {"key": "day", "value": "블록으로 동네를 만들었어요.", "source": {"type": "teacher_input"}},
+        {"key": "child", "value": "오늘은 결석했어요.", "source": {"type": "teacher_input"}}]},
         "open_checks": [{"kind": "absent"}]}
     assert score(case, note)["pass"] is True
     note["open_checks"] = []
     assert score(case, note)["pass"] is False
+
+
+def test_eval_request_score_needs_line_key_and_teacher_check():
+    from tools.eval_daily_note import score_request
+
+    req = {"request_key": "GR-05", "type": "medication", "trap": {"type": "dose_number"},
+           "expect": {"line_key": "medication", "must_include": ["2.5ml"], "must_not_include": ["먹였어요"],
+                      "teacher_check": "sensitive"}}
+    line = {"key": "medication", "value": "점심 후 시럽 2.5ml 요청이 있었어요.", "source": {"type": "request", "request_id": "GR-05"}}
+    note = {"content": {"items": [line]}, "open_checks": [{"kind": "sensitive"}]}
+    assert score_request(req, note)["pass"] is True
+    assert score_request(req, {**note, "open_checks": []})["pass"] is False
+    assert score_request(req, {"content": {"items": []}, "open_checks": [{"kind": "request_missed"}]})["covered"] is False
