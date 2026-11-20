@@ -9,6 +9,7 @@
 | `roster_c4.json` | 만 4세 별빛반(`C4`) 가상 아이 명단. 담임 `T-DEMO-01` | 18명 (`C4-01`~`C4-18`) |
 | `class_days.json` | 반 공통 입력 `activities`·`supplies`와 근거 문서 | 5일 (2026-11-16~20) |
 | `child_memos.json` | 아이별 선생님 메모 `{note_date, child_key, memo, trap_case}` | 90개 (빈 메모 12개, 함정 20개) |
+| `guardian_requests.json` | 보호자 요청 `{request_key, note_date, created_at, child_key, type, body, expect, trap}`. 메모와 같은 날·같은 아이에 붙어 있어 함께 평가해요 | 20개 (투약 5·귀가 7·문의 8, 함정 12개) |
 
 ## 고른 이유
 
