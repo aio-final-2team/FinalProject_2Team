@@ -17,11 +17,10 @@
                     ├─▶ [EC2 (ap-northeast-2)]
 [폰 앱 APK/IPA] ────┘      ├─ web        React + nginx      (컨테이너 :80)
                            ├─ api        FastAPI            (컨테이너 :8000)
-                           ├─ dashboard  Streamlit (원장용)  (컨테이너 :8501)
                            └─ db         PostgreSQL+pgvector (컨테이너 :5432, 외부 비공개)
 ```
 
-- 서버 쪽 4개 서비스는 루트의 `compose.yaml` 하나로 함께 띄웁니다.
+- 서버에서는 루트의 `compose.yaml`로 `web`, `api`, `db` 세 서비스를 띄웁니다. 원장 현황은 같은 React 앱의 역할별 화면에서 제공합니다.
 - 폰 앱은 `apps/web` 코드를 Capacitor로 포장한 것이며 **compose로 배포하지 않습니다** (8장).
 - 외부 연동: OpenAI, LangSmith, (예정) AWS Rekognition
 
@@ -37,7 +36,7 @@
 
 | 환경 | 위치 | 주소 | 용도 |
 |---|---|---|---|
-| 로컬 | 각자 PC | http://localhost:5173 (web), :8000 (api), :8501 (dashboard) | 개발 |
+| 로컬 | 각자 PC | http://localhost:5173 (web), :8000 (api) | 개발 |
 | 운영 | AWS EC2 | `TODO` https://도메인 | 시연·제출·앱 테스트 |
 
 ## 3. 사전 준비 (최초 1회)
@@ -60,13 +59,13 @@
 | 22 | 팀원 IP만 | SSH |
 | 80 | 0.0.0.0/0 | HTTP (HTTPS 리다이렉트용) |
 | 443 | 0.0.0.0/0 | HTTPS |
-| 8000, 8501 | `TODO` | 리버스 프록시 적용 전 임시 개방 여부 결정 |
+| 8000 | `TODO` | 리버스 프록시 적용 전 임시 개방 여부 결정 |
 | **5432** | **열지 않음** | DB는 외부 노출 금지 |
 
 ### 3-4. 도메인 · HTTPS (`TODO`)
 - iOS 앱은 `http://` 접속을 기본으로 막으므로 **HTTPS가 필수**입니다.
 - 방식 후보: 리버스 프록시(nginx 또는 Caddy) + Let's Encrypt 인증서
-- 라우팅 후보: `/` → web, `/api` → api, `/dashboard` → dashboard (또는 서브도메인)
+- 라우팅 후보: `/` → web, `/api` → api
 
 ## 4. 환경변수
 
@@ -87,7 +86,7 @@
 
 ## 5. 서버 배포 절차
 
-현재 레포에는 **운영 자동 배포가 없습니다** (`.github/workflows/ci.yml`은 PR에서 이미지 빌드만 확인, WBS T74 기준). 아래는 수동 배포 절차입니다.
+PR의 CI는 API·웹 이미지 빌드를 확인합니다(WBS T74). 배포 담당자는 GitHub Actions의 **Manual Deploy (Docker Compose)**를 수동 실행할 수 있습니다. 이 워크플로는 API·웹 이미지 빌드를 확인한 뒤 AWS EC2에 배포합니다. 아래는 EC2에 직접 접속해 배포하는 절차입니다.
 
 ### 5-1. 최초 배포
 
@@ -105,7 +104,7 @@ nano .env            # 4장 기준으로 운영 값 입력
 
 # 실행
 docker compose up -d --build
-docker compose ps    # 4개 서비스 모두 running / db는 healthy 확인
+docker compose ps    # web·api 실행, db healthy 확인
 ```
 
 ### 5-2. 업데이트 배포
@@ -113,7 +112,7 @@ docker compose ps    # 4개 서비스 모두 running / db는 healthy 확인
 ```bash
 cd yuchion
 git pull
-docker compose up -d --build
+docker compose up -d --build --remove-orphans
 docker compose ps
 ```
 
@@ -127,7 +126,7 @@ docker compose ps
 |---|---|---|
 | API 상태 | `curl https://<도메인>/health` (프록시 전: `http://<IP>:8000/health`) | `{"status":"ok"}` |
 | 웹 접속 | 브라우저로 `https://<도메인>` | 첫 화면 표시 |
-| 대시보드 | `TODO` 주소 | Streamlit 화면 표시 |
+| 원장 화면 (T53 구현 후) | 같은 웹 URL에서 원장 계정으로 로그인 | 원장 화면이 표시되고 역할별 접근이 적용됨 |
 | 핵심 흐름 | 로그인 → 민원·요청 제출 → 상태 확인 | 정상 동작 (T30·T63 기록 대상) |
 | 리소스 | `docker stats --no-stream` | 메모리 사용량 기록 (T30 기록 대상) |
 
