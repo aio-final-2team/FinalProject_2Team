@@ -245,7 +245,7 @@ def test_unanswered_inquiry_keeps_text_and_asks_teacher():
     writer = Script({"child": "블록 놀이를 했어요.",
                      "requests": [{"request_id": "r1", "value": "기침을 한다고 알려 주셨어요.", "answered": False}]})
     [note] = draft_daily_notes(payload([kid("a", "새봄", "블록놀이", [req])]), writer, Script(OK))
-    line = next(l for l in note["content"]["items"] if l["source"]["type"] == "request")
+    line = next(item for item in note["content"]["items"] if item["source"]["type"] == "request")
     assert line["value"] == "기침을 한다고 알려 주셨어요." and "_unanswered" not in line
     [check] = note["open_checks"]
     assert check["kind"] == "sensitive" and check["request_id"] == "r1" and check["item_key"] == "day"
@@ -256,7 +256,7 @@ def test_request_line_repeating_child_line_becomes_request_text():
     writer = Script({"child": "친구에게 먼저 사과했어요.",
                      "requests": [{"request_id": "r1", "value": "친구에게 먼저 사과했어요."}]})
     [note] = draft_daily_notes(payload([kid("a", "윤슬", "친구에게 먼저 사과함", [req])]), writer, Script(OK))
-    line = next(l for l in note["content"]["items"] if l["source"]["type"] == "request")
+    line = next(item for item in note["content"]["items"] if item["source"]["type"] == "request")
     assert line["value"] == "보호자 요청: 요즘 친구랑 잘 지내나요?"
     assert [c["kind"] for c in note["open_checks"]] == ["sensitive"]
 

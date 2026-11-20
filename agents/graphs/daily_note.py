@@ -70,7 +70,9 @@ def draft_daily_notes(payload: dict, writer: JsonModel | None = None, checker: J
     checker = checker or OpenAIModel("CHECKER")
     names = [child["display_name"] for child in payload["children"]]
     common = common_lines(payload)
-    run = lambda child: draft_child(payload, child, common, names, writer, checker)
+    def run(child):
+        return draft_child(payload, child, common, names, writer, checker)
+
     workers = workers or concurrency()
     if workers == 1:
         return [run(child) for child in payload["children"]]
@@ -97,7 +99,9 @@ def meal_text(text: str, note_date: str) -> str:
     row = next((line for line in lines if re.match(rf"\|\s*{re.escape(mmdd)}\b", line)), None)
     if row is None:
         return text
-    cells = lambda line: [cell.strip() for cell in line.strip("|").split("|")]
+    def cells(line):
+        return [cell.strip() for cell in line.strip("|").split("|")]
+
     header = cells(lines[0]) if lines and lines[0] != row else []
     values = cells(row)[1:]
     names = header[1:] if len(header) == len(values) + 1 else [""] * len(values)
@@ -150,7 +154,9 @@ def write(model: JsonModel, payload, child, issues) -> list[dict]:
     text = (answer.get("child") or "").strip() if isinstance(answer.get("child"), str) else ""
     if text:
         lines.append({"key": "child", "label": "아이 메모", "value": text, "source": {"type": "teacher_input"}})
-    same = lambda a, b: re.sub(r"\s+", "", a) == re.sub(r"\s+", "", b)
+    def same(a, b):
+        return re.sub(r"\s+", "", a) == re.sub(r"\s+", "", b)
+
     for line in answer.get("requests") or []:
         req = by_id.get(line.get("request_id"))
         value = (line.get("value") or "").strip() if isinstance(line.get("value"), str) else ""
