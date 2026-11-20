@@ -88,6 +88,9 @@ def decide(user, card_id, body):
         if decision in ("approve", "edit_approve") and not content.get("text", "").strip():
             raise ApiError(409, "INVALID_TRANSITION")
         record(card, user, decision, body.reason_code, body.reason_text, body.edited_content)
+        if decision in ("reject", "dismiss"):
+            from app.mock.memories import remember_rejection
+            remember_rejection(user, card, decision, body.reason_code, body.reason_text)
         actor = {"card": card, "actor_type": "user", "actor_id": user.id}
         next_card = None
         if decision in ("approve", "edit_approve"):
@@ -253,9 +256,12 @@ def rule_decision(user, rule_id, body):
             store.deny(user)
         if rule.status != "proposed":
             raise ApiError(409, "INVALID_TRANSITION")
+        card = next((c for c in store.state().cards.values() if c.org_id == user.org_id
+                     and c.subject_type == "memory_rule" and c.subject_id == rule.id and c.kind == "rule_proposal"), None)
+        if card is None or card.status not in ("pending", "in_review"):
+            raise ApiError(409, "INVALID_TRANSITION")
         rule.status = "active" if body.decision == "activate" else "declined"
         rule.decided_at = store.now()
-        card = next(c for c in store.state().cards.values() if c.subject_id == rule.id)
         record(card, user, "approve" if body.decision == "activate" else "reject", reason_code=rule.reason_code)
         touch(card, "done")
         store.add_event(None, "approved" if body.decision == "activate" else "rejected", card=card,

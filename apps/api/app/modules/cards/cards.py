@@ -15,6 +15,7 @@ from app.modules.consultations.slots import propose_slots
 from app.modules.consultations.bookings import book_slot
 from app.modules.requests.events import record, set_status
 from app.modules.requests.requests import _expire, _lock
+from app.modules.memories.memories import remember_rejection
 
 
 @contextmanager
@@ -156,6 +157,8 @@ def decide(user, card_id, body):
         ):
             raise ApiError(409, "INVALID_TRANSITION")
         approval(connection, card, user, choice, body.reason_code, body.reason_text, body.edited_content)
+        if choice in ("reject", "dismiss"):
+            remember_rejection(connection, user, card, choice, body.reason_code, body.reason_text)
         actor = {"card": card, "actor_type": "user", "actor_id": user.id}
         next_card = None
         if choice in ("approve", "edit_approve"):
@@ -230,6 +233,35 @@ def decide(user, card_id, body):
             else:
                 set_status(connection, req, "awaiting_review", action="drafted", card=next_card)
         return result(card, req, next_card)
+
+
+def rule_decision(user, rule_id, body):
+    with transaction() as connection:
+        values = {"id": rule_id, "org": user.org_id, "owner": user.id}
+        rule = connection.execute(text("""
+            SELECT * FROM memory_rules WHERE id=:id AND org_id=:org AND owner_id=:owner
+        """), values).mappings().one_or_none()
+        scope._checked(user, rule, rule is not None, "memory_rule", rule_id)
+        # 일반 카드 결정·재배정과 같은 카드 → 규칙 순서예요. 범위 밖 행은 잠그지 않아요.
+        card = connection.execute(text("""
+            SELECT * FROM cards WHERE subject_type='memory_rule' AND subject_id=:id AND org_id=:org
+              AND kind='rule_proposal' ORDER BY created_at,id LIMIT 1 FOR NO KEY UPDATE
+        """), values).mappings().one_or_none()
+        rule = connection.execute(text("""
+            SELECT * FROM memory_rules WHERE id=:id AND org_id=:org AND owner_id=:owner FOR NO KEY UPDATE
+        """), values).mappings().one()
+        if rule["status"] != "proposed" or card is None or card["status"] not in ("pending", "in_review"):
+            raise ApiError(409, "INVALID_TRANSITION")
+        card = dict(card)
+        action = "approve" if body.decision == "activate" else "reject"
+        status = "active" if body.decision == "activate" else "declined"
+        approval(connection, card, user, action, reason_code=rule["reason_code"])
+        connection.execute(text("UPDATE memory_rules SET status=:status,decided_at=clock_timestamp() WHERE id=:id"),
+                           {"id": rule_id, "status": status})
+        touch(connection, card, "done")
+        record(connection, None, "approved" if action == "approve" else "rejected", card=card,
+               actor_type="user", actor_id=user.id)
+        return {"rule": {"id": rule_id, "status": status}}
 
 
 def book(user, card_id, body):

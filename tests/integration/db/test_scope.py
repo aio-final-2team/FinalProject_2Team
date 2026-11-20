@@ -240,7 +240,6 @@ def test_parent_note_classroom_filter_does_not_deny_or_log(db_client, records, s
 
 
 @pytest.mark.parametrize("method,path,actor", [
-    ("POST", "/memory-rules/{local_card}/decision", seed.TEACHER),
     ("POST", "/documents", seed.TEACHER),
     ("GET", "/documents/{local_card}", seed.TEACHER),
 ])

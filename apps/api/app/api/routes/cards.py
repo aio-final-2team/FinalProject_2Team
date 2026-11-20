@@ -10,9 +10,7 @@ from app.api.schemas.actions import (InboxFilter, CardKind, DecisionIn, Reclassi
 from app.api.schemas.views import (CardList, CardDetail, DecisionResponse, ReclassifyResponse, BookingResponse,
                                   ReassignResponse, RuleResponse, Overview)
 from app.api.schemas.common import errors
-from app.core.auth import CurrentUser, require_roles
-# 기억 규칙 결정은 T39에서 연결해요.
-from app.core.workflows import workflow_user
+from app.core.auth import CurrentUser, current_user, require_roles
 from app import backend
 
 router = APIRouter(tags=["교직원 받은함"])
@@ -64,7 +62,7 @@ def reassign(card_id: UUID, body: ReassignIn, user: CurrentUser = Depends(requir
 
 
 @router.post("/memory-rules/{rule_id}/decision", response_model=RuleResponse, responses=errors(401, 404, 409, 422))
-def rule_decision(rule_id: UUID, body: RuleDecisionIn, user: CurrentUser = Depends(workflow_user)):
+def rule_decision(rule_id: UUID, body: RuleDecisionIn, user: CurrentUser = Depends(current_user)):
     return backend.cards.rule_decision(user, rule_id, body)
 
 

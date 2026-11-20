@@ -148,3 +148,4 @@ class Memory:
     structured: dict = field(default_factory=dict)
     created_at: datetime = field(default_factory=lambda: datetime.now(KST))
     deleted_at: datetime | None = None
+    source_card_id: UUID | None = None
