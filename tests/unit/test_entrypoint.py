@@ -67,7 +67,8 @@ def test_invalid_configuration_stops_before_database_or_server(tmp_path, backend
     assert not started.exists()
 
 
-@pytest.mark.parametrize("script", [ENTRYPOINT, ROOT / "tools/check.sh"])
+@pytest.mark.parametrize("script", [ENTRYPOINT, ROOT / "tools/check.sh", ROOT / "tools/smoke.sh",
+                                    ROOT / "infra/team-server/deploy.sh"])
 def test_shell_syntax(script):
     subprocess.run(["bash", "-n", str(script)],
                    cwd=ROOT, check=True, capture_output=True, text=True)
