@@ -16,7 +16,7 @@ def seed_demo(connection):
         INSERT INTO organizations (id, name, is_virtual)
         VALUES (:id, '가상 햇살유치원', true) ON CONFLICT DO NOTHING
     """), {"id": seed.ORG})
-    for classroom, age in zip(seed.CLASSROOMS, (4, 5), strict=True):
+    for classroom, age in zip(seed.CLASSROOMS, (5, 4), strict=True):
         connection.execute(text("""
             INSERT INTO classrooms (id, org_id, name, age_group, school_year)
             VALUES (:id, :org_id, :name, :age, 2026) ON CONFLICT DO NOTHING

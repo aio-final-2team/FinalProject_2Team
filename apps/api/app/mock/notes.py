@@ -19,14 +19,19 @@ def input_in_scope(user, input_id):
 
 def draft(user, body):
     with store._lock:
-        store.classroom_in_scope(user, body.classroom_id)
+        children = store.classroom_children(user, body.classroom_id)
+        child_ids = {child.id for child in children}
+        for memo in body.child_memos:
+            if memo.child_id not in child_ids:
+                raise ApiError(422, "VALIDATION_FAILED", child_id=memo.child_id)
         existing = next((i for i in store.state().note_inputs.values() if i.classroom_id == body.classroom_id
                          and i.note_date == body.note_date), None)
         if existing:
             return draft_view(existing), False
         failed = "[실패]" in body.activities
         entry = NoteInput(uuid4(), user.org_id, body.classroom_id, body.note_date, body.activities, body.supplies,
-                          user.id, "failed" if failed else "succeeded")
+                          user.id, "failed" if failed else "succeeded",
+                          child_memos=[memo.model_dump() for memo in body.child_memos])
         store.state().note_inputs[entry.id] = entry
         card = store.Card(uuid4(), user.org_id, None, "daily_note", assignee_id=user.id,
                           subject_type="daily_note_batch", subject_id=entry.id, draft={"summary": "반 알림장 확인"},
@@ -38,13 +43,18 @@ def draft(user, body):
         else:
             menu = next(d for d in store.state().documents.values() if d.org_id == user.org_id and d.doc_type == "menu" and d.status == "active")
             meal = next(c.content for c in store.state().chunks.values() if c.document_id == menu.id)
-            children = [c for c in store.state().children.values() if c.org_id == user.org_id and c.classroom_id == entry.classroom_id]
+            memos = {memo["child_id"]: memo["memo"] for memo in entry.child_memos}
             for index, child in enumerate(children):
-                checks = [{"id": "c1", "item_key": "supplies", "problem": "준비물 날짜를 확인해 주세요"}] if index == 0 else []
+                checks = [{"id": "c1", "item_key": "supplies", "kind": "date_check",
+                           "problem": "준비물 날짜를 확인해 주세요", "sentence": entry.supplies}] if index == 0 else []
                 content = {"items": [
                     {"key": "day", "label": "오늘 하루", "value": entry.activities, "source": {"type": "teacher_input"}},
                     {"key": "supplies", "label": "준비물", "value": entry.supplies, "source": {"type": "teacher_input"}},
                     {"key": "meal", "label": "식사", "value": meal, "source": {"type": "document", "document_id": menu.id, "document_title": menu.title}}]}
+                memo = memos.get(child.id, "")
+                if memo.strip():
+                    content["items"].append({"key": "child", "label": "아이 메모", "value": memo,
+                                             "source": {"type": "teacher_input"}})
                 note = Note(uuid4(), user.org_id, entry.id, child.id, entry.note_date, content,
                             "needs_check" if checks else "draft", checks)
                 store.state().notes[note.id] = note

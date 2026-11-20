@@ -95,7 +95,10 @@ def test_seed_twice_keeps_same_rows_and_password_hash(db_engine, alembic_config)
     first = snapshot()
     run_seed()
     assert snapshot() == first
-    assert {table: len(rows) for table, rows in first.items()} == dict(zip(tables, (1, 2, 5, 2, 3, 3, 1), strict=True))
+    assert {table: len(rows) for table, rows in first.items()} == dict(zip(tables, (1, 2, 5, 2, 21, 3, 1), strict=True))
+    classrooms = {row["id"]: row for row in first["classrooms"]}
+    assert (classrooms[seed.CLASS_STAR]["name"], classrooms[seed.CLASS_STAR]["age_group"]) == ("만 5세반(햇살반)", 5)
+    assert (classrooms[seed.CLASS_SUN]["name"], classrooms[seed.CLASS_SUN]["age_group"]) == ("만 4세 별빛반", 4)
     assert first["organizations"][0]["id"] == seed.ORG
     assert first["organizations"][0]["is_virtual"] is True
     users = {row["id"]: row for row in first["users"]}

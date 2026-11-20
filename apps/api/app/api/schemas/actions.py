@@ -108,9 +108,22 @@ class NoteBatchIn(BaseModel):
         return value
 
 
+class ChildMemoIn(BaseModel):
+    child_id: UUID
+    memo: str = Field(min_length=1, max_length=500)
+
+
 class NoteDraftIn(NoteBatchIn):
     activities: str = Field(min_length=1, max_length=2000)
     supplies: str = Field(max_length=2000)
+    child_memos: list[ChildMemoIn] = Field(default_factory=list)
+
+    @field_validator("child_memos")
+    @classmethod
+    def unique_children(cls, value):
+        if len({memo.child_id for memo in value}) != len(value):
+            raise ValueError("같은 아이의 메모는 한 번만 보내 주세요")
+        return value
 
 
 class NoteSource(BaseModel):
@@ -129,10 +142,16 @@ class NoteSource(BaseModel):
 
 
 class NoteLine(BaseModel):
-    key: Literal["day", "meal", "medication", "pickup", "supplies"]
+    key: Literal["day", "meal", "medication", "pickup", "supplies", "child"]
     label: str = Field(min_length=1)
     value: str
     source: NoteSource
+
+    @model_validator(mode="after")
+    def child_source(self):
+        if self.key == "child" and self.source.type != "teacher_input":
+            raise ValueError("아이 메모의 출처는 teacher_input이에요")
+        return self
 
 
 class NoteContent(BaseModel):

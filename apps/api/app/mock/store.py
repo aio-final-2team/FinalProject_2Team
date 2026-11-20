@@ -492,4 +492,10 @@ def classroom_in_scope(user, classroom_id):
     return classroom
 
 
+def classroom_children(user, classroom_id):
+    classroom_in_scope(user, classroom_id)
+    return [child for child in _state.children.values()
+            if child.org_id == user.org_id and child.classroom_id == classroom_id]
+
+
 reset()

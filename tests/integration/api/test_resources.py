@@ -41,21 +41,21 @@ def test_notes_batch_blocks_all_then_sends_once(client, teacher, parent, parent_
     response = note_list(client, teacher)
     assert response.status_code == 200, response.text
     notes = response.json()["items"]
-    assert len(notes) == 2 and {n["status"] for n in notes} == {"draft", "needs_check"}
+    assert len(notes) == 20 and {n["status"] for n in notes} == {"draft", "needs_check"}
     assert {x["key"] for x in notes[0]["content"]["items"]} == {"day", "meal", "supplies"}
     meal = next(x for x in notes[0]["content"]["items"] if x["key"] == "meal")
     assert meal["source"]["document_id"] == str(seed.MENU) and "카레라이스" in meal["value"]
     batch = {"classroom_id": str(seed.CLASS_STAR), "note_date": store.now().date().isoformat()}
     blocked = client.post(BASE + "/daily-notes/send", headers=teacher, json=batch)
     err(blocked, 409, "NOTE_BATCH_BLOCKED")
-    assert len(blocked.json()["error"]["details"]["blocked"]) == 2
+    assert len(blocked.json()["error"]["details"]["blocked"]) == 20
     assert all(n.status != "sent" for n in store.state().notes.values())
     for n in notes:
         checked = client.patch(f"{BASE}/daily-notes/{n['id']}", headers=teacher,
                                json={"resolved_checks": [c["id"] for c in n["open_checks"]], "confirm": True})
         assert checked.status_code == 200 and checked.json()["note"]["status"] == "ready"
     sent = client.post(BASE + "/daily-notes/send", headers=teacher, json=batch)
-    assert sent.status_code == 200 and sent.json()["sent_count"] == 2
+    assert sent.status_code == 200 and sent.json()["sent_count"] == 20
     assert client.post(BASE + "/daily-notes/send", headers=teacher, json=batch).json()["sent_count"] == 0
     for headers, child in ((parent, seed.CHILD), (parent_other, seed.demo_id("503"))):
         visible = client.get(BASE + "/daily-notes", headers=headers, params={"date": store.now().date().isoformat()}).json()
@@ -64,7 +64,7 @@ def test_notes_batch_blocks_all_then_sends_once(client, teacher, parent, parent_
         assert any(n["kind"] == "note_sent" and n["subject_type"] == "daily_note" for n in client.get(BASE + "/notifications", headers=headers).json()["items"])
     assert len([n for n in store.state().notifications.values() if n.kind == "note_sent"]) == 2
     err(client.post(BASE + "/daily-notes/send", headers=director, json=batch), 403, "FORBIDDEN_ROLE")
-    assert client.get(BASE + "/daily-notes", headers=director, params={"date": store.now().date().isoformat()}).json()["total"] == 2
+    assert client.get(BASE + "/daily-notes", headers=director, params={"date": store.now().date().isoformat()}).json()["total"] == 20
 
 
 def test_patch_is_atomic_and_requires_all_checks(client, teacher, parent, teacher_other):
@@ -91,7 +91,7 @@ def test_concurrent_note_send_once(client, teacher):
     batch = {"classroom_id": str(seed.CLASS_STAR), "note_date": store.now().date().isoformat()}
     with ThreadPoolExecutor(max_workers=2) as pool:
         responses = list(pool.map(lambda _: client.post(BASE + "/daily-notes/send", headers=teacher, json=batch), range(2)))
-    assert sorted(r.json()["sent_count"] for r in responses) == [0, 2]
+    assert sorted(r.json()["sent_count"] for r in responses) == [0, 20]
 
 
 def test_failed_note_and_document_jobs_are_queryable(client, teacher):
