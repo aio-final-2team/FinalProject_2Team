@@ -9,6 +9,8 @@ from pydantic import BaseModel, Field
 from app.api.schemas.common import Period
 
 RequestType = Literal["inquiry", "consultation", "complaint"]
+# 알림장 연결용 귀가 시드는 읽기만 해요. 등록·인계 확인은 T46에서 열어요.
+RequestReadType = Literal[RequestType, "pickup"]
 RequestStatus = Literal["received", "classified", "needs_info", "assigned", "awaiting_review", "approved",
                         "sent_or_booked", "completed", "on_hold", "escalated", "rejected"]
 
@@ -33,7 +35,7 @@ class RequestAcceptedOut(BaseModel):
 
 class RequestView(BaseModel):
     id: UUID
-    type: RequestType
+    type: RequestReadType
     title: str | None
     status: RequestStatus
     status_label: str

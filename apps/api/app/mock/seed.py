@@ -1,5 +1,7 @@
 """모의 API의 데모 데이터(계약표 부록 A, API 설계 문서 부록 A).
 
+출처 PR #262 roster_c4.json(가상): 별빛반 18명의 이름과 순서를 옮겼다.
+
 고정 UUID 규칙: 00000000-0000-4000-8000-0000000XXXXX
   0001 기관 · 01xx 반 · 02xx 교사 · 03xx 원장 · 04xx 학부모 · 05xx 아이 · 06xx 상담실
   07xx 요청 · 08xx 카드 · 09xx 상담 예약 · 0axx 알림장 입력 · 0bxx 문서 · 0cxx 알림장 · 0dxx 개인 규칙
@@ -61,9 +63,16 @@ MENU = demo_id("b01")
 NOTICE = demo_id("b02")
 OLD_NOTICE = demo_id("b03")
 RULE = demo_id("d01")
+REQUEST_COUGH = demo_id("708")
+REQUEST_PICKUP = demo_id("70a")
 
 # 같은 반 두 아이의 일괄 발송과 학부모별 조회 범위를 함께 시연한다.
 CHILDREN.append({"id": demo_id("503"), "classroom_id": CLASS_STAR, "display_name": "노을", "guardian_ids": [PARENT_OTHER]})
+
+for number, name in enumerate(("가온", "나래", "다온", "라온", "마루", "별하", "새봄", "아라", "여름",
+                               "윤슬", "이든", "지아", "지안", "채온", "하람", "한결", "해든", "로아"), start=1):
+    CHILDREN.append({"id": demo_id(f"54{number:02d}"), "classroom_id": CLASS_STAR,
+                     "display_name": name, "guardian_ids": []})
 
 DEMO_REQUESTS = [
     ("701", "consultation", "아이 친구 관계 상담", "needs_info"),
@@ -73,6 +82,14 @@ DEMO_REQUESTS = [
     ("705", "complaint", "원비 설명을 부탁드려요", "on_hold"),
     ("706", "inquiry", "지난 행사 안내를 확인했어요", "completed"),
     ("707", "inquiry", "새 행사 일정이 궁금해요", "classified"),
+]
+
+# 알림장에 보호자 요청을 반영하거나 누락 확인을 띄우는 가상 사례 두 개예요.
+DEMO_NOTE_REQUESTS = [
+    {"id": REQUEST_COUGH, "child_id": CHILD, "requester_id": PARENT,
+     "type": "inquiry", "body": "기침해요"},
+    {"id": REQUEST_PICKUP, "child_id": demo_id("503"), "requester_id": PARENT_OTHER,
+     "type": "pickup", "body": "오늘 할머니가 데리러 가요"},
 ]
 
 DEMO_DOCUMENTS = [

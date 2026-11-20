@@ -1,5 +1,6 @@
 """기본 mock을 유지하고 잘못된 백엔드 선택으로 메모리 구현이 실행되지 않게 한다."""
 
+from hashlib import sha256
 import os
 from pathlib import Path
 import subprocess
@@ -28,9 +29,7 @@ def test_backend_selection(backend, success, message):
     assert message in result.stdout + result.stderr
 
 
-def test_initial_sql_keeps_design_body():
-    source = (ROOT / "Docs/Step2/db_schema_draft.sql").read_text().splitlines(keepends=True)
-    applied = (ROOT / "apps/api/migrations/sql/0001_initial.sql").read_text().splitlines(keepends=True)
-    assert applied[5:] == source[5:]
-    assert all(old == new or (old.startswith("-- ") and new.startswith("-- "))
-               for old, new in zip(source[:5], applied[:5], strict=True))
+def test_initial_sql_is_immutable():
+    # 설계 최신판이 바뀌어도 적용한 v0.7 SQL은 고치지 않는다.
+    applied = (ROOT / "apps/api/migrations/sql/0001_initial.sql").read_bytes()
+    assert sha256(applied).hexdigest() == "0aa90b95c718f50240e05ebf04aafc14cfe2a2f35e11a56016d9a412f6e155ee"

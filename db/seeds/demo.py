@@ -2,6 +2,7 @@
 
 저장소 루트에서 PYTHONPATH=apps/api python -m db.seeds.demo 로 실행한다.
 모의 seed의 고정 ID를 함께 쓰고, 이미 있는 행은 덮어쓰지 않는다.
+출처 PR #262 roster_c4.json(가상): 별빛반 18명도 app.mock.seed에서 함께 읽는다.
 """
 
 from argon2 import PasswordHasher

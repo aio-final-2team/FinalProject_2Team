@@ -7,13 +7,13 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from app.api.schemas.common import Page, Period
-from app.api.schemas.requests import MessageOut, RequestStatus, RequestType, SourceOut, BookingOut, RequestView
+from app.api.schemas.requests import MessageOut, RequestStatus, RequestType, RequestReadType, SourceOut, BookingOut, RequestView
 from app.api.schemas.actions import CardKind, NoteContent
 
 
 class RequestItem(BaseModel):
     id: UUID
-    type: RequestType
+    type: RequestReadType
     title: str | None
     status: RequestStatus
     status_label: str
@@ -261,7 +261,10 @@ class DraftResponse(BaseModel):
 class OpenCheck(BaseModel):
     id: str
     item_key: str
+    kind: Literal["not_in_memo", "sensitive", "other_child", "date_check", "absent", "draft_failed", "check_failed", "request_missed"]
     problem: str
+    sentence: str | None = None
+    request_id: UUID | None = None
 
 
 class NoteView(BaseModel):

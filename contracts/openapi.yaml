@@ -1131,6 +1131,53 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
           description: Unprocessable Entity
+  /api/v1/classrooms/{classroom_id}/children:
+    get:
+      tags:
+      - 알림장·자료
+      summary: Classroom Children
+      operationId: classroom_children_api_v1_classrooms__classroom_id__children_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: classroom_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Classroom Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChildList'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
   /api/v1/daily-notes/drafts:
     post:
       tags:
@@ -1988,6 +2035,33 @@ components:
       - passed
       - issue_count
       title: CheckSummary
+    ChildList:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/ChildOut'
+          type: array
+          title: Items
+      type: object
+      required:
+      - items
+      title: ChildList
+    ChildMemoIn:
+      properties:
+        child_id:
+          type: string
+          format: uuid
+          title: Child Id
+        memo:
+          type: string
+          maxLength: 500
+          minLength: 1
+          title: Memo
+      type: object
+      required:
+      - child_id
+      - memo
+      title: ChildMemoIn
     ChildOut:
       properties:
         id:
@@ -2612,6 +2686,11 @@ components:
           type: string
           maxLength: 2000
           title: Supplies
+        child_memos:
+          items:
+            $ref: '#/components/schemas/ChildMemoIn'
+          type: array
+          title: Child Memos
       type: object
       required:
       - classroom_id
@@ -2629,6 +2708,7 @@ components:
           - medication
           - pickup
           - supplies
+          - child
           title: Key
         label:
           type: string
@@ -2884,13 +2964,37 @@ components:
         item_key:
           type: string
           title: Item Key
+        kind:
+          type: string
+          enum:
+          - not_in_memo
+          - sensitive
+          - other_child
+          - date_check
+          - absent
+          - draft_failed
+          - check_failed
+          - request_missed
+          title: Kind
         problem:
           type: string
           title: Problem
+        sentence:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Sentence
+        request_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Request Id
       type: object
       required:
       - id
       - item_key
+      - kind
       - problem
       title: OpenCheck
     Overview:
@@ -3221,6 +3325,7 @@ components:
           - inquiry
           - consultation
           - complaint
+          - pickup
           title: Type
         title:
           anyOf:
@@ -3337,6 +3442,7 @@ components:
           - inquiry
           - consultation
           - complaint
+          - pickup
           title: Type
         title:
           anyOf:
@@ -3556,6 +3662,7 @@ components:
           - inquiry
           - consultation
           - complaint
+          - pickup
           title: Type
         title:
           anyOf:

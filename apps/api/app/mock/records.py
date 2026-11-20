@@ -113,6 +113,7 @@ class NoteInput:
     author_id: UUID
     draft_status: str = "succeeded"
     created_at: datetime = field(default_factory=lambda: datetime.now(KST))
+    child_memos: list[dict] = field(default_factory=list)
 
 
 @dataclass

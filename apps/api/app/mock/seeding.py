@@ -43,6 +43,12 @@ def populate():
         elif target == "classified":
             card.status, card.assignee_id, req.assignee_id = "unassigned", None, None
             req.status = target
+    for data in seed.DEMO_NOTE_REQUESTS:
+        req = store.Request(org_id=seed.ORG, classroom_id=seed.CLASS_STAR,
+                            client_request_id=f"demo-{data['id']}", title=data["body"], **data)
+        state.requests[req.id] = req
+        state.messages.append(store.Message(state.next_int(), req.id, "user", req.requester_id, req.body))
+        store.add_event(req, "created", to_status="received", actor_type="user", actor_id=req.requester_id)
     rule = Rule(seed.RULE, seed.ORG, seed.TEACHER, "slot_unavailable", "상담 후보는 오후 시간부터 제안해 주세요.", {"after": "14:00"})
     state.rules[rule.id] = rule
     card = store.Card(seed.demo_id("809"), seed.ORG, None, "rule_proposal", assignee_id=seed.TEACHER,

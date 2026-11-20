@@ -25,6 +25,10 @@ class ChildOut(BaseModel):
     classroom_id: UUID
 
 
+class ChildList(BaseModel):
+    items: list[ChildOut]
+
+
 class MeOut(BaseModel):
     user: UserOut
     children: list[ChildOut] = Field(default_factory=list, description="학부모만")

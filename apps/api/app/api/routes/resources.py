@@ -7,6 +7,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, File, Form, Query, Response, UploadFile
 
 from app.api.schemas.actions import NoteDraftIn, NoteBatchIn, NotePatchIn
+from app.api.schemas.auth import ChildList
 from app.api.schemas.views import (NotificationList, NotificationResponse, DraftResponse, NoteList, NoteResponse,
                                   SendResponse, DocumentResponse, DocumentList)
 from app.api.schemas.common import errors
@@ -34,6 +35,14 @@ def notification_list(page: int = Query(1, ge=1), size: int = Query(20, ge=1, le
 @router.post("/notifications/{notification_id}/read", response_model=NotificationResponse, responses=errors(401, 404, 422))
 def notification_read(notification_id: int, user: CurrentUser = Depends(current_user)):
     return {"notification": notifications.read(user, notification_id).__dict__}
+
+
+@router.get("/classrooms/{classroom_id}/children", response_model=ChildList, responses=errors(401, 403, 404, 422))
+def classroom_children(classroom_id: UUID, user: CurrentUser = Depends(require_roles("teacher", "director"))):
+    with store._lock:
+        children = store.classroom_children(user, classroom_id)
+        return {"items": [{"id": child.id, "display_name": child.display_name, "classroom_id": child.classroom_id}
+                          for child in sorted(children, key=lambda child: child.display_name)]}
 
 
 @router.post("/daily-notes/drafts", status_code=202, response_model=DraftResponse,

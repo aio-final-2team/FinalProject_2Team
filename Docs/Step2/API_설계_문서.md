@@ -1,15 +1,15 @@
 # 유치온 API 설계 문서 (T13)
 
-문서 버전 v0.3 | 작성 상태: 모의 API 대조·11/18 피드백 2·3·4번 반영, 시험 기록 연결
+문서 버전 v0.4 | 작성 상태: 알림장 아이별 메모·보호자 요청·확인 항목·반 아이 목록을 모의 API와 대조함
 
 | 항목 | 내용 |
 | --- | --- |
 | 작업 | T13 API 설계 문서(FastAPI·Function Calling 도구 계약)·모의 API (#170) |
 | 작성 | 태웅 · 검토 인혜 |
-| 기준 문서 | 기획서 1117판 3장 FR-01~FR-13 · T04 흐름·권한 명세(PR #234) · [입출력 계약표](입출력_계약표_초안.md) v0.8(T10 회의 11/18 합의 v0.7 + 이 문서 3.7의 화면용 칸) · [DB 스키마 설계서](DB_스키마_설계서.md) v0.7 |
+| 기준 문서 | 기획서 1117판 3장 FR-01~FR-13 · T04 흐름·권한 명세(PR #234) · [입출력 계약표](입출력_계약표_초안.md) v0.9(T10 회의 11/18 합의 + 알림장 v0.4 반영) · [DB 스키마 설계서](DB_스키마_설계서.md) v0.8(0002 아이별 메모 저장 열 포함) |
 | 따른 가이드 | 강사님 'API 설계 문서 작성법' 11/18 수정본. 1~6장이 가이드의 '문서에 들어가는 여섯 가지' 순서다 |
 
-이 문서는 T10 계약표에서 합의한 필드·권한·오류를 엔드포인트와 도구 단위로 펼친 것이다. 계약표와 이 문서가 다르면 계약표를 먼저 고치고 두 문서의 판을 같이 올린다. 구현이 시작되면 FastAPI의 `/docs`와 대조해 판을 올린다(계약표 1.1 규칙 1). 이 판(v0.3)은 API 29개 전부의 상세 명세, 화면이 쓰는 조회 응답 칸(3.7), 도구 전체의 실패 처리, 업무 흐름(5.7), 실행 규칙과 대표 사례 대조(6.7)를 담는다. 모의 API와 생성물 `contracts/openapi.yaml`을 붙였으며, 쓰는 법과 데모 계정은 [모의 API 안내](../../contracts/mock_api/README.md)에 있다.
+이 문서는 T10 계약표에서 합의한 필드·권한·오류를 엔드포인트와 도구 단위로 펼친 것이다. 계약표와 이 문서가 다르면 계약표를 먼저 고치고 두 문서의 판을 같이 올린다. 구현이 시작되면 FastAPI의 `/docs`와 대조해 판을 올린다(계약표 1.1 규칙 1). 이 판(v0.4)은 API 30개 전부의 상세 명세, 화면이 쓰는 조회 응답 칸(3.7), 도구 전체의 실패 처리, 업무 흐름(5.7), 실행 규칙과 대표 사례 대조(6.7)를 담는다. 모의 API와 생성물 `contracts/openapi.yaml`을 붙였으며, 쓰는 법과 데모 계정은 [모의 API 안내](../../contracts/mock_api/README.md)에 있다.
 
 **목차.** 1. 공통 정보와 인증 · 2. API 목록 · 3. 엔드포인트 상세 명세 · 4. 검증과 권한 규칙 · 5. Tool 정의와 호출 흐름 · 6. 실행 규칙 · 7. API 필드와 DB 컬럼 대응 · 8. 설정값 · 부록 A. 예시 ID · 변경 이력
 
@@ -17,9 +17,9 @@
 
 | 체크리스트(가이드 33쪽) | 이 문서 |
 | --- | --- |
-| 구현할 API가 모두 목록 표에 있고 요구사항 ID와 연결된다 | 2장(29개, 요구사항 열) |
+| 구현할 API가 모두 목록 표에 있고 요구사항 ID와 연결된다 | 2장(30개, 요구사항 열) |
 | 서버 주소·인증·오류 형식·/docs·변경 이력이 있다 | 1장, 끝의 변경 이력 |
-| 구현할 API마다 상세 명세와 필드 명세 표가 있다 | 3장(29개 전부) |
+| 구현할 API마다 상세 명세와 필드 명세 표가 있다 | 3장(30개 전부) |
 | 형식 오류(422)와 권한·승인 오류(403)를 나눠 적었다 | 4.1 |
 | 202를 쓰는 API는 작업 상태·결과·실패 조회가 있다 | 6.3 |
 | Tool마다 성공·실패 출력과 실패 후 처리가 있다 | 5.2, 5.4, 5.7 |
@@ -36,7 +36,7 @@
 | 배포 서버 | `https://<배포 도메인>/api/v1` (AWS EC2, T36 첫 배포 때 확정해 이 칸을 고침) |
 | 자동 문서 | `http://localhost:8000/docs`, `http://localhost:8000/openapi.json`(버전 접두어 없이 앱 맨 위에 있음). 저장소에는 `/openapi.json`에서 뽑은 `contracts/openapi.yaml`을 생성물로 둔다 |
 | 상태 확인 | `GET /health` (인증 없음, 버전 접두어 없음) |
-| 모의 API | API 29개가 메모리 데모 데이터로 응답한다. 다시 켜면 초기화된다. 실행·계정·흐름은 [모의 API 안내](../../contracts/mock_api/README.md) 참고 |
+| 모의 API | API 30개가 메모리 데모 데이터로 응답한다. 다시 켜면 초기화된다. 실행·계정·흐름은 [모의 API 안내](../../contracts/mock_api/README.md) 참고 |
 
 ### 1.2 인증
 
@@ -105,7 +105,7 @@
 
 ## 2. API 목록
 
-인증 열의 '자기 것'·'우리 반'은 4.2의 범위 규칙을 뜻한다. 상세 열은 29개 API의 3장 절 번호를 가리킨다.
+인증 열의 '자기 것'·'우리 반'은 4.2의 범위 규칙을 뜻한다. 상세 열은 30개 API의 3장 절 번호를 가리킨다.
 
 | # | 메서드 | 경로 | 인증·역할 | 설명 | 성공 | 요구사항 | 상세 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -138,12 +138,13 @@
 | 27 | POST | `/api/v1/documents` | 원장·담임 | 자료 올리기(적재 접수) | 202 | FR-13 | 3.22 |
 | 28 | GET | `/api/v1/documents` | 교직원 | 자료 목록 | 200 | FR-13 | 3.23 |
 | 29 | GET | `/api/v1/documents/{document_id}` | 교직원 | 자료 상세·적재 상태 | 200 | FR-13 | 3.23 |
+| 30 | GET | `/api/v1/classrooms/{classroom_id}/children` | 담임(우리 반)·원장(같은 기관) | 반 아이 목록(이름순) | 200 | FR-10 | 3.24 |
 
 SSE 두 개(6·14)는 실시간 진행 화면(NFR-10)이 쓰므로 넣었다. 투약·귀가(T46)와 최종 기능(FR-14 이후)은 그 작업에서 이 표에 더한다.
 
 ## 3. 엔드포인트 상세 명세
 
-API 29개를 가이드의 여덟 칸으로 쓴다(계약표 1.1 규칙 8). 고정 예시 ID는 부록 A의 데모 ID다. 필드 표의 '빈값'은 `""`이나 `null`을 받아도 되는지다. 3.8 이후 예시는 주요 응답 필드와 목록 첫 항목만 줄여 보인다. 토큰과 새로 발급한 ID는 `…`로 줄이고, 경로의 `{card_id}`·`{input_id}`·`{note_id}`는 앞선 응답에서 받은 값을 쓴다.
+API 30개를 가이드의 여덟 칸으로 쓴다(계약표 1.1 규칙 8). 고정 예시 ID는 부록 A의 데모 ID다. 필드 표의 '빈값'은 `""`이나 `null`을 받아도 되는지다. 3.8 이후 예시는 주요 응답 필드와 목록 첫 항목만 줄여 보인다. 토큰과 새로 발급한 ID는 `…`로 줄이고, 경로의 `{card_id}`·`{input_id}`·`{note_id}`는 앞선 응답에서 받은 값을 쓴다.
 
 ### 3.1 요청 만들기 — `POST /api/v1/requests`
 
@@ -215,6 +216,8 @@ X-Request-ID: 6b0f1c2e-9a7d-4c1e-8f3a-2d5b7e9c1a40
 | 422 | `VALIDATION_FAILED` | 허용 밖 `type`, `body` 길이 초과, 필수 칸 없음 |
 
 ### 3.2 요청 상세·스트림 — `GET /api/v1/requests/{request_id}`, `GET …/stream`
+
+알림장 연결용 가상 귀가 요청도 목록·상세에서 `type: pickup`으로 읽는다. 등록 본문의 유형은 3.1 그대로다.
 
 | 칸 | 내용 |
 | --- | --- |
@@ -441,7 +444,7 @@ HTTP/1.1 200 OK
 ```json
 { "error": { "code": "NOTE_BATCH_BLOCKED", "message": "확인이 안 끝난 알림장이 있어요.",
              "trace_id": "…", "details": { "blocked": [ { "note_id": "…", "child_id": "00000000-0000-4000-8000-000000000502",
-             "open_checks": [ { "id": "c1", "item_key": "supplies", "problem": "준비물 날짜가 식단표와 달라요" } ] } ] } } }
+             "open_checks": [ { "id": "c1", "item_key": "supplies", "kind": "date_check", "problem": "준비물 날짜가 식단표와 달라요", "sentence": "내일 실내화" } ] } ] } } }
 ```
 
 ### 3.7 화면이 쓰는 조회 응답 칸
@@ -516,11 +519,12 @@ T12 화면 지도(성주, PR #254)를 계약표 v0.7과 대조했을 때 화면�
 
 | 필드 | 값 | 설명 |
 | --- | --- | --- |
-| `items[].key` | `day`·`meal`·`medication`·`pickup`·`supplies` | 줄 종류. 투약·귀가 줄은 그 요청(T46)이 있을 때만 |
-| `items[].source.type` | `teacher_input`·`document`·`request` | 담임 입력(`daily_note_inputs`), 원 자료(식단·일정), 학부모 요청(투약·귀가) |
+| `items[].key` | `day`·`meal`·`medication`·`pickup`·`supplies`·`child` | 줄 종류. `child`는 아이별 메모를 풀어 쓴 줄이고 출처는 `teacher_input`이다. 메모가 없거나 공백뿐이면 이 줄이 없다. 문의는 기존 `day` 줄, 투약·귀가는 `medication`·`pickup` 줄로 잇고 출처는 `request`다. 투약·귀가 요청 등록·인계 확인은 T46에서 연다 |
+| `items[].source.type` | `teacher_input`·`document`·`request` | 담임 입력(`daily_note_inputs`), 원 자료(식단·일정), 학부모 요청(문의·투약·귀가) |
 | `items[].source.document_id`·`document_title` | — | `document`일 때 |
 | `items[].source.request_id` | — | `request`일 때 |
-| `open_checks[] { id, item_key, problem }` | — | 검사 AI가 짚은 확인 필요 항목과 그 줄. 알림장 고치기의 `resolved_checks[]`는 이 `id`를 보낸다 |
+| `open_checks[] { id, item_key, kind, problem, sentence, request_id? }` | — | 확인할 항목. `id`·`item_key`·`kind`·`problem`은 필수다. `problem`은 선생님이 읽는 설명이고, `sentence`는 걸린 초안 문장(없으면 null)이다. `request_id`는 선택 UUID이고 생략·null이 가능하다. 보호자 요청 누락이면 해당 요청 ID를 넣는다. `resolved_checks[]`는 지금처럼 `id`만 보낸다 |
+| `open_checks[].kind` | `not_in_memo`·`sensitive`·`other_child`·`date_check`·`absent`·`draft_failed`·`check_failed`·`request_missed` | 순서대로 메모에 없음·민감 정보·다른 아이·날짜 확인·결석·아이 초안 실패·검사 실패·보호자 요청 누락 |
 
 학부모가 받는 알림장(`sent`)에는 `open_checks`가 늘 빈 목록이다(DB 제약).
 
@@ -578,7 +582,7 @@ HTTP/1.1 200 OK
 | `status` | 쿼리 | string | 선택 | 생략 가능 | 3.2의 요청 상태 11개 | 생략하면 모든 상태 |
 | `page`·`size` | 쿼리 | integer | 선택 | 불가 | 기본 1·20, page ≥ 1, size 1~100 | 쪽 나누기 |
 | `sort` | 쿼리 | string | 선택 | 불가 | `-created_at`(기본)·`created_at`·`-updated_at`·`updated_at` | 생성·변경 시각 순 |
-| `items[].id`·`type`·`title`·`status`·`status_label`·`updated_at` | 응답 | UUID·string·datetime | 항상 | title은 null 가능 | 요청 유형 3개·상태 11개 | 본인 요청의 요약 |
+| `items[].id`·`type`·`title`·`status`·`status_label`·`updated_at` | 응답 | UUID·string·datetime | 항상 | title은 null 가능 | 등록 유형 3개와 가상 귀가 시드 `pickup`·상태 11개 | 본인 요청의 요약 |
 | `items[].next_action` | 응답 | string | 항상 | null 가능 | 정보 보완·시간 선택·민원 회신 확인 | needs_info면 보완 또는 시간 선택, 미확인 민원 회신이면 확인 안내 |
 | `items[].hold_until` | 응답 | date | 항상 | null 가능 | 보류 카드의 예정일 | 할 일·보류가 없으면 해당 칸은 null |
 | `total`·`page`·`size` | 응답 | integer | 항상 | 불가 | 전체 건수·요청한 쪽·크기 | 목록 공통 칸 |
@@ -935,7 +939,7 @@ HTTP/1.1 200 OK
 | ① 호출 목적 | 담임이 반 전체 알림장 초안을 만들고 작업 상태를 확인한다(FR-10). |
 | ② 요청 헤더 | `Authorization`(필수), `X-Request-ID`(권장), `Content-Type: application/json`; 상태 조회는 본문 없음. |
 | ③ 경로·쿼리 | 상태 조회만 input_id(UUID, 필수). |
-| ④ 요청 본문 | 생성은 classroom_id·note_date·activities·supplies. |
+| ④ 요청 본문 | 생성은 classroom_id·note_date·activities·supplies, 선택으로 child_memos[]를 보낸다. |
 | ⑤ 검증·권한 | teacher만, 현재 담당 반만. note_date는 오늘 또는 지난날. 같은 반·날짜가 있으면 입력 내용이 달라도 기존 작업을 돌려준다. |
 | ⑥ 정상 응답 | 생성 202, 중복 200, 상태 조회 200. 모두 input_id·draft_status·error. |
 | ⑦ 오류 응답 | 아래 오류 표. |
@@ -948,11 +952,18 @@ HTTP/1.1 200 OK
 | `note_date` | 생성 본문 | date | 필수 | 불가 | YYYY-MM-DD, 오늘 또는 지난날 | 알림 날짜 |
 | `activities` | 생성 본문 | string | 필수 | 불가 | 1~2,000자 | 오늘 활동 |
 | `supplies` | 생성 본문 | string | 필수 | 빈 문자열 가능 | 최대 2,000자 | 준비물이 없어도 칸은 보냄 |
+| `child_memos[]` | 생성 본문 | object[] | 선택 | 빈 목록 가능 | 생략하면 [] | 아이별 메모 |
+| `child_memos[].child_id` | 생성 본문 | string(UUID) | 항목마다 필수 | 불가 | 그 반 아이, 중복 불가 | 다른 반·다른 기관·없는 아이면 422다. details.child_id에 해당 ID가 온다 |
+| `child_memos[].memo` | 생성 본문 | string | 항목마다 필수 | 빈 문자열 불가 | 1~500자 | 모의 생성은 원문 그대로 child 줄에 넣는다. 공백뿐이면 줄을 만들지 않는다 |
 | `draft_status`·`error` | 응답 | string·object | 항상 | error는 null 가능 | queued·running·succeeded·failed; 오류는 {code, message} | 실패 조회도 200, 모의 오류 코드는 UPSTREAM_UNAVAILABLE |
+
+초안 입구 함수의 아이 입력은 `{ child_id, display_name, memo, requests: [{ request_id, type, text }] }`다. 전체 입력은 `{ input_id, note_date, classroom, activities, supplies, children, menu }`이고, `menu`는 `{ document_id, title, text }` 또는 null이다. `requests`는 클라이언트가 보내지 않고 서버가 모은다. 같은 기관·반·아이의 보호자가 보낸 `medication`·`pickup`·`inquiry` 중 `created_at`의 한국 날짜가 `note_date`인 요청이다. `text`는 보호자 요청 본문이고, 없으면 빈 목록이다. 이 입구는 DB runner를 연결할 때도 같은 모양으로 쓴다.
+
+모의 초안은 요청 원문을 `source: { type: request, request_id }` 줄에 넣는다. 하늘의 "기침해요"는 반영하고, 노을의 고정 귀가 요청(…70a) 하나만 일부러 빼서 `request_missed`를 보여 준다. 이때 `item_key: pickup`, `sentence: null`, `request_id: …70a`다. 다른 귀가 요청은 반영한다. 교사는 요청을 확인하고 기존 PATCH의 `resolved_checks`로 해결한다. 미해결 항목이 있으면 확인·발송을 막는 규칙은 같다.
 
 ```http
 POST /api/v1/daily-notes/drafts
-{"classroom_id": "00000000-0000-4000-8000-000000000101", "note_date": "2026-11-18", "activities": "블록 놀이와 산책을 했어요.", "supplies": "내일 실내화"}
+{"classroom_id": "00000000-0000-4000-8000-000000000101", "note_date": "2026-11-18", "activities": "블록 놀이와 산책을 했어요.", "supplies": "내일 실내화", "child_memos": [{"child_id": "00000000-0000-4000-8000-000000000501", "memo": "블록으로 높은 탑을 쌓음"}]}
 HTTP/1.1 202 Accepted
 {"input_id": "…", "draft_status": "succeeded", "error": null}
 GET /api/v1/daily-notes/drafts/{input_id}
@@ -965,7 +976,7 @@ HTTP/1.1 200 OK
 | 401 | `UNAUTHENTICATED` | 토큰 없음·만료·무효 |
 | 403 | `FORBIDDEN_ROLE` | 허용하지 않은 역할 |
 | 404 | `NOT_FOUND` | 없거나 기관·반·소유 범위 밖 |
-| 422 | `VALIDATION_FAILED` | 필수 칸·타입·허용 값·길이가 맞지 않음 |
+| 422 | `VALIDATION_FAILED` | 필수 칸·타입·길이, 중복 child_id, 그 반 아이가 아닌 메모(details.child_id) |
 
 ### 3.20 알림장 보기 — `GET /api/v1/daily-notes`
 
@@ -978,7 +989,7 @@ HTTP/1.1 200 OK
 | ⑤ 검증·권한 | 학부모는 내 아이·sent만. 담임은 현재 담당 반만. director는 기관 전체를 읽으며 반을 고를 수 있다. |
 | ⑥ 정상 응답 | 200 + 쪽 나눈 items[]. 조건에 맞는 알림장이 없으면 빈 목록. |
 | ⑦ 오류 응답 | 아래 오류 표. |
-| ⑧ 실행 규칙 | 학부모에게 classroom_id를 주어도 내 아이·sent 조건을 먼저 적용한다. created_at으로 정렬 뒤 쪽을 나눈다. 모의 초안은 day·supplies·meal 세 줄이며 첫 아이에 준비물 확인 항목 c1을 넣는다. |
+| ⑧ 실행 규칙 | 학부모에게 classroom_id를 주어도 내 아이·sent 조건을 먼저 적용한다. created_at으로 정렬 뒤 쪽을 나눈다. 모의 초안은 day·supplies·meal에 아이 메모·그날 보호자 요청 줄을 더한다. 첫 아이의 준비물 확인 c1과 노을의 고정 귀가 요청 누락 확인을 남긴다. |
 
 | 필드 | 위치 | 타입 | 필수 | 빈값 | 제약 | 설명 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -994,7 +1005,7 @@ HTTP/1.1 200 OK
 ```http
 GET /api/v1/daily-notes?classroom_id=00000000-0000-4000-8000-000000000101&date=2026-11-18
 HTTP/1.1 200 OK
-{"items": [{"child_id": "00000000-0000-4000-8000-000000000503", "note_date": "2026-11-18", "status": "draft", "content": {"items": [{"key": "day", "label": "오늘 하루", "value": "블록 놀이와 산책을 했어요.", "source": {"type": "teacher_input", "document_id": null, "document_title": null, "request_id": null}}, {"key": "supplies", "label": "준비물", "value": "내일 실내화", "source": {"type": "teacher_input", "document_id": null, "document_title": null, "request_id": null}}, {"key": "meal", "label": "식사", "value": "점심: 카레라이스, 채소와 과일", "source": {"type": "document", "document_id": "00000000-0000-4000-8000-000000000b01", "document_title": "가상 식단표", "request_id": null}}]}, "open_checks": [], "confirmed_at": null, "sent_at": null}], "total": 2, "page": 1, "size": 20}
+{"items": [{"child_id": "00000000-0000-4000-8000-000000000503", "note_date": "2026-11-18", "status": "draft", "content": {"items": [{"key": "day", "label": "오늘 하루", "value": "블록 놀이와 산책을 했어요.", "source": {"type": "teacher_input", "document_id": null, "document_title": null, "request_id": null}}, {"key": "supplies", "label": "준비물", "value": "내일 실내화", "source": {"type": "teacher_input", "document_id": null, "document_title": null, "request_id": null}}, {"key": "meal", "label": "식사", "value": "점심: 카레라이스, 채소와 과일", "source": {"type": "document", "document_id": "00000000-0000-4000-8000-000000000b01", "document_title": "가상 식단표", "request_id": null}}]}, "open_checks": [], "confirmed_at": null, "sent_at": null}], "total": 20, "page": 1, "size": 20}
 ```
 
 | HTTP | `code` | 조건 |
@@ -1021,7 +1032,7 @@ HTTP/1.1 200 OK
 | --- | --- | --- | --- | --- | --- | --- |
 | `note_id` | 경로 | string(UUID) | 필수 | 불가 | 현재 담당 반 알림장 | 3.20 응답에서 받은 ID |
 | `content` | 본문 | object | 선택 | null 가능 | items[]의 key·label·value·source는 3.7; 빈 items도 허용 | 생략·null이면 내용 유지 |
-| `content.items[].key` | 본문 | string | 줄마다 필수 | 불가 | day·meal·medication·pickup·supplies | 줄 종류 |
+| `content.items[].key` | 본문 | string | 줄마다 필수 | 불가 | day·meal·medication·pickup·supplies·child | 줄 종류. child의 출처는 teacher_input만 허용 |
 | `content.items[].label`·`value` | 본문 | string | 줄마다 필수 | value만 빈 문자열 가능 | label은 1자 이상, value 길이 제한 없음 | 줄 이름과 내용 |
 | `content.items[].source` | 본문 | object | 줄마다 필수 | 불가 | document면 document_id·document_title, request면 request_id 필수 | 출처 종류는 teacher_input·document·request |
 | `resolved_checks[]` | 본문 | string[] | 선택 | 빈 목록 가능 | 기본 [], 현재 open_checks의 id만 | 해결한 확인 항목 |
@@ -1125,6 +1136,32 @@ HTTP/1.1 200 OK
 | 404 | `NOT_FOUND` | 없거나 기관·반·소유 범위 밖 |
 | 422 | `VALIDATION_FAILED` | 필수 칸·타입·허용 값·길이가 맞지 않음 |
 
+
+### 3.24 반 아이 목록 — `GET /api/v1/classrooms/{classroom_id}/children`
+
+| 칸 | 내용 |
+| --- | --- |
+| ① 호출 목적 | 알림장 메모를 쓸 아이를 이름순으로 고른다(FR-10). |
+| ② 요청 헤더 | `Authorization`(필수), `X-Request-ID`(권장). |
+| ③ 경로·쿼리 | 경로 classroom_id(UUID, 필수)만 받는다. 페이지 쿼리는 없다. |
+| ④ 요청 본문 | 없음. |
+| ⑤ 검증·권한 | 현재 배정 기간 안인 담임과 같은 기관 원장만 본다. 학부모는 403 FORBIDDEN_ROLE, 없는 반·범위 밖 반은 404 NOT_FOUND다. |
+| ⑥ 정상 응답 | 200 + `{ items: [{ id, display_name, classroom_id }] }`. 이름 오름차순이고, 아이가 없으면 items는 []다. |
+| ⑦ 오류 응답 | 401 UNAUTHENTICATED, 403 FORBIDDEN_ROLE, 404 NOT_FOUND, UUID 형식이 틀리면 422 VALIDATION_FAILED. |
+| ⑧ 실행 규칙 | 요청할 때마다 담임 배정 기간과 기관을 확인한다. 보호자·계정 정보는 보내지 않는다. |
+
+| 필드 | 위치 | 타입 | 필수 | 빈값 | 제약 | 설명 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `classroom_id` | 경로 | string(UUID) | 필수 | 불가 | 볼 수 있는 반 | 목록을 받을 반 |
+| `items[]` | 응답 | object[] | 항상 | 빈 목록 가능 | display_name 오름차순 | 해당 반 아이 전부 |
+| `items[].id`·`classroom_id` | 응답 | string(UUID) | 항상 | 불가 | 아이 ID·반 ID | child_memos의 child_id에 id를 보냄 |
+| `items[].display_name` | 응답 | string | 항상 | 불가 | 아이 표시 이름 | 목록에 보여 줄 이름 |
+
+```http
+GET /api/v1/classrooms/00000000-0000-4000-8000-000000000102/children
+HTTP/1.1 200 OK
+{"items": [{"id": "00000000-0000-4000-8000-000000000502", "display_name": "바다", "classroom_id": "00000000-0000-4000-8000-000000000102"}]}
+```
 
 ## 4. 검증과 권한 규칙
 
@@ -1487,6 +1524,7 @@ def decide(card_id: UUID, body: CardDecision, user: User = Depends(current_staff
 | `slots[].period` · `booking.period` | `consultation_slots.period` · `consultation_bookings.period` | `tstzrange` ↔ `{ start, end }` |
 | `booking.room` | `rooms.name` | `consultation_bookings.room_id`로 이어 이름을 줌 |
 | `draft_status` · `input_id` | `daily_note_inputs.draft_status` · `id` | 같음 |
+| `child_memos[]` | `daily_note_inputs.child_memos` | 0002에서 추가한 jsonb NOT NULL DEFAULT '[]'::jsonb, 배열 CHECK. 아이 UUID·중복·소속·메모 길이는 API가 검사함(DDL·DB 설계서 v0.8) |
 | `notes[].status` · `content` · `open_checks[]` | `daily_notes.status` · `content` · `open_checks` | 같음 |
 | `ingest_status` | `documents.ingest_status` | 같음 |
 | `chunk_count` | — | 저장하지 않음. 그 문서의 `document_chunks` 개수 |
@@ -1541,7 +1579,12 @@ MVP 설정값은 서버 설정(`.env`)으로 관리한다. `.env.example`에는 
 | `C-DEMO-03` | 별빛반 노을, 보호자 P-DEMO-02 | `children` | `00000000-0000-4000-8000-000000000503` |
 | `RM-DEMO-01` | 상담실 | `rooms` | `00000000-0000-4000-8000-000000000601` |
 | `R-DEMO-01` · `R-DEMO-02` | 상담 요청 · 민원 요청 | `requests` | `…000000000701` · `…000000000702` |
+| `R-DEMO-08` · `R-DEMO-10` | 하늘 문의 "기침해요" · 노을 귀가 "오늘 할머니가 데리러 가요"(가상) | `requests` | `…000000000708` · `…00000000070a` |
 | `K-DEMO-01` · `K-DEMO-02` | 상담 후보 카드 · 민원 회신 카드 | `cards` | `…000000000801` · `…000000000802` |
+
+별빛반(`…0101`, 만 4세, teacher01)은 기존 하늘·노을과 PR #262 `roster_c4.json` 명단 18명을 합쳐 20명이다. 명단의 `C4-NN`은 `demo_id("54NN")`으로 옮겼고, 추가한 아이에게는 보호자가 없다. 햇님반(`…0102`, 만 5세, teacher02)은 바다 1명이다. 반 이름·교사 표시 이름은 develop의 모의 시드와 같고, 이름·순서는 `apps/api/app/mock/seed.py`에서 볼 수 있다.
+
+알림장 연결용 두 요청은 모의 저장소 초기화 날짜에 접수 상태로 넣고, 문의·귀가 처리 카드는 아직 만들지 않는다.
 
 그 밖의 데모 요청(…703~707)·문서(…b01~b03)·규칙(…d01)은 `apps/api/app/mock/seed.py`를 참고한다.
 
@@ -1552,3 +1595,4 @@ MVP 설정값은 서버 설정(`.env`)으로 관리한다. `.env.example`에는 
 | v0.1 | 2026-11-18 | 초안. API 목록 29개, 핵심 6개 상세 명세, 화면용 조회 칸(3.7, T12 #254 리뷰), 검증·권한 규칙, 도구 실패 코드·실패 후 처리, 실행 규칙(기한 계산·알림 발송 시각 포함, T10 회의 결과), API 필드↔DB 컬럼 대응, 설정값 | 태웅 |
 | v0.2 | 2026-11-18 | 나머지 API 상세 명세(3.8~3.23)를 모의 API·OpenAPI와 대조해 채움. 29개 상세 절 연결, 모의 API 안내·설정값·데모 ID 보완 | 태웅 |
 | v0.3 | 2026-11-20 | 영민 #256 리뷰 반영: `find_consult_slots` 실패 코드에 `TOOL_TIMEOUT` 추가(YC-F01), 에이전트 허용 목록은 T43부터 적용(5.3 ①), `create_card` 끝내 실패 시 학부모 안내('받았지만 늦어질 수 있음', 화면의 '접수됨'과 같게)와 서버의 미배정 재올림(5.4·6.3). 강사 11/18 피드백 2·3·4번: 세 업무 흐름·사람 인계·도구 이름 대조(5.7), 서버 설정 위치·WORK_HOURS·IMMEDIATE_RISK_CATEGORIES(6.5·6.6·8장), 공휴일·퇴근 뒤 실계산 예시(6.6.1), 화면·API·DB 대표 사례와 시험 기록(6.7), notify_failed 경고(3.7·5.4). T04에 맞춰 원에 남은 답 바로 답 예외(5.3 ④·5.7)와 민원 회신·완료는 원장이 하지 않음(4.2) 명시 | 태웅 |
+| v0.4 | 2026-11-20 | 알림장 아이별 child_memos, child 줄, 확인 항목 kind 8값·sentence·선택 request_id, API 30 반 아이 목록을 추가함. 모의 API·OpenAPI를 맞추고 반·교사 이름은 develop 기준으로 유지함. PR #262 별빛반 명단 18명은 C4-NN → 54NN으로 맞춤. 아이 입력에 그날 보호자 requests를 더하고 request_missed 누락 예시·요청 출처 줄·문의와 귀가 시드 두 개를 연결함. T10 v0.9·0002 저장 열·PATCH child 허용 값을 대조함 | 태웅 |

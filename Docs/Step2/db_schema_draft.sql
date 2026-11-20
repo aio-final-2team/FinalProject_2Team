@@ -1,6 +1,6 @@
--- 유치온 DB 스키마 초안 (T09) · 문서 버전 v0.7 (T10 회의 11/18 반영)
+-- 유치온 DB 스키마 초안 (T09) · 문서 버전 v0.8 (알림장 아이별 메모 11/20 반영)
 -- 설계서: Docs/Step2/DB_스키마_설계서.md
--- 이 파일은 설계 검토용이다. 실제 적용은 T19 마이그레이션(apps/api/migrations)으로 옮긴다.
+-- 이 파일은 최종 설계 모양이다. 실제 적용은 apps/api/migrations의 0001 → 0002로 한다.
 -- 대상: PostgreSQL 16 + pgvector 0.8 (compose.yaml의 pgvector/pgvector:pg16). Supabase는 쓰지 않는다(설계서 5.1)
 -- 기관 경계: 기관에 속한 표끼리는 (id, org_id) 짝으로 참조해서 다른 원 행을 섞어 넣으면 DB가 거부한다
 
@@ -539,6 +539,9 @@ CREATE TABLE daily_note_inputs (
                   CHECK (draft_status IN ('queued', 'running', 'succeeded', 'failed')),
     author_id     uuid NOT NULL,
     created_at    timestamptz NOT NULL DEFAULT now(),
+    child_memos   jsonb NOT NULL DEFAULT '[]'::jsonb
+                  CONSTRAINT daily_note_inputs_child_memos_array
+                  CHECK (jsonb_typeof(child_memos) = 'array'),
     FOREIGN KEY (classroom_id, org_id) REFERENCES classrooms(id, org_id),
     FOREIGN KEY (author_id, org_id) REFERENCES users(id, org_id),
     UNIQUE (classroom_id, note_date),
