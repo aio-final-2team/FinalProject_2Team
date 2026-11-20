@@ -63,6 +63,8 @@ MENU = demo_id("b01")
 NOTICE = demo_id("b02")
 OLD_NOTICE = demo_id("b03")
 RULE = demo_id("d01")
+REQUEST_COUGH = demo_id("708")
+REQUEST_PICKUP = demo_id("70a")
 
 # 같은 반 두 아이의 일괄 발송과 학부모별 조회 범위를 함께 시연한다.
 CHILDREN.append({"id": demo_id("503"), "classroom_id": CLASS_STAR, "display_name": "노을", "guardian_ids": [PARENT_OTHER]})
@@ -80,6 +82,14 @@ DEMO_REQUESTS = [
     ("705", "complaint", "원비 설명을 부탁드려요", "on_hold"),
     ("706", "inquiry", "지난 행사 안내를 확인했어요", "completed"),
     ("707", "inquiry", "새 행사 일정이 궁금해요", "classified"),
+]
+
+# 알림장에 보호자 요청을 반영하거나 누락 확인을 띄우는 가상 사례 두 개예요.
+DEMO_NOTE_REQUESTS = [
+    {"id": REQUEST_COUGH, "child_id": CHILD, "requester_id": PARENT,
+     "type": "inquiry", "body": "기침해요"},
+    {"id": REQUEST_PICKUP, "child_id": demo_id("503"), "requester_id": PARENT_OTHER,
+     "type": "pickup", "body": "오늘 할머니가 데리러 가요"},
 ]
 
 DEMO_DOCUMENTS = [

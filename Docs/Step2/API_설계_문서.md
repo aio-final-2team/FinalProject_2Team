@@ -1,6 +1,6 @@
 # 유치온 API 설계 문서 (T13)
 
-문서 버전 v0.4 | 작성 상태: 알림장 아이별 메모·확인 항목·반 아이 목록을 모의 API와 대조했어요
+문서 버전 v0.4 | 작성 상태: 알림장 아이별 메모·보호자 요청·확인 항목·반 아이 목록을 모의 API와 대조했어요
 
 | 항목 | 내용 |
 | --- | --- |
@@ -216,6 +216,8 @@ X-Request-ID: 6b0f1c2e-9a7d-4c1e-8f3a-2d5b7e9c1a40
 | 422 | `VALIDATION_FAILED` | 허용 밖 `type`, `body` 길이 초과, 필수 칸 없음 |
 
 ### 3.2 요청 상세·스트림 — `GET /api/v1/requests/{request_id}`, `GET …/stream`
+
+알림장 연결용 가상 귀가 요청도 목록·상세에서 `type: pickup`으로 읽어요. 등록 본문의 유형은 3.1 그대로예요.
 
 | 칸 | 내용 |
 | --- | --- |
@@ -517,12 +519,12 @@ T12 화면 지도(성주, PR #254)를 계약표 v0.7과 대조했을 때 화면�
 
 | 필드 | 값 | 설명 |
 | --- | --- | --- |
-| `items[].key` | `day`·`meal`·`medication`·`pickup`·`supplies`·`child` | 줄 종류예요. `child`는 아이별 메모를 풀어 쓴 줄이고 출처는 `teacher_input`이에요. 메모가 없거나 공백뿐이면 이 줄이 없어요. 투약·귀가 줄은 그 요청(T46)이 있을 때만 있어요 |
-| `items[].source.type` | `teacher_input`·`document`·`request` | 담임 입력(`daily_note_inputs`), 원 자료(식단·일정), 학부모 요청(투약·귀가) |
+| `items[].key` | `day`·`meal`·`medication`·`pickup`·`supplies`·`child` | 줄 종류예요. `child`는 아이별 메모를 풀어 쓴 줄이고 출처는 `teacher_input`이에요. 메모가 없거나 공백뿐이면 이 줄이 없어요. 문의는 기존 `day` 줄, 투약·귀가는 `medication`·`pickup` 줄로 잇고 출처는 `request`예요. 투약·귀가 요청 등록·인계 확인은 T46에서 열어요 |
+| `items[].source.type` | `teacher_input`·`document`·`request` | 담임 입력(`daily_note_inputs`), 원 자료(식단·일정), 학부모 요청(문의·투약·귀가) |
 | `items[].source.document_id`·`document_title` | — | `document`일 때 |
 | `items[].source.request_id` | — | `request`일 때 |
-| `open_checks[] { id, item_key, kind, problem, sentence }` | — | 확인할 항목이에요. `id`·`item_key`·`kind`·`problem`은 필수예요. `problem`은 선생님이 읽는 설명이고, `sentence`는 걸린 초안 문장(없으면 null)이에요. `resolved_checks[]`는 지금처럼 `id`만 보내요 |
-| `open_checks[].kind` | `not_in_memo`·`sensitive`·`other_child`·`date_check`·`absent`·`draft_failed`·`check_failed` | 순서대로 메모에 없음·민감 정보·다른 아이·날짜 확인·결석·아이 초안 실패·검사 실패예요 |
+| `open_checks[] { id, item_key, kind, problem, sentence, request_id? }` | — | 확인할 항목이에요. `id`·`item_key`·`kind`·`problem`은 필수예요. `problem`은 선생님이 읽는 설명이고, `sentence`는 걸린 초안 문장(없으면 null)이에요. `request_id`는 선택 UUID이고 생략·null이 가능해요. 보호자 요청 누락이면 해당 요청 ID를 넣어요. `resolved_checks[]`는 지금처럼 `id`만 보내요 |
+| `open_checks[].kind` | `not_in_memo`·`sensitive`·`other_child`·`date_check`·`absent`·`draft_failed`·`check_failed`·`request_missed` | 순서대로 메모에 없음·민감 정보·다른 아이·날짜 확인·결석·아이 초안 실패·검사 실패·보호자 요청 누락이에요 |
 
 학부모가 받는 알림장(`sent`)에는 `open_checks`가 늘 빈 목록이다(DB 제약).
 
@@ -580,7 +582,7 @@ HTTP/1.1 200 OK
 | `status` | 쿼리 | string | 선택 | 생략 가능 | 3.2의 요청 상태 11개 | 생략하면 모든 상태 |
 | `page`·`size` | 쿼리 | integer | 선택 | 불가 | 기본 1·20, page ≥ 1, size 1~100 | 쪽 나누기 |
 | `sort` | 쿼리 | string | 선택 | 불가 | `-created_at`(기본)·`created_at`·`-updated_at`·`updated_at` | 생성·변경 시각 순 |
-| `items[].id`·`type`·`title`·`status`·`status_label`·`updated_at` | 응답 | UUID·string·datetime | 항상 | title은 null 가능 | 요청 유형 3개·상태 11개 | 본인 요청의 요약 |
+| `items[].id`·`type`·`title`·`status`·`status_label`·`updated_at` | 응답 | UUID·string·datetime | 항상 | title은 null 가능 | 등록 유형 3개와 가상 귀가 시드 `pickup`·상태 11개 | 본인 요청의 요약 |
 | `items[].next_action` | 응답 | string | 항상 | null 가능 | 정보 보완·시간 선택·민원 회신 확인 | needs_info면 보완 또는 시간 선택, 미확인 민원 회신이면 확인 안내 |
 | `items[].hold_until` | 응답 | date | 항상 | null 가능 | 보류 카드의 예정일 | 할 일·보류가 없으면 해당 칸은 null |
 | `total`·`page`·`size` | 응답 | integer | 항상 | 불가 | 전체 건수·요청한 쪽·크기 | 목록 공통 칸 |
@@ -955,6 +957,10 @@ HTTP/1.1 200 OK
 | `child_memos[].memo` | 생성 본문 | string | 항목마다 필수 | 빈 문자열 불가 | 1~500자 | 모의 생성은 원문 그대로 child 줄에 넣어요. 공백뿐이면 줄을 만들지 않아요 |
 | `draft_status`·`error` | 응답 | string·object | 항상 | error는 null 가능 | queued·running·succeeded·failed; 오류는 {code, message} | 실패 조회도 200, 모의 오류 코드는 UPSTREAM_UNAVAILABLE |
 
+초안 입구 함수의 아이 입력은 `{ child_id, display_name, memo, requests: [{ request_id, type, text }] }`예요. 전체 입력은 `{ input_id, note_date, classroom, activities, supplies, children, menu }`이고, `menu`는 `{ document_id, title, text }` 또는 null이에요. `requests`는 클라이언트가 보내지 않고 서버가 모아요. 같은 기관·반·아이의 보호자가 보낸 `medication`·`pickup`·`inquiry` 중 `created_at`의 한국 날짜가 `note_date`인 요청이에요. `text`는 보호자 요청 본문이고, 없으면 빈 목록이에요. 이 입구는 DB runner를 연결할 때도 같은 모양으로 써요.
+
+모의 초안은 요청 원문을 `source: { type: request, request_id }` 줄에 넣어요. 하늘의 "기침해요"는 반영하고, 노을의 고정 귀가 요청(…70a) 하나만 일부러 빼서 `request_missed`를 보여 줘요. 이때 `item_key: pickup`, `sentence: null`, `request_id: …70a`예요. 다른 귀가 요청은 반영해요. 교사는 요청을 확인하고 기존 PATCH의 `resolved_checks`로 해결해요. 미해결 항목이 있으면 확인·발송을 막는 규칙은 같아요.
+
 ```http
 POST /api/v1/daily-notes/drafts
 {"classroom_id": "00000000-0000-4000-8000-000000000101", "note_date": "2026-11-18", "activities": "블록 놀이와 산책을 했어요.", "supplies": "내일 실내화", "child_memos": [{"child_id": "00000000-0000-4000-8000-000000000501", "memo": "블록으로 높은 탑을 쌓음"}]}
@@ -983,7 +989,7 @@ HTTP/1.1 200 OK
 | ⑤ 검증·권한 | 학부모는 내 아이·sent만. 담임은 현재 담당 반만. director는 기관 전체를 읽으며 반을 고를 수 있다. |
 | ⑥ 정상 응답 | 200 + 쪽 나눈 items[]. 조건에 맞는 알림장이 없으면 빈 목록. |
 | ⑦ 오류 응답 | 아래 오류 표. |
-| ⑧ 실행 규칙 | 학부모에게 classroom_id를 주어도 내 아이·sent 조건을 먼저 적용한다. created_at으로 정렬 뒤 쪽을 나눈다. 모의 초안은 day·supplies·meal 세 줄이며 첫 아이에 준비물 확인 항목 c1을 넣는다. |
+| ⑧ 실행 규칙 | 학부모에게 classroom_id를 주어도 내 아이·sent 조건을 먼저 적용한다. created_at으로 정렬 뒤 쪽을 나눈다. 모의 초안은 day·supplies·meal에 아이 메모·그날 보호자 요청 줄을 더해요. 첫 아이의 준비물 확인 c1과 노을의 고정 귀가 요청 누락 확인을 남겨요. |
 
 | 필드 | 위치 | 타입 | 필수 | 빈값 | 제약 | 설명 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -1572,9 +1578,12 @@ MVP 설정값은 서버 설정(`.env`)으로 관리한다. `.env.example`에는 
 | `C-DEMO-03` | 별빛반 노을, 보호자 P-DEMO-02 | `children` | `00000000-0000-4000-8000-000000000503` |
 | `RM-DEMO-01` | 상담실 | `rooms` | `00000000-0000-4000-8000-000000000601` |
 | `R-DEMO-01` · `R-DEMO-02` | 상담 요청 · 민원 요청 | `requests` | `…000000000701` · `…000000000702` |
+| `R-DEMO-08` · `R-DEMO-10` | 하늘 문의 "기침해요" · 노을 귀가 "오늘 할머니가 데리러 가요"(가상) | `requests` | `…000000000708` · `…00000000070a` |
 | `K-DEMO-01` · `K-DEMO-02` | 상담 후보 카드 · 민원 회신 카드 | `cards` | `…000000000801` · `…000000000802` |
 
 별빛반(`…0101`, 만 4세, teacher01)은 기존 하늘·노을과 PR #262 `roster_c4.json` 명단 18명을 합쳐 20명이에요. 명단의 `C4-NN`은 `demo_id("54NN")`으로 옮겼고, 추가한 아이에게는 보호자가 없어요. 햇님반(`…0102`, 만 5세, teacher02)은 바다 1명이에요. 반 이름·교사 표시 이름은 develop의 모의 시드와 같고, 이름·순서는 `apps/api/app/mock/seed.py`에서 볼 수 있어요.
+
+알림장 연결용 두 요청은 모의 저장소 초기화 날짜에 접수 상태로 넣고, 문의·귀가 처리 카드는 아직 만들지 않아요.
 
 그 밖의 데모 요청(…703~707)·문서(…b01~b03)·규칙(…d01)은 `apps/api/app/mock/seed.py`를 참고한다.
 
@@ -1585,4 +1594,4 @@ MVP 설정값은 서버 설정(`.env`)으로 관리한다. `.env.example`에는 
 | v0.1 | 2026-11-18 | 초안. API 목록 29개, 핵심 6개 상세 명세, 화면용 조회 칸(3.7, T12 #254 리뷰), 검증·권한 규칙, 도구 실패 코드·실패 후 처리, 실행 규칙(기한 계산·알림 발송 시각 포함, T10 회의 결과), API 필드↔DB 컬럼 대응, 설정값 | 태웅 |
 | v0.2 | 2026-11-18 | 나머지 API 상세 명세(3.8~3.23)를 모의 API·OpenAPI와 대조해 채움. 29개 상세 절 연결, 모의 API 안내·설정값·데모 ID 보완 | 태웅 |
 | v0.3 | 2026-11-20 | 영민 #256 리뷰 반영: `find_consult_slots` 실패 코드에 `TOOL_TIMEOUT` 추가(YC-F01), 에이전트 허용 목록은 T43부터 적용(5.3 ①), `create_card` 끝내 실패 시 학부모 안내('받았지만 늦어질 수 있음', 화면의 '접수됨'과 같게)와 서버의 미배정 재올림(5.4·6.3). 강사 11/18 피드백 2·3·4번: 세 업무 흐름·사람 인계·도구 이름 대조(5.7), 서버 설정 위치·WORK_HOURS·IMMEDIATE_RISK_CATEGORIES(6.5·6.6·8장), 공휴일·퇴근 뒤 실계산 예시(6.6.1), 화면·API·DB 대표 사례와 시험 기록(6.7), notify_failed 경고(3.7·5.4). T04에 맞춰 원에 남은 답 바로 답 예외(5.3 ④·5.7)와 민원 회신·완료는 원장이 하지 않음(4.2) 명시 | 태웅 |
-| v0.4 | 2026-11-20 | 알림장 아이별 child_memos, child 줄, 확인 항목 kind 7값·sentence, API 30 반 아이 목록을 더했어요. 모의 API·OpenAPI를 맞추고 반·교사 이름은 develop 기준으로 유지해요. PR #262 별빛반 명단 18명은 C4-NN → 54NN으로 맞췄어요 | 태웅 |
+| v0.4 | 2026-11-20 | 알림장 아이별 child_memos, child 줄, 확인 항목 kind 8값·sentence·선택 request_id, API 30 반 아이 목록을 더했어요. 모의 API·OpenAPI를 맞추고 반·교사 이름은 develop 기준으로 유지해요. PR #262 별빛반 명단 18명은 C4-NN → 54NN으로 맞췄어요. 아이 입력에 그날 보호자 requests를 더하고 request_missed 누락 예시·요청 출처 줄·문의와 귀가 시드 두 개를 연결했어요 | 태웅 |

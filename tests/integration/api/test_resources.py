@@ -70,7 +70,8 @@ def test_notes_batch_blocks_all_then_sends_once(client, teacher, parent, parent_
 def test_patch_is_atomic_and_requires_all_checks(client, teacher, parent, teacher_other):
     assert draft(client, teacher).status_code == 202
     assert client.get(BASE + "/daily-notes", headers=parent, params={"date": store.now().date().isoformat()}).json()["items"] == []
-    n = next(n for n in note_list(client, teacher).json()["items"] if n["status"] == "needs_check")
+    n = next(n for n in note_list(client, teacher).json()["items"]
+             if any(check["kind"] == "date_check" for check in n["open_checks"]))
     original = store.state().notes[UUID(n["id"])].content
     content = {"items": [{"key": "day", "label": "오늘 하루", "value": "새 내용", "source": {"type": "teacher_input"}}]}
     err(client.patch(f"{BASE}/daily-notes/{n['id']}", headers=teacher, json={"confirm": True, "content": content}), 409, "INVALID_TRANSITION")

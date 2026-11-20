@@ -82,21 +82,29 @@ def test_omitted_or_empty_memos_add_no_child_line(client, teacher, extra):
                for line in note["content"]["items"])
 
 
-def test_open_check_has_seven_kinds_required_kind_and_nullable_sentence(client, teacher):
+def test_open_check_has_eight_kinds_and_optional_request_id(client, teacher):
     schema = app.openapi()["components"]["schemas"]["OpenCheck"]
     assert set(schema["properties"]["kind"]["enum"]) == {
-        "not_in_memo", "sensitive", "other_child", "date_check", "absent", "draft_failed", "check_failed"}
+        "not_in_memo", "sensitive", "other_child", "date_check", "absent", "draft_failed", "check_failed", "request_missed"}
     assert "kind" in schema["required"]
+    assert "request_id" not in schema["required"]
     check = {"id": "c1", "item_key": "child", "problem": "메모를 확인해 주세요"}
     with pytest.raises(ValidationError):
         OpenCheck.model_validate(check)
     with pytest.raises(ValidationError):
         OpenCheck.model_validate({**check, "kind": "unknown"})
     assert OpenCheck.model_validate({**check, "kind": "check_failed"}).sentence is None
+    assert OpenCheck.model_validate({**check, "kind": "check_failed"}).request_id is None
+    assert OpenCheck.model_validate({**check, "kind": "request_missed", "request_id": None}).request_id is None
+    assert OpenCheck.model_validate({**check, "kind": "request_missed",
+                                     "request_id": str(seed.REQUEST_PICKUP)}).request_id == seed.REQUEST_PICKUP
+    with pytest.raises(ValidationError):
+        OpenCheck.model_validate({**check, "kind": "request_missed", "request_id": "not-a-uuid"})
     assert draft(client, teacher).status_code == 202
-    checks = [check for note in note_list(client, teacher).json()["items"] for check in note["open_checks"]]
+    checks = [check for note in note_list(client, teacher).json()["items"] for check in note["open_checks"]
+              if check["kind"] == "date_check"]
     assert checks == [{"id": "c1", "item_key": "supplies", "kind": "date_check",
-                       "problem": "준비물 날짜를 확인해 주세요", "sentence": "내일 실내화"}]
+                       "problem": "준비물 날짜를 확인해 주세요", "sentence": "내일 실내화", "request_id": None}]
 
 
 def test_child_line_rejects_non_teacher_source(client, teacher):

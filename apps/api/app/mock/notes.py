@@ -4,8 +4,8 @@ from copy import deepcopy
 from uuid import uuid4
 
 from app.core.errors import ApiError
-from app.core.schedule import due_at
-from app.mock import store
+from app.core.schedule import KST, due_at
+from app.mock import seed, store
 from app.mock.records import NoteInput, Note
 
 
@@ -15,6 +15,17 @@ def input_in_scope(user, input_id):
         store.deny(user)
     store.classroom_in_scope(user, entry.classroom_id)
     return entry
+
+
+def requests_for_child(child, note_date):
+    """입구 함수의 children[].requests: 같은 원·반·아이의 그날 보호자 요청."""
+    requests = [req for req in store.state().requests.values()
+                if req.org_id == child.org_id and req.classroom_id == child.classroom_id
+                and req.child_id == child.id and req.requester_id in child.guardian_ids
+                and req.type in ("medication", "pickup", "inquiry")
+                and req.created_at.astimezone(KST).date() == note_date]
+    return [{"request_id": req.id, "type": req.type, "text": req.body}
+            for req in sorted(requests, key=lambda req: (req.created_at, str(req.id)))]
 
 
 def draft(user, body):
@@ -55,6 +66,16 @@ def draft(user, body):
                 if memo.strip():
                     content["items"].append({"key": "child", "label": "아이 메모", "value": memo,
                                              "source": {"type": "teacher_input"}})
+                for req in requests_for_child(child, entry.note_date):
+                    key = req["type"] if req["type"] != "inquiry" else "day"
+                    # 누락 확인 시연은 이 고정 요청 하나만 빼요. 실제 귀가 요청 전체를 빼지 않아요.
+                    if req["request_id"] == seed.REQUEST_PICKUP:
+                        checks.append({"id": f"request-{req['request_id']}", "item_key": key,
+                                       "kind": "request_missed", "problem": "보호자 요청을 초안에 반영해 주세요",
+                                       "sentence": None, "request_id": req["request_id"]})
+                    else:
+                        content["items"].append({"key": key, "label": "보호자 요청", "value": req["text"],
+                                                 "source": {"type": "request", "request_id": req["request_id"]}})
                 note = Note(uuid4(), user.org_id, entry.id, child.id, entry.note_date, content,
                             "needs_check" if checks else "draft", checks)
                 store.state().notes[note.id] = note
