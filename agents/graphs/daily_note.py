@@ -5,9 +5,12 @@
 
 - 반 공통 줄(day·supplies·meal)은 코드가 그대로 만든다. AI는 아이 메모 줄과 보호자 요청 줄만 쓴다.
 - 쓰기·검사는 각각 1번 다시 한다. 메모에 없는 말·요청 누락은 자료 AI로 최대 2번 돌려보낸다.
+- 아이들은 동시에 처리한다. 동시 실행 수는 NOTE_DRAFT_CONCURRENCY(기본 5)로 묶는다(흐름 문서 5장).
 """
 
 import json
+import os
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from agents.llm import JsonModel, ModelError, OpenAIModel
@@ -24,6 +27,8 @@ PROBLEM = {
     "check_failed": "메모와 대조하는 검사가 끝나지 않았어요. 직접 읽고 확인해 주세요.",
     "request_missed": "보호자 요청이 초안에 없어요. 요청 내용을 넣어 주세요.",
     "other_child": "다른 아이 이름이 들어 있어요. 이 아이 알림장에서는 빼 주세요.",
+    "memo_left_out": "선생님 메모를 알림장에 옮기지 않았어요. 메모를 보고 직접 확인해 주세요.",
+    "medication": "보호자 투약 요청이에요. 보내기 전에 직접 확인해 주세요.",
 }
 
 WRITE_FORMAT = """
@@ -47,16 +52,26 @@ def section(file: str, heading: str) -> str:
     return text[text.index(heading):]
 
 
-def draft_daily_notes(payload: dict, writer: JsonModel | None = None, checker: JsonModel | None = None) -> list[dict]:
+def concurrency() -> int:
+    return max(1, int(os.getenv("NOTE_DRAFT_CONCURRENCY", "5")))
+
+
+def draft_daily_notes(payload: dict, writer: JsonModel | None = None, checker: JsonModel | None = None,
+                      workers: int | None = None) -> list[dict]:
     """입구 함수. payload = {input_id, note_date, classroom, activities, supplies, children[], menu}.
 
-    돌려주는 값: 아이마다 {child_id, content: {items[]}, open_checks[]}.
+    돌려주는 값: 아이마다 {child_id, content: {items[]}, open_checks[]}. 순서는 입력 children 순서와 같다.
     """
     writer = writer or OpenAIModel("DOCUMENT")
     checker = checker or OpenAIModel("CHECKER")
     names = [child["display_name"] for child in payload["children"]]
     common = common_lines(payload)
-    return [draft_child(payload, child, common, names, writer, checker) for child in payload["children"]]
+    run = lambda child: draft_child(payload, child, common, names, writer, checker)
+    workers = workers or concurrency()
+    if workers == 1:
+        return [run(child) for child in payload["children"]]
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        return list(pool.map(run, payload["children"]))
 
 
 def common_lines(payload: dict) -> dict:
@@ -88,7 +103,7 @@ def draft_child(payload, child, common, names, writer, checker) -> dict:
             found += twice(lambda: review(checker, payload, child, own))
         except ModelError:
             found.append(new_check("child", "check_failed"))
-        found = unique(found)
+        found = unique(found + memo_left_out(memo, own, found))
         issues = [f for f in found if f["kind"] in RETURN_KINDS]
         if not issues or attempt == MAX_RETURNS or any(f["kind"] == "check_failed" for f in found):
             return result(child, common, own, found)
@@ -127,18 +142,32 @@ def write(model: JsonModel, payload, child, issues) -> list[dict]:
 
 
 def code_checks(own: list[dict], child: dict, names: list[str]) -> list[dict]:
-    """AI 없이 확실히 잡을 수 있는 것: 다른 아이 이름, 보호자 요청 누락."""
+    """AI 없이 확실히 잡을 수 있는 것: 다른 아이 이름(메모·초안), 보호자 요청 누락."""
     found = []
     others = [n for n in names if n != child["display_name"] and n not in child["display_name"]]
     for line in own:
         hit = [n for n in others if n in line["value"]]
         if hit:
             found.append(new_check(line["key"], "other_child", sentence=line["value"]))
+    memo = child.get("memo") or ""
+    if not found and any(n in memo for n in others):  # 초안에서 이름을 뺐어도 누구 이야기인지는 선생님이 본다
+        found.append(new_check("child", "other_child", problem="메모에 다른 아이 이름이 있어요. 누구 이야기인지 확인해 주세요."))
     covered = {line["source"].get("request_id") for line in own if line["source"]["type"] == "request"}
     for req in child.get("requests") or []:
         if req["request_id"] not in covered:
             found.append(new_check(REQUEST_KEY[req["type"]], "request_missed", request_id=req["request_id"]))
+        elif req["type"] == "medication":  # 투약은 늘 사람이 본다(NFR-03)
+            found.append(new_check("medication", "sensitive", problem=PROBLEM["medication"], request_id=req["request_id"]))
     return found
+
+
+def memo_left_out(memo: str, own: list[dict], found: list[dict]) -> list[dict]:
+    """안전장치: 메모가 있는데 아이 메모 줄이 없고 아이 메모 확인도 없으면 선생님 확인을 남긴다."""
+    if not memo or any(line["key"] == "child" for line in own):
+        return []
+    if any(f["item_key"] == "child" and f["kind"] in MODEL_KINDS for f in found):
+        return []
+    return [new_check("child", "sensitive", problem=PROBLEM["memo_left_out"])]
 
 
 def review(model: JsonModel, payload, child, own) -> list[dict]:

@@ -25,15 +25,16 @@
 | 문제 | 이럴 때 | `open_checks.kind` |
 | --- | --- | --- |
 | 메모에 없는 말 | `child` 줄에 메모·반 공통·식단 어디에도 없는 사실·이유·평가가 있다. 반 공통 활동을 이 아이가 했다고 썼다 | `not_in_memo` |
-| 선생님이 꼭 볼 메모 | 다침·열·투약·친구 갈등·부정적 행동·가정사·선생님 혼자 보는 메모 | `sensitive` |
+| 선생님이 꼭 볼 메모 | 다침·열·투약·친구 갈등·부정적 행동·가정사·선생님 혼자 보는 메모. 보호자의 투약 요청(`medication`)도 늘 여기에 든다 | `sensitive` |
 | 다른 아이 | 알림장에 다른 아이 이름이 있거나, 메모가 다른 아이 이야기로 보인다 | `other_child` |
-| 날짜 | 메모의 날짜가 준비물·통신문 날짜와 다르다 | `date_check` |
+| 날짜 | 메모의 날짜가 준비물·통신문 날짜와 다르다. 보호자 요청이 오늘이 아닌 날(어제·내일) 이야기다 | `date_check` |
 | 결석 | 메모가 결석이다. 보낼지 선생님이 정한다 | `absent` |
 | 보호자 요청 누락 | 그날 보호자 요청 중 `source.request_id`로 다룬 줄이 없는 것이 있다 | `request_missed` (`request_id`에 그 요청 ID, `sentence`는 null) |
 
 - `not_in_memo`·`request_missed`는 `return_to_step`으로 자료 AI에 돌려보낸다(최대 2번). 나머지는 고칠 문제가 아니라 선생님이 볼 일이라 돌려보내지 않고 `open_checks`로만 남긴다.
 - 항목마다 `kind`와 함께 `problem`(선생님이 읽을 설명 한 문장)과 `sentence`(걸린 초안 문장, 없으면 null)를 남긴다. 보호자 요청 누락이면 `request_id`도 남긴다(API 설계 v0.4 3.7).
 - 메모가 빈 아이는 `child` 줄이 없으면 통과다.
+- 메모가 **있는데** `child` 줄이 없으면, 자료 AI가 왜 뺐는지 메모를 보고 맞는 `kind`로 확인을 남긴다(다른 아이 이야기 → `other_child`, 가정사·선생님 혼자 보는 메모·조심할 내용 → `sensitive`, 날짜가 다름 → `date_check`, 결석 → `absent`). 아무 표시 없이 넘기면 선생님 메모가 사라진다.
 
 ## 결과
 - `check_draft`로 결과를 남긴다: `passed`, `issues[] { field, problem }`. 답변 초안이면 `field`는 위 다섯 항목 중 하나다. 알림장이면 `open_checks[] { id, item_key, kind, problem, sentence, request_id? }`로 저장된다. `problem`은 무엇이 왜 틀렸는지 한 문장으로 쓴다.

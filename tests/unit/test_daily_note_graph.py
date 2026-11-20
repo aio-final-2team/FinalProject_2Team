@@ -139,9 +139,76 @@ def test_eval_score_uses_only_ai_lines_and_flag_kind():
     case = {"id": "ND-17", "category": "반 공통과 섞임", "must_not_include": ["만들었"], "expect_flag": True,
             "flag_kind": "absent", "must_include": ["결석"]}
     note = {"content": {"items": [
-        {"key": "day", "value": "블록으로 동네를 만들었어요."},
-        {"key": "child", "value": "오늘은 결석했어요."}]},
+        {"key": "day", "value": "블록으로 동네를 만들었어요.", "source": {"type": "teacher_input"}},
+        {"key": "child", "value": "오늘은 결석했어요.", "source": {"type": "teacher_input"}}]},
         "open_checks": [{"kind": "absent"}]}
     assert score(case, note)["pass"] is True
     note["open_checks"] = []
     assert score(case, note)["pass"] is False
+
+
+def test_eval_request_score_needs_line_key_and_teacher_check():
+    from tools.eval_daily_note import score_request
+
+    req = {"request_key": "GR-05", "type": "medication", "trap": {"type": "dose_number"},
+           "expect": {"line_key": "medication", "must_include": ["2.5ml"], "must_not_include": ["먹였어요"],
+                      "teacher_check": "sensitive"}}
+    line = {"key": "medication", "value": "점심 후 시럽 2.5ml 요청이 있었어요.", "source": {"type": "request", "request_id": "GR-05"}}
+    note = {"content": {"items": [line]}, "open_checks": [{"kind": "sensitive"}]}
+    assert score_request(req, note)["pass"] is True
+    assert score_request(req, {**note, "open_checks": []})["pass"] is False
+    assert score_request(req, {"content": {"items": []}, "open_checks": [{"kind": "request_missed"}]})["covered"] is False
+
+
+def test_memo_left_out_without_check_gets_teacher_check():
+    [note] = draft_daily_notes(payload([kid("a", "다온", "내일 상담 때 이야기")]), Script({"child": None}), Script(OK))
+    assert "child" not in keys(note)
+    [check] = note["open_checks"]
+    assert check["kind"] == "sensitive" and check["item_key"] == "child"
+
+
+def test_memo_left_out_with_checker_kind_adds_nothing_more():
+    checker = Script({"checks": [{"item_key": "child", "kind": "date_check", "problem": "날짜", "sentence": None}]})
+    [note] = draft_daily_notes(payload([kid("a", "라온", "앞치마 내일")]), Script({"child": None}), checker)
+    assert [c["kind"] for c in note["open_checks"]] == ["date_check"]
+
+
+def test_other_child_name_in_memo_is_caught_even_when_line_left_out():
+    children = [kid("a", "지안", "지아 점심 다 먹음"), kid("b", "지아")]
+    note = draft_daily_notes(payload(children), Script({"child": None}), Script(OK))[0]
+    assert [c["kind"] for c in note["open_checks"]] == ["other_child"]
+
+
+def test_medication_request_line_always_gets_teacher_check():
+    req = {"request_id": "r1", "type": "medication", "text": "점심 먹고 시럽 2.5ml 먹여 주세요"}
+    writer = Script({"child": None, "requests": [{"request_id": "r1", "value": "점심 후 시럽 2.5ml를 먹여 달라는 요청이 있었어요."}]})
+    [note] = draft_daily_notes(payload([kid("a", "로아", "", [req])]), writer, Script(OK))
+    [check] = note["open_checks"]
+    assert check["kind"] == "sensitive" and check["item_key"] == "medication" and check["request_id"] == "r1"
+
+
+def test_concurrent_run_keeps_child_order_and_same_result():
+    import threading
+    import time
+
+    class Slow:
+        def __init__(self):
+            self.active = self.peak = 0
+            self.lock = threading.Lock()
+
+        def json(self, system, user):
+            with self.lock:
+                self.active += 1
+                self.peak = max(self.peak, self.active)
+            time.sleep(0.02)
+            with self.lock:
+                self.active -= 1
+            return {"checks": []} if '"draft"' in user else {"child": "문장", "requests": []}
+
+    children = [kid(str(i), f"아이{i}", "메모") for i in range(8)]
+    model = Slow()
+    together = draft_daily_notes(payload(children), model, model, workers=4)
+    one_by_one = draft_daily_notes(payload(children), Slow(), Slow(), workers=1)
+    assert [n["child_id"] for n in together] == [str(i) for i in range(8)]
+    assert together == one_by_one
+    assert 1 < model.peak <= 4
