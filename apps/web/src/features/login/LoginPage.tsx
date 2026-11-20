@@ -2,7 +2,8 @@ import { useState } from "react";
 import { useNavigate } from "react-router";
 import logoLight from "@/assets/logo/yuchion-main-logo-light-transparent.svg";
 import logoDark from "@/assets/logo/yuchion-main-logo-dark-transparent.svg";
-import { HOME, useSession } from "@/app/session";
+import { ApiError } from "@/api/client";
+import { DEMO_ACCOUNTS, DEMO_PASSWORD, HOME, useSession } from "@/app/session";
 import { Button } from "@/components/Button";
 import type { Role } from "@/domain/types";
 
@@ -15,10 +16,21 @@ export function LoginPage() {
   const [id, setId] = useState("");
   const [pw, setPw] = useState("");
   const [err, setErr] = useState("");
-  const go = (r: Role) => {
-    signIn(r);
-    nav(HOME[r]);
+  const [busy, setBusy] = useState(false);
+  const login = async (loginId: string, password: string) => {
+    setBusy(true);
+    setErr("");
+    try {
+      const u = await signIn(loginId, password);
+      nav(HOME[u.role]);
+    } catch (e) {
+      /* 어느 쪽이 틀렸는지는 알려 주지 않는다. 서버가 꺼져 있으면 그렇게 알려 준다 */
+      setErr(e instanceof ApiError && e.status === 401 ? "아이디나 비밀번호가 맞지 않아요." : "로그인 서버에 연결하지 못했어요. 모의 API(8000)를 켜 주세요.");
+    } finally {
+      setBusy(false);
+    }
   };
+  const go = (r: Role) => login(DEMO_ACCOUNTS[r], DEMO_PASSWORD);
   return (
     <div className="grid min-h-full place-items-center px-5 py-10">
       <div className="grid w-full max-w-[400px] gap-6">
@@ -30,8 +42,7 @@ export function LoginPage() {
           className="grid gap-3 rounded-[22px] bg-card p-6"
           onSubmit={(e) => {
             e.preventDefault();
-            /* 실제 로그인 API(T13)가 붙기 전에는 항상 실패한다. 어느 쪽이 틀렸는지는 알려 주지 않는다. */
-            setErr("아이디나 비밀번호가 맞지 않아요.");
+            login(id.trim(), pw);
           }}
         >
           <h1 className="mb-1 text-head font-bold">로그인</h1>
@@ -44,11 +55,12 @@ export function LoginPage() {
             <input type="password" value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="current-password" className="rounded-xl border-[1.5px] border-transparent bg-fill px-3.5 py-3 text-body outline-none transition focus:border-accent focus:shadow-[0_0_0_4px_var(--tint)]" />
           </label>
           {err && <p role="alert" className="text-sub text-danger">{err}</p>}
-          <Button type="submit" className="mt-1">로그인</Button>
+          <Button type="submit" className="mt-1" loading={busy}>로그인</Button>
         </form>
         {DEMO && (
           <div className="grid gap-2">
             <p className="text-center text-sub text-ink2">시연 계정으로 둘러보기</p>
+            <p className="text-center text-caption text-ink2">직접 입력할 때: 선생님 teacher01 · 학부모 parent01 · 원장 director01 / 비밀번호 demo1234 (모의 API)</p>
             <div className="grid grid-cols-3 gap-2">
               <Button variant="tinted" size="sm" className="h-10" onClick={() => go("parent")}>학부모</Button>
               <Button variant="tinted" size="sm" className="h-10" onClick={() => go("teacher")}>선생님</Button>
