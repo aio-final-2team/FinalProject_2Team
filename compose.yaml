@@ -1,6 +1,6 @@
 services:
   api:
-    image: yuchion-api:local
+    image: ${API_IMAGE:-yuchion-api:local}
     pull_policy: never
     build:
       context: .
@@ -56,7 +56,7 @@ services:
       retries: 10
 
   worker:
-    image: yuchion-api:local
+    image: ${API_IMAGE:-yuchion-api:local}
     pull_policy: never
     restart: unless-stopped
     profiles: [worker]
@@ -77,7 +77,7 @@ services:
         condition: service_healthy
 
   beat:
-    image: yuchion-api:local
+    image: ${API_IMAGE:-yuchion-api:local}
     pull_policy: never
     restart: unless-stopped
     profiles: [worker]
