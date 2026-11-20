@@ -39,6 +39,39 @@ def confirm_all(client, teacher, notes):
         assert response.json()["note"]["status"] == "ready"
 
 
+def test_inquiry_and_day_survive_draft_edit_confirm_and_send(client, teacher, parent):
+    assert draft(client, teacher).status_code == 202
+    listed = note_list(client, teacher).json()["items"]
+    note = next(n for n in listed if n["child_id"] == str(seed.CHILD))
+    lines = {line["key"]: line for line in note["content"]["items"]}
+    assert lines["day"]["source"]["type"] == "teacher_input"
+    assert lines["inquiry"]["value"] == "기침해요"
+    assert lines["inquiry"]["source"]["request_id"] == str(seed.REQUEST_COUGH)
+    assert lines["inquiry"]["source"]["type"] == "request"
+    lines["inquiry"]["value"] = "[TEST] 보호자 문의를 확인했어요"
+    response = client.patch(f"{BASE}/daily-notes/{note['id']}", headers=teacher,
+                            json={"content": note["content"]})
+    assert response.status_code == 200, response.text
+    assert response.json()["note"]["content"] == note["content"]
+    confirm_all(client, teacher, listed)
+    response = client.post(BASE + "/daily-notes/send", headers=teacher, json=batch())
+    assert response.status_code == 200 and response.json()["sent_count"] == 20
+    visible = client.get(BASE + "/daily-notes", headers=parent, params={"date": batch()["note_date"]})
+    [sent] = visible.json()["items"]
+    assert sent["content"] == note["content"] and sent["status"] == "sent"
+
+
+@pytest.mark.parametrize("source", [{"type": "teacher_input"}, {"type": "request"}])
+def test_inquiry_requires_request_source_and_id(client, teacher, source):
+    assert draft(client, teacher).status_code == 202
+    note = note_list(client, teacher).json()["items"][0]
+    response = client.patch(f"{BASE}/daily-notes/{note['id']}", headers=teacher, json={"content": {"items": [
+        {"key": "inquiry", "label": "보호자 문의", "value": "[TEST] 문의", "source": source}]}})
+    err(response, 422, "VALIDATION_FAILED")
+    after = next(n for n in note_list(client, teacher).json()["items"] if n["id"] == note["id"])
+    assert after == note
+
+
 def test_draft_preserves_inputs_requests_sources_and_duplicate(client, teacher, note_backend):
     memo = "  ブロックで遊んだ\n함께 놀이  "
     response = draft(client, teacher, child_memos=[{"child_id": str(seed.CHILD), "memo": memo},
@@ -323,8 +356,7 @@ def test_guardian_fixture_requests_reach_only_their_day_and_child(
         for rid in child_ids:
             req = expected[rid]
             assert (requests[rid]["type"], requests[rid]["text"]) == (req["type"], req["body"])
-            assert (lines[rid]["key"], lines[rid]["value"]) == (
-                "day" if req["type"] == "inquiry" else req["type"], req["body"])
+            assert (lines[rid]["key"], lines[rid]["value"]) == (req["type"], req["body"])
         assert all(str(c.get("request_id")) not in fixture_ids for c in note["open_checks"])
         observed.update(lines)
     assert observed == expected_ids

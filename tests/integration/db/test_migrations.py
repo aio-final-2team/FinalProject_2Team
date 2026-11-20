@@ -6,7 +6,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
@@ -16,6 +16,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from app.core import db
+from app.core.schedule import KST
 from app.mock import seed
 from db.seeds.demo import seed_demo
 
@@ -221,6 +222,9 @@ def test_seed_twice_keeps_same_rows_and_password_hash(db_engine, alembic_config)
     run_seed("--refresh-note-requests")
     end = datetime.now(UTC)
     refreshed = snapshot()
+    originals = {r["id"]: r["created_at"] for r in seed.DEMO_NOTE_REQUESTS if "created_at" in r}
+    latest = max(value.astimezone(KST).date() for value in originals.values())
+    shift = end.astimezone(KST).date() - latest
     for table in tables:
         if table != "requests":
             assert refreshed[table] == before_refresh[table]
@@ -229,11 +233,51 @@ def test_seed_twice_keeps_same_rows_and_password_hash(db_engine, alembic_config)
             if old["id"] == unrelated:
                 assert new == old
             else:
-                assert start <= new["created_at"] <= end
+                if old["id"] in originals:
+                    assert new["created_at"] == originals[old["id"]] + shift
+                else:
+                    assert start <= new["created_at"] <= end
                 assert dict(new) == {**old, "created_at": new["created_at"]}
-    assert len({r["created_at"] for r in refreshed["requests"] if r["id"] != unrelated}) == 1
+    assert max(r["created_at"].astimezone(KST).date() for r in refreshed["requests"]
+               if r["id"] in originals) == end.astimezone(KST).date()
     run_seed()
     assert snapshot() == refreshed
+
+
+@pytest.mark.parametrize("now", ["2026-12-31T15:05:00+00:00", "2026-11-09T14:55:00+00:00"])
+def test_refresh_requests_preserves_fixture_offsets_and_daily_input(seeded_db, monkeypatch, now):
+    from db.seeds import demo
+    from app.modules.daily_notes.runner import _payload
+
+    current = datetime.fromisoformat(now)
+
+    class Clock:
+        @staticmethod
+        def now(tz):
+            return current.astimezone(tz)
+
+    monkeypatch.setattr(demo, "datetime", Clock)
+    today = current.astimezone(KST).date()
+    originals = {r["id"]: r["created_at"] for r in seed.DEMO_NOTE_REQUESTS if "created_at" in r}
+    shift = today - max(dt.astimezone(KST).date() for dt in originals.values())
+    with seeded_db.begin() as connection:
+        for _ in range(2):
+            seed_demo(connection, refresh_note_requests=True)
+            actual = dict(connection.execute(text("SELECT id,created_at FROM requests")).all())
+            for rid, original in originals.items():
+                assert actual[rid] == original + shift
+            assert actual[seed.REQUEST_COUGH] == actual[seed.REQUEST_PICKUP] == current
+        for day in (today, today - timedelta(days=1)):
+            # 오늘 초안에는 최신 fixture의 GR-02·10·19만, 전날 요청은 전날에 남아요.
+            payload = _payload(connection, {"id": uuid4(), "org_id": seed.ORG,
+                               "classroom_id": seed.CLASS_STAR, "note_date": day,
+                               "activities": "[TEST] 날짜 이동", "supplies": "", "child_memos": []})
+            observed = {r["request_id"] for child in payload["children"] for r in child["requests"]}
+            assert observed == {str(rid) for rid, dt in actual.items() if dt.astimezone(KST).date() == day}
+            if day == today:
+                assert observed == {str(seed.REQUEST_COUGH), str(seed.REQUEST_PICKUP),
+                                    *(str(seed.demo_id(f"72{n:02d}")) for n in (2, 10, 19))}
+    assert {r["id"]: r["created_at"] for r in seed.DEMO_NOTE_REQUESTS if "created_at" in r} == originals
 
 
 def test_transaction_commits_and_rolls_back(db_engine, alembic_config):

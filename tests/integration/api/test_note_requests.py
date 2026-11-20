@@ -54,7 +54,7 @@ def test_child_requests_input_and_demo_omission(client, teacher):
         if note["child_id"] == str(seed.CHILD):
             assert {line["source"]["request_id"] for line in lines} == {str(req["request_id"]) for req in requests}
             cough = next(line for line in lines if line["source"]["request_id"] == str(seed.REQUEST_COUGH))
-            assert (cough["key"], cough["value"]) == ("day", "기침해요")
+            assert (cough["key"], cough["value"]) == ("inquiry", "기침해요")
             assert missed == []
         elif note["child_id"] == str(seed.demo_id("503")):
             assert lines == [] and note["status"] == "needs_check"
@@ -69,7 +69,7 @@ def test_child_requests_input_and_demo_omission(client, teacher):
             assert missed == []
 
 
-@pytest.mark.parametrize("request_type,key", [("inquiry", "day"), ("medication", "medication"), ("pickup", "pickup")])
+@pytest.mark.parametrize("request_type,key", [("inquiry", "inquiry"), ("medication", "medication"), ("pickup", "pickup")])
 def test_non_demo_requests_are_included_verbatim(client, teacher, request_type, key):
     req = store.Request(uuid4(), seed.ORG, seed.CLASS_STAR, seed.demo_id("503"), seed.PARENT_OTHER,
                         "new-note-request", request_type, "  보호자 원문\n그대로  ")

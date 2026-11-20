@@ -41,7 +41,8 @@ if [[ "$*" == *'config --quiet' && "$FAILURE" == config ]]; then exit 42; fi
 
 
 @pytest.mark.parametrize("backend", ["mock", "db"])
-def test_server_compose_replaces_ports_and_preserves_database_volume(backend):
+@pytest.mark.parametrize("override", [False, True])
+def test_server_compose_replaces_ports_and_preserves_database_volume(backend, override):
     if not shutil.which("docker"):
         pytest.skip("서버 Compose 검사는 Docker Compose가 필요해요.")
     version = subprocess.run(["docker", "compose", "version"], capture_output=True, check=False)
@@ -52,6 +53,15 @@ def test_server_compose_replaces_ports_and_preserves_database_volume(backend):
                JWT_SECRET="test-server-compose-key-at-least-32-bytes",
                CORS_ORIGINS="https://app.example.invalid", VITE_API_BASE_URL="https://api.example.invalid",
                SERVER_API_PORT="18000", SERVER_WEB_PORT="15173")
+    expected = {"DAILY_NOTE_WRITER_TIMEOUT": "420" if override else "300",
+                "NOTE_DRAFT_CONCURRENCY": "3" if override else "5",
+                "OPENAI_API_KEY": "[TEST]-unused-model-key",
+                **{f"LLM_MODEL_{role}": f"[TEST]-{role}" for role in
+                   ("DEFAULT", "SUPERVISOR", "DOCUMENT", "MEMORY", "CHECKER", "CODE")}}
+    env.update(expected)
+    if not override:
+        env.pop("DAILY_NOTE_WRITER_TIMEOUT")
+        env.pop("NOTE_DRAFT_CONCURRENCY")
     result = subprocess.run(["docker", "compose", "--env-file", "/dev/null", "-f", "compose.yaml",
                              "-f", "infra/team-server/compose.server.yaml", "config", "--format", "json"],
                             cwd=ROOT, env=env, capture_output=True, text=True, check=True)
@@ -64,4 +74,5 @@ def test_server_compose_replaces_ports_and_preserves_database_volume(backend):
         assert services[service]["ports"][0]["host_ip"] == "127.0.0.1"
         assert services[service]["ports"][0]["published"] == port
     assert services["api"]["environment"]["DATA_BACKEND"] == backend
+    assert {key: services["api"]["environment"][key] for key in expected} == expected
     assert services["web"]["depends_on"]["api"]["condition"] == "service_healthy"

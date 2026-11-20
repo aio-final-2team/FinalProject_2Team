@@ -55,7 +55,8 @@ python3 -c 'import secrets; print(secrets.token_hex(32))'
 | `VITE_API_BASE_URL` | 브라우저·앱이 접근할 외부 API 기준 주소예요. API 경로는 `/api/v1/...`예요. |
 | `CORS_ORIGINS` | 외부 웹 origin이에요. 여러 개면 쉼표로 나눠요. |
 | `DAILY_NOTE_WRITER` | 기본은 `app.modules.daily_notes.stub_writer:write`예요. |
-| `DAILY_NOTE_WRITER_TIMEOUT` | 현재 기본 120초예요. |
+| `DAILY_NOTE_WRITER_TIMEOUT` | 현재 기본 300초예요. |
+| `NOTE_DRAFT_CONCURRENCY` | 기본 5예요. 지원하는 그래프에서 아이별 초안 동시 실행에 써요. |
 | `OPENAI_API_KEY`·`LLM_MODEL_*` | `graph`를 선택할 때 설정해요. 기본 대역 시연은 모델을 호출하지 않아요. |
 | `LANGSMITH_API_KEY` | 추적이 필요할 때만 넣어요. |
 
