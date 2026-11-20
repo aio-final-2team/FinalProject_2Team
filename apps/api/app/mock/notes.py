@@ -28,7 +28,7 @@ def requests_for_child(child, note_date):
             for req in sorted(requests, key=lambda req: (req.created_at, str(req.id)))]
 
 
-def draft(user, body):
+def draft(user, body, background_tasks=None):
     with store._lock:
         children = store.classroom_children(user, body.classroom_id)
         child_ids = {child.id for child in children}
@@ -135,6 +135,21 @@ def visible(user, note_date, classroom_id=None):
     if classroom_id:
         items = [n for n in items if store.state().note_inputs[n.input_id].classroom_id == classroom_id]
     return items
+
+
+def classroom_children(user, classroom_id):
+    with store._lock:
+        children = store.classroom_children(user, classroom_id)
+        return {"items": [{"id": c.id, "display_name": c.display_name, "classroom_id": c.classroom_id}
+                          for c in sorted(children, key=lambda c: c.display_name)]}
+
+
+def list_notes(user, note_date, classroom_id, page, size, sort):
+    with store._lock:
+        items = sorted(visible(user, note_date, classroom_id), key=lambda n: n.created_at,
+                       reverse=sort.startswith("-"))
+        return {"items": [view(n) for n in items[(page-1)*size:page*size]],
+                "total": len(items), "page": page, "size": size}
 
 
 def send(user, body):

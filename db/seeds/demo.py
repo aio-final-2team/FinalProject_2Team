@@ -1,14 +1,17 @@
-"""T19 가상 원·계정·반·아이·상담실. 요청과 카드는 T27에서 채운다.
+"""가상 원·계정·반·아이·상담실과 알림장용 식단·보호자 요청 두 개.
 
 저장소 루트에서 PYTHONPATH=apps/api python -m db.seeds.demo 로 실행한다.
 모의 seed의 고정 ID를 함께 쓰고, 이미 있는 행은 덮어쓰지 않는다.
 출처 PR #262 roster_c4.json(가상): 별빛반 18명도 app.mock.seed에서 함께 읽는다.
 """
 
+from datetime import datetime
+
 from argon2 import PasswordHasher
 from sqlalchemy import text
 
 from app.core.db import transaction
+from app.core.schedule import KST
 from app.mock import seed
 
 
@@ -48,6 +51,22 @@ def seed_demo(connection):
         connection.execute(text("""
             INSERT INTO rooms (id, org_id, name) VALUES (:id, :org_id, :name) ON CONFLICT DO NOTHING
         """), {**room, "org_id": seed.ORG})
+    for document_id, title, kind, status, content in seed.DEMO_DOCUMENTS:
+        connection.execute(text("""
+            INSERT INTO documents (id,org_id,title,doc_type,source,status,ingest_status,content_sha256)
+            VALUES (:id,:org,:title,:kind,'virtual',:status,'succeeded',:sha) ON CONFLICT DO NOTHING
+        """), {"id": document_id, "org": seed.ORG, "title": title, "kind": kind,
+               "status": status, "sha": f"demo:{document_id}"})
+        connection.execute(text("""
+            INSERT INTO document_chunks (document_id,org_id,chunk_index,content)
+            VALUES (:id,:org,0,:content) ON CONFLICT DO NOTHING
+        """), {"id": document_id, "org": seed.ORG, "content": content})
+    for request in seed.DEMO_NOTE_REQUESTS:
+        connection.execute(text("""
+            INSERT INTO requests (id,org_id,classroom_id,child_id,requester_id,client_request_id,type,body,created_at)
+            VALUES (:id,:org,:class,:child_id,:requester_id,:key,:type,:body,:now) ON CONFLICT DO NOTHING
+        """), {**request, "org": seed.ORG, "class": seed.CLASS_STAR, "key": f"demo:{request['id']}",
+               "now": datetime.now(KST)})
 
 
 if __name__ == "__main__":
