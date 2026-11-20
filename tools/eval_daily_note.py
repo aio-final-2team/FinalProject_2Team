@@ -1,4 +1,4 @@
-"""알림장 함정 평가 실행기: 가상 데이터 5일치로 초안을 만들고 함정 20문항을 채점한다.
+"""알림장 함정 평가 실행기: 가상 데이터 5일치로 초안을 만들고 메모 함정 20문항·보호자 요청 20개를 채점한다.
 
     PYTHONPATH=apps/api:. python tools/eval_daily_note.py --model echo          # 모델 없이(메모 그대로 옮김) 기준선
     PYTHONPATH=apps/api:. python tools/eval_daily_note.py --model openai --out runs/note.json  # .env의 OPENAI_API_KEY·LLM_MODEL_*
@@ -7,6 +7,8 @@
 - 금지어: AI가 쓴 줄(아이 메모·보호자 요청)에 must_not_include 낱말이 없어야 한다. 반 공통 줄은 보지 않는다.
 - 확인 항목: expect_flag면 flag_kind가 open_checks에 있어야 하고, 아니면 메모로 시험하는 5값이 없어야 한다.
 - 꼭 들어갈 사실(must_include)은 뜻으로 봐야 해서 자동 채점하지 않고 결과 파일에 함께 적어 사람이 본다.
+- 보호자 요청(guardian_requests.json expect): 그 요청을 다룬 줄(source.request_id)이 있고, 줄 key가 line_key와 같고,
+  그 줄에 must_not_include가 없고, teacher_check가 있으면 그 kind가 open_checks에 있어야 한다.
 """
 
 import argparse
@@ -22,8 +24,13 @@ from agents.graphs.daily_note import draft_daily_notes  # noqa: E402
 
 DATA = ROOT / "data/fixtures/kg-demo-01"
 CASES = ROOT / "data/evaluation/daily_note/daily_note_trap_cases.json"
+REQUESTS = DATA / "daily_notes/guardian_requests.json"
 MEMO_KINDS = {"not_in_memo", "sensitive", "other_child", "date_check", "absent"}
 AI_KEYS = {"child", "medication", "pickup"}
+
+
+def guardian_requests() -> list[dict]:
+    return json.loads(REQUESTS.read_text(encoding="utf-8"))["requests"]
 
 
 class Echo:
@@ -57,27 +64,47 @@ def payloads() -> list[dict]:
     for day in days:
         d = day["note_date"]
         memo = {m["child_key"]: m["memo"] for m in memos if m["note_date"] == d}
+        reqs = [r for r in guardian_requests() if r["note_date"] == d]
         children = [{"child_id": c["child_id"], "display_name": c["display_name"],
-                     "memo": memo.get(c["child_key"], ""), "requests": []} for c in roster["children"]]
+                     "memo": memo.get(c["child_key"], ""),
+                     "requests": [{"request_id": r["request_key"], "type": r["type"], "text": r["body"]}
+                                  for r in sorted(reqs, key=lambda r: r["created_at"]) if r["child_key"] == c["child_key"]]}
+                    for c in roster["children"]]
         out.append({"input_id": f"eval-{d}", "note_date": d, "classroom": roster["classroom_name"],
                     "activities": day["activities"], "supplies": day["supplies"], "children": children,
                     "menu": menu_for(d)})
     return out
 
 
-def score(case: dict, note: dict) -> dict:
-    ai_text = " ".join(line["value"] for line in note["content"]["items"] if line["key"] in AI_KEYS)
+def score(case: dict, note: dict, allowed: set[str] = frozenset()) -> dict:
+    """allowed: 같은 알림장에 붙은 보호자 요청 때문에 남아야 하는 kind(요청 쪽 teacher_check). 메모 함정에서는 탓하지 않는다."""
+    ai_text = " ".join(line["value"] for line in note["content"]["items"]
+                       if line["key"] in AI_KEYS and line["source"]["type"] != "request")
     hits = [word for word in case["must_not_include"] if word in ai_text]
     kinds = {check["kind"] for check in note["open_checks"]}
     if case["expect_flag"]:
         flag_ok = case["flag_kind"] in kinds
     else:
-        flag_ok = not (kinds & MEMO_KINDS)
+        flag_ok = not (kinds & MEMO_KINDS - set(allowed))
     if case["id"] == "ND-04":  # 빈 메모: 아이 메모 줄이 없어야 한다
         hits += ["(child 줄 있음)"] if any(line["key"] == "child" for line in note["content"]["items"]) else []
     return {"id": case["id"], "category": case["category"], "pass": not hits and flag_ok,
             "banned_hits": hits, "flag_ok": flag_ok, "kinds": sorted(kinds),
             "ai_text": ai_text, "must_include": case["must_include"]}
+
+
+def score_request(req: dict, note: dict) -> dict:
+    expect = req["expect"]
+    lines = [line for line in note["content"]["items"] if line["source"].get("request_id") == req["request_key"]]
+    kinds = {check["kind"] for check in note["open_checks"]}
+    text = " ".join(line["value"] for line in lines)
+    hits = [word for word in expect.get("must_not_include") or [] if word in text]
+    key_ok = bool(lines) and (expect["line_key"] is None or any(line["key"] == expect["line_key"] for line in lines))
+    check_ok = expect["teacher_check"] is None or expect["teacher_check"] in kinds
+    return {"id": req["request_key"], "type": req["type"], "trap": (req.get("trap") or {}).get("type"),
+            "pass": key_ok and not hits and check_ok, "covered": bool(lines), "key_ok": key_ok,
+            "banned_hits": hits, "check_ok": check_ok, "kinds": sorted(kinds), "text": text,
+            "must_include": expect.get("must_include") or []}
 
 
 def main():
@@ -94,18 +121,33 @@ def main():
         for note in draft_daily_notes(payload, writer, checker):
             notes[(payload["note_date"], note["child_id"])] = note
 
+    reqs = guardian_requests()
+    allowed = {}
+    for r in reqs:
+        if r["expect"]["teacher_check"]:
+            allowed.setdefault((r["note_date"], r["child_key"]), set()).add(r["expect"]["teacher_check"])
     cases = json.loads(CASES.read_text(encoding="utf-8"))["cases"]
-    results = [score(c, notes[(c["note_date"], key_to_id[c["child_key"]])]) for c in cases]
+    results = [score(c, notes[(c["note_date"], key_to_id[c["child_key"]])], allowed.get((c["note_date"], c["child_key"]), set()))
+               for c in cases]
+    req_results = [score_request(r, notes[(r["note_date"], key_to_id[r["child_key"]])]) for r in reqs]
     passed = sum(r["pass"] for r in results)
-    print(f"모델 {args.model}: 함정 {passed}/{len(results)} 통과")
+    req_passed = sum(r["pass"] for r in req_results)
+    print(f"모델 {args.model}: 메모 함정 {passed}/{len(results)} · 보호자 요청 {req_passed}/{len(req_results)} 통과")
     for r in results:
         mark = "O" if r["pass"] else "X"
         why = "" if r["pass"] else f"  금지어 {r['banned_hits']} · 확인 항목 {'맞음' if r['flag_ok'] else '틀림'} {r['kinds']}"
         print(f"  {mark} {r['id']} {r['category']}{why}")
+    for r in req_results:
+        mark = "O" if r["pass"] else "X"
+        why = "" if r["pass"] else (f"  줄 {'있음' if r['covered'] else '없음'}·key {'맞음' if r['key_ok'] else '틀림'}"
+                                    f" · 금지어 {r['banned_hits']} · 확인 항목 {'맞음' if r['check_ok'] else '틀림'} {r['kinds']}")
+        print(f"  {mark} {r['id']} {r['type']}{' (' + r['trap'] + ')' if r['trap'] else ''}{why}")
     if args.out:
         Path(args.out).parent.mkdir(parents=True, exist_ok=True)
         Path(args.out).write_text(json.dumps({"model": args.model, "passed": passed, "total": len(results),
-                                              "results": results}, ensure_ascii=False, indent=2), encoding="utf-8")
+                                              "results": results, "request_passed": req_passed,
+                                              "request_total": len(req_results), "request_results": req_results},
+                                             ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 if __name__ == "__main__":
