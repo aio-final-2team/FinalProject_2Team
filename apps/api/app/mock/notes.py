@@ -92,6 +92,20 @@ def view(note):
     return {k: deepcopy(getattr(note, k)) for k in ("id", "child_id", "note_date", "status", "content", "open_checks", "confirmed_at", "sent_at")}
 
 
+def visible(user, note_date, classroom_id=None):
+    if user.role == "teacher" and classroom_id is None:
+        raise ApiError(422, "VALIDATION_FAILED", fields=[{"field": "classroom_id", "problem": "담임은 반을 골라 주세요"}])
+    if classroom_id and user.role != "parent":
+        store.classroom_in_scope(user, classroom_id)
+    items = [n for n in store.state().notes.values() if n.org_id == user.org_id and n.note_date == note_date]
+    if user.role == "parent":
+        child_ids = {c.id for c in store.children_of(user.id)}
+        items = [n for n in items if n.child_id in child_ids and n.status == "sent"]
+    if classroom_id:
+        items = [n for n in items if store.state().note_inputs[n.input_id].classroom_id == classroom_id]
+    return items
+
+
 def send(user, body):
     with store._lock:
         store.classroom_in_scope(user, body.classroom_id)

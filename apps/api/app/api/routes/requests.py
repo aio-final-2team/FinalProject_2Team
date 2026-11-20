@@ -10,7 +10,7 @@ from app.api.schemas.requests import (ConsultationOut, MessageOut, RequestAccept
                                       RequestCreateIn, RequestDetailOut, RequestView, SlotOut, TimelineItem)
 from app.core.auth import CurrentUser, current_user, require_roles
 from app.core.errors import trace_id_of
-from app.mock import store, request_actions, documents
+from app.backend import store, request_actions, documents
 from app.api.schemas.actions import MessageIn, SlotChoicesIn
 from app.api.schemas.requests import RequestStatus, BookingOut
 from app.api.schemas.views import RequestList, MessageResponse, ChoicesResponse, ConfirmResponse
@@ -53,12 +53,12 @@ def get_request(request_id: UUID, user: CurrentUser = Depends(current_user)) -> 
                 timeline.append(TimelineItem(label=text, at=e.created_at))
         consultation = None
         if req.type == "consultation":
-            rooms = store.state().rooms
+            booking = store.confirmed_booking_of(req.id)
             consultation = ConsultationOut(slots=[
-                SlotOut(id=s.id, period=Period(**s.period), room=rooms[s.room_id].name, status=s.status)
+                SlotOut(id=s.id, period=Period(**s.period), room=store.room_name(s.room_id), status=s.status)
                 for s in store.slots_of_request(req.id) if s.status != "discarded"
-            ], booking=next((BookingOut(id=b.id, room=rooms[b.room_id].name, period=Period(**b.period))
-                             for b in store.state().bookings.values() if b.request_id == req.id and b.status == "confirmed"), None))
+            ], booking=BookingOut(id=booking.id, room=store.room_name(booking.room_id), period=Period(**booking.period))
+                if booking else None)
         return RequestDetailOut(
             request=RequestView(id=req.id, type=req.type, title=req.title, status=req.status,
                                 status_label=label(req.status, req.type), missing_fields=req.missing_fields,
@@ -68,11 +68,9 @@ def get_request(request_id: UUID, user: CurrentUser = Depends(current_user)) -> 
                       for m in store.messages_of(req.id)],
             timeline=timeline,
             consultation=consultation,
-            rejection=next(({"reason_code": a.reason_code, "reason_text": a.reason_text}
-                            for a in reversed(store.state().approvals) if a.decision == "dismiss"
-                            and store.state().cards[a.card_id].request_id == req.id), None) if req.status == "rejected" else None,
-            sources=[source for card in store.cards_of(req.id) if any(a.card_id == card.id and a.decision in ("approve", "edit_approve")
-                     for a in store.state().approvals) for source in documents.evidence(card, parent=user.role == "parent")]
+            rejection=store.rejection_of(req.id) if req.status == "rejected" else None,
+            sources=[source for card in store.approved_cards_of(req.id)
+                     for source in documents.evidence(card, parent=user.role == "parent")]
                      if req.status in ("sent_or_booked", "completed") else [],
         )
 
@@ -83,8 +81,7 @@ def list_requests(status: RequestStatus | None = None, page: int = Query(1, ge=1
                   user: CurrentUser = Depends(require_roles("parent"))):
     with store._lock:
         store.expire()
-        requests = [r for r in store.state().requests.values() if r.org_id == user.org_id and r.requester_id == user.id
-                    and (status is None or r.status == status)]
+        requests = store.requests_of(user, status)
         requests.sort(key=lambda r: getattr(r, sort.lstrip("-")), reverse=sort.startswith("-"))
         def item(r):
             action = None

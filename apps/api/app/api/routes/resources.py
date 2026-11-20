@@ -11,8 +11,7 @@ from app.api.schemas.views import (NotificationList, NotificationResponse, Draft
                                   SendResponse, DocumentResponse, DocumentList)
 from app.api.schemas.common import errors
 from app.core.auth import CurrentUser, current_user, require_roles
-from app.core.errors import ApiError
-from app.mock import store, notifications, notes, documents
+from app.backend import store, notifications, notes, documents
 
 router = APIRouter(tags=["알림장·자료"])
 Sort = Literal["-created_at", "created_at"]
@@ -55,16 +54,7 @@ def draft_status(input_id: UUID, user: CurrentUser = Depends(require_roles("teac
 def note_list(date: Date, classroom_id: UUID | None = None, page: int = Query(1, ge=1), size: int = Query(20, ge=1, le=100),
               sort: Sort = "-created_at", user: CurrentUser = Depends(current_user)):
     with store._lock:
-        if user.role == "teacher" and classroom_id is None:
-            raise ApiError(422, "VALIDATION_FAILED", fields=[{"field": "classroom_id", "problem": "담임은 반을 골라 주세요"}])
-        if classroom_id and user.role != "parent":
-            store.classroom_in_scope(user, classroom_id)
-        items = [n for n in store.state().notes.values() if n.org_id == user.org_id and n.note_date == date]
-        if user.role == "parent":
-            child_ids = {c.id for c in store.children_of(user.id)}
-            items = [n for n in items if n.child_id in child_ids and n.status == "sent"]
-        if classroom_id:
-            items = [n for n in items if store.state().note_inputs[n.input_id].classroom_id == classroom_id]
+        items = notes.visible(user, date, classroom_id)
         result = page_of(items, page, size, sort)
         result["items"] = [notes.view(n) for n in result["items"]]
         return result
@@ -98,9 +88,7 @@ def upload_document(response: Response, file: UploadFile = File(...),
 def document_list(page: int = Query(1, ge=1), size: int = Query(20, ge=1, le=100), sort: Sort = "-created_at",
                   user: CurrentUser = Depends(require_roles("teacher", "director"))):
     with store._lock:
-        allowed = set(store.classroom_ids_of(user.id))
-        items = [d for d in store.state().documents.values() if d.org_id == user.org_id and (user.role == "director"
-                 or not store.state().document_classrooms.get(d.id) or allowed.intersection(store.state().document_classrooms[d.id]))]
+        items = documents.visible(user)
         result = page_of(items, page, size, sort)
         result["items"] = [documents.view(d) for d in result["items"]]
         return result
