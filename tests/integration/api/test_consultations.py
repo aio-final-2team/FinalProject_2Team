@@ -1,7 +1,8 @@
 """T35의 시간 선택·담임 확정 계약을 모의·DB 두 모드에서 확인해요."""
 
 from concurrent.futures import ThreadPoolExecutor
-from datetime import timedelta
+from datetime import datetime, timedelta
+from threading import Event
 from uuid import UUID
 
 import pytest
@@ -10,6 +11,7 @@ from sqlalchemy import text
 from app import backend
 from app.core.db import transaction
 from app.mock import seed, store
+from tests.integration.api.helpers import decision
 from tests.integration.api.helpers import BASE, err
 from tests.integration.api.test_cards import create, detail
 
@@ -96,25 +98,57 @@ def test_other_request_and_discarded_round_candidates_are_not_selectable(client,
     assert book(client, teacher, cid, after[0]).status_code == 200
 
 
-def test_colliding_booking_rolls_back_and_adjacent_candidate_can_be_booked(client, parent, teacher):
+def test_colliding_booking_rolls_back_and_adjacent_candidate_can_be_booked(client, parent, teacher, consultation_backend):
     pairs = [prepare(client, parent, teacher) for _ in range(2)]
-    for rid, _, slots in pairs:
-        assert choose(client, parent, rid, slots).status_code == 200
+    for index, (rid, _, slots) in enumerate(pairs):
+        assert choose(client, parent, rid, slots[index:index+1]).status_code == 200
+    # 예전 체크가 겹친 경우도 최종 확정에서 지키도록 선택 후 겹침을 만들어요.
+    set_period(pairs[1][2][1], pairs[0][2][0]["period"], consultation_backend)
     assert pairs[0][2][0]["period"] == pairs[1][2][0]["period"]
     assert book(client, teacher, pairs[0][1], pairs[0][2][0]).status_code == 200
     rid, cid, slots = pairs[1]
     before = detail(client, teacher, cid)
-    err(book(client, teacher, cid, slots[0]), 409, "SLOT_TAKEN")
+    err(book(client, teacher, cid, slots[1]), 409, "SLOT_TAKEN")
     assert detail(client, teacher, cid) == before
     assert client.get(f"{BASE}/requests/{rid}", headers=parent).json()["consultation"]["booking"] is None
+    # 충돌 뒤 체크를 보존하고 겹치지 않는 시간은 확정할 수 있어요.
+    set_period(slots[1], slots[2]["period"], consultation_backend)
     assert book(client, teacher, cid, slots[1]).status_code == 200
 
 
-def test_simultaneous_confirmations_of_same_card_only_record_once(client, parent, teacher):
+def test_simultaneous_confirmations_of_same_card_only_record_once(
+    client, parent, teacher, consultation_backend, monkeypatch
+):
+    from app.mock import cards as mock_cards
+    from app.modules.cards import cards as db_cards
+
     rid, cid, slots = prepare(client, parent, teacher)
     assert choose(client, parent, rid, slots[:1]).status_code == 200
+    cards = mock_cards if consultation_backend == "mock" else db_cards
+    original = cards.version
+    entered, release, second_started = Event(), Event(), Event()
+
+    def pause(*args, **kwargs):
+        original(*args, **kwargs)
+        entered.set()
+        assert release.wait(10)
+
+    def second():
+        second_started.set()
+        return book(client, teacher, cid, slots[0])
+
+    monkeypatch.setattr(cards, "version", pause)
     with ThreadPoolExecutor(max_workers=2) as pool:
-        responses = list(pool.map(lambda _: book(client, teacher, cid, slots[0]), range(2)))
+        first = pool.submit(book, client, teacher, cid, slots[0])
+        try:
+            assert entered.wait(10)
+            other = pool.submit(second)
+            assert second_started.wait(5)
+            with pytest.raises(TimeoutError):
+                other.result(timeout=0.5)
+        finally:
+            release.set()
+        responses = [first.result(timeout=10), other.result(timeout=10)]
     assert sorted(r.status_code for r in responses) == [200, 409]
     assert next(r for r in responses if r.status_code == 409).json()["error"]["code"] == "ALREADY_DECIDED"
     events = detail(client, teacher, cid)["timeline"]
@@ -174,3 +208,121 @@ def test_reassigned_teacher_from_other_class_cannot_confirm(client, parent, teac
     assert client.get(f"{BASE}/cards/{cid}", headers=teacher_other).status_code == 200
     err(book(client, teacher_other, cid, slots[0], version=2), 403, "FORBIDDEN_ROLE")
     assert book(client, teacher, cid, slots[0], version=2).status_code == 200
+
+
+def set_period(slot, period, mode):
+    values = {key: datetime.fromisoformat(value) if isinstance(value, str) else value for key, value in period.items()}
+    if mode == "mock":
+        store.state().slots[slot["id"]].period = values
+    else:
+        with transaction() as connection:
+            connection.execute(text("UPDATE consultation_slots SET period=tstzrange(:start,:end,'[)') WHERE id=:id"),
+                               {"id": slot["id"], **values})
+
+
+def age_choice(slot, mode):
+    if mode == "mock":
+        store.state().slots[slot["id"]].chosen_at = store.now()-timedelta(hours=25)
+    else:
+        with transaction() as connection:
+            connection.execute(text("UPDATE consultation_slots SET chosen_at=now()-interval '25 hours' WHERE id=:id"),
+                               {"id": slot["id"]})
+
+
+@pytest.mark.parametrize("stage", ["check", "book"])
+def test_started_candidate_is_rejected_without_state_change(client, parent, teacher, consultation_backend, stage):
+    rid, cid, slots = prepare(client, parent, teacher)
+    if stage == "book":
+        assert choose(client, parent, rid, slots[:1]).status_code == 200
+    start = store.now()-timedelta(hours=1)
+    set_period(slots[0], {"start": start, "end": start+timedelta(minutes=30)}, consultation_backend)
+    before = detail(client, teacher, cid)
+    response = choose(client, parent, rid, slots[:1]) if stage == "check" else book(client, teacher, cid, slots[0])
+    err(response, 409, "SLOT_PAST")
+    assert detail(client, teacher, cid) == before
+    assert client.get(f"{BASE}/requests/{rid}", headers=parent).json()["consultation"]["booking"] is None
+
+
+@pytest.mark.parametrize("automatic", [False, True])
+def test_hold_keeps_expired_choice_until_resume_then_parent_can_choose(
+    client, parent, teacher, consultation_backend, automatic
+):
+    rid, cid, slots = prepare(client, parent, teacher)
+    assert choose(client, parent, rid, slots[:1]).status_code == 200
+    until = (store.now().date()+timedelta(days=3)).isoformat()
+    assert decision(client, teacher, cid, "hold", hold_until=until, reason_text="[TEST] 확인 중").status_code == 200
+    age_choice(slots[0], consultation_backend)
+    for _ in range(2):
+        saved = client.get(f"{BASE}/requests/{rid}", headers=parent).json()
+        assert saved["request"]["status"] == "on_hold"
+        assert saved["consultation"]["slots"][0]["status"] == "chosen_by_parent"
+    err(choose(client, parent, rid, slots[:1]), 409, "INVALID_TRANSITION")
+    if automatic:
+        if consultation_backend == "mock":
+            store.state().cards[UUID(cid)].hold_until = store.now().date()
+        else:
+            with transaction() as connection:
+                connection.execute(text("UPDATE cards SET hold_until=CURRENT_DATE WHERE id=:id"), {"id": cid})
+        version = 3
+    else:
+        resumed = decision(client, teacher, cid, "resume", version=2)
+        assert resumed.status_code == 200, resumed.text
+        assert resumed.json()["request"]["status"] == "needs_info"
+        version = 3
+    assert client.get(f"{BASE}/requests/{rid}", headers=parent).json()["request"]["status"] == "needs_info"
+    assert choose(client, parent, rid, slots[:1]).status_code == 200
+    assert book(client, teacher, cid, slots[0], version=version).status_code == 200
+    assert len([e for e in detail(client, teacher, cid)["timeline"] if e["action"] == "slot_hold_expired"]) == 1
+
+
+@pytest.mark.parametrize("expired", [False, True])
+def test_consultation_escalation_requires_instruction_and_closes_report(
+    client, parent, teacher, director, consultation_backend, expired
+):
+    rid, cid, slots = prepare(client, parent, teacher)
+    assert choose(client, parent, rid, slots[:1]).status_code == 200
+    waiting = client.get(f"{BASE}/overview", headers=director).json()["waiting"]
+    escalated = decision(client, teacher, cid, "escalate")
+    assert escalated.status_code == 200, escalated.text
+    report_id = escalated.json()["next_card_id"]
+    assert client.get(f"{BASE}/overview", headers=director).json()["waiting"] == waiting+1
+    if expired:
+        age_choice(slots[0], consultation_backend)
+    saved = client.get(f"{BASE}/requests/{rid}", headers=parent).json()
+    assert saved["request"]["status"] == "escalated"
+    assert saved["consultation"]["slots"][0]["status"] == "chosen_by_parent"
+    err(book(client, teacher, cid, slots[0], version=2), 409, "INVALID_TRANSITION")
+    assert detail(client, director, report_id)["card"]["status"] == "pending"
+    response = client.post(f"{BASE}/cards/{report_id}/instructions", headers=director,
+                           json={"version": 1, "instruction": "[TEST] 상담을 진행해 주세요"})
+    assert response.status_code == 200, response.text
+    assert response.json()["card"]["status"] == "done"
+    assert client.get(f"{BASE}/overview", headers=director).json()["waiting"] == waiting
+    if expired:
+        assert client.get(f"{BASE}/requests/{rid}", headers=parent).json()["request"]["status"] == "needs_info"
+        assert choose(client, parent, rid, slots[:1]).status_code == 200
+    assert book(client, teacher, cid, slots[0], version=2).status_code == 200
+    err(client.post(f"{BASE}/cards/{report_id}/instructions", headers=director,
+                    json={"version": 1, "instruction": "[TEST] 중복 지시"}), 409, "ALREADY_DECIDED")
+    assert len([e for e in detail(client, teacher, cid)["timeline"] if e["action"] == "booked"]) == 1
+
+
+@pytest.mark.parametrize("confirmed", [False, True])
+def test_choice_rejects_other_live_hold_or_confirmed_booking_atomically(
+    client, parent, teacher, consultation_backend, confirmed
+):
+    first, second = [prepare(client, parent, teacher) for _ in range(2)]
+    assert choose(client, parent, first[0], first[2][:1]).status_code == 200
+    if confirmed:
+        assert book(client, teacher, first[1], first[2][0]).status_code == 200
+    # 자유 후보와 겹치는 후보를 함께 보내도 부분 체크하지 않아요.
+    before = detail(client, teacher, second[1])
+    err(choose(client, parent, second[0], second[2][:2]), 409, "SLOT_TAKEN")
+    assert detail(client, teacher, second[1]) == before
+    assert choose(client, parent, second[0], second[2][1:2]).status_code == 200
+
+
+def test_booking_checks_version_and_candidate_before_nonconsultation_kind(client, parent, teacher):
+    _, cid = create(client, parent, teacher, type="inquiry", body="[TEST] 문의")
+    err(book(client, teacher, cid, {"id": 9223372036854775807}, version=9), 409, "CARD_VERSION_CONFLICT")
+    err(book(client, teacher, cid, {"id": 9223372036854775807}), 404, "NOT_FOUND")

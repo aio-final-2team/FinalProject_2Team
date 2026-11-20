@@ -458,6 +458,8 @@ def expire(request_id=None):
                 card.updated_at = now()
                 if req:
                     set_request_status(req, "awaiting_review", action="resumed", card=card, automatic=True)
+            if req is None or req.status != "awaiting_review":
+                continue
             expired = [s for s in _state.slots.values() if s.card_id == card.id
                        and s.status == "chosen_by_parent" and s.chosen_at + timedelta(hours=24) <= now()]
             for slot in expired:

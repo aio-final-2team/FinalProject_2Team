@@ -155,19 +155,21 @@ def prepare_chosen(client):
     return rid, cid, slot
 
 
-@pytest.mark.parametrize("collision", ["room", "teacher"])
+@pytest.mark.parametrize("collision", ["room", "teacher"] * 15)
 def test_distinct_requests_simultaneously_confirming_conflict_only_store_one(db_client, seeded_db, collision):
     # 두 요청 모두 같은 후보를 받은 뒤 체크하도록 먼저 만들어요.
     first_rid, first_cid = create(db_client, "consultation")
     second_rid, second_cid = create(db_client, "consultation")
     pairs = []
-    for rid, cid in ((first_rid, first_cid), (second_rid, second_cid)):
-        slot = db_client.get(f"{BASE}/requests/{rid}", headers=auth(seed.PARENT)).json()["consultation"]["slots"][0]
+    for index, (rid, cid) in enumerate(((first_rid, first_cid), (second_rid, second_cid))):
+        slot = db_client.get(f"{BASE}/requests/{rid}", headers=auth(seed.PARENT)).json()["consultation"]["slots"][index]
         assert db_client.post(f"{BASE}/requests/{rid}/slot-choices", headers=auth(seed.PARENT),
                               json={"slot_ids": [slot["id"]]}).status_code == 200
         pairs.append((rid, cid, slot))
-    assert pairs[0][2]["period"] == pairs[1][2]["period"]
     with seeded_db.begin() as connection:
+        # 이전에 생긴 중복 체크가 확정 경합으로 들어온 상황이에요.
+        connection.execute(text("UPDATE consultation_slots SET period=tstzrange(:start,:end,'[)') WHERE id=:id"),
+                           {"id": pairs[1][2]["id"], **pairs[0][2]["period"]})
         if collision == "teacher":
             another = connection.scalar(text("INSERT INTO rooms (org_id,name) VALUES (:org,'[TEST] 방 2') RETURNING id"),
                                         {"org": seed.ORG})
@@ -179,7 +181,7 @@ def test_distinct_requests_simultaneously_confirming_conflict_only_store_one(db_
     barrier = Barrier(2)
 
     def meet(connection, cursor, statement, parameters, context, executemany):
-        if "INSERT INTO consultation_bookings" in statement:
+        if "pg_advisory_xact_lock" in statement and str(parameters.get("key", "")).startswith("consult:staff:"):
             barrier.wait(timeout=10)
 
     headers = auth(seed.TEACHER)
@@ -234,3 +236,94 @@ def test_notification_failure_rolls_back_booking_approval_and_slot_state(db_clie
         assert connection.scalar(text("SELECT status FROM requests WHERE id=:id"), {"id": rid}) == "awaiting_review"
         assert connection.scalar(text("SELECT status FROM consultation_slots WHERE id=:id"), {"id": slot["id"]}) == "chosen_by_parent"
         assert connection.execute(text("SELECT status,version FROM cards WHERE id=:id"), {"id": cid}).one() == ("pending", 1)
+
+
+@pytest.mark.parametrize("rule", [None, "after", [], 42, {"after": "25:00"}, {"after": "14:7"},
+                                  {"after": "14:00:00"}, {"after": {}}, {"before": "wrong"}])
+def test_malformed_rules_are_ignored(seeded_db, rule):
+    with seeded_db.connect() as connection:
+        assert find(connection, future_day(), rules=[rule]) == find(connection, future_day())
+
+
+def test_after_rounds_up_on_working_grid_and_before_does_not_extend_day(seeded_db, monkeypatch):
+    day = future_day()
+    with seeded_db.connect() as connection:
+        result = find(connection, day, rules=[{"after": "14:10", "before": "16:00"}])
+        assert [s["start"] for s in result] == [at(day, 14, 30), at(day, 15), at(day, 15, 30)]
+        assert find(connection, day, rules=[{"after": "14:10", "before": "14:45"}]) == []
+        monkeypatch.setattr(slots, "settings", replace(slots.settings, work_hours=(time(10, 15), time(17, 15))))
+        assert find(connection, day, rules=[{"after": "14:20"}])[0]["start"] == at(day, 14, 45)
+
+
+def test_active_non_time_reason_and_malformed_rule_do_not_affect_proposals(db_client, seeded_db):
+    import json
+
+    with seeded_db.begin() as connection:
+        for reason, rule in (("tone", {"after": "16:00"}), ("slot_unavailable", "after")):
+            connection.execute(text("""
+                INSERT INTO memory_rules (org_id,owner_id,reason_code,rule_text,rule_json,status)
+                VALUES (:org,:owner,:reason,'[TEST] 잘못된 시간 규칙',CAST(:rule AS jsonb),'active')
+            """), {"org": seed.ORG, "owner": seed.TEACHER, "reason": reason, "rule": json.dumps(rule)})
+    rid, _ = create(db_client, "consultation")
+    with seeded_db.connect() as connection:
+        starts = connection.scalars(text("""
+            SELECT lower(s.period) FROM consultation_slots s JOIN cards c ON c.id=s.card_id
+            WHERE c.request_id=:id ORDER BY s.rank
+        """), {"id": rid}).all()
+        assert [s.hour for s in starts] == [9, 9, 10]
+
+
+@pytest.mark.parametrize("sqlstate", ["40P01", "23P01"])
+def test_booking_database_collision_errors_become_slot_taken_and_roll_back(db_client, seeded_db, sqlstate):
+    from psycopg.errors import DeadlockDetected, ExclusionViolation
+    from sqlalchemy.exc import OperationalError, IntegrityError
+
+    rid, cid, slot = prepare_chosen(db_client)
+
+    def fail(connection, cursor, statement, parameters, context, executemany):
+        if "INSERT INTO consultation_bookings" in statement:
+            cls, orig = ((OperationalError, DeadlockDetected) if sqlstate == "40P01"
+                         else (IntegrityError, ExclusionViolation))
+            raise cls(statement, parameters, orig("[TEST] 예약 충돌 주입"))
+
+    event.listen(seeded_db, "before_cursor_execute", fail)
+    try:
+        response = db_client.post(f"{BASE}/cards/{cid}/bookings", headers=auth(seed.TEACHER),
+                                  json={"version": 1, "slot_id": slot["id"]})
+    finally:
+        event.remove(seeded_db, "before_cursor_execute", fail)
+    assert response.status_code == 409, response.text
+    assert response.json()["error"]["code"] == "SLOT_TAKEN"
+    with seeded_db.connect() as connection:
+        assert connection.scalar(text("SELECT count(*) FROM consultation_bookings")) == 0
+        assert connection.scalar(text("SELECT count(*) FROM approvals")) == 0
+        assert connection.scalar(text("SELECT count(*) FROM events WHERE action='booked'")) == 0
+        assert connection.scalar(text("SELECT status FROM requests WHERE id=:id"), {"id": rid}) == "awaiting_review"
+        assert connection.scalar(text("SELECT status FROM consultation_slots WHERE id=:id"), {"id": slot["id"]}) == "chosen_by_parent"
+
+
+def test_simultaneous_parent_checks_only_hold_one_overlapping_candidate(db_client, seeded_db):
+    requests = [create(db_client, "consultation")[0] for _ in range(2)]
+    pairs = [(rid, db_client.get(f"{BASE}/requests/{rid}", headers=auth(seed.PARENT)).json()["consultation"]["slots"][0])
+             for rid in requests]
+    barrier = Barrier(2)
+
+    def meet(connection, cursor, statement, parameters, context, executemany):
+        if "pg_advisory_xact_lock" in statement and str(parameters.get("key", "")).startswith("consult:staff:"):
+            barrier.wait(timeout=10)
+
+    def check(pair):
+        rid, slot = pair
+        return db_client.post(f"{BASE}/requests/{rid}/slot-choices", headers=auth(seed.PARENT),
+                              json={"slot_ids": [slot["id"]]})
+
+    event.listen(seeded_db, "before_cursor_execute", meet)
+    try:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            responses = list(pool.map(check, pairs))
+    finally:
+        event.remove(seeded_db, "before_cursor_execute", meet)
+    assert sorted(r.status_code for r in responses) == [200, 409], [r.text for r in responses]
+    assert next(r for r in responses if r.status_code == 409).json()["error"]["code"] == "SLOT_TAKEN"
+    with seeded_db.connect() as connection:
+        assert connection.scalar(text("SELECT count(*) FROM consultation_slots WHERE status='chosen_by_parent'")) == 1

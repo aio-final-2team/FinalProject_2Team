@@ -1,6 +1,8 @@
 """상담 후보는 30분씩 계산해요. 후보·학부모 체크는 확정 예약이 아니에요."""
 
 from datetime import datetime, timedelta
+from math import ceil
+import re
 
 from sqlalchemy import text
 
@@ -16,10 +18,19 @@ def find_consult_slots(connection, teacher_id, date, *, org_id, request_id=None,
     start, end = (datetime.combine(date, value, KST) for value in (opening, closing))
     # 기억 규칙은 백엔드가 승인된 것만 넘겨요. 제안 상태는 적용하지 않아요.
     for rule in rules:
-        if "after" in rule:
-            start = max(start, datetime.fromisoformat(f"{date}T{rule['after']}").replace(tzinfo=KST))
-        if "before" in rule:
-            end = min(end, datetime.fromisoformat(f"{date}T{rule['before']}").replace(tzinfo=KST))
+        if not isinstance(rule, dict):
+            continue
+        for key in ("after", "before"):
+            value = rule.get(key)
+            if not isinstance(value, str) or not re.fullmatch(r"(?:[01][0-9]|2[0-3]):[0-5][0-9]", value):
+                continue
+            bound = datetime.fromisoformat(f"{date}T{value}").replace(tzinfo=KST)
+            if key == "after":
+                start = max(start, bound)
+            else:
+                end = min(end, bound)
+    opening_at = datetime.combine(date, opening, KST)
+    start = opening_at + ceil((start-opening_at)/timedelta(minutes=30))*timedelta(minutes=30)
     return [dict(row) for row in connection.execute(text("""
         SELECT DISTINCT ON (t.start) t.start, t.start + interval '30 minutes' AS end,
                r.id AS room_id, r.name AS room
@@ -59,6 +70,7 @@ def propose_slots(connection, req, card, teacher, round_no=None):
                                      {"id": card["id"]})
     rules = connection.scalars(text("""
         SELECT rule_json FROM memory_rules WHERE org_id=:org AND owner_id=:teacher AND status='active'
+          AND reason_code='slot_unavailable'
         ORDER BY created_at,id
     """), {"org": req["org_id"], "teacher": teacher}).all()
     candidates = []

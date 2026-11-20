@@ -35,6 +35,7 @@ def locked(user, card_id, *, decision=None):
                 .mappings()
                 .one()
             )
+            card["classroom_id"] = initial["classroom_id"]
             yield connection, card, req
     except IntegrityError as error:
         if error.orig.sqlstate == "23505" and error.orig.diag.constraint_name == "approvals_card_id_card_version_key":
@@ -183,6 +184,7 @@ def decide(user, card_id, body):
             card["hold_until"] = None
             set_status(connection, req, "awaiting_review", action="resumed", **actor)
             touch(connection, card, "pending")
+            req = _expire(connection, req)
         elif choice == "dismiss":
             set_status(
                 connection,
@@ -266,10 +268,8 @@ def rule_decision(user, rule_id, body):
 
 def book(user, card_id, body):
     with locked(user, card_id) as (connection, card, req):
-        if req is None or card["kind"] != "consult_slots":
-            raise ApiError(409, "INVALID_TRANSITION")
         # 재배정만 받은 다른 반 교사는 조회할 수 있어도 대신 확정하지 못해요.
-        if user.role != "teacher" or not scope._classroom(connection, user, req["classroom_id"]):
+        if user.role != "teacher" or not scope._classroom(connection, user, card["classroom_id"]):
             raise ApiError(403, "FORBIDDEN_ROLE")
         version(connection, card, body.version)
         slot = connection.execute(text("""
@@ -279,6 +279,8 @@ def book(user, card_id, body):
         """), {"id": body.slot_id, "card": card_id, "org": user.org_id}).mappings().one_or_none()
         if slot is None:
             scope._checked(user, None, False, "slot", body.slot_id)
+        if req is None or card["kind"] != "consult_slots" or req["status"] == "escalated":
+            raise ApiError(409, "INVALID_TRANSITION")
         if slot["status"] != "chosen_by_parent":
             raise ApiError(409, "SLOT_NOT_CHOSEN")
         if req["status"] != "awaiting_review" or card["status"] != "pending":
@@ -377,9 +379,10 @@ def instruct(user, card_id, body):
         reply = (
             connection.execute(
                 text(
-                    "SELECT * FROM cards WHERE request_id=:id AND kind='reply_draft' ORDER BY created_at DESC,id DESC LIMIT 1"
+                    "SELECT * FROM cards WHERE request_id=:id AND kind=:kind AND status IN ('pending','in_review') "
+                    "ORDER BY created_at DESC,id DESC LIMIT 1"
                 ),
-                {"id": req["id"]},
+                {"id": req["id"], "kind": "consult_slots" if req["type"] == "consultation" else "reply_draft"},
             )
             .mappings()
             .one_or_none()

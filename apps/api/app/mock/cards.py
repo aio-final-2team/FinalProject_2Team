@@ -111,6 +111,7 @@ def decide(user, card_id, body):
             card.hold_until = None
             store.set_request_status(req, "awaiting_review", action="resumed", **actor)
             touch(card, "pending")
+            store.expire(req.id)
         elif decision == "dismiss":
             store.set_request_status(req, "rejected", action="dismissed", reason_code=body.reason_code,
                                      reason_text=body.reason_text, **actor)
@@ -191,12 +192,14 @@ def book(user, card_id, body):
         slot = store.state().slots.get(body.slot_id)
         if slot is None or slot.card_id != card.id:
             store.deny(user)
-        if card.kind != "consult_slots":
+        if card.kind != "consult_slots" or req.status == "escalated":
             raise ApiError(409, "INVALID_TRANSITION")
         if slot.status != "chosen_by_parent":
             raise ApiError(409, "SLOT_NOT_CHOSEN")
         if req.status != "awaiting_review" or card.status != "pending":
             raise ApiError(409, "INVALID_TRANSITION")
+        if slot.period["start"] <= store.now():
+            raise ApiError(409, "SLOT_PAST")
         for booking in store.state().bookings.values():
             overlaps = slot.period["start"] < booking.period["end"] and booking.period["start"] < slot.period["end"]
             if booking.status == "confirmed" and (booking.request_id == req.id or (overlaps
@@ -222,9 +225,13 @@ def instruct(user, card_id, body):
         req = store.state().requests.get(card.request_id)
         if card.kind != "director_report" or card.status not in ("pending", "in_review") or req.status != "escalated":
             raise ApiError(409, "INVALID_TRANSITION")
+        kind = "consult_slots" if req.type == "consultation" else "reply_draft"
+        reply = next((c for c in reversed(store.cards_of(req.id)) if c.kind == kind
+                      and c.status in ("pending", "in_review")), None)
+        if reply is None:
+            raise ApiError(409, "INVALID_TRANSITION")
         record(card, user, "instruct", reason_text=body.instruction)
         touch(card, "done")
-        reply = next(c for c in reversed(store.cards_of(req.id)) if c.kind == "reply_draft")
         store.set_request_status(req, "awaiting_review", action="instructed", card=reply, actor_type="user", actor_id=user.id)
         return result(card, req)
 

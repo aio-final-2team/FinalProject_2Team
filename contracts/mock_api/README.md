@@ -1,6 +1,6 @@
 # contracts/mock_api — 화면을 먼저 붙여 보는 모의 API
 
-실제 백엔드(DB·에이전트)가 준비되기 전에 화면을 만들 수 있도록, [API 설계 문서](../../Docs/Step2/API_설계_문서.md)의 v0.5.1 API 33개를 가상 데이터로 답하는 서버입니다. 경로·필드·오류 형식이 실제 API와 같아서, 나중에 백엔드가 바뀌어도 화면 코드는 그대로 씁니다. 코드는 `apps/api/app` 안에 있고(실제 API와 같은 앱), 이 폴더에는 쓰는 법만 둡니다.
+실제 백엔드(DB·에이전트)가 준비되기 전에 화면을 만들 수 있도록, [API 설계 문서](../../Docs/Step2/API_설계_문서.md)의 v0.5.2 API 33개를 가상 데이터로 답하는 서버입니다. 경로·필드·오류 형식이 실제 API와 같아서, 나중에 백엔드가 바뀌어도 화면 코드는 그대로 씁니다. 코드는 `apps/api/app` 안에 있고(실제 API와 같은 앱), 이 폴더에는 쓰는 법만 둡니다.
 
 **처음 쓰는 순서**
 
@@ -84,3 +84,10 @@ API 31 GET /memories는 담임 본인의 기억만 kind로 걸러 쪽을 나눠�
 API 33 POST /daily-notes/drafts/{input_id}/regenerate는 저장한 반 입력으로 미확인 초안을 다시 만들어요. ready와 교사 수정본(content ≠ ai_original 또는 daily_note_edited 이력)은 유지하고 sent가 하나라도 있으면 409 INVALID_TRANSITION이에요. 응답은 기존 초안 응답에 kept_edited(접수 시 보존한 미확인 수정본 수)를 더해요. failed와 시간 제한을 넘은 queued·running은 다시 받을 수 있고, 제한 안의 실행은 현재 상태를 돌려줘요. 모의는 즉시 처리하며 [실패] 입력은 계속 failed예요. DB는 BackgroundTasks로 queued→running→succeeded/failed를 처리해요.
 
 선생님이 받은 마지막 AI 초안은 내부 ai_original로 보존하고 공개 NoteView는 그대로예요. 교사 수정으로는 원본을 바꾸지 않고, 미수정 초안 재생성 때 새 초안으로 바꿔요. 내용 변경만 daily_note_edited를 남기고 확인 취소는 returned로 ready→draft, 검사 해소는 checked로 needs_check→draft를 기록해요. 새 초안 이력과 반 묶음 카드에 재생성 요청자도 남겨요. 말투 추출·학습은 기억 AI가 맡아요.
+
+## 상담 체크·확정 v0.5.2
+
+이미 시작한 후보는 체크·확정 모두 409 `SLOT_PAST`예요.
+다른 요청의 확정 예약·24시간 안 체크와 담임 또는 상담실 시간이 겹치면 체크할 때 409 `SLOT_TAKEN`이에요.
+보류·원장 보고 중에는 24시간이 지나도 체크를 유지하고, 재개·원장 지시 뒤에 만료를 풀어요.
+원장 지시 전에 확정하면 409 `INVALID_TRANSITION`이에요. 지시하면 보고 카드를 닫고 상담 카드로 돌려보내요.

@@ -61,7 +61,9 @@ def add_message(request_id: UUID, body: MessageIn, background_tasks: BackgroundT
     return backend.request_actions.message(user, request_id, body.body, background_tasks=background_tasks)
 
 
-@router.post("/requests/{request_id}/slot-choices", response_model=ChoicesResponse, responses=errors(401, 403, 404, 409, 422))
+@router.post("/requests/{request_id}/slot-choices", response_model=ChoicesResponse,
+             responses={**errors(401, 403, 404, 409, 422),
+                        409: {**errors(409)[409], "description": "SLOT_PAST: 이미 시작한 후보; SLOT_TAKEN: 예약·체크 충돌"}})
 def choose_slots(request_id: UUID, body: SlotChoicesIn, user: CurrentUser = Depends(require_roles("parent"))):
     return backend.request_actions.choices(user, request_id, body)
 

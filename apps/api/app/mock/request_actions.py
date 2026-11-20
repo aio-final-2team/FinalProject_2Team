@@ -1,5 +1,7 @@
 """학부모의 대화·시간 체크·회신 확인."""
 
+from datetime import timedelta
+
 from app.core.errors import ApiError
 from app.core.constants import DEFERRED_REQUEST_TYPES
 from app.api.labels import parent_label, staff_label
@@ -83,18 +85,36 @@ def choices(user, request_id, body):
         req = store.request_in_scope(user, request_id)
         if req.type != "consultation" or req.status != "needs_info":
             raise ApiError(409, "INVALID_TRANSITION")
-        slots = [s for s in store.slots_of_request(req.id) if s.status != "discarded"]
-        card = store.state().cards[slots[0].card_id]
+        card = next((c for c in reversed(store.cards_of(req.id)) if c.kind == "consult_slots"
+                     and c.status in ("pending", "in_review")), None)
+        if card is None:
+            raise ApiError(409, "INVALID_TRANSITION")
+        round_no = max((s.round for s in store.slots_of_request(req.id) if s.card_id == card.id), default=0)
+        slots = [s for s in store.slots_of_request(req.id) if s.card_id == card.id
+                 and s.round == round_no and s.status == "proposed"]
         if body.none_fit:
             for slot in slots:
                 slot.status = "discarded"
-            slots = store._propose_slots(card, card.assignee_id, max(s.round for s in slots) + 1)
+            slots = store._propose_slots(card, card.assignee_id, round_no + 1)
             store.add_event(req, "info_requested", card=card, actor_type="user", actor_id=user.id,
                             preferred_times=body.preferred_times)
         else:
             chosen = [s for s in slots if s.id in body.slot_ids]
             if len(chosen) != len(body.slot_ids):
                 store.deny(user)
+            for slot in chosen:
+                if slot.period["start"] <= store.now():
+                    raise ApiError(409, "SLOT_PAST")
+                others = [b for b in store.state().bookings.values() if b.status == "confirmed"
+                          and b.org_id == req.org_id and b.request_id != req.id]
+                others += [s for s in store.state().slots.values() if s.status == "chosen_by_parent"
+                           and store.state().cards[s.card_id].request_id != req.id
+                           and s.chosen_at > store.now()-timedelta(hours=24)
+                           and store.state().cards[s.card_id].org_id == req.org_id]
+                if any((other.teacher_id == slot.teacher_id or other.room_id == slot.room_id)
+                       and slot.period["start"] < other.period["end"]
+                       and other.period["start"] < slot.period["end"] for other in others):
+                    raise ApiError(409, "SLOT_TAKEN")
             for slot in chosen:
                 slot.status, slot.chosen_at = "chosen_by_parent", store.now()
             slots = chosen

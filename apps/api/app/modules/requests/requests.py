@@ -80,6 +80,8 @@ def _expire(connection, req):
                 WHERE id=:id RETURNING *
             """), {"id": card["id"]}).mappings().one())
             set_status(connection, req, "awaiting_review", action="resumed", card=card, automatic=True)
+        if req["status"] != "awaiting_review":
+            continue
         reset = connection.execute(text("""
             UPDATE consultation_slots SET status='proposed',chosen_at=NULL
             WHERE card_id=:id AND status='chosen_by_parent' AND chosen_at<=now()-interval '24 hours' RETURNING id
@@ -97,6 +99,7 @@ def _hold_until(connection, req):
 
 
 def choices(user, request_id, body):
+    from app.modules.consultations.bookings import lock_resources
     from app.modules.consultations.slots import propose_slots
 
     with transaction() as connection:
@@ -114,7 +117,7 @@ def choices(user, request_id, body):
         current_round = connection.scalar(text("SELECT coalesce(max(round),0) FROM consultation_slots WHERE card_id=:id"),
                                           {"id": card["id"]})
         slots = connection.execute(text("""
-            SELECT id,status FROM consultation_slots WHERE card_id=:id AND round=:round AND status='proposed'
+            SELECT * FROM consultation_slots WHERE card_id=:id AND round=:round AND status='proposed'
             ORDER BY rank FOR NO KEY UPDATE
         """), {"id": card["id"], "round": current_round}).mappings().all()
         if body.none_fit:
@@ -127,6 +130,24 @@ def choices(user, request_id, body):
             selected = [row for row in slots if row["id"] in body.slot_ids]
             if len(selected) != len(body.slot_ids):
                 scope._checked(user, None, False, "slot", body.slot_ids)
+            lock_resources(connection, selected)
+            for row in selected:
+                if connection.scalar(text("SELECT :start<=clock_timestamp()"), {"start": row["period"].lower}):
+                    raise ApiError(409, "SLOT_PAST")
+                taken = connection.scalar(text("""
+                    SELECT EXISTS (
+                      SELECT 1 FROM consultation_bookings b
+                      WHERE b.org_id=:org AND b.status='confirmed' AND b.request_id<>:request
+                        AND (b.teacher_id=:teacher OR b.room_id=:room) AND b.period && :period
+                      UNION ALL
+                      SELECT 1 FROM consultation_slots s JOIN cards c ON c.id=s.card_id
+                      WHERE s.org_id=:org AND c.request_id<>:request AND s.status='chosen_by_parent'
+                        AND s.chosen_at>clock_timestamp()-interval '24 hours'
+                        AND (s.teacher_id=:teacher OR s.room_id=:room) AND s.period && :period)
+                """), {"org": user.org_id, "request": request_id, "teacher": row["teacher_id"],
+                       "room": row["room_id"], "period": row["period"]})
+                if taken:
+                    raise ApiError(409, "SLOT_TAKEN")
             slots = [dict(connection.execute(text("""
                 UPDATE consultation_slots SET status='chosen_by_parent',chosen_at=clock_timestamp()
                 WHERE id=:id RETURNING id,status

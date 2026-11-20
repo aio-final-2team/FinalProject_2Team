@@ -391,11 +391,11 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
           description: Not Found
         '409':
+          description: 'SLOT_PAST: 이미 시작한 후보; SLOT_TAKEN: 예약·체크 충돌'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-          description: Conflict
         '422':
           content:
             application/json:
@@ -827,11 +827,11 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
           description: Not Found
         '409':
+          description: 'SLOT_PAST: 이미 시작한 후보; SLOT_TAKEN: 예약 충돌'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-          description: Conflict
         '422':
           content:
             application/json:
