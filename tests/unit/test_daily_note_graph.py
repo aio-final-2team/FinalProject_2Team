@@ -158,3 +158,22 @@ def test_eval_request_score_needs_line_key_and_teacher_check():
     assert score_request(req, note)["pass"] is True
     assert score_request(req, {**note, "open_checks": []})["pass"] is False
     assert score_request(req, {"content": {"items": []}, "open_checks": [{"kind": "request_missed"}]})["covered"] is False
+
+
+def test_memo_left_out_without_check_gets_teacher_check():
+    [note] = draft_daily_notes(payload([kid("a", "다온", "내일 상담 때 이야기")]), Script({"child": None}), Script(OK))
+    assert "child" not in keys(note)
+    [check] = note["open_checks"]
+    assert check["kind"] == "sensitive" and check["item_key"] == "child"
+
+
+def test_memo_left_out_with_checker_kind_adds_nothing_more():
+    checker = Script({"checks": [{"item_key": "child", "kind": "date_check", "problem": "날짜", "sentence": None}]})
+    [note] = draft_daily_notes(payload([kid("a", "라온", "앞치마 내일")]), Script({"child": None}), checker)
+    assert [c["kind"] for c in note["open_checks"]] == ["date_check"]
+
+
+def test_other_child_name_in_memo_is_caught_even_when_line_left_out():
+    children = [kid("a", "지안", "지아 점심 다 먹음"), kid("b", "지아")]
+    note = draft_daily_notes(payload(children), Script({"child": None}), Script(OK))[0]
+    assert [c["kind"] for c in note["open_checks"]] == ["other_child"]

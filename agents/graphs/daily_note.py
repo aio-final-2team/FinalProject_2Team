@@ -24,6 +24,7 @@ PROBLEM = {
     "check_failed": "메모와 대조하는 검사가 끝나지 않았어요. 직접 읽고 확인해 주세요.",
     "request_missed": "보호자 요청이 초안에 없어요. 요청 내용을 넣어 주세요.",
     "other_child": "다른 아이 이름이 들어 있어요. 이 아이 알림장에서는 빼 주세요.",
+    "memo_left_out": "선생님 메모를 알림장에 옮기지 않았어요. 메모를 보고 직접 확인해 주세요.",
 }
 
 WRITE_FORMAT = """
@@ -88,7 +89,7 @@ def draft_child(payload, child, common, names, writer, checker) -> dict:
             found += twice(lambda: review(checker, payload, child, own))
         except ModelError:
             found.append(new_check("child", "check_failed"))
-        found = unique(found)
+        found = unique(found + memo_left_out(memo, own, found))
         issues = [f for f in found if f["kind"] in RETURN_KINDS]
         if not issues or attempt == MAX_RETURNS or any(f["kind"] == "check_failed" for f in found):
             return result(child, common, own, found)
@@ -127,18 +128,30 @@ def write(model: JsonModel, payload, child, issues) -> list[dict]:
 
 
 def code_checks(own: list[dict], child: dict, names: list[str]) -> list[dict]:
-    """AI 없이 확실히 잡을 수 있는 것: 다른 아이 이름, 보호자 요청 누락."""
+    """AI 없이 확실히 잡을 수 있는 것: 다른 아이 이름(메모·초안), 보호자 요청 누락."""
     found = []
     others = [n for n in names if n != child["display_name"] and n not in child["display_name"]]
     for line in own:
         hit = [n for n in others if n in line["value"]]
         if hit:
             found.append(new_check(line["key"], "other_child", sentence=line["value"]))
+    memo = child.get("memo") or ""
+    if not found and any(n in memo for n in others):  # 초안에서 이름을 뺐어도 누구 이야기인지는 선생님이 본다
+        found.append(new_check("child", "other_child", problem="메모에 다른 아이 이름이 있어요. 누구 이야기인지 확인해 주세요."))
     covered = {line["source"].get("request_id") for line in own if line["source"]["type"] == "request"}
     for req in child.get("requests") or []:
         if req["request_id"] not in covered:
             found.append(new_check(REQUEST_KEY[req["type"]], "request_missed", request_id=req["request_id"]))
     return found
+
+
+def memo_left_out(memo: str, own: list[dict], found: list[dict]) -> list[dict]:
+    """안전장치: 메모가 있는데 아이 메모 줄이 없고 아이 메모 확인도 없으면 선생님 확인을 남긴다."""
+    if not memo or any(line["key"] == "child" for line in own):
+        return []
+    if any(f["item_key"] == "child" and f["kind"] in MODEL_KINDS for f in found):
+        return []
+    return [new_check("child", "sensitive", problem=PROBLEM["memo_left_out"])]
 
 
 def review(model: JsonModel, payload, child, own) -> list[dict]:

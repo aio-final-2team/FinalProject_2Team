@@ -34,6 +34,7 @@
 - `not_in_memo`·`request_missed`는 `return_to_step`으로 자료 AI에 돌려보낸다(최대 2번). 나머지는 고칠 문제가 아니라 선생님이 볼 일이라 돌려보내지 않고 `open_checks`로만 남긴다.
 - 항목마다 `kind`와 함께 `problem`(선생님이 읽을 설명 한 문장)과 `sentence`(걸린 초안 문장, 없으면 null)를 남긴다. 보호자 요청 누락이면 `request_id`도 남긴다(API 설계 v0.4 3.7).
 - 메모가 빈 아이는 `child` 줄이 없으면 통과다.
+- 메모가 **있는데** `child` 줄이 없으면, 자료 AI가 왜 뺐는지 메모를 보고 맞는 `kind`로 확인을 남긴다(다른 아이 이야기 → `other_child`, 가정사·선생님 혼자 보는 메모·조심할 내용 → `sensitive`, 날짜가 다름 → `date_check`, 결석 → `absent`). 아무 표시 없이 넘기면 선생님 메모가 사라진다.
 
 ## 결과
 - `check_draft`로 결과를 남긴다: `passed`, `issues[] { field, problem }`. 답변 초안이면 `field`는 위 다섯 항목 중 하나다. 알림장이면 `open_checks[] { id, item_key, kind, problem, sentence, request_id? }`로 저장된다. `problem`은 무엇이 왜 틀렸는지 한 문장으로 쓴다.
