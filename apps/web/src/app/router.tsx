@@ -3,6 +3,9 @@ import { Guard } from "@/features/common/Guard";
 import { Later } from "@/features/common/Later";
 import { InboxPage } from "@/features/inbox/InboxPage";
 import { LoginPage } from "@/features/login/LoginPage";
+import { NoteDetail } from "@/features/notes/NoteDetail";
+import { NotesPage } from "@/features/notes/NotesPage";
+import { TeacherHome } from "@/features/teacher/TeacherHome";
 import { ParentLayout } from "@/layouts/ParentLayout";
 import { StaffLayout } from "@/layouts/StaffLayout";
 import { StateView } from "@/components/StateView";
@@ -19,11 +22,14 @@ export const router = createBrowserRouter([
       </Guard>
     ),
     children: [
-      { index: true, element: <Navigate to="inbox" replace /> },
+      { index: true, element: <Navigate to="home" replace /> },
+      { path: "home", element: <TeacherHome /> },
+      { path: "records", element: <Later audience="staff" title="오늘 기록" /> },
+      { path: "notes", element: <NotesPage /> },
+      { path: "notes/:noteId", element: <NoteDetail /> },
+      /* 문의·민원 받은함은 11/27 범위 밖(알림장과 따로). 주소만 남겨 둔다 */
       { path: "inbox", element: <InboxPage role="teacher" /> },
       { path: "inbox/:cardId", element: <InboxPage role="teacher" /> },
-      { path: "notes", element: <Later audience="staff" title="알림장" /> },
-      { path: "notes/:childId", element: <Later audience="staff" title="아이별 알림장" /> },
     ],
   },
   {

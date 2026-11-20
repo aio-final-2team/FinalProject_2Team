@@ -53,15 +53,15 @@ export const NOTE_STATUS: Record<NoteStatus, { label: string; cls: string }> = {
 };
 
 /** 확인 항목 종류별 제목과 선생님이 고를 수 있는 일 */
-export const CHECK_KIND: Record<CheckKind, { title: string; fix?: string; keep?: string }> = {
-  not_in_memo: { title: "메모에 없는 말이 들어갔어요", fix: "이 문장 빼기", keep: "실제로 있었던 일이에요" },
-  sensitive: { title: "민감한 정보가 들어갔어요", fix: "이 문장 빼기", keep: "보내도 되는 내용이에요" },
-  other_child: { title: "다른 아이 이야기가 들어갔어요", fix: "이 문장 빼기", keep: "그대로 두기" },
-  date_check: { title: "날짜를 확인해 주세요", keep: "날짜가 맞아요" },
-  absent: { title: "결석한 아이예요", keep: "확인했어요" },
-  draft_failed: { title: "이 아이 초안을 만들지 못했어요", keep: "직접 쓰고 확인할게요" },
-  check_failed: { title: "검사를 하지 못했어요", keep: "직접 읽고 확인했어요" },
-  request_missed: { title: "보호자 요청이 빠졌어요", keep: "빼고 보내기" },
+export const CHECK_KIND: Record<CheckKind, { title: string; short: string; fix?: string; keep?: string }> = {
+  not_in_memo: { title: "메모에 없는 말이 들어갔어요", short: "메모에 없는 말", fix: "이 문장 빼기", keep: "실제로 있었던 일이에요" },
+  sensitive: { title: "민감한 정보가 들어갔어요", short: "민감 정보", fix: "이 문장 빼기", keep: "보내도 되는 내용이에요" },
+  other_child: { title: "다른 아이 이야기가 들어갔어요", short: "다른 아이 이름", fix: "이 문장 빼기", keep: "그대로 두기" },
+  date_check: { title: "날짜를 확인해 주세요", short: "날짜 확인", keep: "날짜가 맞아요" },
+  absent: { title: "결석한 아이예요", short: "결석", keep: "확인했어요" },
+  draft_failed: { title: "이 아이 초안을 만들지 못했어요", short: "초안 실패", keep: "직접 쓰고 확인할게요" },
+  check_failed: { title: "검사를 하지 못했어요", short: "검사 실패", keep: "직접 읽고 확인했어요" },
+  request_missed: { title: "보호자 요청이 빠졌어요", short: "보호자 요청 누락", keep: "빼고 보내기" },
 };
 
 export const SOURCE_LABEL: Record<SourceType, string> = {
