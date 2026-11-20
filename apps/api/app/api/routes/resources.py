@@ -4,12 +4,12 @@ from datetime import date as Date
 from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Query, Response, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Path, Query, Response, UploadFile
 
 from app.api.schemas.actions import NoteDraftIn, NoteBatchIn, NotePatchIn
 from app.api.schemas.auth import ChildList
 from app.api.schemas.views import (NotificationList, NotificationResponse, DraftResponse, NoteList, NoteResponse,
-                                  SendResponse, DocumentResponse, DocumentList)
+                                  SendResponse, DocumentResponse, DocumentList, MemoryKind, MemoryList)
 from app.api.schemas.common import errors
 from app.core.auth import CurrentUser, current_user as note_user, require_roles as note_roles
 # T27에서 걷을 목록: 자료·알림의 workflows 별칭. 알림장은 위 core.auth를 직접 쓴다.
@@ -58,6 +58,26 @@ def draft_notes(body: NoteDraftIn, response: Response, background_tasks: Backgro
 @router.get("/daily-notes/drafts/{input_id}", response_model=DraftResponse, responses=errors(401, 403, 404, 422))
 def draft_status(input_id: UUID, user: CurrentUser = Depends(note_roles("teacher"))):
     return backend.notes.draft_view(backend.notes.input_in_scope(user, input_id))
+
+
+@router.post("/daily-notes/drafts/{input_id}/regenerate", status_code=202, response_model=DraftResponse,
+             responses=errors(401, 403, 404, 409, 422))
+def regenerate_notes(input_id: UUID, background_tasks: BackgroundTasks,
+                     user: CurrentUser = Depends(note_roles("teacher"))):
+    return backend.notes.regenerate(user, input_id, background_tasks)
+
+
+@router.get("/memories", response_model=MemoryList, responses=errors(401, 403, 422))
+def memory_list(kind: MemoryKind | None = None, page: int = Query(1, ge=1),
+                size: int = Query(20, ge=1, le=100), sort: Sort = "-created_at",
+                user: CurrentUser = Depends(note_roles("teacher"))):
+    return backend.memories.list_memories(user, kind, page, size, sort)
+
+
+@router.delete("/memories/{memory_id}", status_code=204, responses=errors(401, 403, 404, 422))
+def delete_memory(memory_id: int = Path(..., ge=1), user: CurrentUser = Depends(note_roles("teacher"))):
+    backend.memories.delete(user, memory_id)
+    return Response(status_code=204)
 
 
 @router.get("/daily-notes", response_model=NoteList, responses=errors(401, 403, 404, 422))

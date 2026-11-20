@@ -142,6 +142,7 @@ class Event:
     action: str
     request_id: UUID | None = None
     card_id: UUID | None = None
+    daily_note_id: UUID | None = None
     actor_type: str = "system"  # user · agent · system
     actor_id: UUID | None = None
     agent_name: str | None = None
@@ -174,6 +175,7 @@ class _State:
         self.rules: dict[UUID, Rule] = {}
         self.note_inputs: dict[UUID, NoteInput] = {}
         self.notes: dict[UUID, Note] = {}
+        self.memories = {}
         self._seq = 1000
 
     def next_int(self) -> int:
@@ -258,11 +260,12 @@ def request_in_scope(user, request_id: UUID) -> Request:
 
 def add_event(req: Request | None, action: str, *, card: Card | None = None, actor_type: str = "system",
               actor_id: UUID | None = None, agent_name: str | None = None, from_status: str | None = None,
-              to_status: str | None = None, **detail) -> Event:
+              to_status: str | None = None, daily_note_id: UUID | None = None, **detail) -> Event:
     ev = Event(id=_state.next_int(), org_id=(req.org_id if req else card.org_id if card else detail.pop("org_id")), action=action,
                request_id=req.id if req else None, card_id=card.id if card else None,
                actor_type=actor_type, actor_id=actor_id, agent_name=agent_name,
                from_status=from_status, to_status=to_status, detail=detail)
+    ev.daily_note_id = daily_note_id
     from app.core.request_id import active_trace_id
     if ev.detail.get("trace_id") is None:
         ev.detail["trace_id"] = active_trace_id.get()

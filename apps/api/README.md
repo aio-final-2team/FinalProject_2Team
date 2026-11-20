@@ -41,6 +41,7 @@ DB 모드는 `JWT_SECRET`에 32바이트 이상의 별도 키가 필요해요. �
 | 로그인·내 정보(API 1·2) | 구현 | argon2·JWT·token_version 구현 |
 | 기관·반 배정 기간·카드 재배정·보호자 관계 | 구현 | 범위 함수와 404 거부 이력 구현 |
 | 알림장·반 아이 목록(API 22~26·30) | 구현 | 초안·조회·수정·확인·반 전체 발송과 보호자 알림 행 구현 |
+| 원본·이력·다시 만들기·내 기억(API 31~33) | 구현 | 0003 원본 보존·아이별 이력·미확인 재생성·개인 기억 조회/삭제 |
 | 요청 상세(API 5)·자료 목록(API 28) | 구현 | 알림장 출처 확인용 읽기 구현 |
 | 요청 쓰기·목록·스트림·카드·상담·자료 올리기·상세·알림 등 | 구현 | 다음 항목에서 차례로 연결해요 |
 
@@ -129,8 +130,17 @@ PYTHONPATH=apps/api python -m db.seeds.demo --refresh-note-requests
 옵션 실행 뒤 오늘 날짜로 새 초안을 만들고 확인해요.
 이미 만든 입력에는 다시 반영하지 않으니 기존 초안이 없는 날짜·데모 DB에서 시작해요.
 
-알림장 상태 이벤트는 연결 열이 생기는 0003에서 더해요. 지금 발송은 `note_sent` 알림을
+0003부터 최초 AI 초안은 `daily_notes.ai_original`에 보존해요. 기존 행은 적용 시점의 내용으로 채워요.
+수정·확인·발송·초안 저장은 `events.daily_note_id`로 아이별 이력을 남겨요.
+지금 발송은 `note_sent` 알림을
 `pending`으로 저장하고 `deliver_after`를 계산해요. 알림 발송기는 다음 워커 항목에서 연결해요.
+
+`POST /daily-notes/drafts/{input_id}/regenerate`는 저장 입력으로 draft·needs_check만 다시 만들어요.
+ready는 그대로 두고, sent가 하나라도 있으면 409예요. failed·queued·running도 재접수해요.
+DB는 입력 행의 PostgreSQL xmin을 실행 판으로 써서 이전 작업의 늦은 성공·실패를 버려요.
+새 초안은 기존 알림장 ID·최초 원본을 보존해요. 실행 중 교사가 확인한 ready도 다시 검사해요.
+`GET /memories?kind=tone`은 담임 본인의 기억만 읽고, DELETE /memories/{id}는 deleted_at을 채워요.
+기억 AI의 말투 추출·규칙 생성은 이번 백엔드에 없으며, 말투 예시는 시드하지 않아요.
 
 알려진 한계:
 

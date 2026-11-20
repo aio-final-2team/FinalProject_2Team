@@ -9,6 +9,7 @@ from app.core import scope
 from app.core.db import transaction
 from app.core.errors import ApiError
 from app.core.schedule import KST, deliver_after, due_at
+from app.modules.daily_notes.events import record
 
 input_in_scope = scope.note_input_in_scope
 
@@ -64,6 +65,23 @@ def draft(user, body, background_tasks):
 def view(note):
     return {name: note[name] for name in ("id", "child_id", "note_date", "status", "content",
                                          "open_checks", "confirmed_at", "sent_at")}
+
+
+def regenerate(user, input_id, background_tasks):
+    input_in_scope(user, input_id)
+    with transaction() as connection:
+        values = {"id": input_id, "org": user.org_id}
+        connection.execute(text("SELECT id FROM daily_note_inputs WHERE id=:id AND org_id=:org FOR UPDATE"), values)
+        if connection.scalar(text("""
+            SELECT EXISTS (SELECT 1 FROM daily_notes WHERE input_id=:id AND org_id=:org AND status='sent')
+        """), values):
+            raise ApiError(409, "INVALID_TRANSITION")
+        entry = connection.execute(text("""
+            UPDATE daily_note_inputs SET draft_status='queued' WHERE id=:id AND org_id=:org RETURNING *
+        """), values).mappings().one()
+    from app.modules.daily_notes.runner import run_daily_note_drafts
+    background_tasks.add_task(run_daily_note_drafts, input_id)
+    return draft_view(entry)
 
 
 def list_notes(user, note_date, classroom_id, page, size, sort):
@@ -139,6 +157,10 @@ def patch(user, note_id, body):
                                      if body.content is not None else note["content"]),
                "status": "ready" if body.confirm else ("needs_check" if remaining else "draft"),
                "actor": user.id if body.confirm else None, "at": datetime.now(KST) if body.confirm else None}).mappings().one()
+        if updated["content"] != note["content"] or body.resolved_checks or not body.confirm:
+            record(connection, updated, "daily_note_edited", actor_id=user.id, from_status=note["status"])
+        if body.confirm:
+            record(connection, updated, "daily_note_confirmed", actor_id=user.id, from_status=note["status"])
     return {"note": view(updated)}
 
 
@@ -165,6 +187,7 @@ def send(user, body):
         for note in selected:
             connection.execute(text("UPDATE daily_notes SET status='sent', sent_at=:now WHERE id=:id AND org_id=:org"),
                                {"id": note["id"], "org": user.org_id, "now": now})
+            record(connection, {**note, "status": "sent"}, "daily_note_sent", actor_id=user.id, from_status="ready")
             guardians = connection.execute(text("""
                 SELECT u.id, u.role FROM child_guardians g JOIN users u ON (u.id, u.org_id)=(g.user_id, g.org_id)
                 WHERE g.child_id=:child AND g.org_id=:org AND u.role='parent' AND u.is_active

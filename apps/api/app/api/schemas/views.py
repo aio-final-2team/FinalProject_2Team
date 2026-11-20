@@ -286,6 +286,22 @@ class NoteResponse(BaseModel):
     note: NoteView
 
 
+MemoryKind = Literal["rejection_reason", "preference", "tone"]
+
+
+class MemoryView(BaseModel):
+    id: int
+    kind: MemoryKind
+    reason_code: str | None
+    content: str
+    structured: dict
+    created_at: datetime
+
+
+class MemoryList(Page):
+    items: list[MemoryView]
+
+
 class SendResponse(BaseModel):
     sent_count: int
 

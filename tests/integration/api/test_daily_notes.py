@@ -151,7 +151,7 @@ def test_batch_atomic_patch_and_parent_visibility(client, teacher, parent, paren
             assert {n["recipient_id"] for n in notifications} == expected
             assert all(n["subject_type"] == "daily_note" and n["request_id"] is None and n["card_id"] is None
                        and n["status"] == "pending" and n["sent_at"] is None for n in notifications)
-            assert connection.scalar(text("SELECT count(*) FROM events")) == 0
+            assert connection.scalar(text("SELECT count(*) FROM events WHERE action='daily_note_sent'")) == 20
 
 
 @pytest.mark.parametrize("bad", ["empty", "too_long", "duplicate", "foreign", "missing"])

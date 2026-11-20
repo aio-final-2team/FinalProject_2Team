@@ -38,8 +38,8 @@ def notify_event(ev, req, card):
     if req is None:
         if card and ev.action in ("created", "drafted"):
             create(ev, card.assignee_id, "new_card")
-        if ev.action == "sent" and ev.detail.get("note_id"):
-            note = store.state().notes[ev.detail["note_id"]]
+        if ev.action == "daily_note_sent" and ev.daily_note_id:
+            note = store.state().notes[ev.daily_note_id]
             for guardian in store.state().children[note.child_id].guardian_ids:
                 create(ev, guardian, "note_sent", subject_id=note.id)
         return
