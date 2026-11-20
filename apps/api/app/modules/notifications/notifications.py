@@ -51,6 +51,15 @@ def notify_event(connection, event, req, card):
         enqueue(connection, event, req, req["assignee_id"], "parent_confirmed")
     elif action == "slot_hold_expired":
         enqueue(connection, event, req, card["assignee_id"], "slot_hold_expired")
+    elif (action == "risk_reclassified" and event["from_status"] == "escalated"
+          and to == "awaiting_review" and req["risk_level"] == "normal"):
+        reply = connection.execute(text("""
+            SELECT id,assignee_id FROM cards WHERE request_id=:id AND kind='reply_draft'
+              AND status IN ('pending','in_review') ORDER BY created_at DESC,id DESC LIMIT 1
+        """), {"id": req["id"]}).mappings().one_or_none()
+        if reply:
+            # 재분류 이력의 보고 카드 연결은 두고 알림은 담임 회신 카드로 보내요.
+            enqueue(connection, {**event, "card_id": reply["id"]}, req, reply["assignee_id"], "new_card")
     elif to == "awaiting_review" and action != "risk_reclassified":
         automatic = action == "resumed" and event["detail"].get("automatic")
         if action != "resumed" or automatic:

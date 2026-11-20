@@ -770,7 +770,7 @@ data: {"request_status": "awaiting_review"}
 | ⑤ 검증·권한 | 담임·원장만. 원장 보고 카드는 원장만. 요청이 민원이고 awaiting_review·escalated여야 하며, 판을 확인한다. uncertain만으로 제한하지 않는다. |
 | ⑥ 정상 응답 | 200 + 교직원용 request. 응답에 card는 없으므로 새 판은 카드 상세에서 받는다. |
 | ⑦ 오류 응답 | 아래 오류 표. |
-| ⑧ 실행 규칙 | 일반이면 risk_category를 지운다. 열린 원장 보고 카드가 있으면 담임은 위험 등급만 바꾸고 escalated를 유지한다. 원장이 일반으로 내리면 열린 원장 보고 카드를 done으로 닫고 risk_reclassified 이력에 해당 카드 ID를 남기며 요청을 awaiting_review로 바꾼다. 열린 보고 카드가 없으면 일반은 awaiting_review로, 긴급은 원장 보고 카드를 확보하고 escalated로 바꾼다. 같은 요청 카드의 due_at을 접수 시각 기준으로 다시 계산하며 호출한 카드와 이번에 닫은 보고 카드의 판을 각각 1 올린다. 초안은 새로 만들지 않고 재분류 자체는 new_card 알림을 만들지 않는다. |
+| ⑧ 실행 규칙 | 일반이면 risk_category를 지운다. 열린 원장 보고 카드가 있으면 담임은 위험 등급만 바꾸고 escalated를 유지한다. 원장이 일반으로 내리면 열린 원장 보고 카드를 done으로 닫고 risk_reclassified 이력에 해당 카드 ID를 남기며 요청을 awaiting_review로 바꾼다. 이때 escalated에서 담임 회신 단계로 돌아오면 회신 카드 담당자에게 해당 회신 카드로 연결되는 new_card 알림을 한 번 남긴다. 열린 보고 카드가 없으면 일반은 awaiting_review로, 긴급은 원장 보고 카드를 확보하고 escalated로 바꾼다. 같은 요청 카드의 due_at을 접수 시각 기준으로 다시 계산하며 호출한 카드와 이번에 닫은 보고 카드의 판을 각각 1 올린다. 초안은 새로 만들지 않고 그 밖의 재분류는 new_card 알림을 만들지 않는다. |
 
 | 필드 | 위치 | 타입 | 필수 | 빈값 | 제약 | 설명 |
 | --- | --- | --- | --- | --- | --- | --- |
