@@ -1,9 +1,11 @@
 """반 알림장 초안·확인·일괄 발송."""
 
 from copy import deepcopy
+from datetime import datetime
 from uuid import uuid4
 
 from app.core.errors import ApiError
+from app.core.config import settings
 from app.core.schedule import KST, due_at
 from app.mock import seed, store
 from app.mock.records import NoteInput, Note
@@ -17,10 +19,15 @@ def input_in_scope(user, input_id):
     return entry
 
 
-def record(note, action, *, actor_id=None, from_status=None):
+def record(note, action, *, actor_id=None, from_status=None, **detail):
     store.add_event(None, action, org_id=note.org_id, daily_note_id=note.id,
                     actor_type="user" if actor_id else "agent", actor_id=actor_id,
-                    from_status=from_status, to_status=note.status)
+                    from_status=from_status, to_status=note.status, **detail)
+
+
+def _edited(note):
+    return note.content != note.ai_original or any(
+        e.daily_note_id == note.id and e.action == "daily_note_edited" for e in store.state().events)
 
 
 def regenerate(user, input_id, background_tasks=None):
@@ -28,10 +35,18 @@ def regenerate(user, input_id, background_tasks=None):
         entry = input_in_scope(user, input_id)
         if any(n.input_id == input_id and n.status == "sent" for n in store.state().notes.values()):
             raise ApiError(409, "INVALID_TRANSITION")
+        kept_edited = sum(n.input_id == input_id and n.status in ("draft", "needs_check") and _edited(n)
+                          for n in store.state().notes.values())
+        card = next(c for c in store.state().cards.values() if c.subject_type == "daily_note_batch" and c.subject_id == input_id)
+        started_at = datetime.fromisoformat(card.draft["draft_started_at"]) if card.draft.get("draft_started_at") else entry.created_at
+        if (entry.draft_status in ("queued", "running") and
+                (store.now() - started_at).total_seconds() < settings.daily_note_writer_timeout):
+            return {**draft_view(entry), "kept_edited": kept_edited}
+        card.draft.update(draft_started_at=store.now().isoformat(), regenerated_by=str(user.id))
         entry.draft_status = "failed" if "[실패]" in entry.activities else "succeeded"
         if entry.draft_status == "succeeded":
-            _generate(entry, store.classroom_children(user, entry.classroom_id))
-        return draft_view(entry)
+            _generate(entry, store.classroom_children(user, entry.classroom_id), regenerated_by=str(user.id))
+        return {**draft_view(entry), "kept_edited": kept_edited}
 
 
 def requests_for_child(child, note_date):
@@ -74,13 +89,13 @@ def draft(user, body, background_tasks=None):
         return draft_view(entry), True
 
 
-def _generate(entry, children):
+def _generate(entry, children, *, regenerated_by=None):
     menu = next(d for d in store.state().documents.values() if d.org_id == entry.org_id and d.doc_type == "menu" and d.status == "active")
     meal = next(c.content for c in store.state().chunks.values() if c.document_id == menu.id)
     memos = {memo["child_id"]: memo["memo"] for memo in entry.child_memos}
     for index, child in enumerate(children):
         existing = next((n for n in store.state().notes.values() if n.input_id == entry.id and n.child_id == child.id), None)
-        if existing is not None and existing.status in ("ready", "sent"):
+        if existing is not None and (existing.status in ("ready", "sent") or _edited(existing)):
             continue
         checks = [{"id": "c1", "item_key": "supplies", "kind": "date_check",
                    "problem": "준비물 날짜를 확인해 주세요", "sentence": entry.supplies}] if index == 0 else []
@@ -108,9 +123,11 @@ def _generate(entry, children):
         if existing is not None:
             checks = [{**c, "id": str(uuid4())} for c in checks]
             existing.content, existing.open_checks, existing.status = content, checks, note.status
+            existing.ai_original = deepcopy(content)
             note = existing
         store.state().notes[note.id] = note
-        record(note, "daily_note_drafted", from_status=previous_status)
+        record(note, "daily_note_drafted", from_status=previous_status,
+               **({"regenerated_by": regenerated_by} if regenerated_by else {}))
 
 
 def draft_view(entry):
@@ -152,8 +169,12 @@ def patch(user, note_id, body):
         note.confirmed_at = note.confirmed_by = None
         if body.confirm:
             note.status, note.confirmed_at, note.confirmed_by = "ready", store.now(), user.id
-        if note.content != previous_content or body.resolved_checks or not body.confirm:
+        if note.content != previous_content:
             record(note, "daily_note_edited", actor_id=user.id, from_status=previous_status)
+        if previous_status == "ready" and note.status != "ready":
+            record(note, "returned", actor_id=user.id, from_status="ready")
+        if previous_status == "needs_check" and note.status == "draft":
+            record(note, "checked", actor_id=user.id, from_status="needs_check")
         if body.confirm:
             record(note, "daily_note_confirmed", actor_id=user.id, from_status=previous_status)
         return {"note": view(note)}

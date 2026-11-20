@@ -1298,7 +1298,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DraftResponse'
+                $ref: '#/components/schemas/RegenerateResponse'
         '401':
           content:
             application/json:
@@ -3420,6 +3420,34 @@ components:
       required:
       - request
       title: ReclassifyResponse
+    RegenerateResponse:
+      properties:
+        input_id:
+          type: string
+          format: uuid
+          title: Input Id
+        draft_status:
+          type: string
+          enum:
+          - queued
+          - running
+          - succeeded
+          - failed
+          title: Draft Status
+        error:
+          anyOf:
+          - $ref: '#/components/schemas/JobError'
+          - type: 'null'
+        kept_edited:
+          type: integer
+          minimum: 0.0
+          title: Kept Edited
+      type: object
+      required:
+      - input_id
+      - draft_status
+      - kept_edited
+      title: RegenerateResponse
     RejectionOut:
       properties:
         reason_code:

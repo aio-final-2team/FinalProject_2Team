@@ -9,7 +9,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Path, Query
 from app.api.schemas.actions import NoteDraftIn, NoteBatchIn, NotePatchIn
 from app.api.schemas.auth import ChildList
 from app.api.schemas.views import (NotificationList, NotificationResponse, DraftResponse, NoteList, NoteResponse,
-                                  SendResponse, DocumentResponse, DocumentList, MemoryKind, MemoryList)
+                                  SendResponse, DocumentResponse, DocumentList, MemoryKind, MemoryList, RegenerateResponse)
 from app.api.schemas.common import errors
 from app.core.auth import CurrentUser, current_user as note_user, require_roles as note_roles
 # T27에서 걷을 목록: 자료·알림의 workflows 별칭. 알림장은 위 core.auth를 직접 쓴다.
@@ -60,7 +60,7 @@ def draft_status(input_id: UUID, user: CurrentUser = Depends(note_roles("teacher
     return backend.notes.draft_view(backend.notes.input_in_scope(user, input_id))
 
 
-@router.post("/daily-notes/drafts/{input_id}/regenerate", status_code=202, response_model=DraftResponse,
+@router.post("/daily-notes/drafts/{input_id}/regenerate", status_code=202, response_model=RegenerateResponse,
              responses=errors(401, 403, 404, 409, 422))
 def regenerate_notes(input_id: UUID, background_tasks: BackgroundTasks,
                      user: CurrentUser = Depends(note_roles("teacher"))):

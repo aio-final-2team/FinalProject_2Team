@@ -1,6 +1,6 @@
 # 유치온 데이터베이스 스키마 설계서 (T09)
 
-문서 버전 v0.9 | 작성 상태: 알림장 최초 원본·아이별 이력(11/20) 반영
+문서 버전 v0.9 | 작성 상태: 알림장 AI 원본·아이별 이력(11/20) 반영
 
 | 항목 | 내용 |
 | --- | --- |
@@ -11,7 +11,7 @@
 | DDL | [`db_schema_draft.sql`](db_schema_draft.sql) — 최종 설계 모양이에요. 실제 적용은 `apps/api/migrations`의 0001 → 0002 → 0003으로 해요 |
 | 기준 문서 | 기획서 1116판 3장 FR-01~FR-13, 4장 NFR, 6장 공통 상태, 7장 기술과 데이터 · T04 흐름·권한 명세(11/17 팀 합의, PR #234) · T10 [입출력 계약표](입출력_계약표_초안.md) v0.7(1.1 정한 규칙, 6장 11/18 회의 확정) |
 
-변경 이력: **v0.9 · 2026-11-20** — 0003으로 daily_notes.ai_original과 events.daily_note_id·알림장 이력 네 종류를 더했어요. 기관 짝 FK와 인덱스를 연결했어요. head는 표 27개·뷰 2개·트리거 2개·FK 58개·컬럼 269개예요. 기존 원본은 적용 시점 content로 채우며, 이후 수정·재생성 때 보존해요. 0003을 되돌리면 원본 칸·알림장 연결·새 이력 네 종류는 사라져요.
+변경 이력: **v0.9 · 2026-11-20** — 0003으로 daily_notes.ai_original과 events.daily_note_id·알림장 이력 네 종류를 더했어요. 기관 짝 FK와 인덱스를 연결했어요. head는 표 27개·뷰 2개·트리거 2개·FK 58개·컬럼 269개예요. 기존 원본은 적용 시점 content로 채워요. 교사 수정 때 유지하고, 미수정 초안의 재생성 때 마지막 AI 초안으로 갱신해요(T13 v0.5.1, DDL 구조 변경 없음). 0003을 되돌리면 원본 칸·알림장 연결·새 이력 네 종류는 사라져요.
 
 이전 변경 이력: **v0.8 · 2026-11-20** — API 설계 문서 v0.4의 아이별 메모를 위해 `daily_note_inputs.child_memos`(`jsonb`, NOT NULL, 기본값 `[]`)와 배열 CHECK를 더했어요. 0001은 유지하고 0002로 적용해요. 당시 head의 컬럼은 267개예요.
 
@@ -654,7 +654,7 @@ FK를 걸 수 없는 참조는 두 곳이다. `cards.subject_id`와 `notificatio
 | `daily_notes` | `note_date` | `date` / NOT NULL, FK (input_id, org_id, note_date) → daily_note_inputs | 날짜(반 입력과 같아야 함) |
 | `daily_notes` | `status` | `text` / NOT NULL, 값: draft·needs_check·ready·sent, 기본값 'draft' | 초안·확인 필요·보낼 준비·보냄 |
 | `daily_notes` | `content` | `jsonb` / NOT NULL, 기본값 '{}' | 하루·식사·투약/귀가 줄·준비물 |
-| `daily_notes` | `ai_original` | `jsonb` / NOT NULL, 기본값 '{}' | 최초 저장한 AI 초안. 수정·재생성 때 유지. 기존 행은 적용 시점 content(v0.9) |
+| `daily_notes` | `ai_original` | `jsonb` / NOT NULL, 기본값 '{}' | 마지막 AI 초안. 교사 수정 때 유지, 미수정 초안 재생성 때 갱신. 기존 행은 적용 시점 content(v0.9) |
 | `daily_notes` | `open_checks` | `jsonb` / NOT NULL, 기본값 '[]' | 검사 AI가 짚은 확인 필요 항목 |
 | `daily_notes` | `confirmed_by` | `uuid` / NULL 허용, FK (confirmed_by, org_id) → users | 확인한 교사 |
 | `daily_notes` | `confirmed_at` | `timestamptz` / NULL 허용 | 교사 확인 시각 |

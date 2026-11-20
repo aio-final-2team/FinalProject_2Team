@@ -567,7 +567,7 @@ CREATE TABLE daily_notes (
     confirmed_at   timestamptz,
     sent_at        timestamptz,
     created_at     timestamptz NOT NULL DEFAULT now(),
-    ai_original    jsonb NOT NULL DEFAULT '{}',  -- 처음 저장한 AI 초안. 수정·재생성 때 유지(v0.9)
+    ai_original    jsonb NOT NULL DEFAULT '{}',  -- 마지막 AI 초안. 교사 수정 때 유지, 미수정 초안 재생성 때 갱신(v0.9)
     CONSTRAINT daily_notes_id_org_key UNIQUE (id, org_id),
     FOREIGN KEY (input_id, org_id, note_date) REFERENCES daily_note_inputs(id, org_id, note_date),
     FOREIGN KEY (child_id, org_id) REFERENCES children(id, org_id),

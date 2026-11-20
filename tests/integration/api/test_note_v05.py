@@ -75,7 +75,7 @@ def test_first_original_survives_edits_confirm_send_and_events_link_only_the_not
     err(regenerate(client, teacher, input_id), 409, "INVALID_TRANSITION")
 
 
-def test_regenerate_replaces_only_unconfirmed_and_preserves_ids_original_and_ready(client, teacher, note_backend):
+def test_regenerate_preserves_edited_notes_and_ready_including_check_ids(client, teacher, note_backend):
     input_id = draft(client, teacher).json()["input_id"]
     before = {n["id"]: n for n in note_list(client, teacher).json()["items"]}
     ready = next(n for n in before.values() if not n["open_checks"])
@@ -86,18 +86,22 @@ def test_regenerate_replaces_only_unconfirmed_and_preserves_ids_original_and_rea
     edited["items"][0]["value"] = "[TEST] 임시 수정"
     assert client.patch(f"{BASE}/daily-notes/{target['id']}", headers=teacher,
                         json={"content": edited}).status_code == 200
+    target = next(n for n in note_list(client, teacher).json()["items"] if n["id"] == target["id"])
     response = regenerate(client, teacher, input_id)
     assert response.status_code == 202, response.text
+    assert response.json()["kept_edited"] == 1
     assert client.get(f"{BASE}/daily-notes/drafts/{input_id}", headers=teacher).json() == {
         "input_id": input_id, "draft_status": "succeeded", "error": None}
     after = {n["id"]: n for n in note_list(client, teacher).json()["items"]}
     assert after.keys() == before.keys() and after[ready["id"]] == ready
     for note_id in before:
         assert stored(note_backend, note_id)["ai_original"] == before[note_id]["content"]
-        assert after[note_id]["content"] == before[note_id]["content"]
+        assert after[note_id]["content"] == (edited if note_id == target["id"] else before[note_id]["content"])
         history = events(note_backend, note_id)
-        assert sum(e["action"] == "daily_note_drafted" for e in history) == (1 if note_id == ready["id"] else 2)
-    assert {c["id"] for c in target["open_checks"]}.isdisjoint(c["id"] for c in after[target["id"]]["open_checks"])
+        assert sum(e["action"] == "daily_note_drafted" for e in history) == (1 if note_id in (ready["id"], target["id"]) else 2)
+    assert after[target["id"]] == target
+    regenerated = next(n for nid, n in after.items() if nid not in (target["id"], ready["id"]))
+    assert events(note_backend, regenerated["id"])[-1]["detail"]["regenerated_by"] == str(seed.TEACHER)
     confirm_all(client, teacher, list(after.values()))
     assert regenerate(client, teacher, input_id).status_code == 202
     assert all(n["status"] == "ready" for n in note_list(client, teacher).json()["items"])
@@ -107,6 +111,70 @@ def test_regenerate_replaces_only_unconfirmed_and_preserves_ids_original_and_rea
 def test_regenerate_recovers_failed_or_stopped_input(client, teacher, note_backend, status):
     input_id = draft(client, teacher).json()["input_id"]
     if note_backend == "mock":
+        entry = store.state().note_inputs[UUID(input_id)]
+        entry.draft_status = status
+        entry.created_at -= timedelta(days=1)
+    else:
+        from app.core.db import transaction
+        with transaction() as connection:
+            connection.execute(text("UPDATE daily_note_inputs SET draft_status=:status, created_at=created_at-interval '1 day' WHERE id=:id"),
+                               {"id": input_id, "status": status})
+            connection.execute(text("UPDATE cards SET draft=draft-'draft_started_at' WHERE subject_id=:id"), {"id": input_id})
+    response = regenerate(client, teacher, input_id)
+    assert response.status_code == 202, response.text
+    assert client.get(f"{BASE}/daily-notes/drafts/{input_id}", headers=teacher).json()["draft_status"] == "succeeded"
+    assert note_list(client, teacher).json()["total"] == 20
+
+
+def test_regenerate_updates_last_ai_original_then_teacher_edit_keeps_it(client, teacher, note_backend):
+    input_id = draft(client, teacher).json()["input_id"]
+    before = note_list(client, teacher).json()["items"][0]
+    if note_backend == "mock":
+        store.state().note_inputs[UUID(input_id)].activities = "[TEST] 새 AI 초안"
+    else:
+        from app.core.db import transaction
+        with transaction() as connection:
+            connection.execute(text("UPDATE daily_note_inputs SET activities='[TEST] 새 AI 초안' WHERE id=:id"),
+                               {"id": input_id})
+    assert regenerate(client, teacher, input_id).json()["kept_edited"] == 0
+    after = next(n for n in note_list(client, teacher).json()["items"] if n["id"] == before["id"])
+    assert after["content"] != before["content"]
+    assert stored(note_backend, after["id"])["ai_original"] == after["content"]
+    edited = deepcopy(after["content"])
+    edited["items"][0]["value"] = "[TEST] 새 초안을 받은 뒤 선생님 수정"
+    assert client.patch(f"{BASE}/daily-notes/{after['id']}", headers=teacher, json={"content": edited}).status_code == 200
+    assert regenerate(client, teacher, input_id).json()["kept_edited"] == 1
+    assert stored(note_backend, after["id"]) == {"content": edited, "ai_original": after["content"]}
+
+
+@pytest.mark.parametrize("restored", [False, True])
+def test_regenerate_protects_legacy_content_difference_or_restored_edit_history(client, teacher, note_backend, restored):
+    input_id = draft(client, teacher).json()["input_id"]
+    target = note_list(client, teacher).json()["items"][0]
+    changed = deepcopy(target["content"])
+    changed["items"][0]["value"] = "[TEST] 과거 수정"
+    if restored:
+        for content in (changed, target["content"]):
+            assert client.patch(f"{BASE}/daily-notes/{target['id']}", headers=teacher, json={"content": content}).status_code == 200
+    elif note_backend == "mock":
+        store.state().notes[UUID(target["id"])].content["items"][0]["value"] = "[TEST] 과거 수정"
+    else:
+        from app.core.db import transaction
+        with transaction() as connection:
+            connection.execute(text("UPDATE daily_notes SET content=CAST(:content AS jsonb) WHERE id=:id"),
+                               {"content": json.dumps(changed), "id": target["id"]})
+    before = next(n for n in note_list(client, teacher).json()["items"] if n["id"] == target["id"])
+    assert regenerate(client, teacher, input_id).json()["kept_edited"] == 1
+    assert next(n for n in note_list(client, teacher).json()["items"] if n["id"] == target["id"]) == before
+    assert sum(e["action"] == "daily_note_drafted" for e in events(note_backend, target["id"])) == 1
+
+
+@pytest.mark.parametrize("status", ["queued", "running"])
+def test_regenerate_reuses_fresh_active_job_without_new_events(client, teacher, note_backend, status):
+    input_id = draft(client, teacher).json()["input_id"]
+    target = note_list(client, teacher).json()["items"][0]
+    before = events(note_backend, target["id"])
+    if note_backend == "mock":
         store.state().note_inputs[UUID(input_id)].draft_status = status
     else:
         from app.core.db import transaction
@@ -114,9 +182,25 @@ def test_regenerate_recovers_failed_or_stopped_input(client, teacher, note_backe
             connection.execute(text("UPDATE daily_note_inputs SET draft_status=:status WHERE id=:id"),
                                {"id": input_id, "status": status})
     response = regenerate(client, teacher, input_id)
-    assert response.status_code == 202, response.text
-    assert client.get(f"{BASE}/daily-notes/drafts/{input_id}", headers=teacher).json()["draft_status"] == "succeeded"
-    assert note_list(client, teacher).json()["total"] == 20
+    assert response.status_code == 202 and response.json() == {
+        "input_id": input_id, "draft_status": status, "error": None, "kept_edited": 0}
+    assert events(note_backend, target["id"]) == before
+
+
+def test_noop_patch_check_resolution_and_confirmation_return_do_not_mark_edited(client, teacher, note_backend):
+    input_id = draft(client, teacher).json()["input_id"]
+    target = next(n for n in note_list(client, teacher).json()["items"] if n["open_checks"])
+    path = f"{BASE}/daily-notes/{target['id']}"
+    for body in ({}, {"confirm": False}, {"content": target["content"]},
+                 {"resolved_checks": [c["id"] for c in target["open_checks"]]}, {"confirm": True}, {"confirm": False}):
+        assert client.patch(path, headers=teacher, json=body).status_code == 200
+    history = events(note_backend, target["id"])
+    assert [e["action"] for e in history] == ["daily_note_drafted", "checked", "daily_note_confirmed", "returned"]
+    assert history[1]["from_status"] == "needs_check" and history[1]["to_status"] == "draft"
+    assert history[-1]["from_status"] == "ready" and history[-1]["to_status"] == "draft"
+    assert str(history[-1]["actor_id"]) == str(seed.TEACHER)
+    assert regenerate(client, teacher, input_id).json()["kept_edited"] == 0
+    assert events(note_backend, target["id"])[-1]["action"] == "daily_note_drafted"
 
 
 def test_regenerate_scopes_and_roles(client, teacher, teacher_other, parent, director):

@@ -6,10 +6,11 @@ from datetime import datetime
 from sqlalchemy import text
 
 from app.core import scope
+from app.core.config import settings
 from app.core.db import transaction
 from app.core.errors import ApiError
 from app.core.schedule import KST, deliver_after, due_at
-from app.modules.daily_notes.events import record
+from app.modules.daily_notes.events import edited_child_ids, record
 
 input_in_scope = scope.note_input_in_scope
 
@@ -71,17 +72,31 @@ def regenerate(user, input_id, background_tasks):
     input_in_scope(user, input_id)
     with transaction() as connection:
         values = {"id": input_id, "org": user.org_id}
-        connection.execute(text("SELECT id FROM daily_note_inputs WHERE id=:id AND org_id=:org FOR UPDATE"), values)
+        entry = connection.execute(text("SELECT * FROM daily_note_inputs WHERE id=:id AND org_id=:org FOR UPDATE"),
+                                   values).mappings().one()
         if connection.scalar(text("""
             SELECT EXISTS (SELECT 1 FROM daily_notes WHERE input_id=:id AND org_id=:org AND status='sent')
         """), values):
             raise ApiError(409, "INVALID_TRANSITION")
+        kept_edited = len(edited_child_ids(connection, input_id))
+        card = connection.execute(text("""
+            SELECT draft FROM cards WHERE subject_type='daily_note_batch' AND subject_id=:id AND org_id=:org
+        """), values).scalar_one()
+        started_at = datetime.fromisoformat(card["draft_started_at"]) if card.get("draft_started_at") else entry["created_at"]
+        if (entry["draft_status"] in ("queued", "running") and
+                (datetime.now(KST) - started_at).total_seconds() < settings.daily_note_writer_timeout):
+            return {**draft_view(entry), "kept_edited": kept_edited}
         entry = connection.execute(text("""
             UPDATE daily_note_inputs SET draft_status='queued' WHERE id=:id AND org_id=:org RETURNING *
         """), values).mappings().one()
+        connection.execute(text("""
+            UPDATE cards SET draft=draft || CAST(:detail AS jsonb)
+            WHERE subject_type='daily_note_batch' AND subject_id=:id AND org_id=:org
+        """), {**values, "detail": json.dumps({"draft_started_at": datetime.now(KST).isoformat(),
+                                               "regenerated_by": str(user.id)})})
     from app.modules.daily_notes.runner import run_daily_note_drafts
     background_tasks.add_task(run_daily_note_drafts, input_id)
-    return draft_view(entry)
+    return {**draft_view(entry), "kept_edited": kept_edited}
 
 
 def list_notes(user, note_date, classroom_id, page, size, sort):
@@ -159,8 +174,12 @@ def patch(user, note_id, body):
                                      if body.content is not None else note["content"]),
                "status": "ready" if body.confirm else ("needs_check" if remaining else "draft"),
                "actor": user.id if body.confirm else None, "at": datetime.now(KST) if body.confirm else None}).mappings().one()
-        if updated["content"] != note["content"] or body.resolved_checks or not body.confirm:
+        if updated["content"] != note["content"]:
             record(connection, updated, "daily_note_edited", actor_id=user.id, from_status=note["status"])
+        if note["status"] == "ready" and updated["status"] != "ready":
+            record(connection, updated, "returned", actor_id=user.id, from_status="ready")
+        if note["status"] == "needs_check" and updated["status"] == "draft":
+            record(connection, updated, "checked", actor_id=user.id, from_status="needs_check")
         if body.confirm:
             record(connection, updated, "daily_note_confirmed", actor_id=user.id, from_status=note["status"])
     return {"note": view(updated)}

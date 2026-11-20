@@ -131,15 +131,19 @@ PYTHONPATH=apps/api python -m db.seeds.demo --refresh-note-requests
 옵션 실행 뒤 오늘 날짜로 새 초안을 만들고 확인해요.
 이미 만든 입력에는 다시 반영하지 않으니 기존 초안이 없는 날짜·데모 DB에서 시작해요.
 
-0003부터 최초 AI 초안은 `daily_notes.ai_original`에 보존해요. 기존 행은 적용 시점의 내용으로 채워요.
+0003부터 선생님이 받은 마지막 AI 초안은 `daily_notes.ai_original`에 보존해요. 교사 수정·확인·발송으로는 바꾸지 않고 미수정 초안을 재생성할 때 갱신해요. 기존 행은 적용 시점의 내용으로 채워요.
 수정·확인·발송·초안 저장은 `events.daily_note_id`로 아이별 이력을 남겨요.
 지금 발송은 `note_sent` 알림을
 `pending`으로 저장하고 `deliver_after`를 계산해요. 알림 발송기는 다음 워커 항목에서 연결해요.
 
 `POST /daily-notes/drafts/{input_id}/regenerate`는 저장 입력으로 draft·needs_check만 다시 만들어요.
-ready는 그대로 두고, sent가 하나라도 있으면 409예요. failed·queued·running도 재접수해요.
+ready와 교사 수정본(content ≠ ai_original 또는 daily_note_edited 이력)은 그대로 두고, sent가 하나라도 있으면 409예요.
+응답은 RegenerateResponse로 kept_edited(접수 시 보존한 미확인 수정본 수)를 더해요. 다른 초안 API 응답은 그대로예요.
+failed와 시간 제한을 넘긴 queued·running은 재접수해요. 제한 안의 queued·running은 현재 상태를 돌려주며 작성기를 다시 부르지 않아요.
 DB는 입력 행의 PostgreSQL xmin을 실행 판으로 써서 이전 작업의 늦은 성공·실패를 버려요.
-새 초안은 기존 알림장 ID·최초 원본을 보존해요. 실행 중 교사가 확인한 ready도 다시 검사해요.
+새 초안은 기존 알림장 ID를 보존하고 content와 ai_original을 함께 바꿔요. 실행 중 교사 수정·확인도 저장 직전에 다시 검사해요.
+반 묶음 카드 draft.draft_started_at은 접수·실행 시각, draft.regenerated_by와 새 drafted 이력 detail.regenerated_by는 재생성 요청자예요.
+내용이 실제로 바뀔 때만 daily_note_edited를 남겨요. 확인 취소는 기존 returned로 ready→draft, 검사 해소는 checked로 needs_check→draft를 남겨요.
 `GET /memories?kind=tone`은 담임 본인의 기억만 읽고, DELETE /memories/{id}는 deleted_at을 채워요.
 기억 AI의 말투 추출·규칙 생성은 이번 백엔드에 없으며, 말투 예시는 시드하지 않아요.
 
@@ -148,3 +152,6 @@ DB는 입력 행의 PostgreSQL xmin을 실행 판으로 써서 이전 작업의 
 - 시간 초과는 대기·결과 저장만 끝내요. 실행 중인 writer 스레드는 멈추지 않아서 모델 호출이 계속될 수 있어요. 호출별 제한·취소는 writer 쪽에서 처리해야 해요.
 - 알림장이 0개인 반을 보내면 `sent_count=0`이고 묶음 카드는 `pending`으로 남아요.
 - 같은 날 반을 옮긴 아이는 `(child_id, note_date)` 중복으로 묶음 전체가 실패할 수 있어요. 발송 차단의 `open_checks`에서 DB는 `request_id: null`을 포함하고 mock은 키를 생략할 수 있어요.
+- 0003 이전 알림장의 ai_original은 적용 시점 content로 채워요. 이미 보낸 행의 최종본과 실제 AI 원본을 구분할 수 없어 학습 자료로 쓸 때 제외·검토가 필요해요.
+- events의 알림장 FK는 자동 삭제하지 않아요. 시연 초기화에서 알림장을 지우려면 해당 이력을 먼저 지워야 해요. 현재 삭제 API는 없어요.
+- 모의 반 묶음 카드 타임라인은 card_id로 이력을 모으므로 아이별 daily_note_sent는 표시되지 않아요. 보호자 알림은 생성돼요.

@@ -258,6 +258,10 @@ class DraftResponse(BaseModel):
     error: JobError | None = None
 
 
+class RegenerateResponse(DraftResponse):
+    kept_edited: int = Field(ge=0)
+
+
 class OpenCheck(BaseModel):
     id: str
     item_key: str

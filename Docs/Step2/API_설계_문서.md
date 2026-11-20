@@ -1,15 +1,15 @@
 # 유치온 API 설계 문서 (T13)
 
-문서 버전 v0.5 | 작성 상태: 알림장 원본·이력·재생성과 개인 기억 조회·삭제를 모의·DB API와 대조함
+문서 버전 v0.5.1 | 작성 상태: 알림장 원본·이력·재생성과 개인 기억 조회·삭제를 모의·DB API와 대조함
 
 | 항목 | 내용 |
 | --- | --- |
 | 작업 | T13 API 설계 문서(FastAPI·Function Calling 도구 계약)·모의 API (#170) |
 | 작성 | 태웅 · 검토 인혜 |
-| 기준 문서 | 기획서 1117판 3장 FR-01~FR-13 · T04 흐름·권한 명세(PR #234) · [입출력 계약표](입출력_계약표_초안.md) v0.11(T10 회의 11/18 합의 + 알림장 v0.5 반영) · [DB 스키마 설계서](DB_스키마_설계서.md) v0.9(0003 알림장 원본·이력 포함) |
+| 기준 문서 | 기획서 1117판 3장 FR-01~FR-13 · T04 흐름·권한 명세(PR #234) · [입출력 계약표](입출력_계약표_초안.md) v0.12(T10 회의 11/18 합의 + 알림장 v0.5.1 반영) · [DB 스키마 설계서](DB_스키마_설계서.md) v0.9(0003 알림장 원본·이력 포함) |
 | 따른 가이드 | 강사님 'API 설계 문서 작성법' 11/18 수정본. 1~6장이 가이드의 '문서에 들어가는 여섯 가지' 순서다 |
 
-이 문서는 T10 계약표에서 합의한 필드·권한·오류를 엔드포인트와 도구 단위로 펼친 것이다. 계약표와 이 문서가 다르면 계약표를 먼저 고치고 두 문서의 판을 같이 올린다. 구현이 시작되면 FastAPI의 `/docs`와 대조해 판을 올린다(계약표 1.1 규칙 1). 이 판(v0.5)은 API 33개 전부의 상세 명세, 화면이 쓰는 조회 응답 칸(3.7), 도구 전체의 실패 처리, 업무 흐름(5.7), 실행 규칙과 대표 사례 대조(6.7)를 담는다. 모의 API와 생성물 `contracts/openapi.yaml`을 붙였으며, 쓰는 법과 데모 계정은 [모의 API 안내](../../contracts/mock_api/README.md)에 있다.
+이 문서는 T10 계약표에서 합의한 필드·권한·오류를 엔드포인트와 도구 단위로 펼친 것이다. 계약표와 이 문서가 다르면 계약표를 먼저 고치고 두 문서의 판을 같이 올린다. 구현이 시작되면 FastAPI의 `/docs`와 대조해 판을 올린다(계약표 1.1 규칙 1). 이 판(v0.5.1)은 API 33개 전부의 상세 명세, 화면이 쓰는 조회 응답 칸(3.7), 도구 전체의 실패 처리, 업무 흐름(5.7), 실행 규칙과 대표 사례 대조(6.7)를 담는다. 모의 API와 생성물 `contracts/openapi.yaml`을 붙였으며, 쓰는 법과 데모 계정은 [모의 API 안내](../../contracts/mock_api/README.md)에 있다.
 
 **목차.** 1. 공통 정보와 인증 · 2. API 목록 · 3. 엔드포인트 상세 명세 · 4. 검증과 권한 규칙 · 5. Tool 정의와 호출 흐름 · 6. 실행 규칙 · 7. API 필드와 DB 컬럼 대응 · 8. 설정값 · 부록 A. 예시 ID · 변경 이력
 
@@ -1189,13 +1189,13 @@ HTTP/1.1 200 OK
 | ① 호출 목적 | 저장한 반 입력으로 미확인 초안만 다시 만든다. 실패·중단된 입력도 재시도한다. |
 | ② 권한 | teacher, 현재 담당 반(대체 담임 배정 기간 포함). 다른 반·기관·없는 입력은 404, 원장·학부모는 403이다. |
 | ③ 경로·본문 | input_id는 UUID. 본문 없음. activities·supplies·child_memos는 저장된 입력을 그대로 쓴다. 보호자 요청·식단은 실행 시점에 다시 모은다. |
-| ④ 정상 응답 | 202 + 기존 DraftResponse `{input_id, draft_status, error}`. DB는 queued 뒤 running→succeeded 또는 failed, 모의는 즉시 결과를 만든다. 진행·결과 조회는 API 23·24와 같다. |
+| ④ 정상 응답 | 202 + RegenerateResponse `{input_id, draft_status, error, kept_edited}`. kept_edited는 접수 시 교사 수정으로 보존한 미확인 알림장 수(0 이상 정수)다. DB는 queued 뒤 running→succeeded 또는 failed, 모의는 즉시 결과를 만든다. 진행·결과 조회는 API 23·24와 같으며 기존 DraftResponse에는 kept_edited를 더하지 않는다. |
 | ⑤ 차단 | 입력에 sent 알림장이 하나라도 있으면 409 INVALID_TRANSITION이다. 발송과 같은 입력 잠금을 쓴다. |
-| ⑥ 보존 | ready는 내용·확인자·시각·검사 항목을 그대로 둔다. draft·needs_check만 새 초안·새 확인 ID로 갱신한다. 기존 알림장 ID·최초 ai_original은 보존하고, 아직 없는 아이의 초안은 새로 저장한다. |
-| ⑦ 복구·동시성 | queued·running·failed 모두 접수한다. 새 실행이 시작되면 이전 실행의 늦은 성공·실패는 버린다. 재생성 도중 교사가 ready로 확인한 알림장도 보존한다. |
-| ⑧ 이력 | 최초·재생성 저장은 daily_note_drafted, PATCH는 daily_note_edited, 확인은 daily_note_confirmed, 보내기는 daily_note_sent를 아이별 events.daily_note_id에 연결한다. 상태 변경과 같은 트랜잭션이다. |
+| ⑥ 보존 | ready는 내용·확인자·시각·검사 항목을 그대로 둔다. draft·needs_check 중 content ≠ ai_original이거나 daily_note_edited 이력이 있으면 모두 보존한다. 나머지는 새 초안·새 확인 ID·새 ai_original로 갱신하고 기존 알림장 ID는 유지한다. 실행 중 생긴 수정·확인도 저장 직전에 다시 검사한다. 아직 없는 아이의 초안은 새로 저장한다. |
+| ⑦ 복구·동시성 | failed는 재접수한다. queued·running은 시작 후 DAILY_NOTE_WRITER_TIMEOUT(기본 300초) 안이면 현재 상태만 돌려주고 작성기를 다시 부르지 않는다. 접수 시각(대기 중)·실행 시각은 반 묶음 카드 draft.draft_started_at으로 판단하며 기록이 없는 옛 입력은 created_at을 쓴다. 제한을 넘으면 다시 받고 이전 실행의 늦은 성공·실패는 버린다. 재생성 도중 교사 수정·확인도 보존한다. |
+| ⑧ 이력 | 최초·재생성 저장은 daily_note_drafted, 내용이 실제로 바뀐 PATCH만 daily_note_edited, 확인은 daily_note_confirmed, 보내기는 daily_note_sent를 아이별 events.daily_note_id에 연결한다. 확인 취소는 기존 returned로 ready→draft를 남긴다. 빈 PATCH·확인 항목 해소만으로는 edited 이력을 남기지 않는다. 검사 해소로 needs_check→draft가 되면 기존 checked로 상태 변화를 남긴다. 재생성 요청자는 반 묶음 카드 draft.regenerated_by와 새 drafted 이력 detail.regenerated_by에 저장한다. 상태 변경과 같은 트랜잭션이다. |
 
-`daily_notes.ai_original`은 처음 저장한 AI 초안이다. PATCH·재생성으로 바꾸지 않으며 기존 공개 NoteView에는 추가하지 않는다. 0003 이전 행은 마이그레이션 시점의 content로 채운다. 그 전에 사라진 초안을 복원했다는 뜻은 아니다. 말투 규칙 추출은 기억 AI가 이 원본과 수정 결과를 이용해 맡는다. 백엔드는 저장·조회·이력만 제공한다.
+`daily_notes.ai_original`은 선생님이 받은 마지막 AI 초안이다. 선생님의 PATCH·확인·발송으로는 바꾸지 않고, 수정하지 않은 미확인 알림장을 재생성해 저장할 때 새 초안으로 갱신한다. 기존 공개 NoteView에는 추가하지 않는다. 0003 이전 행은 마이그레이션 시점의 content로 채운다. 그 전에 사라진 초안을 복원했다는 뜻은 아니다. 말투 규칙 추출은 기억 AI가 이 원본과 수정 결과를 이용해 맡는다. 백엔드는 저장·조회·이력만 제공한다.
 
 ## 4. 검증과 권한 규칙
 
@@ -1558,7 +1558,7 @@ def decide(card_id: UUID, body: CardDecision, user: User = Depends(current_staff
 | `slots[].period` · `booking.period` | `consultation_slots.period` · `consultation_bookings.period` | `tstzrange` ↔ `{ start, end }` |
 | `booking.room` | `rooms.name` | `consultation_bookings.room_id`로 이어 이름을 줌 |
 | `draft_status` · `input_id` | `daily_note_inputs.draft_status` · `id` | 같음 |
-| 최초 AI 초안(내부 저장) | `daily_notes.ai_original` | 0003. 최초 저장 뒤 수정·재생성으로 바꾸지 않음. 기존 행은 적용 시점 content로 채움 |
+| 마지막 AI 초안(내부 저장) | `daily_notes.ai_original` | 0003. 교사 수정은 원본을 바꾸지 않으며 수정하지 않은 미확인 초안 재생성 때 갱신함. 기존 행은 적용 시점 content로 채움 |
 | 알림장 상태 이력 | `events.daily_note_id` | 기관 복합 FK. daily_note_drafted·daily_note_edited·daily_note_confirmed·daily_note_sent |
 | 내 기억 목록·삭제 | `memories` | owner_id=본인, deleted_at 비어 있는 행. 삭제는 deleted_at 표시 |
 | `child_memos[]` | `daily_note_inputs.child_memos` | 0002에서 추가한 jsonb NOT NULL DEFAULT '[]'::jsonb, 배열 CHECK. 아이 UUID·중복·소속·메모 길이는 API가 검사함(DDL·DB 설계서 v0.8) |
@@ -1637,3 +1637,4 @@ MVP 설정값은 서버 설정(`.env`)으로 관리한다. `.env.example`에는 
 | v0.4 | 2026-11-20 | 알림장 아이별 child_memos, child 줄, 확인 항목 kind 8값·sentence·선택 request_id, API 30 반 아이 목록을 추가함. 모의 API·OpenAPI를 맞추고 반·교사 이름은 develop 기준으로 유지함. PR #262 별빛반 명단 18명은 C4-NN → 54NN으로 맞춤. 아이 입력에 그날 보호자 requests를 더하고 request_missed 누락 예시·요청 출처 줄·문의와 귀가 시드 두 개를 연결함. T10 v0.9·0002 저장 열·PATCH child 허용 값을 대조함 | 태웅 |
 | v0.4.1 | 2026-11-20 | 보호자 문의 줄 inquiry를 추가해 반 공통 day와 구분함. inquiry 출처는 request이며 수정·조회·모의 API·OpenAPI·T10 v0.10을 맞춤. 초안 제한 300초·동시성 설정을 반영함 | 태웅 |
 | v0.5 | 2026-11-20 | 0003 알림장 최초 원본·아이별 이력, API 31·32 내 기억 조회·삭제, API 33 미확인 초안 재생성·실패/중단 복구를 추가함. T10 v0.11·모의·DB·OpenAPI를 맞춤 | 태웅 |
+| v0.5.1 | 2026-11-20 | 재생성 때 마지막 AI 초안을 저장하고 교사 수정본을 보존함. kept_edited·실행 중 재요청 재사용·요청자 기록·수정/확인 취소 이력을 구분함. T10 v0.12·모의·DB·OpenAPI를 맞춤 | 태웅 |

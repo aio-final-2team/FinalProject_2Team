@@ -2,7 +2,7 @@
 
 태웅 담당 T19 마이그레이션입니다. SQLAlchemy 2.0 Core·psycopg 3·Alembic을 씁니다. 표 정의는 SQL에만 두고 ORM 모델은 만들지 않습니다.
 
-`sql/0001_initial.sql`은 `Docs/Step2/db_schema_draft.sql` v0.7의 적용본입니다. 머리 주석만 바꿨습니다. 초기 적용은 표 27개·뷰 2개·트리거 2개·FK 57개·컬럼 266개를 만듭니다. 0002는 아이별 메모 `daily_note_inputs.child_memos`와 배열 CHECK를 더해요. 0003은 최초 초안 ai_original·아이별 events.daily_note_id와 알림장 이력 네 종류를 더해요. 현재 head는 0003이고 설계 DDL v0.9와 같아요. head는 표 27개·뷰 2개·트리거 2개·FK 58개·컬럼 269개예요. Alembic 관리 표와 확장 객체는 이 수에서 빼요.
+`sql/0001_initial.sql`은 `Docs/Step2/db_schema_draft.sql` v0.7의 적용본입니다. 머리 주석만 바꿨습니다. 초기 적용은 표 27개·뷰 2개·트리거 2개·FK 57개·컬럼 266개를 만듭니다. 0002는 아이별 메모 `daily_note_inputs.child_memos`와 배열 CHECK를 더해요. 0003은 AI 초안 ai_original·아이별 events.daily_note_id와 알림장 이력 네 종류를 더해요. 현재 head는 0003이고 설계 DDL v0.9와 같아요. head는 표 27개·뷰 2개·트리거 2개·FK 58개·컬럼 269개예요. Alembic 관리 표와 확장 객체는 이 수에서 빼요.
 
 저장소 루트에서 실행합니다. `DATABASE_URL`은 **앱 전용 DB** 주소를 넣습니다. 중앙 automation DB를 쓰면 안 됩니다.
 
