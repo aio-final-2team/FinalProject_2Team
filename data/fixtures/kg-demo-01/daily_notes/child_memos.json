@@ -1,0 +1,548 @@
+{
+  "notice": "※ 유치온 개발·평가용 가상 자료입니다. 실제 기관·인물·아동 정보가 아닙니다.",
+  "classroom_key": "C4",
+  "count": 90,
+  "empty_count": 12,
+  "memos": [
+    {
+      "note_date": "2026-11-16",
+      "child_key": "C4-01",
+      "memo": "낙엽 콜라주 집중, 빨간 잎 많이 붙임. 점심 다 먹음",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-16",
+      "child_key": "C4-02",
+      "memo": "",
+      "trap_case": "ND-04"
+    },
+    {
+      "note_date": "2026-11-16",
+      "child_key": "C4-03",
+      "memo": "점심 조금 먹음",
+      "trap_case": "ND-01"
+    },
+    {
+      "note_date": "2026-11-16",
+      "child_key": "C4-04",
+      "memo": "바깥놀이 미끄럼틀 여러 번. 낮잠 잘 잠",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-16",
+      "child_key": "C4-05",
+      "memo": "콜라주 친구 도와줌. 간식 바나나 더 달라고 함",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-16",
+      "child_key": "C4-06",
+      "memo": "놀이터에서 넘어져 무릎 살짝 긁힘, 소독함",
+      "trap_case": "ND-06"
+    },
+    {
+      "note_date": "2026-11-16",
+      "child_key": "C4-07",
+      "memo": "블록놀이",
+      "trap_case": "ND-03"
+    },
+    {
+      "note_date": "2026-11-16",
+      "child_key": "C4-08",
+      "memo": "낮잠 짧게 잠(20분). 오후 기분 좋음",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-16",
+      "child_key": "C4-09",
+      "memo": "점심 다 먹음, 김치도 먹어 봄",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-16",
+      "child_key": "C4-10",
+      "memo": "콜라주 대신 그림 그리기 원해서 그림 그림",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-16",
+      "child_key": "C4-11",
+      "memo": "",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-16",
+      "child_key": "C4-12",
+      "memo": "화장실 실수 1번, 여벌옷으로 갈아입힘",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-16",
+      "child_key": "C4-13",
+      "memo": "아침에 울면서 등원, 10분 뒤 괜찮아짐",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-16",
+      "child_key": "C4-14",
+      "memo": "점심 반 남김. 낮잠 잘 잠",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-16",
+      "child_key": "C4-15",
+      "memo": "모래놀이 오래 함",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-16",
+      "child_key": "C4-16",
+      "memo": "콜라주 발표 때 처음 손 들고 말함",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-16",
+      "child_key": "C4-17",
+      "memo": "점심X 간식O",
+      "trap_case": "ND-18"
+    },
+    {
+      "note_date": "2026-11-16",
+      "child_key": "C4-18",
+      "memo": "낮잠 안 잠",
+      "trap_case": "ND-02"
+    },
+    {
+      "note_date": "2026-11-17",
+      "child_key": "C4-01",
+      "memo": "배추 냄새 맡아 보고 웃음. 탬버린 담당",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-17",
+      "child_key": "C4-02",
+      "memo": "식사 다 먹음",
+      "trap_case": "ND-05"
+    },
+    {
+      "note_date": "2026-11-17",
+      "child_key": "C4-03",
+      "memo": "점심 다 먹음. 낮잠 잘 잠",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-17",
+      "child_key": "C4-04",
+      "memo": "",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-17",
+      "child_key": "C4-05",
+      "memo": "리듬악기 놀이 때 북 치기 즐거워함",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-17",
+      "child_key": "C4-06",
+      "memo": "어제 무릎 상처 확인, 아프지 않다고 함. 점심 다 먹음",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-17",
+      "child_key": "C4-07",
+      "memo": "배추 잎 10장까지 셈",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-17",
+      "child_key": "C4-08",
+      "memo": "미열 37.6 오후 2시, 보호자 통화함",
+      "trap_case": "ND-07"
+    },
+    {
+      "note_date": "2026-11-17",
+      "child_key": "C4-09",
+      "memo": "깍두기 안 먹음, 나머지 다 먹음",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-17",
+      "child_key": "C4-10",
+      "memo": "친구 장난감 뺏음, 지도함",
+      "trap_case": "ND-11"
+    },
+    {
+      "note_date": "2026-11-17",
+      "child_key": "C4-11",
+      "memo": "무 만져 보고 '차가워' 함. 낮잠 잘 잠",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-17",
+      "child_key": "C4-12",
+      "memo": "간식 고구마 다 먹음",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-17",
+      "child_key": "C4-13",
+      "memo": "지아랑 블록 다툼, 화해함",
+      "trap_case": "ND-09"
+    },
+    {
+      "note_date": "2026-11-17",
+      "child_key": "C4-14",
+      "memo": "",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-17",
+      "child_key": "C4-15",
+      "memo": "악기 정리 스스로 함",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-17",
+      "child_key": "C4-16",
+      "memo": "낮잠 30분 잠",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-17",
+      "child_key": "C4-17",
+      "memo": "점심 다 먹음. 리듬 놀이 박자 잘 맞춤",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-17",
+      "child_key": "C4-18",
+      "memo": "배추 그림 그림",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-18",
+      "child_key": "C4-01",
+      "memo": "블록으로 우리 집 만듦. 점심 다 먹음",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-18",
+      "child_key": "C4-02",
+      "memo": "노래 시간에 참여 안 함, 구석에서 책 봄",
+      "trap_case": "ND-16"
+    },
+    {
+      "note_date": "2026-11-18",
+      "child_key": "C4-03",
+      "memo": "",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-18",
+      "child_key": "C4-04",
+      "memo": "카레 더 먹음",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-18",
+      "child_key": "C4-05",
+      "memo": "하루 종일 울음, 엄마 찾음",
+      "trap_case": "ND-12"
+    },
+    {
+      "note_date": "2026-11-18",
+      "child_key": "C4-06",
+      "memo": "블록 동네에 다리 만듦",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-18",
+      "child_key": "C4-07",
+      "memo": "노래 가사 금방 외움",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-18",
+      "child_key": "C4-08",
+      "memo": "결석(보호자 연락: 미열)",
+      "trap_case": "ND-17"
+    },
+    {
+      "note_date": "2026-11-18",
+      "child_key": "C4-09",
+      "memo": "블록 무너져 속상해함, 다시 쌓음",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-18",
+      "child_key": "C4-10",
+      "memo": "오늘은 친구와 잘 놀았음",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-18",
+      "child_key": "C4-11",
+      "memo": "점심 반 남김, 계란국은 다 먹음",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-18",
+      "child_key": "C4-12",
+      "memo": "약 먹임(투약의뢰서, 점심 후)",
+      "trap_case": "ND-08"
+    },
+    {
+      "note_date": "2026-11-18",
+      "child_key": "C4-13",
+      "memo": "블록 동네 경찰서 만듦",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-18",
+      "child_key": "C4-14",
+      "memo": "말 안 들음",
+      "trap_case": "ND-13"
+    },
+    {
+      "note_date": "2026-11-18",
+      "child_key": "C4-15",
+      "memo": "",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-18",
+      "child_key": "C4-16",
+      "memo": "낮잠 잘 잠",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-18",
+      "child_key": "C4-17",
+      "memo": "노래 율동 앞에서 시범 보임",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-18",
+      "child_key": "C4-18",
+      "memo": "단무지 안 먹음",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-19",
+      "child_key": "C4-01",
+      "memo": "",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-19",
+      "child_key": "C4-02",
+      "memo": "김장 이야기 때 손 들고 말함. 점심 다 먹음",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-19",
+      "child_key": "C4-03",
+      "memo": "내일 상담 때 이야기",
+      "trap_case": "ND-14"
+    },
+    {
+      "note_date": "2026-11-19",
+      "child_key": "C4-04",
+      "memo": "앞치마 내일",
+      "trap_case": "ND-15"
+    },
+    {
+      "note_date": "2026-11-19",
+      "child_key": "C4-05",
+      "memo": "오늘은 웃으며 등원. 바깥놀이 술래잡기",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-19",
+      "child_key": "C4-06",
+      "memo": "",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-19",
+      "child_key": "C4-07",
+      "memo": "불고기 다 먹음, 시금치는 남김",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-19",
+      "child_key": "C4-08",
+      "memo": "등원함. 열 없음. 점심 조금 먹음",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-19",
+      "child_key": "C4-09",
+      "memo": "엄마가 이혼 얘기함",
+      "trap_case": "ND-20"
+    },
+    {
+      "note_date": "2026-11-19",
+      "child_key": "C4-10",
+      "memo": "줄넘기 3번 넘음",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-19",
+      "child_key": "C4-11",
+      "memo": "김장 체험 기대된다고 함",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-19",
+      "child_key": "C4-12",
+      "memo": "약 먹임(투약의뢰서, 점심 후)",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-19",
+      "child_key": "C4-13",
+      "memo": "블록 정리 먼저 함",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-19",
+      "child_key": "C4-14",
+      "memo": "바깥놀이 후 손 씻기 스스로 함",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-19",
+      "child_key": "C4-15",
+      "memo": "점심 다 먹음. 낮잠 잘 잠",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-19",
+      "child_key": "C4-16",
+      "memo": "",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-19",
+      "child_key": "C4-17",
+      "memo": "술래잡기 하다 넘어질 뻔, 안 다침",
+      "trap_case": "ND-19"
+    },
+    {
+      "note_date": "2026-11-19",
+      "child_key": "C4-18",
+      "memo": "떡 간식 잘 먹음",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-20",
+      "child_key": "C4-01",
+      "memo": "생일잔치 때 친구에게 카드 줌",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-20",
+      "child_key": "C4-02",
+      "memo": "",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-20",
+      "child_key": "C4-03",
+      "memo": "점심 다 먹음",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-20",
+      "child_key": "C4-04",
+      "memo": "안전교육 때 장갑 끼는 법 따라 함",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-20",
+      "child_key": "C4-05",
+      "memo": "웃으며 등원. 점심 다 먹음",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-20",
+      "child_key": "C4-06",
+      "memo": "생일 노래 큰 소리로 부름",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-20",
+      "child_key": "C4-07",
+      "memo": "",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-20",
+      "child_key": "C4-08",
+      "memo": "점심 다 먹음. 낮잠 잘 잠",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-20",
+      "child_key": "C4-09",
+      "memo": "귤 2개 먹음",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-20",
+      "child_key": "C4-10",
+      "memo": "친구에게 먼저 사과함",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-20",
+      "child_key": "C4-11",
+      "memo": "안전교육 후 횡단보도 그림 그림",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-20",
+      "child_key": "C4-12",
+      "memo": "약 먹임 마지막 날(투약의뢰서)",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-20",
+      "child_key": "C4-13",
+      "memo": "지아 점심 다 먹음",
+      "trap_case": "ND-10"
+    },
+    {
+      "note_date": "2026-11-20",
+      "child_key": "C4-14",
+      "memo": "생일잔치 케이크 모형 만들기",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-20",
+      "child_key": "C4-15",
+      "memo": "볶음밥 더 먹음",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-20",
+      "child_key": "C4-16",
+      "memo": "낮잠 안 자고 조용히 책 봄",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-20",
+      "child_key": "C4-17",
+      "memo": "",
+      "trap_case": null
+    },
+    {
+      "note_date": "2026-11-20",
+      "child_key": "C4-18",
+      "memo": "안전교육 때 질문함('눈 오면 어떡해요?')",
+      "trap_case": null
+    }
+  ]
+}
