@@ -7,7 +7,7 @@
 - 앱: React, Capacitor Android
 - API: FastAPI, Pydantic
 - 업무 흐름: LangGraph
-- 원장 현황·평가: Streamlit
+- 웹 화면: React, Nginx
 - 데이터: PostgreSQL, pgvector
 - 도구 연결: MCP, 서비스 내 알림은 백엔드에서 직접 처리
 - 개발·배포: Docker Compose, AWS EC2 우선

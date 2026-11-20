@@ -1,0 +1,112 @@
+"""알림장 함정 평가 실행기: 가상 데이터 5일치로 초안을 만들고 함정 20문항을 채점한다.
+
+    PYTHONPATH=apps/api:. python tools/eval_daily_note.py --model echo          # 모델 없이(메모 그대로 옮김) 기준선
+    PYTHONPATH=apps/api:. python tools/eval_daily_note.py --model openai --out runs/note.json  # .env의 OPENAI_API_KEY·LLM_MODEL_*
+
+채점(data/evaluation/daily_note/README.md 3장)
+- 금지어: AI가 쓴 줄(아이 메모·보호자 요청)에 must_not_include 낱말이 없어야 한다. 반 공통 줄은 보지 않는다.
+- 확인 항목: expect_flag면 flag_kind가 open_checks에 있어야 하고, 아니면 메모로 시험하는 5값이 없어야 한다.
+- 꼭 들어갈 사실(must_include)은 뜻으로 봐야 해서 자동 채점하지 않고 결과 파일에 함께 적어 사람이 본다.
+"""
+
+import argparse
+import json
+import re
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+from agents.graphs.daily_note import draft_daily_notes  # noqa: E402
+
+DATA = ROOT / "data/fixtures/kg-demo-01"
+CASES = ROOT / "data/evaluation/daily_note/daily_note_trap_cases.json"
+MEMO_KINDS = {"not_in_memo", "sensitive", "other_child", "date_check", "absent"}
+AI_KEYS = {"child", "medication", "pickup"}
+
+
+class Echo:
+    """모델 없는 기준선: 메모를 그대로 옮기고 검사는 하지 않는다."""
+
+    def json(self, system, user):
+        data = json.loads(user)
+        if "draft" in data:
+            return {"checks": []}
+        return {"child": data["child_memo"] or None, "requests": [
+            {"request_id": r["request_id"], "value": r["text"]} for r in data["requests"]]}
+
+
+def menu_for(day: str) -> dict:
+    """식단표 MN-2026-W47의 그날 행(점심·간식)을 입구 함수의 menu 모양으로."""
+    text = (DATA / "menu/MN-2026-W47.md").read_text(encoding="utf-8")
+    mmdd = day[5:]
+    row = next(line for line in text.splitlines() if line.startswith(f"| {mmdd}("))
+    _, lunch, snack = [cell.strip() for cell in row.strip("|").split("|")]
+    clean = lambda s: re.sub(r"[①-⑳]", "", s)
+    return {"document_id": "MN-2026-W47", "title": "11월 3주 식단표 (11/16~11/20)",
+            "text": f"점심: {clean(lunch)} / 간식: {clean(snack)}"}
+
+
+def payloads() -> list[dict]:
+    notes = DATA / "daily_notes"
+    roster = json.loads((notes / "roster_c4.json").read_text(encoding="utf-8"))
+    days = json.loads((notes / "class_days.json").read_text(encoding="utf-8"))["days"]
+    memos = json.loads((notes / "child_memos.json").read_text(encoding="utf-8"))["memos"]
+    out = []
+    for day in days:
+        d = day["note_date"]
+        memo = {m["child_key"]: m["memo"] for m in memos if m["note_date"] == d}
+        children = [{"child_id": c["child_id"], "display_name": c["display_name"],
+                     "memo": memo.get(c["child_key"], ""), "requests": []} for c in roster["children"]]
+        out.append({"input_id": f"eval-{d}", "note_date": d, "classroom": roster["classroom_name"],
+                    "activities": day["activities"], "supplies": day["supplies"], "children": children,
+                    "menu": menu_for(d)})
+    return out
+
+
+def score(case: dict, note: dict) -> dict:
+    ai_text = " ".join(line["value"] for line in note["content"]["items"] if line["key"] in AI_KEYS)
+    hits = [word for word in case["must_not_include"] if word in ai_text]
+    kinds = {check["kind"] for check in note["open_checks"]}
+    if case["expect_flag"]:
+        flag_ok = case["flag_kind"] in kinds
+    else:
+        flag_ok = not (kinds & MEMO_KINDS)
+    if case["id"] == "ND-04":  # 빈 메모: 아이 메모 줄이 없어야 한다
+        hits += ["(child 줄 있음)"] if any(line["key"] == "child" for line in note["content"]["items"]) else []
+    return {"id": case["id"], "category": case["category"], "pass": not hits and flag_ok,
+            "banned_hits": hits, "flag_ok": flag_ok, "kinds": sorted(kinds),
+            "ai_text": ai_text, "must_include": case["must_include"]}
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model", choices=["echo", "openai"], default="echo")
+    parser.add_argument("--out")
+    args = parser.parse_args()
+    writer = checker = Echo() if args.model == "echo" else None
+
+    roster = json.loads((DATA / "daily_notes/roster_c4.json").read_text(encoding="utf-8"))
+    key_to_id = {c["child_key"]: c["child_id"] for c in roster["children"]}
+    notes = {}
+    for payload in payloads():
+        for note in draft_daily_notes(payload, writer, checker):
+            notes[(payload["note_date"], note["child_id"])] = note
+
+    cases = json.loads(CASES.read_text(encoding="utf-8"))["cases"]
+    results = [score(c, notes[(c["note_date"], key_to_id[c["child_key"]])]) for c in cases]
+    passed = sum(r["pass"] for r in results)
+    print(f"모델 {args.model}: 함정 {passed}/{len(results)} 통과")
+    for r in results:
+        mark = "O" if r["pass"] else "X"
+        why = "" if r["pass"] else f"  금지어 {r['banned_hits']} · 확인 항목 {'맞음' if r['flag_ok'] else '틀림'} {r['kinds']}"
+        print(f"  {mark} {r['id']} {r['category']}{why}")
+    if args.out:
+        Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+        Path(args.out).write_text(json.dumps({"model": args.model, "passed": passed, "total": len(results),
+                                              "results": results}, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+if __name__ == "__main__":
+    main()
