@@ -23,6 +23,8 @@ def enqueue(connection, event, req, recipient_id, kind, body=None):
 
 
 def notify_event(connection, event, req, card):
+    if req is None:
+        return
     to, action = event["to_status"], event["action"]
     parent_kinds = {"needs_info": "needs_info", "on_hold": "on_hold", "sent_or_booked": "sent_or_booked",
                     "rejected": "rejected"}
@@ -54,3 +56,29 @@ def notify_event(connection, event, req, card):
         if action != "resumed" or automatic:
             enqueue(connection, event, req, card["assignee_id"] if card else req["assignee_id"],
                     "hold_resumed" if automatic else "new_card")
+
+
+def listing(user, page, size, sort):
+    from app.core.db import transaction
+    with transaction() as connection:
+        # 발송기는 워커에서 연결해요. 노출은 기존 계약의 deliver_after를 기준으로 해요.
+        rows = [dict(row) for row in connection.execute(text('''
+            SELECT * FROM notifications WHERE org_id=:org AND recipient_id=:user AND deliver_after<=now()
+            ORDER BY created_at,id
+        '''), {'org': user.org_id, 'user': user.id}).mappings()]
+        if sort.startswith('-'):
+            rows.reverse()
+        return {'items': rows[(page-1)*size:page*size], 'total': len(rows), 'page': page, 'size': size}
+
+
+def read(user, notification_id):
+    from app.core.db import transaction
+    from app.core import scope
+    with transaction() as connection:
+        row = connection.execute(text('''
+            UPDATE notifications SET read_at=coalesce(read_at,clock_timestamp())
+            WHERE id=:id AND org_id=:org AND recipient_id=:user AND deliver_after<=now() RETURNING *
+        '''), {'id': notification_id, 'org': user.org_id, 'user': user.id}).mappings().one_or_none()
+        if row is None:
+            scope._checked(user, None, False, "notification", notification_id)
+        return dict(row)

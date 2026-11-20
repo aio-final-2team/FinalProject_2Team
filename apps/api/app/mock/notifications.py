@@ -80,4 +80,10 @@ def read(user, notification_id):
         if notification is None:
             store.deny(user)
         notification.read_at = notification.read_at or store.now()
-        return notification
+        return notification.__dict__
+
+
+def listing(user, page, size, sort):
+    rows = sorted(visible(user), key=lambda row: row.created_at, reverse=sort.startswith('-'))
+    return {'items': [row.__dict__ for row in rows[(page-1)*size:page*size]],
+            'total': len(rows), 'page': page, 'size': size}

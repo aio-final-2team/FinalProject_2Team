@@ -1,6 +1,6 @@
--- 유치온 DB 스키마 초안 (T09) · 문서 버전 v0.9 (알림장 원본·이력 11/20 반영)
+-- 유치온 DB 스키마 초안 (T09) · 문서 버전 v0.10 (민원 회신 후 받은함 분류 11/20 반영)
 -- 설계서: Docs/Step2/DB_스키마_설계서.md
--- 이 파일은 최종 설계 모양이다. 실제 적용은 apps/api/migrations의 0001 → 0002 → 0003으로 한다.
+-- 이 파일은 최종 설계 모양이다. 실제 적용은 apps/api/migrations의 0001 → 0002 → 0003 → 0004로 한다.
 -- 대상: PostgreSQL 16 + pgvector 0.8 (compose.yaml의 pgvector/pgvector:pg16). Supabase는 쓰지 않는다(설계서 5.1)
 -- 기관 경계: 기관에 속한 표끼리는 (id, org_id) 짝으로 참조해서 다른 원 행을 섞어 넣으면 DB가 거부한다
 
@@ -663,7 +663,10 @@ SELECT
     r.parent_confirmed_at,
     (r.risk_level = 'urgent') IS TRUE AS is_urgent,
     CASE
-        WHEN c.status IN ('rejected', 'done') OR r.status IN ('completed', 'rejected')
+        WHEN (c.status IN ('rejected', 'done') AND NOT (
+                r.type = 'complaint' AND r.status = 'sent_or_booked'
+                AND c.kind = 'reply_draft' AND c.status <> 'rejected') IS TRUE)
+          OR r.status IN ('completed', 'rejected')
             THEN 'done'
         WHEN c.status = 'on_hold' OR r.status = 'on_hold'
             THEN 'on_hold'

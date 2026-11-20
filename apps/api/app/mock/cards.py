@@ -248,3 +248,9 @@ def rule_decision(user, rule_id, body):
         store.add_event(None, "approved" if body.decision == "activate" else "rejected", card=card,
                         actor_type="user", actor_id=user.id)
         return {"rule": {"id": rule.id, "status": rule.status}}
+
+
+def stream(user, card_id):
+    from app.api.streams import stream as replay
+    card = in_scope(user, card_id)
+    return replay(store.get_request(card.request_id), card)

@@ -15,7 +15,7 @@ def record(connection, req, action, *, card=None, actor_type="system", actor_id=
                             from_status,to_status,detail)
         VALUES (:org,:request,:card,:actor_type,:actor,:agent,:action,:from_status,:to_status,CAST(:detail AS jsonb))
         RETURNING *
-    """), {"org": req["org_id"], "request": req["id"], "card": card["id"] if card else None,
+    """), {"org": req["org_id"] if req else card["org_id"], "request": req["id"] if req else None, "card": card["id"] if card else None,
            "actor_type": actor_type, "actor": actor_id, "agent": agent_name, "action": action,
            "from_status": from_status, "to_status": to_status,
            "detail": json.dumps({"trace_id": active_trace_id.get(), **detail})}).mappings().one())

@@ -199,7 +199,7 @@ def test_wrong_role_is_403_before_pending_workflow(db_client, login_id, path):
 
 def test_unimplemented_workflows_never_use_mock(db_client, records):
     user = users.get_user(seed.TEACHER)
-    response = db_client.get(f"/api/v1/cards/{records['local_card']}",
+    response = db_client.post(f"/api/v1/cards/{records['local_card']}/bookings",
                              headers={"Authorization": "Bearer " + issue_token(user)})
     assert response.status_code == 501 and response.json()["error"]["code"] == "NOT_IMPLEMENTED"
 
@@ -241,20 +241,10 @@ def test_parent_note_classroom_filter_does_not_deny_or_log(db_client, records, s
 
 @pytest.mark.parametrize("method,path,actor", [
     ("POST", "/requests/{local_request}/slot-choices", seed.PARENT),
-    ("GET", "/cards", seed.TEACHER),
-    ("GET", "/cards/{local_card}", seed.TEACHER),
-    ("GET", "/cards/{local_card}/stream", seed.TEACHER),
-    ("POST", "/cards/{local_card}/decisions", seed.TEACHER),
-    ("POST", "/cards/{local_card}/reclassify", seed.TEACHER),
     ("POST", "/cards/{local_card}/bookings", seed.TEACHER),
-    ("POST", "/cards/{local_card}/instructions", seed.DIRECTOR),
-    ("POST", "/cards/{local_card}/reassign", seed.DIRECTOR),
     ("POST", "/memory-rules/{local_card}/decision", seed.TEACHER),
-    ("GET", "/overview", seed.DIRECTOR),
     ("POST", "/documents", seed.TEACHER),
     ("GET", "/documents/{local_card}", seed.TEACHER),
-    ("GET", "/notifications", seed.PARENT),
-    ("POST", "/notifications/1/read", seed.PARENT),
 ])
 def test_pending_endpoints_fail_closed(db_client, records, method, path, actor):
     path = path.format(**records, local_class=seed.CLASS_STAR)
@@ -285,8 +275,8 @@ def test_pending_guard_leaves_validation_to_the_declared_route(db_client):
         response = db_client.get("/api/v1" + path, headers=headers)
         assert response.status_code == 422
         assert response.json()["error"]["code"] == "VALIDATION_FAILED"
-    # 선언하지 않은 쿼리는 mock처럼 무시하고, 미구현 업무 경계는 그대로 둔다.
-    assert db_client.get("/api/v1/cards?classroom_id=not-a-uuid", headers=headers).status_code == 501
+    # 선언하지 않은 쿼리는 mock처럼 무시해요. 받은함은 T27-b에서 연결했어요.
+    assert db_client.get("/api/v1/cards?classroom_id=not-a-uuid", headers=headers).status_code == 200
 
 
 @pytest.fixture

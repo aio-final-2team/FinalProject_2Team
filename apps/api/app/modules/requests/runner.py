@@ -39,7 +39,8 @@ def sweep_missing_cards(now):
     with transaction() as connection:
         rows = connection.execute(text("""
             SELECT * FROM requests r
-            WHERE status IN ('received','classified','assigned') AND created_at<:now-interval '5 minutes'
+            WHERE type IN ('inquiry','consultation','complaint')
+              AND status IN ('received','classified','assigned') AND created_at<:now-interval '5 minutes'
               AND NOT EXISTS (SELECT 1 FROM cards c WHERE c.request_id=r.id)
             ORDER BY r.id FOR UPDATE OF r SKIP LOCKED
         """), {"now": now}).mappings().all()
