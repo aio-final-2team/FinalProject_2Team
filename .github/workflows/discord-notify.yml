@@ -1,0 +1,148 @@
+name: Discord Notifications
+
+# Discord에는 GitHub 이벤트의 제목, 작성자, 링크만 보냅니다.
+# pull_request_target은 fork PR에서도 secret을 읽을 수 있으므로 사용하지만,
+# 외부 코드를 checkout하거나 실행하지 않아 untrusted PR 코드에 secret이 노출되지 않습니다.
+on:
+  pull_request_target:
+    types: [opened, reopened, ready_for_review, synchronize, closed]
+  issues:
+    types: [opened, reopened, closed]
+  push:
+    branches: [main, develop]
+  workflow_run:
+    workflows: ["Pull Request Image Builds"]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+  actions: read
+
+concurrency:
+  group: discord-${{ github.event_name }}-${{ github.event.pull_request.number || github.event.issue.number || github.event.workflow_run.id || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  notify:
+    name: Send event to Discord
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Discord notification
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          EVENT_JSON: ${{ github.event_path }}
+          EVENT_NAME: ${{ github.event_name }}
+          REPOSITORY: ${{ github.repository }}
+          SERVER_URL: ${{ github.server_url }}
+          RUN_ID: ${{ github.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${DISCORD_WEBHOOK_URL}" ]]; then
+            echo "::error::Repository secret DISCORD_WEBHOOK_URL is not configured."
+            exit 1
+          fi
+
+          case "${EVENT_NAME}" in
+            pull_request_target)
+              action="$(jq -r '.action' "${EVENT_JSON}")"
+              merged="$(jq -r '.pull_request.merged' "${EVENT_JSON}")"
+              number="$(jq -r '.number' "${EVENT_JSON}")"
+              item_title="$(jq -r '.pull_request.title' "${EVENT_JSON}")"
+              actor="$(jq -r '.sender.login' "${EVENT_JSON}")"
+              item_url="$(jq -r '.pull_request.html_url' "${EVENT_JSON}")"
+              branch="$(jq -r '.pull_request.head.ref + " → " + .pull_request.base.ref' "${EVENT_JSON}")"
+              if [[ "${action}" == "closed" && "${merged}" == "true" ]]; then
+                title="PR #${number} merged"
+                color=3066993
+              elif [[ "${action}" == "closed" ]]; then
+                title="PR #${number} closed"
+                color=9807270
+              else
+                title="PR #${number} ${action}"
+                color=3092790
+              fi
+              description="${item_title}"
+              detail="${actor} · ${branch}"
+              ;;
+
+            issues)
+              action="$(jq -r '.action' "${EVENT_JSON}")"
+              number="$(jq -r '.issue.number' "${EVENT_JSON}")"
+              description="$(jq -r '.issue.title' "${EVENT_JSON}")"
+              actor="$(jq -r '.sender.login' "${EVENT_JSON}")"
+              item_url="$(jq -r '.issue.html_url' "${EVENT_JSON}")"
+              title="Issue #${number} ${action}"
+              detail="${actor}"
+              color=10181046
+              ;;
+
+            push)
+              branch="$(jq -r '.ref | sub("refs/heads/"; "")' "${EVENT_JSON}")"
+              actor="$(jq -r '.sender.login' "${EVENT_JSON}")"
+              description="$(jq -r '.head_commit.message // "Branch updated" | split("\n")[0]' "${EVENT_JSON}")"
+              item_url="$(jq -r '.compare' "${EVENT_JSON}")"
+              title="${branch} branch updated"
+              detail="${actor} · $(jq -r '.commits | length' "${EVENT_JSON}") commit(s)"
+              color=3447003
+              ;;
+
+            workflow_run)
+              workflow_name="$(jq -r '.workflow_run.name' "${EVENT_JSON}")"
+              conclusion="$(jq -r '.workflow_run.conclusion // "unknown"' "${EVENT_JSON}")"
+              branch="$(jq -r '.workflow_run.head_branch' "${EVENT_JSON}")"
+              actor="$(jq -r '.workflow_run.actor.login' "${EVENT_JSON}")"
+              item_url="$(jq -r '.workflow_run.html_url' "${EVENT_JSON}")"
+              title="CI ${conclusion}"
+              description="${workflow_name}"
+              detail="${actor} · ${branch}"
+              if [[ "${conclusion}" == "success" ]]; then color=3066993; else color=15158332; fi
+              ;;
+
+            workflow_dispatch)
+              title="Discord notification test"
+              description="GitHub Actions에서 보낸 테스트 알림입니다."
+              detail="${GITHUB_ACTOR} · ${REPOSITORY}"
+              item_url="${SERVER_URL}/${REPOSITORY}/actions/runs/${RUN_ID}"
+              color=3092790
+              ;;
+
+            *)
+              echo "::error::Unsupported event: ${EVENT_NAME}"
+              exit 1
+              ;;
+          esac
+
+          payload="$(jq -n \
+            --arg username "유치온 GitHub" \
+            --arg title "${title}" \
+            --arg description "${description}" \
+            --arg url "${item_url}" \
+            --arg detail "${detail}" \
+            --arg repo "${REPOSITORY}" \
+            --argjson color "${color}" \
+            '{
+              username: $username,
+              allowed_mentions: {parse: []},
+              embeds: [{
+                title: $title,
+                description: $description,
+                url: $url,
+                color: $color,
+                fields: [
+                  {name: "Repository", value: $repo, inline: true},
+                  {name: "Details", value: $detail, inline: true}
+                ],
+                timestamp: (now | todate)
+              }]
+            }')"
+
+          curl --fail-with-body --silent --show-error \
+            --retry 3 --retry-all-errors \
+            -H "Content-Type: application/json" \
+            -d "${payload}" \
+            "${DISCORD_WEBHOOK_URL}?wait=true"
