@@ -37,6 +37,21 @@ def test_initial_sql_is_immutable():
     assert sha256(applied).hexdigest() == "0aa90b95c718f50240e05ebf04aafc14cfe2a2f35e11a56016d9a412f6e155ee"
 
 
+@pytest.mark.parametrize("value,valid", [(None, True), ("0.05", True), ("0", False), ("-1", False),
+                                         ("inf", False), ("nan", False), ("bad", False)])
+def test_writer_timeout_requires_finite_positive_seconds(monkeypatch, value, valid):
+    from app.core.config import load_settings
+    if value is None:
+        monkeypatch.delenv("DAILY_NOTE_WRITER_TIMEOUT", raising=False)
+    else:
+        monkeypatch.setenv("DAILY_NOTE_WRITER_TIMEOUT", value)
+    if valid:
+        assert load_settings().daily_note_writer_timeout == (120 if value is None else float(value))
+    else:
+        with pytest.raises(ValueError):
+            load_settings()
+
+
 @pytest.mark.parametrize("backend", ["mock", "db"])
 @pytest.mark.parametrize("secret,valid_for_db", [
     (None, False),

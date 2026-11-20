@@ -79,24 +79,28 @@ def list_notes(user, note_date, classroom_id, page, size, sort):
             SELECT 1 FROM child_guardians g
             WHERE (g.child_id, g.org_id)=(n.child_id, n.org_id) AND g.user_id=:user)"""
     query = """ FROM daily_notes n JOIN daily_note_inputs i
-                ON (i.id, i.org_id, i.note_date)=(n.input_id, n.org_id, n.note_date) WHERE """ + conditions
+                ON (i.id, i.org_id, i.note_date)=(n.input_id, n.org_id, n.note_date)
+                JOIN children c ON (c.id, c.org_id)=(n.child_id, n.org_id) WHERE """ + conditions
     direction = "DESC" if sort.startswith("-") else "ASC"
     values = {"org": user.org_id, "date": note_date, "class": classroom_id, "user": user.id,
               "limit": size, "offset": (page-1)*size}
     with transaction() as connection:
         total = connection.scalar(text("SELECT count(*)" + query), values)
         items = connection.execute(text("SELECT n.*" + query +
-                                   f" ORDER BY n.created_at {direction}, n.id {direction} LIMIT :limit OFFSET :offset"),
+                                   f" ORDER BY n.created_at {direction}, c.created_at {direction},"
+                                   f" c.id {direction}, n.id {direction} LIMIT :limit OFFSET :offset"),
                                    values).mappings().all()
     return {"items": [view(row) for row in items], "total": total, "page": page, "size": size}
 
 
-def _check_sources(user, content):
+def _check_sources(user, content, child_id):
     if content is None:
         return
     for line in content.items:
         if line.source.type == "request":
-            scope.request_in_scope(user, line.source.request_id)
+            request = scope.request_in_scope(user, line.source.request_id)
+            if request["child_id"] != child_id:
+                raise ApiError(422, "VALIDATION_FAILED", field="content.items[].source.request_id")
         if line.source.type == "document":
             with transaction() as connection:
                 row = connection.execute(text("""
@@ -107,11 +111,13 @@ def _check_sources(user, content):
                 """), {"id": line.source.document_id, "org": user.org_id}).all()
                 allowed = row is not None and (not targets or any(scope._classroom(connection, user, c) for c in targets))
             scope._checked(user, row, allowed, "document", line.source.document_id)
+            if row["visibility"] not in ("parents", "all"):
+                raise ApiError(422, "VALIDATION_FAILED", field="content.items[].source.document_id")
 
 
 def patch(user, note_id, body):
     scoped = scope.note_in_scope(user, note_id)
-    _check_sources(user, body.content)
+    _check_sources(user, body.content, scoped["child_id"])
     with transaction() as connection:
         connection.execute(text("SELECT id FROM daily_note_inputs WHERE id=:id AND org_id=:org FOR UPDATE"),
                            {"id": scoped["input_id"], "org": user.org_id})

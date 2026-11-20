@@ -6,6 +6,7 @@
 출처 PR #269 guardian_requests.json(가상): 20개 요청·16명 보호자도 같은 시드를 쓴다.
 """
 
+import argparse
 from datetime import datetime
 
 from argon2 import PasswordHasher
@@ -16,7 +17,7 @@ from app.core.schedule import KST
 from app.mock import seed
 
 
-def seed_demo(connection):
+def seed_demo(connection, *, refresh_note_requests=False):
     connection.execute(text("""
         INSERT INTO organizations (id, name, is_virtual)
         VALUES (:id, '가상 햇살유치원', true) ON CONFLICT DO NOTHING
@@ -69,9 +70,18 @@ def seed_demo(connection):
             VALUES (:id,:org,:class,:child_id,:requester_id,:key,:type,:body,:now) ON CONFLICT DO NOTHING
         """), {**request, "org": seed.ORG, "class": seed.CLASS_STAR, "key": f"demo:{request['id']}",
                "now": request.get("created_at", datetime.now(KST))})
+    if refresh_note_requests:
+        connection.execute(text("""
+            UPDATE requests SET created_at=:now
+            WHERE org_id=:org AND id=ANY(:ids)
+        """), {"org": seed.ORG, "ids": [r["id"] for r in seed.DEMO_NOTE_REQUESTS], "now": datetime.now(KST)})
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="가상 원 데모 시드")
+    parser.add_argument("--refresh-note-requests", action="store_true",
+                        help="가상 보호자 요청 22개의 접수 시각만 현재로 맞춰요")
+    args = parser.parse_args()
     with transaction() as connection:
-        seed_demo(connection)
+        seed_demo(connection, refresh_note_requests=args.refresh_note_requests)
     print(f"가상 원 시드 완료: 계정 {len(seed.USERS)}개, 비밀번호 demo1234 (이미 있는 행은 유지)")

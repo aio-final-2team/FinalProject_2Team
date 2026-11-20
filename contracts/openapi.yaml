@@ -1423,6 +1423,8 @@ paths:
       tags:
       - 알림장·자료
       summary: Send Notes
+      description: 초안 작업이 queued·running·failed면 409 NOTE_BATCH_BLOCKED, details.blocked=[]로
+        답해요.
       operationId: send_notes_api_v1_daily_notes_send_post
       requestBody:
         content:

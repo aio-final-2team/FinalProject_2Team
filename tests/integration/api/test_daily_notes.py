@@ -197,6 +197,70 @@ def test_failed_writer_job_is_queryable_without_partial_notes(client, teacher, n
     status = client.get(f"{BASE}/daily-notes/drafts/{response.json()['input_id']}", headers=teacher)
     assert status.json()["draft_status"] == "failed" and status.json()["error"]["code"] == "UPSTREAM_UNAVAILABLE"
     assert note_list(client, teacher).json()["items"] == []
+    blocked = client.post(BASE + "/daily-notes/send", headers=teacher, json=batch())
+    err(blocked, 409, "NOTE_BATCH_BLOCKED")
+    assert blocked.json()["error"]["details"]["blocked"] == []
+
+
+@pytest.mark.parametrize("status", ["queued", "running"])
+def test_unfinished_batch_cannot_send(client, teacher, note_backend, status):
+    response = draft(client, teacher, activities="[실패] 아직 초안 없음")
+    if note_backend == "db":
+        from app.core.db import transaction
+        with transaction() as connection:
+            connection.execute(text("UPDATE daily_note_inputs SET draft_status=:status"), {"status": status})
+    else:
+        store.state().note_inputs[next(iter(store.state().note_inputs))].draft_status = status
+    blocked = client.post(BASE + "/daily-notes/send", headers=teacher, json=batch())
+    err(blocked, 409, "NOTE_BATCH_BLOCKED")
+    assert blocked.json()["error"]["details"]["blocked"] == []
+    assert response.status_code == 202 and note_list(client, teacher).json()["items"] == []
+
+
+@pytest.mark.parametrize("sort", ["created_at", "-created_at"])
+def test_note_order_and_pages_follow_child_draft_order(client, teacher, sort):
+    draft(client, teacher)
+    expected = [str(c["id"]) for c in seed.CHILDREN if c["classroom_id"] == seed.CLASS_STAR]
+    if sort.startswith("-"):
+        expected.reverse()
+    pages = [client.get(BASE + "/daily-notes", headers=teacher, params={
+        "date": batch()["note_date"], "classroom_id": str(seed.CLASS_STAR), "size": 10, "page": page,
+        "sort": sort}).json()["items"] for page in (1, 2)]
+    assert [n["child_id"] for page in pages for n in page] == expected
+
+
+@pytest.mark.parametrize("source_kind", ["other_child", "no_child", "staff", "parents", "all"])
+def test_patch_only_uses_same_child_requests_and_parent_visible_documents(
+        client, teacher, note_backend, source_kind):
+    draft(client, teacher)
+    note = next(n for n in note_list(client, teacher).json()["items"] if n["child_id"] == str(seed.CHILD))
+    if source_kind in ("other_child", "no_child"):
+        request_id = seed.REQUEST_PICKUP
+        if source_kind == "no_child":
+            if note_backend == "db":
+                from app.core.db import transaction
+                with transaction() as connection:
+                    connection.execute(text("UPDATE requests SET child_id=NULL WHERE id=:id"), {"id": request_id})
+            else:
+                store.state().requests[request_id].child_id = None
+        source = {"type": "request", "request_id": str(request_id)}
+    else:
+        if note_backend == "db":
+            from app.core.db import transaction
+            with transaction() as connection:
+                connection.execute(text("UPDATE documents SET visibility=:value WHERE id=:id"),
+                                   {"id": seed.MENU, "value": source_kind})
+        else:
+            store.state().documents[seed.MENU].visibility = source_kind
+        source = {"type": "document", "document_id": str(seed.MENU), "document_title": "가상 식단표"}
+    content = {"items": [{"key": "day", "label": "오늘", "value": "[TEST] 변경", "source": source}]}
+    response = client.patch(f"{BASE}/daily-notes/{note['id']}", headers=teacher, json={
+        "content": content, "resolved_checks": [c["id"] for c in note["open_checks"]], "confirm": True})
+    if source_kind in ("parents", "all"):
+        assert response.status_code == 200 and response.json()["note"]["status"] == "ready"
+    else:
+        err(response, 422, "VALIDATION_FAILED")
+        assert next(n for n in note_list(client, teacher).json()["items"] if n["id"] == note["id"]) == note
 
 
 def test_patch_validates_document_and_request_sources_atomically(client, teacher, teacher_other):
