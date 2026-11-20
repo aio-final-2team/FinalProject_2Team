@@ -1,0 +1,107 @@
+"""모의 분류·카드 만들기를 DB에 옮긴 대역이에요. 실제 요청 그래프로 교체해요.
+
+T29에서 Celery 워커로 옮겨요. 상담 후보는 모의 시간표이며 충돌 계산은 T35에서 연결해요.
+"""
+
+import json
+from datetime import datetime, time, timedelta
+
+from sqlalchemy import text
+
+from app.core.db import transaction
+from app.core.request_rules import classify
+from app.core.schedule import KST, due_at
+from app.modules.requests.events import record, set_status
+
+
+def new_card(connection, req, kind, assignee, draft=None):
+    card = dict(connection.execute(text("""
+        INSERT INTO cards (org_id,request_id,kind,status,assignee_id,due_at,draft)
+        VALUES (:org,:request,:kind,:status,:assignee,:due,CAST(:draft AS jsonb)) RETURNING *
+    """), {"org": req["org_id"], "request": req["id"], "kind": kind,
+           "status": "pending" if assignee else "unassigned", "assignee": assignee,
+           "due": due_at(req["created_at"], req["type"], req["risk_level"], kind),
+           "draft": json.dumps(draft or {})}).mappings().one())
+    record(connection, req, "created", card=card, actor_type="agent", agent_name="supervisor")
+    return card
+
+
+def _propose_stub_slots(connection, req, card, teacher):
+    room = connection.scalar(text("SELECT id FROM rooms WHERE org_id=:org AND is_active ORDER BY id LIMIT 1"),
+                             {"org": req["org_id"]})
+    if room is None or teacher is None:
+        return
+    first = datetime.now(KST).date() + timedelta(days=1)
+    while first.weekday() >= 5:
+        first += timedelta(days=1)
+    second = first + timedelta(days=1)
+    while second.weekday() >= 5:
+        second += timedelta(days=1)
+    for rank, (day, hour) in enumerate(((first, 15), (first, 16), (second, 15)), 1):
+        start = datetime.combine(day, time(hour), KST)
+        connection.execute(text("""
+            INSERT INTO consultation_slots (card_id,org_id,teacher_id,room_id,period,rank)
+            VALUES (:card,:org,:teacher,:room,tstzrange(:start,:end,'[)'),:rank)
+        """), {"card": card["id"], "org": req["org_id"], "teacher": teacher, "room": room,
+               "start": start, "end": start + timedelta(minutes=30), "rank": rank})
+
+
+def run_request(request_id):
+    with transaction() as connection:
+        row = connection.execute(text("SELECT * FROM requests WHERE id=:id FOR UPDATE"),
+                                 {"id": request_id}).mappings().one_or_none()
+        if row is None or row["status"] not in ("received", "classified", "assigned", "needs_info"):
+            return
+        req = dict(row)
+        if req["type"] not in ("inquiry", "consultation", "complaint"):
+            return
+        # 중복 실행은 요청 행 잠금으로 직렬화하고 카드를 늘리지 않아요.
+        has_card = connection.scalar(text("SELECT EXISTS (SELECT 1 FROM cards WHERE request_id=:id)"), {"id": request_id})
+        if has_card and (req["status"] != "needs_info" or req["type"] == "consultation"):
+            return
+        fields = classify(req["type"], req["body"])
+        req.update(fields)
+        connection.execute(text("""
+            UPDATE requests SET topic_key=:topic_key,urgency=:urgency,risk_level=:risk_level,risk_category=:risk_category
+            WHERE id=:id
+        """), {"id": request_id, "risk_level": None, "risk_category": None, **fields})
+        set_status(connection, req, "classified", action="classified", actor_type="agent", agent_name="supervisor")
+        teacher = connection.scalar(text("""
+            SELECT s.user_id FROM classroom_staff s JOIN users u ON (u.id,u.org_id)=(s.user_id,s.org_id)
+            WHERE s.org_id=:org AND s.classroom_id=:class AND u.role='teacher' AND u.is_active
+              AND (s.valid_from IS NULL OR s.valid_from<=:today) AND (s.valid_to IS NULL OR s.valid_to>=:today)
+            ORDER BY s.is_homeroom DESC,s.created_at,s.user_id LIMIT 1
+        """), {"org": req["org_id"], "class": req["classroom_id"], "today": datetime.now(KST).date()})
+        req["assignee_id"] = teacher
+        connection.execute(text("UPDATE requests SET assignee_id=:teacher WHERE id=:id"), {"teacher": teacher, "id": request_id})
+        set_status(connection, req, "assigned", action="assigned", actor_type="agent", agent_name="supervisor")
+        if req["type"] == "consultation":
+            card = new_card(connection, req, "consult_slots", teacher)
+            _propose_stub_slots(connection, req, card, teacher)
+            set_status(connection, req, "needs_info", action="info_requested", card=card,
+                       actor_type="agent", agent_name="code")
+            return
+        high_risk = req["risk_level"] in ("urgent", "uncertain")
+        draft = {"summary": req["body"][:60], "no_evidence": True}
+        if not high_risk:
+            draft["text"] = "(모의 초안) 말씀해 주셔서 감사합니다. 확인해서 다시 안내드릴게요."
+        card = new_card(connection, req, "reply_draft", teacher, draft)
+        if not high_risk:
+            card["check_result"] = {"passed": True, "issues": [], "attempt": 1}
+            connection.execute(text("UPDATE cards SET check_result=CAST(:check AS jsonb) WHERE id=:id"),
+                               {"id": card["id"], "check": json.dumps(card["check_result"])})
+        record(connection, req, "drafted", card=card, actor_type="agent", agent_name="document")
+        repeated = req["type"] == "complaint" and req["topic_key"] != "other" and connection.scalar(text("""
+            SELECT count(*)>=3 FROM requests WHERE org_id=:org AND classroom_id=:class
+              AND type='complaint' AND topic_key=:topic AND created_at>=now()-interval '30 days'
+        """), {"org": req["org_id"], "class": req["classroom_id"], "topic": req["topic_key"]})
+        director = connection.scalar(text("""
+            SELECT id FROM users WHERE org_id=:org AND role='director' AND is_active ORDER BY id LIMIT 1
+        """), {"org": req["org_id"]})
+        if (high_risk or repeated) and director:
+            report = new_card(connection, req, "director_report", director, {"summary": req["body"][:60]})
+            set_status(connection, req, "escalated", action="escalated", card=report,
+                       actor_type="agent", agent_name="supervisor")
+        else:
+            set_status(connection, req, "awaiting_review", action="checked", card=card,
+                       actor_type="agent", agent_name="checker")

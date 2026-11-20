@@ -16,7 +16,7 @@ def teacher(db_client):
     return {"Authorization": "Bearer " + response.json()["access_token"]}
 
 
-def test_request_detail_reads_first_guardian_message_without_mutation(db_client, teacher, seeded_db):
+def test_request_detail_reads_full_conversation_without_mutation(db_client, teacher, seeded_db):
     at = datetime.fromisoformat("2026-11-19T15:30:00+00:00")
     with seeded_db.begin() as connection:
         values = {"org": seed.ORG, "id": seed.REQUEST_COUGH, "teacher": seed.TEACHER, "parent": seed.PARENT}
@@ -28,7 +28,7 @@ def test_request_detail_reads_first_guardian_message_without_mutation(db_client,
         connection.execute(text("""
             INSERT INTO request_messages (org_id,request_id,sender_type,sender_id,body)
             VALUES (:org,:id,'user',:teacher,'[TEST] 교직원'),
-                   (:org,:id,'agent',NULL,'[TEST] 내부 초안'),
+                   (:org,:id,'agent',NULL,'[TEST] 공개 대화'),
                    (:org,:id,'user',:parent,'[TEST] 보호자 추가 대화')
         """), values)
         before = connection.scalar(text("SELECT count(*) FROM events"))
@@ -36,7 +36,7 @@ def test_request_detail_reads_first_guardian_message_without_mutation(db_client,
         response = db_client.get(f"/api/v1/requests/{seed.REQUEST_COUGH}", headers=teacher)
         assert response.status_code == 200, response.text
         data = response.json()
-        assert len(data["messages"]) == 1 and data["messages"][0]["body"] == "기침해요"
+        assert [msg["body"] for msg in data["messages"]] == ["기침해요", "[TEST] 교직원", "[TEST] 공개 대화", "[TEST] 보호자 추가 대화"]
         for value in (data["request"]["created_at"], data["request"]["parent_confirmed_at"],
                       data["messages"][0]["created_at"]):
             assert value == "2026-11-20T00:30:00+09:00"

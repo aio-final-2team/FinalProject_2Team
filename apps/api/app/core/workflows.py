@@ -1,8 +1,9 @@
 """T24 단계의 업무 API 경계. 영역 구현을 연결할 때 해당 의존성을 걷는다.
 
-T27에서 걷을 목록: routes/{cards,requests,resources}.py의 workflow_user/current_user,
+T27 이후 걷을 목록: routes/{cards,resources}.py의 workflow_user/current_user,
 require_workflow_roles/require_roles 별칭과 backend.py의 store=users 별칭.
-알림장 라우트는 이미 core.auth와 backend.notes를 직접 쓴다.
+알림장·요청(T27-a) 라우트는 core.auth와 backend 영역 모듈을 직접 쓴다.
+requests.py의 slot-choices만 T35까지 require_workflow_roles를 쓴다.
 """
 
 from uuid import UUID

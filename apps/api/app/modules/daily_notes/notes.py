@@ -1,6 +1,7 @@
 """API 22~26·30. 입력 잠금 → 아이별 잠금 순서를 발송·수정이 함께 쓴다."""
 
 import json
+from contextlib import nullcontext
 from datetime import datetime
 
 from sqlalchemy import text
@@ -15,9 +16,9 @@ from app.modules.daily_notes.events import edited_child_ids, record
 input_in_scope = scope.note_input_in_scope
 
 
-def classroom_children(user, classroom_id):
-    scope.classroom_in_scope(user, classroom_id)
-    with transaction() as connection:
+def classroom_children(user, classroom_id, *, connection=None):
+    with (transaction() if connection is None else nullcontext(connection)) as connection:
+        scope.classroom_in_scope(user, classroom_id, connection=connection)
         items = connection.execute(text("""
             SELECT id, display_name, classroom_id FROM children
             WHERE org_id=:org AND classroom_id=:class ORDER BY display_name, id
@@ -32,12 +33,12 @@ def draft_view(entry):
 
 
 def draft(user, body, background_tasks):
-    children = classroom_children(user, body.classroom_id)["items"]
-    child_ids = {child["id"] for child in children}
-    for memo in body.child_memos:
-        if memo.child_id not in child_ids:
-            raise ApiError(422, "VALIDATION_FAILED", child_id=memo.child_id)
     with transaction() as connection:
+        children = classroom_children(user, body.classroom_id, connection=connection)["items"]
+        child_ids = {child["id"] for child in children}
+        for memo in body.child_memos:
+            if memo.child_id not in child_ids:
+                raise ApiError(422, "VALIDATION_FAILED", child_id=memo.child_id)
         values = {"org": user.org_id, "class": body.classroom_id, "date": body.note_date,
                   "activities": body.activities, "supplies": body.supplies, "author": user.id,
                   "memos": json.dumps([m.model_dump(mode="json") for m in body.child_memos])}
@@ -69,8 +70,8 @@ def view(note):
 
 
 def regenerate(user, input_id, background_tasks):
-    input_in_scope(user, input_id)
     with transaction() as connection:
+        input_in_scope(user, input_id, connection=connection)
         values = {"id": input_id, "org": user.org_id}
         entry = connection.execute(text("SELECT * FROM daily_note_inputs WHERE id=:id AND org_id=:org FOR UPDATE"),
                                    values).mappings().one()
@@ -102,8 +103,6 @@ def regenerate(user, input_id, background_tasks):
 def list_notes(user, note_date, classroom_id, page, size, sort):
     if user.role == "teacher" and classroom_id is None:
         raise ApiError(422, "VALIDATION_FAILED", fields=[{"field": "classroom_id", "problem": "담임은 반을 골라 주세요"}])
-    if classroom_id is not None and user.role != "parent":
-        scope.classroom_in_scope(user, classroom_id)
     conditions = "n.org_id=:org AND n.note_date=:date"
     if classroom_id is not None:
         conditions += " AND i.classroom_id=:class"
@@ -118,6 +117,8 @@ def list_notes(user, note_date, classroom_id, page, size, sort):
     values = {"org": user.org_id, "date": note_date, "class": classroom_id, "user": user.id,
               "limit": size, "offset": (page-1)*size}
     with transaction() as connection:
+        if classroom_id is not None and user.role != "parent":
+            scope.classroom_in_scope(user, classroom_id, connection=connection)
         total = connection.scalar(text("SELECT count(*)" + query), values)
         if values["offset"] >= total:
             return {"items": [], "total": total, "page": page, "size": size}
@@ -128,32 +129,31 @@ def list_notes(user, note_date, classroom_id, page, size, sort):
     return {"items": [view(row) for row in items], "total": total, "page": page, "size": size}
 
 
-def _check_sources(user, content, child_id):
+def _check_sources(user, content, child_id, connection):
     if content is None:
         return
     for line in content.items:
         if line.source.type == "request":
-            request = scope.request_in_scope(user, line.source.request_id)
+            request = scope.request_in_scope(user, line.source.request_id, connection=connection)
             if request["child_id"] != child_id:
                 raise ApiError(422, "VALIDATION_FAILED", field="content.items[].source.request_id")
         if line.source.type == "document":
-            with transaction() as connection:
-                row = connection.execute(text("""
-                    SELECT * FROM documents WHERE id=:id AND org_id=:org
-                """), {"id": line.source.document_id, "org": user.org_id}).mappings().one_or_none()
-                targets = connection.scalars(text("""
-                    SELECT classroom_id FROM document_classrooms WHERE document_id=:id AND org_id=:org
-                """), {"id": line.source.document_id, "org": user.org_id}).all()
-                allowed = row is not None and (not targets or any(scope._classroom(connection, user, c) for c in targets))
+            row = connection.execute(text("""
+                SELECT * FROM documents WHERE id=:id AND org_id=:org
+            """), {"id": line.source.document_id, "org": user.org_id}).mappings().one_or_none()
+            targets = connection.scalars(text("""
+                SELECT classroom_id FROM document_classrooms WHERE document_id=:id AND org_id=:org
+            """), {"id": line.source.document_id, "org": user.org_id}).all()
+            allowed = row is not None and (not targets or any(scope._classroom(connection, user, c) for c in targets))
             scope._checked(user, row, allowed, "document", line.source.document_id)
             if row["visibility"] not in ("parents", "all"):
                 raise ApiError(422, "VALIDATION_FAILED", field="content.items[].source.document_id")
 
 
 def patch(user, note_id, body):
-    scoped = scope.note_in_scope(user, note_id)
-    _check_sources(user, body.content, scoped["child_id"])
     with transaction() as connection:
+        scoped = scope.note_in_scope(user, note_id, connection=connection)
+        _check_sources(user, body.content, scoped["child_id"], connection)
         connection.execute(text("SELECT id FROM daily_note_inputs WHERE id=:id AND org_id=:org FOR UPDATE"),
                            {"id": scoped["input_id"], "org": user.org_id})
         note = connection.execute(text("SELECT * FROM daily_notes WHERE id=:id AND org_id=:org FOR UPDATE"),
@@ -186,8 +186,8 @@ def patch(user, note_id, body):
 
 
 def send(user, body):
-    scope.classroom_in_scope(user, body.classroom_id)
     with transaction() as connection:
+        scope.classroom_in_scope(user, body.classroom_id, connection=connection)
         values = {"org": user.org_id, "class": body.classroom_id, "date": body.note_date}
         entry = connection.execute(text("""
             SELECT * FROM daily_note_inputs WHERE org_id=:org AND classroom_id=:class AND note_date=:date FOR UPDATE
