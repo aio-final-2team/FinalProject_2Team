@@ -3,6 +3,7 @@
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import UTC, datetime, time, timedelta
+from uuid import UUID
 import json
 from threading import Event
 
@@ -221,6 +222,8 @@ def test_one_child_failure_keeps_other_children_and_blocks_batch(db_client, teac
     assert len(listed) == 20
     failed = next(n for n in listed if n["child_id"] == str(seed.CHILD))
     assert [c["kind"] for c in failed["open_checks"]] == ["draft_failed"]
+    assert UUID(failed["open_checks"][0]["id"]).version == 4
+    assert failed["open_checks"][0]["request_id"] is None
     assert failed["status"] == "needs_check" and all(l["key"] != "child" for l in failed["content"]["items"])
     success = next(n for n in listed if n["child_id"] == str(seed.demo_id("5401")))
     assert any(l["key"] == "child" and l["value"] == "성공 메모" for l in success["content"]["items"])

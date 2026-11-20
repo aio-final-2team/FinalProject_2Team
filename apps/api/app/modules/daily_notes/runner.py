@@ -1,4 +1,4 @@
-"""T32 영민 그래프로 교체, T29에 Celery 워커로 이동.
+"""T32 영민 그래프 또는 대역을 실행한다. T29에 Celery 워커로 이동.
 
 queued를 한 실행만 가져간다. writer는 트랜잭션 밖에서 호출하고 아이별 결과는 한 번에 저장한다.
 알림장 events 연결은 0003 이전에는 남기지 않는다(SPEC 11).
@@ -10,7 +10,7 @@ from concurrent.futures import Future
 from datetime import datetime, time, timedelta
 from importlib import import_module
 from threading import Thread
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import text
 
@@ -119,7 +119,9 @@ def _write(payload):
 
     def invoke():
         try:
-            module, name = settings.daily_note_writer.split(":", 1)
+            path = ("agents.graphs.daily_note:draft_daily_notes" if settings.daily_note_writer == "graph"
+                    else settings.daily_note_writer)
+            module, name = path.split(":", 1)
             future.set_result(getattr(import_module(module), name)(payload))
         except BaseException as error:
             future.set_exception(error)
@@ -142,13 +144,16 @@ def run_daily_note_drafts(input_id):
         with transaction() as connection:
             connection.execute(text("SELECT id FROM daily_note_inputs WHERE id=:id FOR UPDATE"), {"id": input_id})
             for row in rows:
+                # c1 같은 writer 내부 ID는 저장 전에 바꾼다. 아이별 실패 확인에도 같은 규칙을 쓴다.
+                checks = [{**check, "id": str(uuid4()), "request_id": check.get("request_id")}
+                          for check in row["open_checks"]]
                 connection.execute(text("""
                     INSERT INTO daily_notes (org_id,input_id,child_id,note_date,status,content,open_checks)
                     VALUES (:org,:input,:child,:date,:status,CAST(:content AS jsonb),CAST(:checks AS jsonb))
                 """), {"org": entry["org_id"], "input": input_id, "child": row["child_id"], "date": entry["note_date"],
                        "status": "needs_check" if row["open_checks"] else "draft",
                        "content": json.dumps(row["content"], default=str),
-                       "checks": json.dumps(row["open_checks"], default=str)})
+                       "checks": json.dumps(checks, default=str)})
             connection.execute(text("UPDATE daily_note_inputs SET draft_status='succeeded' WHERE id=:id"), {"id": input_id})
     except Exception as error:
         # 예외 원문에는 입력 메모가 섞일 수 있어 종류만 기록하고 API에는 고정 오류를 준다.

@@ -25,10 +25,17 @@ DB 모드는 `JWT_SECRET`에 32바이트 이상의 별도 키가 필요해요. �
 DB 초안은 입력을 `queued`로 저장하고 같은 프로세스의 BackgroundTasks에서 실행해요.
 `running`을 거쳐 `succeeded` 또는 `failed`가 돼요. `DAILY_NOTE_WRITER`는
 `모듈:함수` 형식이고 기본값은 `app.modules.daily_notes.stub_writer:write`예요.
+`DAILY_NOTE_WRITER=graph`로 고르면 영민님 그래프의 `draft_daily_notes(payload)`를 불러요.
+이 설정은 DB 초안 runner에 적용돼요. mock은 기존 대역 동작을 유지해요.
+그래프는 `OPENAI_API_KEY`와 `LLM_MODEL_DOCUMENT`·`LLM_MODEL_CHECKER`를 읽어요.
+역할별 모델 값이 비면 `LLM_MODEL_DEFAULT`를 써요. 값은 `.env.example`을 참고해요.
 입구는 T13 3.19의 입력을 받아 아이별 `child_id`·`content`·`open_checks` 목록을 돌려줘요.
 아이 결과가 빠지거나 형식이 잘못되면 그 아이만 `draft_failed`로 저장해요.
 입구 전체가 실패하면 아이별 저장 없이 작업을 `failed`로 남겨요.
 입력은 UUID 문자열·ISO 날짜만 써서 JSON으로 바로 주고받을 수 있어요.
+확인 항목의 `c1` 같은 내부 ID는 DB 저장 때 새 UUID로 바꾸고, 없는 `request_id`는 null로 남겨요.
+수정·확인 요청의 `resolved_checks`에는 조회 응답의 ID를 보내요.
+그래프 연결 시험은 가짜 writer·checker를 주입하며 실제 모델은 부르지 않아요.
 
 지금은 **API 프로세스 하나**로 실행해요. 여러 worker나 API 복제본을 함께 띄우면 안 돼요.
 앱 시작 때 남은 `running`을 `queued`로 되돌리고 모든 `queued` 입력을 다시 실행해요.
