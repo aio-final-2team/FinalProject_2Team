@@ -9,21 +9,25 @@ from app.core.schedule import deliver_after
 
 
 def enqueue(connection, event, req, recipient_id, kind, body=None):
+    org_id = req["org_id"] if req else event["org_id"]
     recipient = connection.execute(text("SELECT role FROM users WHERE id=:id AND org_id=:org"),
-                                   {"id": recipient_id, "org": req["org_id"]}).mappings().one_or_none()
+                                   {"id": recipient_id, "org": org_id}).mappings().one_or_none()
     if recipient is None:
         return
     connection.execute(text("""
         INSERT INTO notifications (org_id,recipient_id,request_id,card_id,kind,title,body,dedupe_key,deliver_after)
         VALUES (:org,:recipient,:request,:card,:kind,:title,:body,:key,:deliver)
         ON CONFLICT (dedupe_key) DO NOTHING
-    """), {"org": req["org_id"], "recipient": recipient_id, "request": req["id"], "card": event["card_id"],
+    """), {"org": org_id, "recipient": recipient_id, "request": req["id"] if req else None, "card": event["card_id"],
            "kind": kind, "title": TITLES[kind], "body": body, "key": f"event:{event['id']}:{recipient_id}",
-           "deliver": deliver_after(event["created_at"], recipient["role"], req["risk_level"], req["risk_category"])})
+           "deliver": deliver_after(event["created_at"], recipient["role"], req["risk_level"] if req else None,
+                                    req["risk_category"] if req else None)})
 
 
 def notify_event(connection, event, req, card):
     if req is None:
+        if card and card["kind"] == "rule_proposal" and event["action"] == "created":
+            enqueue(connection, event, None, card["assignee_id"], "new_card")
         return
     to, action = event["to_status"], event["action"]
     parent_kinds = {"needs_info": "needs_info", "on_hold": "on_hold", "sent_or_booked": "sent_or_booked",

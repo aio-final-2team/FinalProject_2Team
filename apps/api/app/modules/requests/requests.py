@@ -65,7 +65,8 @@ def _expire(connection, req):
         SELECT EXISTS (SELECT 1 FROM cards c WHERE c.request_id=:id AND
           ((c.status='on_hold' AND c.hold_until<=CURRENT_DATE) OR EXISTS (
             SELECT 1 FROM consultation_slots s WHERE s.card_id=c.id AND s.status='chosen_by_parent'
-              AND s.chosen_at<=now()-interval '24 hours')))
+              AND s.chosen_at<=now()-interval '24 hours'
+              AND EXISTS (SELECT 1 FROM requests r WHERE r.id=c.request_id AND r.status='awaiting_review'))))
     """), {"id": req["id"]})
     if not expired:
         return req

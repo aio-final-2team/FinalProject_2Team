@@ -873,7 +873,7 @@ HTTP/1.1 200 OK
 | 401 | `UNAUTHENTICATED` | 토큰 없음·만료·무효 |
 | 403 | `FORBIDDEN_ROLE` | 허용하지 않은 역할 |
 | 404 | `NOT_FOUND` | 카드 범위 밖·대상 없음·다른 기관·비활성·교사 아님 |
-| 409 | `INVALID_TRANSITION` | 원장 보고·끝난 카드 |
+| 409 | `INVALID_TRANSITION` | 원장 보고·개인 규칙 제안·끝난 카드 |
 | 422 | `VALIDATION_FAILED` | 필수 칸·타입·허용 값·길이가 맞지 않음 |
 
 ### 3.17 개인 규칙 제안 켜기·거절 — `POST /api/v1/memory-rules/{rule_id}/decision`
@@ -889,7 +889,7 @@ HTTP/1.1 200 OK
 | ⑦ 오류 응답 | 아래 오류 표. |
 | ⑧ 실행 규칙 | 연결 제안 카드를 done으로 바꾸고 판을 1 올린다. 켜기는 approve, 거절은 reject로 결정·이력을 남긴다. 재요청은 409이며 모의 상담 후보에 규칙을 적용하지는 않는다. |
 
-DB도 같은 결정 계약을 쓴다. 카드 거절·반려 이유는 결정한 담임의 기억에 저장하고, 지우지 않은 같은 코드 세 건부터 제안 카드 하나를 만든다. 자동 대역은 코드별 안내만 제안하고 `other` 자유 글은 자동 규칙으로 만들지 않는다. 구체적인 조건 추출은 기억 AI가 맡으며, DB 상담 계산은 `active` 규칙의 시간 조건만 읽는다.
+DB도 같은 결정 계약을 쓴다. 카드 거절·반려 이유는 같은 기관 아이 이름을 가려 결정한 담임의 기억에 저장하고, 지우지 않은 같은 코드 세 건부터 제안 카드 하나를 만든다. 같은 주인·코드의 마지막 decline 결정 뒤에는 새 기억 세 건이 쌓여야 다시 제안한다. 개인 규칙 제안은 재배정하지 않고, 주인에게 근무 시간 기준 new_card 알림을 남긴다. 자동 대역은 코드별 안내만 제안하고 `other` 자유 글은 자동 규칙으로 만들지 않는다. 구체적인 조건 추출은 기억 AI가 맡으며, DB 상담 계산은 `active`인 `slot_unavailable` 규칙의 시간 조건만 읽는다.
 
 | 필드 | 위치 | 타입 | 필수 | 빈값 | 제약 | 설명 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -1190,7 +1190,7 @@ HTTP/1.1 200 OK
 | `total`·`page`·`size` | 응답 | 정수 | 소유권·kind·삭제 여부를 거른 뒤 쪽 나누기 |
 | `memory_id` | 삭제 경로 | 양의 정수 | 본인 기억만. 성공은 204, 본문 없음 |
 
-삭제는 `deleted_at`을 채운다. 이후 조회·기억 AI 입력에서 제외한다. 기억 생성·말투 추출은 기억 AI가 맡으며 이 API는 학습하거나 새 규칙을 만들지 않는다. 가상 말투 기억도 미리 넣지 않는다.
+삭제는 `deleted_at`을 채우고 content를 빈 문자열, structured를 빈 객체로 바꾼다. 행과 출처 연결은 이력용으로 남기고, 이후 조회·기억 AI 입력·제안 횟수에서 제외한다. 기억 생성·말투 추출은 기억 AI가 맡으며 이 API는 학습하거나 새 규칙을 만들지 않는다. 가상 말투 기억도 미리 넣지 않는다.
 
 ### 3.26 알림장 다시 만들기 — `POST /api/v1/daily-notes/drafts/{input_id}/regenerate`
 
@@ -1334,7 +1334,7 @@ def decide(card_id: UUID, body: CardDecision, user: User = Depends(current_staff
 | `search_documents` | 자료 | 요청 기관 자료만, 학부모면 원 전체 + 아이 반 자료 | `chunks[]` | `TOOL_TIMEOUT`·`UPSTREAM_UNAVAILABLE`(참), `VALIDATION_FAILED`·`NOT_FOUND`(거짓) | 1번 다시 → 실패하거나 근거가 없으면 추측하지 않고 담임 카드(`no_evidence`) |
 | `get_law_article` | 자료 | 법령 이름·조문이 있음 | `text`, `source_url`, `fetched_at` | `UPSTREAM_UNAVAILABLE`(참), `NOT_FOUND`(거짓) | 1번 다시 → 실패면 법령 인용 없이 초안, 카드에 '법령 확인 못 함' 표시 |
 | `get_memory` | 기억 | 주인이 요청 담당자 | `memories[]`, `active_rules[]` | `SAVE_FAILED`(참) | 1번 다시 → 실패면 기억 없이 진행 |
-| `propose_rule` | 기억 | 같은 이유 코드 3번 | `rule_id`(이미 있으면 기존 ID) | `SAVE_FAILED`(참), `VALIDATION_FAILED`(거짓) | 1번 다시 → 실패면 제안 안 함(다음에 다시 셈) |
+| `propose_rule` | 기억 | 같은 주인·이유 코드 3번(마지막 decline 뒤 새 기억만). rule_json은 객체, after·before는 HH:MM | `rule_id`(이미 있으면 기존 ID) | `SAVE_FAILED`(참), `VALIDATION_FAILED`(거짓) | 1번 다시 → 실패면 제안만 되돌리고 tool_failed 기록(카드 거절·기억은 유지, 다음에 다시 셈) |
 | `check_draft` | 검사 | 초안이 있는 카드·알림장 | 검사 결과를 저장 | `TOOL_TIMEOUT`·`UPSTREAM_UNAVAILABLE`(참) | 1번 다시 → 실패면 '검사 못 함' 표시하고 사람 카드 |
 | `return_to_step` | 검사 | `check_attempts` < 2 | `attempt` | `INVALID_TRANSITION`(거짓, 3번째) | 3번째는 오류 대신 사람 카드로 넘김(FR-08) |
 | `find_consult_slots` | 코드 | 상담 요청, 담임 일정이 있음 | `slots[]`(회차마다 최대 3개) | `TOOL_TIMEOUT`·`SAVE_FAILED`(참), `NOT_FOUND`(거짓) | 1번 다시 → 실패면 시간을 지어내지 않고 '지금 확인할 수 없음' 안내(30문항 YC-F01). 빈 목록이면 다른 날을 묻거나 담임 카드 |

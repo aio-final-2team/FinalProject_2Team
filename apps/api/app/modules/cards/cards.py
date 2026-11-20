@@ -244,6 +244,8 @@ def rule_decision(user, rule_id, body):
             SELECT * FROM memory_rules WHERE id=:id AND org_id=:org AND owner_id=:owner
         """), values).mappings().one_or_none()
         scope._checked(user, rule, rule is not None, "memory_rule", rule_id)
+        connection.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))"),
+                           {"key": f"memory-rule:{user.org_id}:{user.id}:{rule['reason_code']}"})
         # 일반 카드 결정·재배정과 같은 카드 → 규칙 순서예요. 범위 밖 행은 잠그지 않아요.
         card = connection.execute(text("""
             SELECT * FROM cards WHERE subject_type='memory_rule' AND subject_id=:id AND org_id=:org
@@ -411,7 +413,7 @@ def reassign(user, card_id, body):
         )
         if target is None:
             scope._checked(user, None, False, "assignee", body.assignee_id)
-        if card["kind"] == "director_report" or card["status"] in ("done", "rejected"):
+        if card["kind"] in ("director_report", "rule_proposal") or card["status"] in ("done", "rejected"):
             raise ApiError(409, "INVALID_TRANSITION")
         previous = card["assignee_id"]
         card["assignee_id"] = target["id"]

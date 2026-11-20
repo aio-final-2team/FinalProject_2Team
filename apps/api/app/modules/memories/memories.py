@@ -5,11 +5,15 @@ from sqlalchemy import text
 from app.core import scope
 from app.core.constants import REJECTION_RULE_TEXTS, REJECTION_RULE_THRESHOLD
 from app.core.db import transaction
+from app.core.errors import ApiError
+from app.core.memory_rules import mask_child_names, validate_rule_json
+from app.modules.requests import events
 from app.modules.requests.events import record
 
 
 def propose_rule(connection, owner_id, reason_code, rule_text, rule_json, *, org_id):
     """기억 AI 입구. 호출 쪽 트랜잭션에서 세 건 확인과 제안을 함께 저장해요."""
+    validate_rule_json(rule_json)
     # INSERT 전에 직렬화해 서로 다른 요청에서 동시에 거절해도 세 번째를 빠뜨리지 않아요.
     connection.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))"),
                        {"key": f"memory-rule:{org_id}:{owner_id}:{reason_code}"})
@@ -22,6 +26,9 @@ def propose_rule(connection, owner_id, reason_code, rule_text, rule_json, *, org
     count = connection.scalar(text("""
         SELECT count(*) FROM memories WHERE org_id=:org AND owner_id=:owner
           AND kind='rejection_reason' AND reason_code=:code AND deleted_at IS NULL
+          AND created_at>coalesce((
+            SELECT max(decided_at) FROM memory_rules WHERE org_id=:org AND owner_id=:owner
+              AND reason_code=:code AND status='declined'), '-infinity'::timestamptz)
     """), {"org": org_id, "owner": owner_id, "code": reason_code})
     if count < REJECTION_RULE_THRESHOLD:
         return None
@@ -50,16 +57,28 @@ def remember_rejection(connection, user, card, decision, reason_code, reason_tex
         return
     connection.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))"),
                        {"key": f"memory-rule:{user.org_id}:{user.id}:{reason_code}"})
+    names = connection.scalars(text("SELECT display_name FROM children WHERE org_id=:org"), {"org": user.org_id})
+    content = mask_child_names(reason_text or "거절 이유: " + reason_code, names)
     connection.execute(text("""
-        INSERT INTO memories (org_id,owner_id,kind,reason_code,content,structured,source_card_id)
-        VALUES (:org,:owner,'rejection_reason',:code,:content,CAST(:structured AS jsonb),:card)
+        INSERT INTO memories (org_id,owner_id,kind,reason_code,content,structured,source_card_id,created_at)
+        VALUES (:org,:owner,'rejection_reason',:code,:content,CAST(:structured AS jsonb),:card,clock_timestamp())
     """), {"org": user.org_id, "owner": user.id, "code": reason_code,
-           "content": reason_text or "거절 이유: " + reason_code,
+           "content": content,
            "structured": json.dumps({"decision": decision, "card_version": card["version"]}), "card": card["id"]})
     # other 자유 글을 같은 선호로 단정하지 않고, 민감한 글을 규칙에 옮기지 않아요.
     if reason_code in REJECTION_RULE_TEXTS:
-        propose_rule(connection, user.id, reason_code, REJECTION_RULE_TEXTS[reason_code],
-                     {"reason_code": reason_code}, org_id=user.org_id)
+        for attempt in range(2):
+            try:
+                with connection.begin_nested():
+                    propose_rule(connection, user.id, reason_code, REJECTION_RULE_TEXTS[reason_code],
+                                 {"reason_code": reason_code}, org_id=user.org_id)
+                break
+            except Exception as error:
+                invalid = isinstance(error, ApiError) and error.code == "VALIDATION_FAILED"
+                if invalid or attempt == 1:
+                    events.record(connection, None, "tool_failed", card=card, actor_type="agent", agent_name="memory",
+                                  tool="propose_rule", code="VALIDATION_FAILED" if invalid else "SAVE_FAILED")
+                    break
 
 
 def list_memories(user, kind, page, size, sort):
@@ -82,7 +101,7 @@ def list_memories(user, kind, page, size, sort):
 def delete(user, memory_id):
     with transaction() as connection:
         row = connection.execute(text("""
-            UPDATE memories SET deleted_at=now()
+            UPDATE memories SET deleted_at=now(),content='',structured='{}'::jsonb
             WHERE id=:id AND org_id=:org AND owner_id=:owner AND deleted_at IS NULL RETURNING id
         """), {"id": memory_id, "org": user.org_id, "owner": user.id}).mappings().one_or_none()
     scope._checked(user, row, row is not None, "memory", memory_id)

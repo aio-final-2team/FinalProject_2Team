@@ -326,3 +326,19 @@ def test_booking_checks_version_and_candidate_before_nonconsultation_kind(client
     _, cid = create(client, parent, teacher, type="inquiry", body="[TEST] 문의")
     err(book(client, teacher, cid, {"id": 9223372036854775807}, version=9), 409, "CARD_VERSION_CONFLICT")
     err(book(client, teacher, cid, {"id": 9223372036854775807}), 404, "NOT_FOUND")
+
+
+@pytest.mark.parametrize("confirmed", [False, True])
+def test_new_candidates_skip_live_checks_and_confirmed_bookings(client, parent, teacher, confirmed):
+    rid, cid, slots = prepare(client, parent, teacher)
+    assert choose(client, parent, rid, slots[:2]).status_code == 200
+    if confirmed:
+        assert book(client, teacher, cid, slots[0]).status_code == 200
+    _, new_cid, candidates = prepare(client, parent, teacher)
+    busy = slots[:1] if confirmed else slots[:2]
+    for candidate in candidates:
+        for taken in busy:
+            assert candidate["period"]["start"] >= taken["period"]["end"] or taken["period"]["start"] >= candidate["period"]["end"]
+    # 제안부터 빈 칸을 주므로 이어지는 보호자 체크도 성공해요.
+    new_rid = detail(client, teacher, new_cid)["request"]["id"]
+    assert choose(client, parent, new_rid, candidates[:1]).status_code == 200

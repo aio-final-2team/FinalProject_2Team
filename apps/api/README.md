@@ -132,6 +132,8 @@ DB 받은함은 staff_inbox 뷰를 읽어요. 현재 담당 반·배정 기간�
 거절 후 새 초안은 대역이며 근거를 찾지 않고 no_evidence를 남겨요.
 상담 재제안도 DB 일정으로 계산해요. 거절·반려는 결정한 담임의 개인 기억으로 저장해요.
 지우지 않은 같은 이유 코드가 세 건 이상이면 규칙 제안 카드 하나를 만들어요.
+규칙을 거절한 뒤에는 그 결정 이후의 새 기억 세 건이 있어야 다시 제안해요.
+기억에는 같은 기관 아이 이름을 가리고, 제안 저장 실패는 카드 거절을 막지 않아요.
 주인의 켜기·거절은 규칙·카드·결정·이력을 한 트랜잭션에서 바꿔요.
 자동 대역은 시간·말투를 추론하지 않아요. 구체적인 규칙 추출과 적용 범위는 [기억 모듈](app/modules/memories/README.md)을 봐 주세요.
 
@@ -224,7 +226,7 @@ DB는 입력 행의 PostgreSQL xmin을 실행 판으로 써서 이전 작업의 
 새 초안은 기존 알림장 ID를 보존하고 content와 ai_original을 함께 바꿔요. 실행 중 교사 수정·확인도 저장 직전에 다시 검사해요.
 반 묶음 카드 draft.draft_started_at은 접수·실행 시각, draft.regenerated_by와 새 drafted 이력 detail.regenerated_by는 재생성 요청자예요.
 내용이 실제로 바뀔 때만 daily_note_edited를 남겨요. 확인 취소는 기존 returned로 ready→draft, 검사 해소는 checked로 needs_check→draft를 남겨요.
-`GET /memories?kind=tone`은 담임 본인의 기억만 읽고, DELETE /memories/{id}는 deleted_at을 채워요.
+`GET /memories?kind=tone`은 담임 본인의 기억만 읽어요. DELETE /memories/{id}는 deleted_at을 채우고 본문·structured를 비워요.
 기억 AI의 말투 추출·규칙 생성은 이번 백엔드에 없으며, 말투 예시는 시드하지 않아요.
 
 알려진 한계:

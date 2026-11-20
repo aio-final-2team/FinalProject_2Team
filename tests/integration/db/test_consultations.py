@@ -116,6 +116,10 @@ def test_live_parent_hold_blocks_new_candidates_and_expires_without_booking(db_c
 
 def test_only_active_consultation_rules_affect_proposals(db_client, seeded_db):
     with seeded_db.begin() as connection:
+        connection.execute(text("""
+            INSERT INTO memory_rules (org_id,owner_id,reason_code,rule_text,rule_json,status)
+            VALUES (:org,:owner,'tone','[TEST] 상담에 쓰지 않을 규칙','{"after":"16:00"}','active')
+        """), {"org": seed.ORG, "owner": seed.TEACHER})
         rule_id = connection.scalar(text("""
             INSERT INTO memory_rules (org_id,owner_id,reason_code,rule_text,rule_json)
             VALUES (:org,:owner,'slot_unavailable','[TEST] 오후부터','{"after":"14:00"}') RETURNING id
@@ -133,6 +137,26 @@ def test_only_active_consultation_rules_affect_proposals(db_client, seeded_db):
             SELECT lower(s.period) FROM consultation_slots s JOIN cards c ON c.id=s.card_id WHERE c.request_id=:id
         """), {"id": rid}).all()
         assert len(starts) == 3 and all(s.hour >= 14 for s in starts)
+
+
+@pytest.mark.parametrize("status", ["on_hold", "escalated"])
+def test_expired_choice_does_not_lock_request_when_not_awaiting_review(db_client, seeded_db, status):
+    rid, cid, slot = prepare_chosen(db_client)
+    with seeded_db.begin() as connection:
+        connection.execute(text("UPDATE requests SET status=:status WHERE id=:id"), {"id": rid, "status": status})
+        connection.execute(text("UPDATE consultation_slots SET chosen_at=now()-interval '25 hours' WHERE id=:id"),
+                           {"id": slot["id"]})
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        with seeded_db.begin() as connection:
+            connection.execute(text("SELECT id FROM requests WHERE id=:id FOR NO KEY UPDATE"), {"id": rid})
+            response = pool.submit(db_client.get, BASE + "/cards?size=100", headers=auth(seed.TEACHER))
+            try:
+                assert response.result(timeout=1).status_code == 200
+            finally:
+                connection.rollback()
+    with seeded_db.connect() as connection:
+        assert connection.scalar(text("SELECT status FROM consultation_slots WHERE id=:id"),
+                                 {"id": slot["id"]}) == "chosen_by_parent"
 
 
 def test_no_available_slots_stays_empty_and_none_fit_does_not_crash(db_client, seeded_db):

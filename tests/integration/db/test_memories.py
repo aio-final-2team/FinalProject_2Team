@@ -1,6 +1,7 @@
 """기억 제안의 동시 임계값·결정 원자성·승인 전 상담 적용 금지를 검증해요."""
 
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
 from threading import Barrier
 from uuid import uuid4
 
@@ -8,6 +9,7 @@ import pytest
 from sqlalchemy import text
 
 from app.mock import seed
+from app.core.schedule import KST
 from tests.integration.db.test_cards import BASE, auth, create
 
 
@@ -43,40 +45,30 @@ def test_concurrent_rejections_on_distinct_requests_do_not_miss_third_or_duplica
         assert connection.scalar(text("SELECT count(*) FROM events WHERE agent_name='memory' AND action='created'")) == 1
 
 
-@pytest.mark.parametrize("step", ["proposal", "decision"])
-def test_failure_rolls_back_memory_proposal_card_and_approval(db_client, seeded_db, monkeypatch, step):
+def test_rule_decision_failure_rolls_back_card_approval_and_rule(db_client, seeded_db, monkeypatch):
     from app.modules.cards import cards
-    from app.modules.memories import memories
 
-    for _ in range(2 if step == "proposal" else 3):
+    for _ in range(3):
         _, cid = create(db_client, "inquiry")
         assert reject(db_client, cid).status_code == 200
-    if step == "proposal":
-        _, cid = create(db_client, "inquiry")
-    else:
-        with seeded_db.connect() as connection:
-            cid, rid = connection.execute(text("SELECT id,subject_id FROM cards WHERE kind='rule_proposal'")).one()
-    tables = ("memories", "memory_rules", "cards", "approvals", "events", "notifications")
     with seeded_db.connect() as connection:
+        cid, rid = connection.execute(text("SELECT id,subject_id FROM cards WHERE kind='rule_proposal'")).one()
+        tables = ("memories", "memory_rules", "cards", "approvals", "events", "notifications")
         before = {table: connection.scalar(text(f"SELECT count(*) FROM {table}")) for table in tables}
 
     def fail(*args, **kwargs):
         raise RuntimeError("[TEST] 이력 저장 실패")
 
-    monkeypatch.setattr(memories if step == "proposal" else cards, "record", fail)
-    if step == "proposal":
-        response = reject(db_client, cid)
-    else:
-        response = db_client.post(f"{BASE}/memory-rules/{rid}/decision", headers=auth(seed.TEACHER),
-                                  json={"decision": "activate"})
+    monkeypatch.setattr(cards, "record", fail)
+    response = db_client.post(f"{BASE}/memory-rules/{rid}/decision", headers=auth(seed.TEACHER),
+                              json={"decision": "activate"})
     assert response.status_code == 500 and response.json()["error"]["code"] == "INTERNAL_ERROR"
     with seeded_db.connect() as connection:
         assert {table: connection.scalar(text(f"SELECT count(*) FROM {table}")) for table in tables} == before
         assert connection.execute(text("SELECT status,version FROM cards WHERE id=:id"), {"id": cid}).one() == (
             "pending", 1)
-        if step == "decision":
-            assert connection.execute(text("SELECT status,decided_at FROM memory_rules WHERE id=:id"),
-                                      {"id": rid}).one() == ("proposed", None)
+        assert connection.execute(text("SELECT status,decided_at FROM memory_rules WHERE id=:id"),
+                                  {"id": rid}).one() == ("proposed", None)
 
 
 @pytest.mark.parametrize("choice", ["activate", "decline"])
@@ -143,3 +135,46 @@ def test_foreign_rule_is_hidden_and_denial_event_has_no_foreign_key_link(db_clie
         assert connection.execute(text("""
             SELECT org_id,request_id,card_id FROM events WHERE action='permission_denied' ORDER BY id DESC LIMIT 1
         """)).one() == (seed.ORG, None, None)
+
+
+def test_memory_timestamp_after_decline_uses_save_time_even_if_transaction_started_before(db_client, seeded_db):
+    from app.mock import store
+    from app.modules.memories.memories import remember_rejection
+    for _ in range(3):
+        _, cid = create(db_client, "inquiry")
+        assert reject(db_client, cid).status_code == 200
+    _, source = create(db_client, "inquiry")
+    with seeded_db.begin() as connection:
+        started = connection.scalar(text("SELECT now()"))
+        rid = connection.scalar(text("SELECT id FROM memory_rules WHERE reason_code='tone'"))
+        card = dict(connection.execute(text("SELECT * FROM cards WHERE id=:id"), {"id": source}).mappings().one())
+        response = db_client.post(f"{BASE}/memory-rules/{rid}/decision", headers=auth(seed.TEACHER),
+                                  json={"decision": "decline"})
+        assert response.status_code == 200
+        remember_rejection(connection, store.get_user(seed.TEACHER), card, "reject", "tone", "[TEST] 새 기억")
+        decided = connection.scalar(text("SELECT decided_at FROM memory_rules WHERE id=:id"), {"id": rid})
+        saved = connection.scalar(text("SELECT created_at FROM memories WHERE source_card_id=:id"), {"id": source})
+        assert started < decided < saved
+    for _ in range(2):
+        _, cid = create(db_client, "inquiry")
+        assert reject(db_client, cid).status_code == 200
+    with seeded_db.connect() as connection:
+        assert connection.scalar(text("SELECT count(*) FROM memory_rules WHERE status='proposed' AND reason_code='tone'")) == 1
+
+
+def test_rule_notification_off_hours_and_duplicate_event_replay(db_client, seeded_db):
+    from app.modules.notifications.notifications import notify_event
+    for _ in range(3):
+        _, cid = create(db_client, "inquiry")
+        assert reject(db_client, cid).status_code == 200
+    with seeded_db.begin() as connection:
+        card = dict(connection.execute(text("SELECT * FROM cards WHERE kind='rule_proposal'")).mappings().one())
+        event = dict(connection.execute(text("SELECT * FROM events WHERE card_id=:id AND action='created'"),
+                                        {"id": card["id"]}).mappings().one())
+        connection.execute(text("DELETE FROM notifications WHERE card_id=:id"), {"id": card["id"]})
+        event["created_at"] = datetime(2026, 11, 20, 20, tzinfo=KST)  # 금요일 퇴근 뒤
+        for _ in range(2):
+            notify_event(connection, event, None, card)
+        rows = connection.execute(text("SELECT recipient_id,kind,request_id,deliver_after FROM notifications WHERE card_id=:id"),
+                                  {"id": card["id"]}).all()
+        assert rows == [(seed.TEACHER, "new_card", None, datetime(2026, 11, 23, 9, tzinfo=KST))]

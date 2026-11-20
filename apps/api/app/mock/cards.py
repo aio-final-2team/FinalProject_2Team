@@ -16,13 +16,17 @@ def classroom_of(card):
     if card.subject_type == "daily_note_batch":
         return state.note_inputs[card.subject_id].classroom_id
     owner_id = state.rules[card.subject_id].owner_id if card.subject_type == "memory_rule" else card.assignee_id
-    return next((assignment.classroom_id for assignment in state.classroom_staff if assignment.user_id == owner_id), None)
+    return next(iter(store.classroom_ids_of(owner_id)), None)
+
+
+def visible_to(user, card):
+    return card.org_id == user.org_id and (user.role != "teacher" or card.assignee_id == user.id
+            or (card.kind != "rule_proposal" and classroom_of(card) in store.classroom_ids_of(user.id)))
 
 
 def in_scope(user, card_id):
     card = store.state().cards.get(card_id)
-    if card is None or card.org_id != user.org_id or (user.role == "teacher"
-            and card.assignee_id != user.id and classroom_of(card) not in store.classroom_ids_of(user.id)):
+    if card is None or not visible_to(user, card):
         store.deny(user, req=store.state().requests.get(card.request_id) if card and card.org_id == user.org_id else None,
                    card=card if card and card.org_id == user.org_id else None)
     store.expire(card.request_id)
@@ -242,7 +246,7 @@ def reassign(user, card_id, body):
         target = store.get_user(body.assignee_id)
         if target is None or target.org_id != user.org_id or target.role != "teacher" or not target.is_active:
             store.deny(user)
-        if card.kind == "director_report" or card.status in ("done", "rejected"):
+        if card.kind in ("director_report", "rule_proposal") or card.status in ("done", "rejected"):
             raise ApiError(409, "INVALID_TRANSITION")
         previous, card.assignee_id = card.assignee_id, target.id
         req = store.state().requests.get(card.request_id)
