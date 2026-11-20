@@ -1,6 +1,6 @@
 """JWT 발급·검증과 역할 검사(API 설계 문서 1.2, 4.2).
 
-토큰에는 sub·org·role·ver·exp만 넣는다. 반 소속·아이 관계는 요청마다 저장소에서 본다.
+토큰에는 sub·org·role·ver·iat·exp를 넣는다. 반 소속·아이 관계는 요청마다 저장소에서 본다.
 """
 
 from datetime import datetime, timedelta, timezone
@@ -14,7 +14,7 @@ from pydantic import BaseModel
 
 from app.core.config import settings
 from app.core.errors import ApiError
-from app.backend import store
+from app import backend
 
 Role = Literal["parent", "teacher", "director"]
 _bearer = HTTPBearer(auto_error=False)
@@ -26,7 +26,7 @@ class CurrentUser(BaseModel):
     role: Role
 
 
-def issue_token(user: store.User) -> str:
+def issue_token(user) -> str:
     now = datetime.now(timezone.utc)
     claims = {
         "sub": str(user.id),
@@ -43,10 +43,14 @@ def current_user(cred: HTTPAuthorizationCredentials | None = Depends(_bearer)) -
     if cred is None:
         raise ApiError(401, "UNAUTHENTICATED")
     try:
-        claims = jwt.decode(cred.credentials, settings.jwt_secret, algorithms=["HS256"])
-        user = store.get_user(UUID(claims["sub"]))
+        claims = jwt.decode(cred.credentials, settings.jwt_secret, algorithms=["HS256"],
+                            options={"require": ["sub", "org", "role", "ver", "iat", "exp"]})
+        if not isinstance(claims["sub"], str):
+            raise ValueError("sub: UUID 문자열 필요")
+        user_id = UUID(claims["sub"])
     except (jwt.PyJWTError, KeyError, ValueError):
         raise ApiError(401, "UNAUTHENTICATED") from None
+    user = backend.users.get_user(user_id)
     if (user is None or not user.is_active or claims.get("ver") != user.token_version
             or claims.get("org") != str(user.org_id) or claims.get("role") != user.role):
         raise ApiError(401, "UNAUTHENTICATED")

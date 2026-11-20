@@ -208,6 +208,11 @@ def find_user_by_login(login_id: str) -> User | None:
     return next((u for u in _state.users.values() if u.login_id == login_id), None)
 
 
+def authenticate(login_id: str, password: str) -> User | None:
+    user = find_user_by_login(login_id)
+    return user if user and user.is_active and user.password == password else None
+
+
 def children_of(parent_id: UUID) -> list[Child]:
     return [c for c in _state.children.values() if parent_id in c.guardian_ids]
 
