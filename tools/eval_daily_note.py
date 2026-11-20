@@ -76,7 +76,8 @@ def score(case: dict, note: dict, allowed: set[str] = frozenset()) -> dict:
     ai_text = " ".join(line["value"] for line in note["content"]["items"]
                        if line["key"] in AI_KEYS and line["source"]["type"] != "request")
     hits = [word for word in case["must_not_include"] if word in ai_text]
-    kinds = {check["kind"] for check in note["open_checks"]}
+    # 메모 함정은 메모 쪽 확인만 본다. 보호자 요청에 붙은 확인(request_id 있음)은 요청 채점에서 본다
+    kinds = {check["kind"] for check in note["open_checks"] if not check.get("request_id")}
     if case["expect_flag"]:
         flag_ok = case["flag_kind"] in kinds
     else:
@@ -85,7 +86,7 @@ def score(case: dict, note: dict, allowed: set[str] = frozenset()) -> dict:
         hits += ["(child 줄 있음)"] if any(line["key"] == "child" for line in note["content"]["items"]) else []
     return {"id": case["id"], "category": case["category"], "pass": not hits and flag_ok,
             "banned_hits": hits, "flag_ok": flag_ok, "kinds": sorted(kinds),
-            "ai_text": ai_text, "must_include": case["must_include"]}
+            "ai_text": ai_text, "must_include": case["must_include"], "open_checks": note["open_checks"]}
 
 
 def score_request(req: dict, note: dict) -> dict:

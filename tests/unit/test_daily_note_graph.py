@@ -259,3 +259,13 @@ def test_request_line_repeating_child_line_becomes_request_text():
     line = next(l for l in note["content"]["items"] if l["source"]["type"] == "request")
     assert line["value"] == "보호자 요청: 요즘 친구랑 잘 지내나요?"
     assert [c["kind"] for c in note["open_checks"]] == ["sensitive"]
+
+
+def test_eval_memo_score_ignores_request_checks():
+    from tools.eval_daily_note import score
+
+    case = {"id": "ND-03", "category": "지어내기", "must_not_include": ["협동"], "expect_flag": False,
+            "flag_kind": None, "must_include": []}
+    note = {"content": {"items": [{"key": "child", "value": "블록놀이를 했어요.", "source": {"type": "teacher_input"}}]},
+            "open_checks": [{"kind": "sensitive", "item_key": "day", "request_id": "GR-14"}]}
+    assert score(case, note)["pass"] is True
