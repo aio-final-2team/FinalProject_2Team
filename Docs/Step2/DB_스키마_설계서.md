@@ -1,15 +1,17 @@
 # 유치온 데이터베이스 스키마 설계서 (T09)
 
-문서 버전 v0.7 | 작성 상태: T10 회의(11/18) 반영
+문서 버전 v0.8 | 작성 상태: 알림장 아이별 메모(11/20) 반영
 
 | 항목 | 내용 |
 | --- | --- |
 | 작업 | T09 데이터베이스 스키마 설계서 (#166) |
 | 작성 | 태웅 · 검토 영민 |
-| 판 | v0.7 · 2026-11-18. T10 회의 결과(FB-014) 반영: 학부모 미확인 민원은 이유 글이 있어야 처리 완료(트리거 `approvals_unconfirmed_complete_reason`), 202로 접수하는 자료 올리기·알림장 초안의 진행 상태 칸(`ingest_status`·`draft_status`, 강사님 API 작성법 11/18 수정본 '202는 상태 조회가 있어야 함'), 원장 현황에 '학부모 미확인 완료' 수(`completed_unconfirmed`), `topic_key` 주제 10개 + `other`, 처리 기한은 주말·공휴일 제외, 근무 시간 밖 긴급 알림은 아이 안전만 바로. 강사 피드백 FB-001-3에 따라 세 흐름의 화면·API·DB 상태 대조(8.3)와 흐름별 DB 시험 23개(9.1)를 더함. v0.6 · 2026-11-18. `topic_key` = 에이전트 `create_card`의 `topic_key` 인자(계약표 v0.6 4.2). T10 계약표 v0.5의 영민 리뷰 반영(`topic_key` 정해진 목록·`other`는 반복 수 제외, 같은 질문 묶기 MVP 제외). 여러 반 대상 자료를 위해 `documents.classroom_id`를 연결 표 `document_classrooms`로 바꾸고 근거 검색에 반 조건을 더함(FB-003-2). v0.5 · 2026-11-17. T10 계약표 v0.3의 정한 규칙·기본값에 맞춤(알림 종류·자동 재개·거절 이유·처리 기한). v0.4는 강사님 'DB 스키마 설계서 작성법'(11/16)의 목차·체크리스트 반영, v0.1~v0.3은 초안 1~3(T04 합의·대조 검토 반영) |
+| 판 | v0.8 · 2026-11-20. 아이별 메모 배열과 0002를 더했어요(아래 변경 이력). v0.7 · 2026-11-18. T10 회의 결과(FB-014) 반영: 학부모 미확인 민원은 이유 글이 있어야 처리 완료(트리거 `approvals_unconfirmed_complete_reason`), 202로 접수하는 자료 올리기·알림장 초안의 진행 상태 칸(`ingest_status`·`draft_status`, 강사님 API 작성법 11/18 수정본 '202는 상태 조회가 있어야 함'), 원장 현황에 '학부모 미확인 완료' 수(`completed_unconfirmed`), `topic_key` 주제 10개 + `other`, 처리 기한은 주말·공휴일 제외, 근무 시간 밖 긴급 알림은 아이 안전만 바로. 강사 피드백 FB-001-3에 따라 세 흐름의 화면·API·DB 상태 대조(8.3)와 흐름별 DB 시험 23개(9.1)를 더함. v0.6 · 2026-11-18. `topic_key` = 에이전트 `create_card`의 `topic_key` 인자(계약표 v0.6 4.2). T10 계약표 v0.5의 영민 리뷰 반영(`topic_key` 정해진 목록·`other`는 반복 수 제외, 같은 질문 묶기 MVP 제외). 여러 반 대상 자료를 위해 `documents.classroom_id`를 연결 표 `document_classrooms`로 바꾸고 근거 검색에 반 조건을 더함(FB-003-2). v0.5 · 2026-11-17. T10 계약표 v0.3의 정한 규칙·기본값에 맞춤(알림 종류·자동 재개·거절 이유·처리 기한). v0.4는 강사님 'DB 스키마 설계서 작성법'(11/16)의 목차·체크리스트 반영, v0.1~v0.3은 초안 1~3(T04 합의·대조 검토 반영) |
 | 대상 DB | PostgreSQL 16 + pgvector 0.8 (`compose.yaml`의 `pgvector/pgvector:pg16`). Supabase를 쓰지 않는 이유는 5.1 |
-| DDL | [`db_schema_draft.sql`](db_schema_draft.sql) — 설계 검토용. 실제 적용은 T19 마이그레이션(`apps/api/migrations`)으로 옮김 |
+| DDL | [`db_schema_draft.sql`](db_schema_draft.sql) — 최종 설계 모양이에요. 실제 적용은 `apps/api/migrations`의 0001 → 0002로 해요 |
 | 기준 문서 | 기획서 1116판 3장 FR-01~FR-13, 4장 NFR, 6장 공통 상태, 7장 기술과 데이터 · T04 흐름·권한 명세(11/17 팀 합의, PR #234) · T10 [입출력 계약표](입출력_계약표_초안.md) v0.7(1.1 정한 규칙, 6장 11/18 회의 확정) |
+
+변경 이력: **v0.8 · 2026-11-20** — API 설계 문서 v0.4의 아이별 메모를 위해 `daily_note_inputs.child_memos`(`jsonb`, NOT NULL, 기본값 `[]`)와 배열 CHECK를 더했어요. 0001은 유지하고 0002로 적용해요. head의 컬럼은 267개예요.
 
 **목차.** 1~6장은 가이드의 '문서에 들어가는 여섯 가지' 순서다. 7장부터는 이 서비스의 범위·원칙·상태 값·시험 결과 같은 보충 내용이다.
 
@@ -21,7 +23,7 @@
 | 체크리스트(가이드 22쪽) | 이 문서 |
 | --- | --- |
 | ERD 그림과 관계 명세 표가 서로 일치한다 | 1.2·1.3. ERD 선 57개 = 관계 표 57행 = DDL FK 제약 57개(9장 C3) |
-| 모든 컬럼에 타입·제약·의미가 적혀 있다 | 2장, 컬럼 266개 전부 |
+| 모든 컬럼에 타입·제약·의미가 적혀 있다 | 2장, 컬럼 267개 전부 |
 | 모든 테이블에 기본키와 created_at이 있다 | 2장. 표 27개 모두(9장 C1·C2) |
 | API 설계 문서와 필드명·ID 형식이 같다 | 2.0 ID 형식 표. T10 계약표와 맞춤, T13 API 설계 문서에서 필드 대응표를 더함(작성 예정) |
 | 벡터 차원, 인덱스 연산자, 임베딩 모델이 적혀 있다 | 3장 |
@@ -273,7 +275,7 @@ FK를 걸 수 없는 참조는 두 곳이다. `cards.subject_id`와 `notificatio
 
 ## 2. 엔터티 정의
 
-컬럼마다 타입 / 제약 / 의미를 적는다(266개). 표는 DDL을 적용한 DB 카탈로그에서 뽑아서 DDL과 같다. 값이 정해진 컬럼은 허용 값을 적었다. 여러 컬럼에 걸친 제약은 영역 표 아래 '표 제약'에 있다.
+컬럼마다 타입 / 제약 / 의미를 적는다(267개). 표는 DDL을 적용한 DB 카탈로그에서 뽑아서 DDL과 같다. 값이 정해진 컬럼은 허용 값을 적었다. 여러 컬럼에 걸친 제약은 영역 표 아래 '표 제약'에 있다.
 
 ### 2.0 공통 규칙과 ID 형식
 
@@ -637,6 +639,7 @@ FK를 걸 수 없는 참조는 두 곳이다. `cards.subject_id`와 `notificatio
 | `daily_note_inputs` | `draft_status` | `text` / NOT NULL, 값: queued·running·succeeded·failed, 기본값 'queued' | 알림장 초안(202) 뒤 AI가 아이별 초안을 만드는 진행 상태 (v0.7) |
 | `daily_note_inputs` | `author_id` | `uuid` / NOT NULL, FK (author_id, org_id) → users | 입력한 교사 |
 | `daily_note_inputs` | `created_at` | `timestamptz` / NOT NULL, 기본값 now() | 입력 시각 |
+| `daily_note_inputs` | `child_memos` | `jsonb` / NOT NULL, 기본값 '[]', 배열만 허용 | 아이별 `{child_id, memo}` 목록이에요. 생략하면 빈 배열이고, 기존 입력도 빈 배열로 채워요(v0.8) |
 | `daily_notes` | `id` | `uuid` / PK, 기본값 gen_random_uuid() | 알림장 ID |
 | `daily_notes` | `org_id` | `uuid` / NOT NULL, 기관 짝 FK에 들어감 | 기관(경계 짝) |
 | `daily_notes` | `input_id` | `uuid` / NOT NULL, FK (input_id, org_id, note_date) → daily_note_inputs | 반 입력 |
@@ -679,12 +682,14 @@ FK를 걸 수 없는 참조는 두 곳이다. `cards.subject_id`와 `notificatio
 | `eval_runs` | `note` | `text` / NULL 허용 | 메모 |
 | `eval_runs` | `created_at` | `timestamptz` / NOT NULL, 기본값 now() | 기록한 시각 |
 
-- `daily_note_inputs` 표 제약: `UNIQUE (classroom_id, note_date)` · `UNIQUE (id, org_id, note_date)`
+- `daily_note_inputs` 표 제약: `UNIQUE (classroom_id, note_date)` · `UNIQUE (id, org_id, note_date)` · `daily_note_inputs_child_memos_array`: `CHECK (jsonb_typeof(child_memos) = 'array')`(v0.8)
 - `daily_notes` 표 제약: `CHECK ((status <> 'sent') OR (jsonb_array_length(open_checks) = 0))` · `CHECK ((status <> ALL (ARRAY['ready', 'sent'])) OR ((confirmed_by IS NOT NULL) AND (confirmed_at IS NOT NULL)))` · `UNIQUE (child_id, note_date)`
 - `notifications` 표 제약: `CHECK ((subject_type IS NULL) = (subject_id IS NULL))` · `CHECK (subject_type = 'daily_note')`
 - `eval_runs` 표 제약: `CHECK ((passed + errors) <= total)`
 
 **알림장.** 상태 값 `draft`·`needs_check`·`ready`·`sent`는 T04 6장의 `note_drafted`·`note_needs_check`·`note_ready`·`note_sent`와 같은 뜻이다(표가 따로라 앞의 `note_`를 뺐다). MVP는 반 전체를 한 번에 보내고, 반에 `needs_check`가 하나라도 있으면 보내기를 잠근다(T04 합의 6). 잠금은 두 겹이다. **아이별로는 DB CHECK가** `open_checks`가 남은 알림장을 `sent`로 바꾸지 못하게 막고, **반 단위 잠금은 API 트랜잭션이** 막는다. API는 그 반·그날 알림장을 모두 잠근 뒤 하나라도 `ready`가 아니면 아무것도 보내지 않고 409 `NOTE_BATCH_BLOCKED`로 답한다(FR-10, AC-04). `ready`·`sent`는 교사 확인(`confirmed_by`·`confirmed_at`)이 있어야 저장된다(T04 6.1 "교사가 확인함", NFR-03). 식단·일정은 `documents`에서, 투약·귀가 줄은 `requests`에서 가져와 `content`에 넣는다.
+
+`child_memos`는 입력한 메모 원문을 보관해요. DB는 배열 여부와 NOT NULL을 검사하고, 아이 ID·메모 1~500자·아이 중복·그 반 소속 여부는 API 설계 문서 v0.4에 따라 API가 검사해요. 0002를 0001로 되돌리면 이 컬럼과 CHECK가 없어져 저장한 메모도 사라져요. 다른 입력 칸은 유지해요.
 
 **알림**
 
