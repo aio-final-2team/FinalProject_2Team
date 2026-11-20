@@ -16,8 +16,10 @@ async def lifespan(app):
         yield
         return
     from functools import partial
-    from app.core.jobs import dispatch
+    from app.core.jobs import check_broker, dispatch
     from app.modules.daily_notes.runner import requeue_daily_note_drafts
+    if settings.run_in == "worker":
+        await anyio.to_thread.run_sync(check_broker)
     pending = await anyio.to_thread.run_sync(partial(requeue_daily_note_drafts,
                                                    stale_only=settings.run_in == "worker"))
     tasks = BackgroundTasks()

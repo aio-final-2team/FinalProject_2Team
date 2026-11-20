@@ -114,7 +114,7 @@ def requeue_daily_note_drafts(*, stale_only=False):
                 SELECT (c.draft->>'draft_started_at')::timestamptz FROM cards c
                 WHERE c.subject_type='daily_note_batch' AND c.subject_id=i.id AND c.org_id=i.org_id
               ), i.created_at) < now()-make_interval(secs=>:timeout))
-        """), {"stale_only": stale_only, "timeout": settings.daily_note_writer_timeout})
+        """), {"stale_only": stale_only, "timeout": settings.daily_note_writer_timeout + 60})
         return connection.scalars(text("""
             SELECT id FROM daily_note_inputs WHERE draft_status='queued' ORDER BY created_at, id
         """)).all()

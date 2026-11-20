@@ -176,8 +176,10 @@ def test_evidence_staleness_warnings_and_parent_sources(db_client, seeded_db):
     assert db_client.get(f"{BASE}/requests/{rid}", headers=auth(seed.PARENT)).json()["sources"] == []
 
 
-def test_unassigned_card_reassign_and_cards_without_request(db_client, seeded_db):
+def test_unassigned_card_reassign_and_cards_without_request(db_client, seeded_db, monkeypatch):
+    from app.modules.requests import runner
     from app.modules.requests.runner import sweep_missing_cards
+    monkeypatch.setattr(runner, "run_request", lambda request_id: None)
 
     with seeded_db.begin() as connection:
         rid = connection.scalar(
@@ -192,6 +194,7 @@ def test_unassigned_card_reassign_and_cards_without_request(db_client, seeded_db
             },
         )
     sweep_missing_cards(datetime.now(KST))
+    sweep_missing_cards(datetime.now(KST)+timedelta(minutes=5))
     with seeded_db.connect() as connection:
         assert connection.scalar(text("SELECT count(*) FROM cards c JOIN requests r ON r.id=c.request_id WHERE r.type IN ('medication','pickup')")) == 0
     rows = db_client.get(BASE + "/cards?filter=unassigned&size=100", headers=auth(seed.DIRECTOR)).json()["items"]

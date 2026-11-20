@@ -58,7 +58,7 @@ def test_failures_back_off_then_stop_at_three_without_hiding_or_erasing_read_tim
         assert row["deliver_after"] == NOW and row["sent_at"] is None and row["read_at"] == NOW
         assert row["status"] == ("failed" if attempt == 3 else "pending")
         assert row["next_attempt_at"] == moment+timedelta(seconds=60*2**(attempt-1))
-        assert delivery.deliver_pending(moment+timedelta(seconds=59)) == 0
+        assert delivery.deliver_pending(moment+timedelta(seconds=54)) == 0
         assert notice(seeded_db, nid)["attempts"] == attempt
     assert delivery.deliver_pending(NOW+timedelta(days=1)) == 0
     assert notice(seeded_db, nid)["attempts"] == 3
@@ -83,6 +83,21 @@ def test_retry_success_rolls_back_partial_delivery_and_keeps_other_rows_moving(s
     assert delivery.deliver_pending(NOW+timedelta(minutes=1)) == 1
     row = notice(seeded_db, nid)
     assert row["attempts"] == 2 and row["status"] == "sent" and row["last_error"] is None
+
+
+def test_retry_grace_catches_slightly_early_beat_but_not_initial_delivery(seeded_db, monkeypatch):
+    nid = insert(seeded_db)
+    def fail(*args):
+        raise RuntimeError("[TEST] temporary failure")
+    with monkeypatch.context() as patch:
+        patch.setattr(delivery, "_deliver", fail)
+        assert delivery.deliver_pending(NOW) == 0
+    assert delivery.deliver_pending(NOW+timedelta(seconds=54)) == 0
+    future = insert(seeded_db, "[TEST] future", after=NOW+timedelta(seconds=60))
+    assert delivery.deliver_pending(NOW+timedelta(seconds=59, milliseconds=900)) == 1
+    assert notice(seeded_db, nid)["attempts"] == 2
+    assert notice(seeded_db, future)["status"] == "pending"
+    assert delivery.deliver_pending(NOW+timedelta(seconds=60)) == 1
 
 
 def test_inactive_recipient_fails_without_delivery_or_retry(seeded_db, monkeypatch):

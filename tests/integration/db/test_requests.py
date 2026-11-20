@@ -141,7 +141,8 @@ def test_custom_entrypoint_is_selected(db_client, parent, seeded_db, monkeypatch
     assert seen == [UUID(rid)] and rows(seeded_db, "requests", rid)[0]["status"] == "awaiting_review"
 
 
-def test_sweep_exact_age_states_card_exclusion_and_concurrent_idempotency(seeded_db):
+def test_sweep_exact_age_states_card_exclusion_and_concurrent_idempotency(seeded_db, monkeypatch):
+    monkeypatch.setattr(runner, "run_request", lambda request_id: None)
     now = datetime.now(KST)
     ids = {}
     with seeded_db.begin() as connection:
@@ -163,6 +164,11 @@ def test_sweep_exact_age_states_card_exclusion_and_concurrent_idempotency(seeded
     with ThreadPoolExecutor(max_workers=2) as pool:
         list(pool.map(lambda _: runner.sweep_missing_cards(now), range(2)))
     assert runner.sweep_missing_cards(now) == 0
+    for name in ("old", "classified", "assigned"):
+        assert rows(seeded_db, "cards", ids[name]) == []
+        assert [e["action"] for e in rows(seeded_db, "events", ids[name])] == ["agent_requeued"]
+    runner.sweep_missing_cards(now+timedelta(minutes=5))
+    assert runner.sweep_missing_cards(now+timedelta(minutes=5)) == 0
     for name in ("old", "classified", "assigned"):
         card = rows(seeded_db, "cards", ids[name])
         assert len(card) == 1 and card[0]["status"] == "unassigned" and card[0]["draft"] == {}
@@ -238,11 +244,17 @@ def test_sse_waits_for_persisted_completion_and_has_safe_timeout(db_client, pare
     assert '"request_status": "awaiting_review"' in response.text
 
 
-def test_seed_sweep_only_inquiries_and_one_director_notice_per_handoff(seeded_db):
+def test_seed_sweep_only_inquiries_and_one_director_notice_per_handoff(seeded_db, monkeypatch):
+    monkeypatch.setattr(runner, "run_request", lambda request_id: None)
     # 날짜와 무관하게 모든 시드가 5분을 넘긴 시점에서 검사해요.
     with seeded_db.connect() as connection:
         now = connection.scalar(text("SELECT max(created_at)+interval '6 minutes' FROM requests"))
     assert runner.sweep_missing_cards(now) == 9
+    with seeded_db.connect() as connection:
+        assert connection.scalar(text("SELECT count(*) FROM cards")) == 0
+        assert connection.scalar(text("SELECT count(*) FROM events WHERE action='agent_requeued'")) == 9
+        assert connection.scalar(text("SELECT count(*) FROM notifications")) == 0
+    assert runner.sweep_missing_cards(now+timedelta(minutes=5)) == 9
     with seeded_db.connect() as connection:
         counts = dict(connection.execute(text("""
             SELECT r.type,count(*) FROM cards c JOIN requests r ON r.id=c.request_id GROUP BY r.type

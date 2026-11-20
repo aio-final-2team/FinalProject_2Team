@@ -41,7 +41,10 @@ docker compose --profile worker up --build
 API가 마이그레이션·시드를 끝내고 정상 응답한 뒤 worker·Beat가 시작해요. 두 서비스는 DB 초기화를 반복하지 않아요.
 `CELERY_BROKER_URL` 기본값은 Compose 내부 Redis 주소예요. Redis 포트는 호스트에 열지 않아요.
 Redis는 appendonly와 전용 볼륨을 써요. API·worker는 같은 DB·작성기·에이전트·근무 시간·모델 설정을 받아요.
-worker는 `solo`로 한 작업씩 처리해요. 지금은 API·worker·Beat를 각각 하나만 실행해요.
+worker는 `threads`로 실행하고 `WORKER_CONCURRENCY`(기본 4)만큼 동시에 처리해요.
+알림장 초안은 `notes`, 요청·발송·점검은 `default` 큐로 보내고 worker가 두 큐를 읽어요.
+API 이미지를 한 번 빌드해 worker·Beat도 함께 써요. 두 서비스는 종료되면 자동 재시작하고 worker는 ping으로 상태를 확인해요.
+설정이 맞지 않으면 worker·Beat 시작 때 경고해요. worker 모드 API는 시작 때 브로커를 한 번 확인하고, 실패해도 경고를 남긴 뒤 계속 떠요.
 mock은 메모리를 프로세스끼리 공유하지 않으므로 기존 API 안 대역만 쓰고, 워커 주기 작업은 DB를 열지 않아요.
 
 `DATA_BACKEND` 기본값은 `mock`이에요. `db`는 PostgreSQL의 계정과 관계를 읽어요.
@@ -107,7 +110,7 @@ DB 상담 후보는 근무 시간·바쁜 일정·담임/상담실 예약·유�
 Beat는 1분마다 발송 작업을 넣어요. 앱 안 알림 행을 sent로 바꾸고 외부 알림은 보내지 않아요.
 행 잠금·SKIP LOCKED와 유니크 dedupe_key로 동시에 실행해도 한 번만 처리해요.
 발송은 총 3회까지 시도해요. 실패하면 60초·120초 뒤에 다시 시도하고 세 번째 실패는 failed로 남겨요.
-`next_attempt_at`만 바꿔 원래 노출 시각·읽은 시각을 유지해요. 실패 이유는 고정 코드만 남기고 tool_failed 이력을 기록해요.
+`next_attempt_at`만 바꿔 원래 노출 시각·읽은 시각을 유지해요. Beat 시각 차이를 고려해 조회에 5초 여유를 두되 deliver_after·근무 시작 시각보다 일찍 보내지 않아요. 실패 이유는 고정 코드만 남기고 tool_failed 이력을 기록해요.
 최종 실패는 연결 카드에 notify_failed를 남겨 기존 상세 경고로 보여요.
 비활성 수신자는 재시도 없이 failed로 남겨요. 성공 시 attempts를 올리고 sent_at을 처음 한 번 기록해요.
 발송 시점에도 근무 시간을 다시 검사해 늦어진 주기 작업·재시도가 퇴근 뒤 일반 알림을 보내지 않아요.
@@ -117,13 +120,14 @@ Beat는 1분마다 발송 작업을 넣어요. 앱 안 알림 행을 sent로 바
 DB 읽기만 스레드에서 하고 poll 대기는 비동기로 기다려 다른 API의 스레드를 계속 쓸 수 있어요.
 입구가 예외를 내면 요청을 보존하고 초안 없는 미배정 카드로 넘겨요(ai_failed).
 중간에 프로세스가 멈춘 경우 app.modules.requests.runner.sweep_missing_cards(now)로
-5분 넘게 received·classified·assigned이고 카드가 없는 요청을 한 번만 인계해요(card_missing).
+5분 넘게 received·classified·assigned이고 카드가 없으면 처리를 한 번 다시 넣고 agent_requeued 이력만 남겨요.
+그 뒤 5분이 더 지나도 카드가 없을 때만 인계해요(card_missing). 재전달은 요청 잠금 안에서 한 번만 정하고 커밋 뒤 실행해요.
 아직 계약이 없는 투약·귀가 요청은 누락 카드 점검에서 제외해요.
 시드의 보호자 문의는 받은함 대상이에요. 담당 없는 인계 카드가 생기면 같은 기관 원장에게 new_card 알림을 한 번 남겨요.
 T46 전까지 투약·귀가는 교직원이 알림장 출처용 상세(유형·제목·첫 보호자 메시지)만 읽어요.
 학부모의 내 요청 목록·total에서는 빼고 상세는 404로 숨겨요. 등록 계약은 열지 않아요.
-Beat는 5분마다 누락 카드 점검과 알림장 복구를 실행해요. T13의 점검 주기도 5분으로 맞췄어요.
-큐 전달이 실패해도 접수 행은 남아요. 요청은 누락 카드 점검으로 인계하고 queued 알림장은 다시 전달해요.
+Beat는 5분마다 누락 카드 점검과 알림장 복구를 실행해요. 지난 주기 작업은 점검 290초·발송 55초 뒤 만료돼요. T13의 점검 주기도 5분으로 맞췄어요.
+큐 전달이 실패해도 접수 행은 남아요. 요청은 점검에서 한 번 재전달한 뒤 계속 카드가 없으면 인계하고 queued 알림장은 다시 전달해요.
 추가 대화와 확인은 요청 행을 먼저 잠가요. 민원 회신 뒤 추가 글은 확인을 지우고
 회신 카드를 pending으로 돌리며 version을 올려요. 확인 재시도는 처음 시각과 알림을 유지해요.
 범위 함수의 connection 인자로 호출 쪽 트랜잭션을 쓰고, 404 거부 이력만 별도로 커밋해요.
@@ -249,6 +253,7 @@ PYTHONPATH=apps/api python -m db.seeds.demo --refresh-note-requests
 ready와 교사 수정본(content ≠ ai_original 또는 daily_note_edited 이력)은 그대로 두고, sent가 하나라도 있으면 409예요.
 응답은 RegenerateResponse로 kept_edited(접수 시 보존한 미확인 수정본 수)를 더해요. 다른 초안 API 응답은 그대로예요.
 failed와 시간 제한을 넘긴 queued·running은 재접수해요. 제한 안의 queued·running은 현재 상태를 돌려주며 작성기를 다시 부르지 않아요.
+worker의 멈춘 실행 복구는 작성기 제한 시간에 60초를 더해 판단해요.
 DB는 입력 행의 PostgreSQL xmin을 실행 판으로 써서 이전 작업의 늦은 성공·실패를 버려요.
 새 초안은 기존 알림장 ID를 보존하고 content와 ai_original을 함께 바꿔요. 실행 중 교사 수정·확인도 저장 직전에 다시 검사해요.
 반 묶음 카드 draft.draft_started_at은 접수·실행 시각, draft.regenerated_by와 새 drafted 이력 detail.regenerated_by는 재생성 요청자예요.
@@ -259,7 +264,7 @@ DB는 입력 행의 PostgreSQL xmin을 실행 판으로 써서 이전 작업의 
 알려진 한계:
 
 - worker·Beat는 `RUN_IN=worker`일 때만 DB 주기 작업을 해요. API 안 실행 모드의 기존 알림 조회는 유지하지만 예약 발송은 worker 모드로 켜야 해요.
-- 지금은 단일 worker라 긴 작성 작업이 주기 작업을 늦출 수 있어요. 여러 큐·복제본·작성 중 heartbeat는 별도 설계가 필요해요.
+- 두 큐는 같은 worker의 스레드 수를 나눠 써요. 모든 스레드가 긴 작업에 차면 다른 작업이 늦어질 수 있어요. 전용 worker·복제본·작성 중 heartbeat는 별도 설계가 필요해요.
 
 - 시간 초과는 대기·결과 저장만 끝내요. 실행 중인 writer 스레드는 멈추지 않아서 모델 호출이 계속될 수 있어요. 호출별 제한·취소는 writer 쪽에서 처리해야 해요.
 - 알림장이 0개인 반을 보내면 `sent_count=0`이고 묶음 카드는 `pending`으로 남아요.

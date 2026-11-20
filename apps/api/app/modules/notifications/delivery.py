@@ -45,7 +45,7 @@ def deliver_pending(now=None):
             FROM notifications n JOIN users u ON (u.id,u.org_id)=(n.recipient_id,n.org_id)
             LEFT JOIN requests r ON (r.id,r.org_id)=(n.request_id,n.org_id)
             WHERE n.status='pending' AND n.attempts<:max
-              AND n.deliver_after<=:now AND n.next_attempt_at<=:now
+              AND n.deliver_after<=:now AND n.next_attempt_at<=:now+interval '5 seconds'
             ORDER BY n.deliver_after,n.id LIMIT 100 FOR UPDATE OF n SKIP LOCKED
         """), {"now": now, "max": MAX_ATTEMPTS}).mappings().all()
         for row in rows:

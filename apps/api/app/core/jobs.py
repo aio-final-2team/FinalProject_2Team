@@ -7,13 +7,24 @@ from app.core.config import settings
 log = logging.getLogger(__name__)
 
 
+def check_broker():
+    """시작 때 한 번만 확인해요. 접속 실패는 경고하고 API는 계속 띄워요."""
+    from app.worker import celery_app
+    try:
+        with celery_app.connection_for_write(connect_timeout=2) as connection:
+            connection.ensure_connection(max_retries=0)
+    except Exception as error:
+        log.warning("워커 브로커 접속 실패: worker 프로필·CELERY_BROKER_URL을 확인해 주세요. error_type=%s",
+                    type(error).__name__)
+
+
 def publish(job, object_id):
     from app.worker import daily_note_drafts, request_agent
     task = {"daily_note": daily_note_drafts, "request": request_agent}[job]
     try:
         task.apply_async(args=[str(object_id)], retry=False)
     except Exception as error:
-        # 접수한 DB 행은 유지해요. 알림장은 주기 복구, 요청은 카드 누락 점검으로 인계해요.
+        # 접수한 DB 행은 유지해요. 주기 점검이 한 번 재전달하고, 계속 실패한 요청만 인계해요.
         log.error("작업 전달 실패 job=%s id=%s error_type=%s", job, object_id, type(error).__name__)
 
 

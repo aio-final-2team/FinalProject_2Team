@@ -1,6 +1,6 @@
--- 유치온 DB 스키마 초안 (T09) · 문서 버전 v0.11 (알림 재시도 시각 11/20 반영)
+-- 유치온 DB 스키마 초안 (T09) · 문서 버전 v0.12 (요청 에이전트 재전달 이력 11/20 반영)
 -- 설계서: Docs/Step2/DB_스키마_설계서.md
--- 이 파일은 최종 설계 모양이다. 실제 적용은 apps/api/migrations의 0001 → 0002 → 0003 → 0004 → 0005로 한다.
+-- 이 파일은 최종 설계 모양이다. 실제 적용은 apps/api/migrations의 0001 → 0002 → 0003 → 0004 → 0005 → 0006으로 한다.
 -- 대상: PostgreSQL 16 + pgvector 0.8 (compose.yaml의 pgvector/pgvector:pg16). Supabase는 쓰지 않는다(설계서 5.1)
 -- 기관 경계: 기관에 속한 표끼리는 (id, org_id) 짝으로 참조해서 다른 원 행을 섞어 넣으면 DB가 거부한다
 
@@ -340,7 +340,7 @@ CREATE TABLE events (
                                    'tool_failed', 'permission_denied',
                                    'parent_confirmed', 'risk_reclassified', 'dismissed',
                                    'answered_from_saved', 'slot_hold_expired',
-                                   'daily_note_drafted', 'daily_note_edited', 'daily_note_confirmed', 'daily_note_sent')),
+                                   'daily_note_drafted', 'daily_note_edited', 'daily_note_confirmed', 'daily_note_sent', 'agent_requeued')),
     -- 시스템이 한 일(보류 예정일 자동 재개, 상담 시간 잡아 두기 풀림)은 actor_type = 'system', actor_id = NULL
     from_status  text,
     to_status    text,

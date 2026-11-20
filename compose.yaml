@@ -1,5 +1,6 @@
 services:
   api:
+    image: yuchion-api:local
     build:
       context: .
       dockerfile: apps/api/Dockerfile
@@ -54,14 +55,19 @@ services:
       retries: 10
 
   worker:
-    build:
-      context: .
-      dockerfile: apps/api/Dockerfile
+    image: yuchion-api:local
+    restart: unless-stopped
     profiles: [worker]
     environment: *api-environment
-    # 마이그레이션·시드는 API 하나만 해요. solo는 DB 엔진의 fork 공유를 피해요.
+    # 마이그레이션·시드는 API 하나만 해요. threads는 DB 엔진의 fork 공유를 피해요.
     entrypoint: ["celery"]
-    command: ["-A", "app.worker:celery_app", "worker", "--pool=solo", "--concurrency=1", "--loglevel=INFO"]
+    command: ["-A", "app.worker:celery_app", "worker", "-Q", "default,notes", "--pool=threads", "--concurrency=${WORKER_CONCURRENCY:-4}", "--loglevel=INFO"]
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.worker:celery_app inspect ping -d celery@$$HOSTNAME --timeout=5"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
     depends_on:
       api:
         condition: service_healthy
@@ -69,9 +75,8 @@ services:
         condition: service_healthy
 
   beat:
-    build:
-      context: .
-      dockerfile: apps/api/Dockerfile
+    image: yuchion-api:local
+    restart: unless-stopped
     profiles: [worker]
     environment: *api-environment
     entrypoint: ["celery"]

@@ -1,7 +1,7 @@
 """Celery eager 모드에서 실제 DB 입구·중복 실행·주기 복구를 확인해요."""
 
 from dataclasses import replace
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import uuid4
 
 import anyio
@@ -16,12 +16,12 @@ from app.core import jobs, users
 from app.core.schedule import KST
 from app.mock import seed
 from app.modules.daily_notes import notes
-from app.modules.requests import requests
+from app.modules.requests import requests, runner as request_runner
 
 
 @pytest.fixture
 def eager_worker(seeded_db, monkeypatch):
-    for module in (jobs, worker, main):
+    for module in (jobs, worker, main, request_runner):
         monkeypatch.setattr(module, "settings", replace(module.settings, data_backend="db", run_in="worker"))
     monkeypatch.setitem(worker.celery_app.conf, "task_always_eager", True)
     monkeypatch.setitem(worker.celery_app.conf, "task_eager_propagates", True)
@@ -48,11 +48,15 @@ def test_eager_note_request_and_regenerate_use_same_db_guards(eager_worker):
         assert connection.scalar(text("SELECT draft_status FROM daily_note_inputs WHERE id=:id"), {"id": input_id}) == "queued"
         assert connection.scalar(text("SELECT count(*) FROM cards WHERE request_id=:id"), {"id": request_id}) == 0
     anyio.run(tasks)
-    worker.daily_note_drafts.delay(str(input_id)).get()
-    worker.request_agent.delay(str(request_id)).get()
     with eager_worker.connect() as connection:
         assert connection.scalar(text("SELECT draft_status FROM daily_note_inputs WHERE id=:id"), {"id": input_id}) == "succeeded"
         assert connection.scalar(text("SELECT count(*) FROM daily_notes")) == 20
+        assert connection.scalar(text("SELECT count(*) FROM events WHERE daily_note_id IS NOT NULL")) == 20
+        assert connection.scalar(text("SELECT count(*) FROM cards WHERE request_id=:id"), {"id": request_id}) == 1
+    # 첫 dispatch 성공을 단정한 뒤 중복 전달도 확인해요.
+    worker.daily_note_drafts.delay(str(input_id)).get()
+    worker.request_agent.delay(str(request_id)).get()
+    with eager_worker.connect() as connection:
         assert connection.scalar(text("SELECT count(*) FROM events WHERE daily_note_id IS NOT NULL")) == 20
         assert connection.scalar(text("SELECT count(*) FROM cards WHERE request_id=:id"), {"id": request_id}) == 1
     again = BackgroundTasks()
@@ -81,8 +85,11 @@ def test_broker_failure_preserves_rows_and_periodic_sweep_recovers(eager_worker,
         assert connection.scalar(text("SELECT draft_status FROM daily_note_inputs WHERE id=:id"), {"id": input_id}) == "succeeded"
         assert connection.scalar(text("SELECT count(*) FROM cards WHERE request_id=:id"), {"id": request_id}) == 1
         assert connection.scalar(text("SELECT status FROM requests WHERE id=:id"), {"id": request_id}) == "awaiting_review"
-        assert connection.scalar(text("SELECT count(*) FROM events WHERE request_id=:id AND detail->>'handoff_reason'='card_missing'"),
+        assert connection.scalar(text("SELECT count(*) FROM events WHERE request_id=:id AND action='agent_requeued'"),
                                  {"id": request_id}) == 1
+        assert connection.scalar(text("SELECT count(*) FROM events WHERE request_id=:id AND detail->>'handoff_reason'='card_missing'"),
+                                 {"id": request_id}) == 0
+        assert connection.scalar(text("SELECT draft->>'text' FROM cards WHERE request_id=:id"), {"id": request_id})
 
 
 def test_api_restart_keeps_active_worker_run_and_sweep_recovers_only_stale_run(eager_worker):
@@ -105,6 +112,63 @@ def test_api_restart_keeps_active_worker_run_and_sweep_recovers_only_stale_run(e
     with eager_worker.connect() as connection:
         states = dict(connection.execute(text("SELECT id,draft_status FROM daily_note_inputs")).all())
         assert states == {fresh: "running", stale: "succeeded"}
+
+
+def test_worker_recovery_gives_writer_sixty_seconds_to_finish(eager_worker):
+    from app.modules.daily_notes import runner
+    fresh, stale = draft(BackgroundTasks(), "2026-11-19"), draft(BackgroundTasks())
+    with eager_worker.begin() as connection:
+        connection.execute(text("UPDATE daily_note_inputs SET draft_status='running'"))
+        for input_id, grace in ((fresh, 30), (stale, 61)):
+            connection.execute(text("""
+                UPDATE cards SET draft=draft || jsonb_build_object('draft_started_at',
+                    now()-make_interval(secs=>:seconds))
+                WHERE subject_type='daily_note_batch' AND subject_id=:id
+            """), {"id": input_id, "seconds": runner.settings.daily_note_writer_timeout+grace})
+    assert runner.requeue_daily_note_drafts(stale_only=True) == [stale]
+    with eager_worker.connect() as connection:
+        assert dict(connection.execute(text("SELECT id,draft_status FROM daily_note_inputs")).all()) == {
+            fresh: "running", stale: "queued"}
+
+
+def test_worker_startup_checks_broker_once(eager_worker, monkeypatch):
+    calls = []
+    monkeypatch.setattr(jobs, "check_broker", lambda: calls.append("checked"))
+    with TestClient(main.app) as client:
+        assert client.get("/health").status_code == 200
+    assert calls == ["checked"]
+
+
+def test_queued_request_is_republished_once_then_handed_off_after_five_more_minutes(eager_worker, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from app.modules.requests import runner
+    request_id = request(BackgroundTasks())
+    now = datetime.now(KST)
+    with eager_worker.begin() as connection:
+        connection.execute(text("UPDATE requests SET created_at=:at WHERE id=:id"),
+                           {"id": request_id, "at": now-timedelta(minutes=6)})
+    published = []
+    monkeypatch.setattr(jobs, "publish", lambda job, oid: published.append((job, str(oid))))
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        list(pool.map(lambda _: runner.sweep_missing_cards(now), range(2)))
+    assert published.count(("request", str(request_id))) == 1
+    # 시드의 다른 요청도 이때 5분을 넘을 수 있어요. 이 요청의 경계를 검사해요.
+    runner.sweep_missing_cards(now+timedelta(minutes=5, microseconds=-1))
+    assert published.count(("request", str(request_id))) == 1
+    with eager_worker.connect() as connection:
+        assert connection.scalar(text("SELECT count(*) FROM cards WHERE request_id=:id"), {"id": request_id}) == 0
+        assert connection.scalar(text("SELECT status FROM requests WHERE id=:id"), {"id": request_id}) == "received"
+        assert connection.scalar(text("SELECT count(*) FROM events WHERE request_id=:id AND action='agent_requeued'"),
+                                 {"id": request_id}) == 1
+        assert connection.scalar(text("SELECT count(*) FROM notifications WHERE request_id=:id"), {"id": request_id}) == 0
+    runner.sweep_missing_cards(now+timedelta(minutes=5))
+    runner.sweep_missing_cards(now+timedelta(minutes=10))
+    assert published.count(("request", str(request_id))) == 1
+    with eager_worker.connect() as connection:
+        card = connection.execute(text("SELECT * FROM cards WHERE request_id=:id"), {"id": request_id}).mappings().one()
+        assert card["status"] == "unassigned" and card["draft"] == {}
+        assert connection.scalar(text("SELECT count(*) FROM events WHERE request_id=:id AND detail->>'handoff_reason'='card_missing'"),
+                                 {"id": request_id}) == 1
 
 
 def test_eager_notification_task_marks_only_app_rows_sent(eager_worker):

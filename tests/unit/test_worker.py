@@ -65,6 +65,44 @@ def test_beat_intervals():
     entries = worker.celery_app.conf.beat_schedule
     assert {v["task"]: v["schedule"] for v in entries.values()} == {
         "yuchion.sweep": 300.0, "yuchion.deliver_notifications": 60.0}
+    assert {v["task"]: v["options"]["expires"] for v in entries.values()} == {
+        "yuchion.sweep": 290, "yuchion.deliver_notifications": 55}
+
+
+def test_notes_use_separate_queue_and_requests_and_periodic_tasks_use_default():
+    router = worker.celery_app.amqp.Router()
+    for task, queue in (("yuchion.daily_note_drafts", "notes"), ("yuchion.request_agent", "default"),
+                        ("yuchion.sweep", "default"), ("yuchion.deliver_notifications", "default")):
+        assert router.route({}, task)["queue"].name == queue
+
+
+@pytest.mark.parametrize("backend,run_in,warns", [("db", "worker", False), ("db", "api", True),
+                                                ("mock", "worker", True)])
+def test_worker_start_warns_when_configuration_disables_tasks(monkeypatch, caplog, backend, run_in, warns):
+    from celery.signals import worker_init, beat_init
+    monkeypatch.setattr(worker, "settings", replace(worker.settings, data_backend=backend, run_in=run_in))
+    for signal in (worker_init, beat_init):
+        caplog.clear()
+        signal.send(sender=object())
+        assert ("워커 작업 비활성" in caplog.text) == warns
+
+
+def test_startup_broker_check_connects_once_and_warns_without_secret(monkeypatch, caplog):
+    from contextlib import contextmanager
+    from types import SimpleNamespace
+    calls = []
+    def connect(**kwargs):
+        calls.append(kwargs)
+        raise ConnectionError("[TEST] private redis password")
+    @contextmanager
+    def connection(**kwargs):
+        assert kwargs == {"connect_timeout": 2}
+        yield SimpleNamespace(ensure_connection=connect)
+    monkeypatch.setattr(worker.celery_app, "connection_for_write", connection)
+    jobs.check_broker()
+    assert calls == [{"max_retries": 0}]
+    assert "워커 브로커 접속 실패" in caplog.text and "ConnectionError" in caplog.text
+    assert "private redis password" not in caplog.text
 
 
 def test_worker_compose_shares_api_configuration_and_initializes_database_once():
@@ -78,5 +116,12 @@ def test_worker_compose_shares_api_configuration_and_initializes_database_once()
         assert services[name]["entrypoint"] == ["celery"]
         assert services[name]["depends_on"]["api"]["condition"] == "service_healthy"
         assert services[name]["depends_on"]["redis"]["condition"] == "service_healthy"
+        assert services[name]["restart"] == "unless-stopped"
+        assert services[name]["image"] == services["api"]["image"] == "yuchion-api:local"
+        assert "build" not in services[name]
     assert not services["redis"].get("ports")
-    assert "--pool=solo" in services["worker"]["command"]
+    command = services["worker"]["command"]
+    assert "--pool=threads" in command
+    assert command[command.index("-Q")+1] == "default,notes"
+    assert "--concurrency=" + os.getenv("WORKER_CONCURRENCY", "4") in command
+    assert "inspect ping" in services["worker"]["healthcheck"]["test"][1]
