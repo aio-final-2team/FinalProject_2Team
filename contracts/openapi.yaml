@@ -1,22 +1,3804 @@
 openapi: 3.1.0
 info:
   title: 유치온 API
+  description: T13 API 설계 문서(Docs/Step2/API_설계_문서.md)의 엔드포인트. 지금은 모의 API라 메모리 안 데모
+    데이터로 답한다(contracts/mock_api/README.md).
   version: 0.1.0
-  description: >-
-    T10 입출력 계약의 기준 파일입니다. 업무 API는 팀 합의 후 여기에 추가합니다.
 paths:
-  /health:
-    get:
-      summary: 서비스 상태 확인
+  /api/v1/auth/login:
+    post:
+      tags:
+      - 인증
+      summary: 로그인, 토큰 발급 (FR-01)
+      operationId: login_api_v1_auth_login_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginIn'
+        required: true
       responses:
         '200':
-          description: 서비스가 응답 중입니다.
+          description: Successful Response
           content:
             application/json:
               schema:
+                $ref: '#/components/schemas/LoginOut'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/v1/me:
+    get:
+      tags:
+      - 인증
+      summary: 내 정보 (FR-01)
+      operationId: me_api_v1_me_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeOut'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security:
+      - HTTPBearer: []
+  /api/v1/requests:
+    post:
+      tags:
+      - 학부모 요청
+      summary: 요청 만들기, AI 처리 접수 (FR-02, FR-03)
+      operationId: create_request_api_v1_requests_post
+      security:
+      - HTTPBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequestCreateIn'
+      responses:
+        '202':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestAcceptedOut'
+        '200':
+          description: 같은 client_request_id로 다시 보냄
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestAcceptedOut'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+    get:
+      tags:
+      - 학부모 요청
+      summary: List Requests
+      operationId: list_requests_api_v1_requests_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: status
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - enum:
+            - received
+            - classified
+            - needs_info
+            - assigned
+            - awaiting_review
+            - approved
+            - sent_or_booked
+            - completed
+            - on_hold
+            - escalated
+            - rejected
+            type: string
+          - type: 'null'
+          title: Status
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+          title: Page
+      - name: size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 20
+          title: Size
+      - name: sort
+        in: query
+        required: false
+        schema:
+          enum:
+          - -created_at
+          - created_at
+          - -updated_at
+          - updated_at
+          type: string
+          default: -created_at
+          title: Sort
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestList'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+  /api/v1/requests/{request_id}:
+    get:
+      tags:
+      - 학부모 요청
+      summary: 요청 상세·대화·진행 기록 (FR-02, FR-11)
+      operationId: get_request_api_v1_requests__request_id__get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: request_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Request Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestDetailOut'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+  /api/v1/requests/{request_id}/stream:
+    get:
+      tags:
+      - 학부모 요청
+      summary: Request Stream
+      operationId: request_stream_api_v1_requests__request_id__stream_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: request_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Request Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+  /api/v1/requests/{request_id}/messages:
+    post:
+      tags:
+      - 학부모 요청
+      summary: Add Message
+      operationId: add_message_api_v1_requests__request_id__messages_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: request_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Request Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MessageIn'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+  /api/v1/requests/{request_id}/slot-choices:
+    post:
+      tags:
+      - 학부모 요청
+      summary: Choose Slots
+      operationId: choose_slots_api_v1_requests__request_id__slot_choices_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: request_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Request Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SlotChoicesIn'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChoicesResponse'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+  /api/v1/requests/{request_id}/confirm:
+    post:
+      tags:
+      - 학부모 요청
+      summary: Confirm Request
+      operationId: confirm_request_api_v1_requests__request_id__confirm_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: request_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Request Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfirmResponse'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+  /api/v1/cards:
+    get:
+      tags:
+      - 교직원 받은함
+      summary: List Cards
+      operationId: list_cards_api_v1_cards_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: filter
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - enum:
+            - unassigned
+            - needs_review
+            - uncertain
+            - on_hold
+            - in_progress
+            - done
+            type: string
+          - type: 'null'
+          title: Filter
+      - name: request_type
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - enum:
+            - complaint
+            - consultation
+            - inquiry
+            - all
+            type: string
+          - type: 'null'
+          title: Request Type
+      - name: risk_level
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - const: urgent
+            type: string
+          - type: 'null'
+          title: Risk Level
+      - name: kind
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - enum:
+            - reply_draft
+            - consult_slots
+            - director_report
+            - needs_info
+            - daily_note
+            - rule_proposal
+            type: string
+          - type: 'null'
+          title: Kind
+      - name: assignee
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - const: me
+            type: string
+          - type: 'null'
+          title: Assignee
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+          title: Page
+      - name: size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 20
+          title: Size
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CardList'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+  /api/v1/cards/{card_id}:
+    get:
+      tags:
+      - 교직원 받은함
+      summary: Get Card
+      operationId: get_card_api_v1_cards__card_id__get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: card_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Card Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CardDetail'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+  /api/v1/cards/{card_id}/stream:
+    get:
+      tags:
+      - 교직원 받은함
+      summary: Card Stream
+      operationId: card_stream_api_v1_cards__card_id__stream_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: card_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Card Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+  /api/v1/cards/{card_id}/decisions:
+    post:
+      tags:
+      - 교직원 받은함
+      summary: Decide
+      operationId: decide_api_v1_cards__card_id__decisions_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: card_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Card Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DecisionIn'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DecisionResponse'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+  /api/v1/cards/{card_id}/reclassify:
+    post:
+      tags:
+      - 교직원 받은함
+      summary: Reclassify
+      operationId: reclassify_api_v1_cards__card_id__reclassify_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: card_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Card Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReclassifyIn'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReclassifyResponse'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+  /api/v1/cards/{card_id}/bookings:
+    post:
+      tags:
+      - 교직원 받은함
+      summary: Book
+      operationId: book_api_v1_cards__card_id__bookings_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: card_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Card Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookingIn'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingResponse'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+  /api/v1/cards/{card_id}/instructions:
+    post:
+      tags:
+      - 교직원 받은함
+      summary: Instruct
+      operationId: instruct_api_v1_cards__card_id__instructions_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: card_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Card Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InstructionIn'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DecisionResponse'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+  /api/v1/cards/{card_id}/reassign:
+    post:
+      tags:
+      - 교직원 받은함
+      summary: Reassign
+      operationId: reassign_api_v1_cards__card_id__reassign_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: card_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Card Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReassignIn'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReassignResponse'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+  /api/v1/memory-rules/{rule_id}/decision:
+    post:
+      tags:
+      - 교직원 받은함
+      summary: Rule Decision
+      operationId: rule_decision_api_v1_memory_rules__rule_id__decision_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: rule_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Rule Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RuleDecisionIn'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuleResponse'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+  /api/v1/overview:
+    get:
+      tags:
+      - 교직원 받은함
+      summary: Overview
+      operationId: overview_api_v1_overview_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Overview'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security:
+      - HTTPBearer: []
+  /api/v1/notifications:
+    get:
+      tags:
+      - 알림장·자료
+      summary: Notification List
+      operationId: notification_list_api_v1_notifications_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+          title: Page
+      - name: size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 20
+          title: Size
+      - name: sort
+        in: query
+        required: false
+        schema:
+          enum:
+          - -created_at
+          - created_at
+          type: string
+          default: -created_at
+          title: Sort
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationList'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+  /api/v1/notifications/{notification_id}/read:
+    post:
+      tags:
+      - 알림장·자료
+      summary: Notification Read
+      operationId: notification_read_api_v1_notifications__notification_id__read_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: notification_id
+        in: path
+        required: true
+        schema:
+          type: integer
+          title: Notification Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationResponse'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+  /api/v1/classrooms/{classroom_id}/children:
+    get:
+      tags:
+      - 알림장·자료
+      summary: Classroom Children
+      operationId: classroom_children_api_v1_classrooms__classroom_id__children_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: classroom_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Classroom Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChildList'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+  /api/v1/daily-notes/drafts:
+    post:
+      tags:
+      - 알림장·자료
+      summary: Draft Notes
+      operationId: draft_notes_api_v1_daily_notes_drafts_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NoteDraftIn'
+        required: true
+      responses:
+        '202':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DraftResponse'
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DraftResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security:
+      - HTTPBearer: []
+  /api/v1/daily-notes/drafts/{input_id}:
+    get:
+      tags:
+      - 알림장·자료
+      summary: Draft Status
+      operationId: draft_status_api_v1_daily_notes_drafts__input_id__get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: input_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Input Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DraftResponse'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+  /api/v1/daily-notes:
+    get:
+      tags:
+      - 알림장·자료
+      summary: Note List
+      operationId: note_list_api_v1_daily_notes_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: date
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date
+          title: Date
+      - name: classroom_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Classroom Id
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+          title: Page
+      - name: size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 20
+          title: Size
+      - name: sort
+        in: query
+        required: false
+        schema:
+          enum:
+          - -created_at
+          - created_at
+          type: string
+          default: -created_at
+          title: Sort
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NoteList'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+  /api/v1/daily-notes/{note_id}:
+    patch:
+      tags:
+      - 알림장·자료
+      summary: Patch Note
+      operationId: patch_note_api_v1_daily_notes__note_id__patch
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: note_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Note Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotePatchIn'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NoteResponse'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+  /api/v1/daily-notes/send:
+    post:
+      tags:
+      - 알림장·자료
+      summary: Send Notes
+      operationId: send_notes_api_v1_daily_notes_send_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NoteBatchIn'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SendResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security:
+      - HTTPBearer: []
+  /api/v1/documents:
+    post:
+      tags:
+      - 알림장·자료
+      summary: Upload Document
+      operationId: upload_document_api_v1_documents_post
+      security:
+      - HTTPBearer: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_upload_document_api_v1_documents_post'
+      responses:
+        '202':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentResponse'
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentResponse'
+          description: OK
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+    get:
+      tags:
+      - 알림장·자료
+      summary: Document List
+      operationId: document_list_api_v1_documents_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+          title: Page
+      - name: size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 20
+          title: Size
+      - name: sort
+        in: query
+        required: false
+        schema:
+          enum:
+          - -created_at
+          - created_at
+          type: string
+          default: -created_at
+          title: Sort
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentList'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+  /api/v1/documents/{document_id}:
+    get:
+      tags:
+      - 알림장·자료
+      summary: Document Detail
+      operationId: document_detail_api_v1_documents__document_id__get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: document_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Document Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentResponse'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+  /health:
+    get:
+      tags:
+      - health
+      summary: Health
+      operationId: health_health_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
                 type: object
-                required: [status]
-                properties:
-                  status:
-                    type: string
-                    example: ok
+                title: Response Health Health Get
+components:
+  schemas:
+    AssignmentView:
+      properties:
+        assignee:
+          $ref: '#/components/schemas/Person'
+        version:
+          type: integer
+          title: Version
+      type: object
+      required:
+      - assignee
+      - version
+      title: AssignmentView
+    Body_upload_document_api_v1_documents_post:
+      properties:
+        file:
+          type: string
+          contentMediaType: application/octet-stream
+          title: File
+        doc_type:
+          type: string
+          enum:
+          - notice
+          - schedule
+          - menu
+          - policy
+          - consult_timetable
+          - law
+          - public_data
+          title: Doc Type
+        visibility:
+          type: string
+          enum:
+          - staff
+          - parents
+          - all
+          title: Visibility
+        effective_from:
+          type: string
+          format: date
+          title: Effective From
+        classroom_ids[]:
+          items:
+            type: string
+            format: uuid
+          type: array
+          title: Classroom Ids[]
+          default: []
+        replaces_document_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Replaces Document Id
+      type: object
+      required:
+      - file
+      - doc_type
+      - visibility
+      - effective_from
+      title: Body_upload_document_api_v1_documents_post
+    BookingIn:
+      properties:
+        version:
+          type: integer
+          minimum: 1.0
+          title: Version
+        slot_id:
+          type: integer
+          minimum: 1.0
+          title: Slot Id
+      type: object
+      required:
+      - version
+      - slot_id
+      title: BookingIn
+    BookingOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        room:
+          type: string
+          title: Room
+        period:
+          $ref: '#/components/schemas/Period'
+      type: object
+      required:
+      - id
+      - room
+      - period
+      title: BookingOut
+    BookingResponse:
+      properties:
+        request:
+          $ref: '#/components/schemas/RequestState'
+        booking:
+          $ref: '#/components/schemas/BookingOut'
+      type: object
+      required:
+      - request
+      - booking
+      title: BookingResponse
+    CardDetail:
+      properties:
+        card:
+          $ref: '#/components/schemas/CardView'
+        request:
+          anyOf:
+          - $ref: '#/components/schemas/StaffRequest'
+          - type: 'null'
+        evidence:
+          items:
+            $ref: '#/components/schemas/EvidenceView'
+          type: array
+          title: Evidence
+        warnings:
+          items:
+            type: string
+          type: array
+          title: Warnings
+        parent_choices:
+          items:
+            $ref: '#/components/schemas/ParentChoice'
+          type: array
+          title: Parent Choices
+        rule:
+          anyOf:
+          - $ref: '#/components/schemas/RuleView'
+          - type: 'null'
+        director_instruction:
+          anyOf:
+          - $ref: '#/components/schemas/InstructionView'
+          - type: 'null'
+        timeline:
+          items:
+            $ref: '#/components/schemas/EventView'
+          type: array
+          title: Timeline
+      type: object
+      required:
+      - card
+      - request
+      - evidence
+      - warnings
+      - parent_choices
+      - rule
+      - director_instruction
+      - timeline
+      title: CardDetail
+    CardItem:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        kind:
+          type: string
+          enum:
+          - reply_draft
+          - consult_slots
+          - director_report
+          - needs_info
+          - daily_note
+          - rule_proposal
+          title: Kind
+        status:
+          type: string
+          title: Status
+        status_label:
+          type: string
+          title: Status Label
+        version:
+          type: integer
+          title: Version
+        request_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Request Id
+        request_type:
+          anyOf:
+          - type: string
+            enum:
+            - inquiry
+            - consultation
+            - complaint
+          - type: 'null'
+          title: Request Type
+        title:
+          type: string
+          title: Title
+        urgency:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Urgency
+        risk_level:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Risk Level
+        risk_category:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Risk Category
+        is_urgent:
+          type: boolean
+          title: Is Urgent
+        repeat_count:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Repeat Count
+        check:
+          anyOf:
+          - $ref: '#/components/schemas/CheckSummary'
+          - type: 'null'
+        parent_choice_count:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Parent Choice Count
+        classroom:
+          $ref: '#/components/schemas/ClassroomView'
+        assignee:
+          anyOf:
+          - $ref: '#/components/schemas/Person'
+          - type: 'null'
+        due_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Due At
+        is_delayed:
+          type: boolean
+          title: Is Delayed
+        hold_until:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Hold Until
+      type: object
+      required:
+      - id
+      - kind
+      - status
+      - status_label
+      - version
+      - request_id
+      - request_type
+      - title
+      - urgency
+      - risk_level
+      - risk_category
+      - is_urgent
+      - repeat_count
+      - check
+      - parent_choice_count
+      - classroom
+      - assignee
+      - due_at
+      - is_delayed
+      - hold_until
+      title: CardItem
+    CardList:
+      properties:
+        total:
+          type: integer
+          title: Total
+        page:
+          type: integer
+          title: Page
+        size:
+          type: integer
+          title: Size
+        items:
+          items:
+            $ref: '#/components/schemas/CardItem'
+          type: array
+          title: Items
+        counts:
+          additionalProperties:
+            type: integer
+          type: object
+          title: Counts
+        type_counts:
+          additionalProperties:
+            type: integer
+          type: object
+          title: Type Counts
+      type: object
+      required:
+      - total
+      - page
+      - size
+      - items
+      - counts
+      - type_counts
+      title: CardList
+    CardState:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        status:
+          type: string
+          title: Status
+        version:
+          type: integer
+          title: Version
+      type: object
+      required:
+      - id
+      - status
+      - version
+      title: CardState
+    CardView:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        status:
+          type: string
+          title: Status
+        version:
+          type: integer
+          title: Version
+        kind:
+          type: string
+          enum:
+          - reply_draft
+          - consult_slots
+          - director_report
+          - needs_info
+          - daily_note
+          - rule_proposal
+          title: Kind
+        summary:
+          type: string
+          title: Summary
+        draft:
+          additionalProperties: true
+          type: object
+          title: Draft
+        check_result:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Check Result
+        check_attempts:
+          type: integer
+          title: Check Attempts
+      type: object
+      required:
+      - id
+      - status
+      - version
+      - kind
+      - summary
+      - draft
+      - check_result
+      - check_attempts
+      title: CardView
+    CheckSummary:
+      properties:
+        passed:
+          type: boolean
+          title: Passed
+        issue_count:
+          type: integer
+          title: Issue Count
+      type: object
+      required:
+      - passed
+      - issue_count
+      title: CheckSummary
+    ChildList:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/ChildOut'
+          type: array
+          title: Items
+      type: object
+      required:
+      - items
+      title: ChildList
+    ChildMemoIn:
+      properties:
+        child_id:
+          type: string
+          format: uuid
+          title: Child Id
+        memo:
+          type: string
+          maxLength: 500
+          minLength: 1
+          title: Memo
+      type: object
+      required:
+      - child_id
+      - memo
+      title: ChildMemoIn
+    ChildOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        display_name:
+          type: string
+          title: Display Name
+        classroom_id:
+          type: string
+          format: uuid
+          title: Classroom Id
+      type: object
+      required:
+      - id
+      - display_name
+      - classroom_id
+      title: ChildOut
+    ChoicesResponse:
+      properties:
+        request:
+          $ref: '#/components/schemas/RequestState'
+        slots:
+          items:
+            $ref: '#/components/schemas/SlotState'
+          type: array
+          title: Slots
+      type: object
+      required:
+      - request
+      - slots
+      title: ChoicesResponse
+    ClassroomView:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        name:
+          type: string
+          title: Name
+      type: object
+      required:
+      - id
+      - name
+      title: ClassroomView
+    ConfirmResponse:
+      properties:
+        request:
+          $ref: '#/components/schemas/RequestState'
+      type: object
+      required:
+      - request
+      title: ConfirmResponse
+    ConsultationOut:
+      properties:
+        slots:
+          items:
+            $ref: '#/components/schemas/SlotOut'
+          type: array
+          title: Slots
+        booking:
+          anyOf:
+          - $ref: '#/components/schemas/BookingOut'
+          - type: 'null'
+      type: object
+      required:
+      - slots
+      title: ConsultationOut
+    DecisionIn:
+      properties:
+        version:
+          type: integer
+          minimum: 1.0
+          title: Version
+        decision:
+          type: string
+          enum:
+          - approve
+          - edit_approve
+          - reject
+          - hold
+          - resume
+          - dismiss
+          - complete
+          - escalate
+          title: Decision
+        reason_code:
+          anyOf:
+          - type: string
+            enum:
+            - wrong_fact
+            - tone
+            - missing_info
+            - privacy
+            - policy
+            - slot_unavailable
+            - room_unavailable
+            - other
+          - type: 'null'
+          title: Reason Code
+        reason_text:
+          anyOf:
+          - type: string
+            maxLength: 500
+            minLength: 1
+          - type: 'null'
+          title: Reason Text
+        hold_until:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Hold Until
+        edited_content:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Edited Content
+      type: object
+      required:
+      - version
+      - decision
+      title: DecisionIn
+    DecisionResponse:
+      properties:
+        card:
+          $ref: '#/components/schemas/CardState'
+        request:
+          anyOf:
+          - $ref: '#/components/schemas/RequestState'
+          - type: 'null'
+        next_card_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Next Card Id
+      type: object
+      required:
+      - card
+      title: DecisionResponse
+    DocumentList:
+      properties:
+        total:
+          type: integer
+          title: Total
+        page:
+          type: integer
+          title: Page
+        size:
+          type: integer
+          title: Size
+        items:
+          items:
+            $ref: '#/components/schemas/DocumentView'
+          type: array
+          title: Items
+      type: object
+      required:
+      - total
+      - page
+      - size
+      - items
+      title: DocumentList
+    DocumentResponse:
+      properties:
+        document:
+          $ref: '#/components/schemas/DocumentView'
+      type: object
+      required:
+      - document
+      title: DocumentResponse
+    DocumentView:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        title:
+          type: string
+          title: Title
+        doc_type:
+          type: string
+          title: Doc Type
+        visibility:
+          type: string
+          title: Visibility
+        classroom_ids:
+          items:
+            type: string
+            format: uuid
+          type: array
+          title: Classroom Ids
+        effective_from:
+          type: string
+          format: date
+          title: Effective From
+        effective_to:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Effective To
+        status:
+          type: string
+          title: Status
+        ingest_status:
+          type: string
+          enum:
+          - queued
+          - running
+          - succeeded
+          - failed
+          title: Ingest Status
+        supersedes_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Supersedes Id
+        conflicts:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Conflicts
+        chunk_count:
+          type: integer
+          title: Chunk Count
+        error:
+          anyOf:
+          - $ref: '#/components/schemas/JobError'
+          - type: 'null'
+      type: object
+      required:
+      - id
+      - title
+      - doc_type
+      - visibility
+      - classroom_ids
+      - effective_from
+      - effective_to
+      - status
+      - ingest_status
+      - supersedes_id
+      - conflicts
+      - chunk_count
+      - error
+      title: DocumentView
+    DraftResponse:
+      properties:
+        input_id:
+          type: string
+          format: uuid
+          title: Input Id
+        draft_status:
+          type: string
+          enum:
+          - queued
+          - running
+          - succeeded
+          - failed
+          title: Draft Status
+        error:
+          anyOf:
+          - $ref: '#/components/schemas/JobError'
+          - type: 'null'
+      type: object
+      required:
+      - input_id
+      - draft_status
+      title: DraftResponse
+    ErrorBody:
+      properties:
+        code:
+          type: string
+          title: Code
+          examples:
+          - CARD_VERSION_CONFLICT
+        message:
+          type: string
+          title: Message
+        trace_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Trace Id
+        details:
+          additionalProperties: true
+          type: object
+          title: Details
+      type: object
+      required:
+      - code
+      - message
+      title: ErrorBody
+    ErrorResponse:
+      properties:
+        error:
+          $ref: '#/components/schemas/ErrorBody'
+      type: object
+      required:
+      - error
+      title: ErrorResponse
+    EvalView:
+      properties:
+        suite:
+          type: string
+          title: Suite
+        requested_model:
+          type: string
+          title: Requested Model
+        returned_model:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Returned Model
+        passed:
+          type: integer
+          title: Passed
+        total:
+          type: integer
+          title: Total
+        started_at:
+          type: string
+          format: date-time
+          title: Started At
+      type: object
+      required:
+      - suite
+      - requested_model
+      - returned_model
+      - passed
+      - total
+      - started_at
+      title: EvalView
+    EventView:
+      properties:
+        id:
+          type: integer
+          title: Id
+        action:
+          type: string
+          title: Action
+        request_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Request Id
+        card_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Card Id
+        agent_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Agent Name
+        actor_type:
+          type: string
+          title: Actor Type
+        actor_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Actor Id
+        from_status:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: From Status
+        to_status:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: To Status
+        detail:
+          additionalProperties: true
+          type: object
+          title: Detail
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      type: object
+      required:
+      - id
+      - action
+      - request_id
+      - card_id
+      - agent_name
+      - actor_type
+      - actor_id
+      - from_status
+      - to_status
+      - detail
+      - created_at
+      title: EventView
+    EvidenceView:
+      properties:
+        document_title:
+          type: string
+          title: Document Title
+        location:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Location
+        effective_from:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Effective From
+        quote:
+          type: string
+          title: Quote
+        is_current:
+          type: boolean
+          title: Is Current
+      type: object
+      required:
+      - document_title
+      - quote
+      - is_current
+      title: EvidenceView
+    InstructionIn:
+      properties:
+        version:
+          type: integer
+          minimum: 1.0
+          title: Version
+        instruction:
+          type: string
+          maxLength: 500
+          minLength: 1
+          pattern: \S
+          title: Instruction
+      type: object
+      required:
+      - version
+      - instruction
+      title: InstructionIn
+    InstructionView:
+      properties:
+        text:
+          type: string
+          title: Text
+        by:
+          $ref: '#/components/schemas/Person'
+        at:
+          type: string
+          format: date-time
+          title: At
+      type: object
+      required:
+      - text
+      - by
+      - at
+      title: InstructionView
+    JobError:
+      properties:
+        code:
+          type: string
+          title: Code
+        message:
+          type: string
+          title: Message
+      type: object
+      required:
+      - code
+      - message
+      title: JobError
+    LoginIn:
+      properties:
+        login_id:
+          type: string
+          maxLength: 64
+          minLength: 1
+          title: Login Id
+        password:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Password
+      type: object
+      required:
+      - login_id
+      - password
+      title: LoginIn
+    LoginOut:
+      properties:
+        user:
+          $ref: '#/components/schemas/UserOut'
+        children:
+          items:
+            $ref: '#/components/schemas/ChildOut'
+          type: array
+          title: Children
+          description: 학부모만
+        access_token:
+          type: string
+          title: Access Token
+        token_type:
+          type: string
+          const: bearer
+          title: Token Type
+          default: bearer
+      type: object
+      required:
+      - user
+      - access_token
+      title: LoginOut
+    MeOut:
+      properties:
+        user:
+          $ref: '#/components/schemas/UserOut'
+        children:
+          items:
+            $ref: '#/components/schemas/ChildOut'
+          type: array
+          title: Children
+          description: 학부모만
+      type: object
+      required:
+      - user
+      title: MeOut
+    MessageIn:
+      properties:
+        body:
+          type: string
+          maxLength: 2000
+          minLength: 1
+          title: Body
+      type: object
+      required:
+      - body
+      title: MessageIn
+    MessageOut:
+      properties:
+        id:
+          type: integer
+          title: Id
+        sender_type:
+          type: string
+          enum:
+          - user
+          - agent
+          - system
+          title: Sender Type
+        body:
+          type: string
+          title: Body
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      type: object
+      required:
+      - id
+      - sender_type
+      - body
+      - created_at
+      title: MessageOut
+    MessageResponse:
+      properties:
+        message:
+          $ref: '#/components/schemas/MessageOut'
+      type: object
+      required:
+      - message
+      title: MessageResponse
+    NoteBatchIn:
+      properties:
+        classroom_id:
+          type: string
+          format: uuid
+          title: Classroom Id
+        note_date:
+          type: string
+          format: date
+          title: Note Date
+      type: object
+      required:
+      - classroom_id
+      - note_date
+      title: NoteBatchIn
+    NoteContent:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/NoteLine'
+          type: array
+          title: Items
+      type: object
+      required:
+      - items
+      title: NoteContent
+    NoteDraftIn:
+      properties:
+        classroom_id:
+          type: string
+          format: uuid
+          title: Classroom Id
+        note_date:
+          type: string
+          format: date
+          title: Note Date
+        activities:
+          type: string
+          maxLength: 2000
+          minLength: 1
+          title: Activities
+        supplies:
+          type: string
+          maxLength: 2000
+          title: Supplies
+        child_memos:
+          items:
+            $ref: '#/components/schemas/ChildMemoIn'
+          type: array
+          title: Child Memos
+      type: object
+      required:
+      - classroom_id
+      - note_date
+      - activities
+      - supplies
+      title: NoteDraftIn
+    NoteLine:
+      properties:
+        key:
+          type: string
+          enum:
+          - day
+          - meal
+          - medication
+          - pickup
+          - supplies
+          - child
+          title: Key
+        label:
+          type: string
+          minLength: 1
+          title: Label
+        value:
+          type: string
+          title: Value
+        source:
+          $ref: '#/components/schemas/NoteSource'
+      type: object
+      required:
+      - key
+      - label
+      - value
+      - source
+      title: NoteLine
+    NoteList:
+      properties:
+        total:
+          type: integer
+          title: Total
+        page:
+          type: integer
+          title: Page
+        size:
+          type: integer
+          title: Size
+        items:
+          items:
+            $ref: '#/components/schemas/NoteView'
+          type: array
+          title: Items
+      type: object
+      required:
+      - total
+      - page
+      - size
+      - items
+      title: NoteList
+    NotePatchIn:
+      properties:
+        content:
+          anyOf:
+          - $ref: '#/components/schemas/NoteContent'
+          - type: 'null'
+        resolved_checks:
+          items:
+            type: string
+          type: array
+          title: Resolved Checks
+        confirm:
+          type: boolean
+          title: Confirm
+          default: false
+      type: object
+      title: NotePatchIn
+    NoteResponse:
+      properties:
+        note:
+          $ref: '#/components/schemas/NoteView'
+      type: object
+      required:
+      - note
+      title: NoteResponse
+    NoteSource:
+      properties:
+        type:
+          type: string
+          enum:
+          - teacher_input
+          - document
+          - request
+          title: Type
+        document_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Document Id
+        document_title:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Document Title
+        request_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Request Id
+      type: object
+      required:
+      - type
+      title: NoteSource
+    NoteView:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        child_id:
+          type: string
+          format: uuid
+          title: Child Id
+        note_date:
+          type: string
+          format: date
+          title: Note Date
+        status:
+          type: string
+          enum:
+          - draft
+          - needs_check
+          - ready
+          - sent
+          title: Status
+        content:
+          $ref: '#/components/schemas/NoteContent'
+        open_checks:
+          items:
+            $ref: '#/components/schemas/OpenCheck'
+          type: array
+          title: Open Checks
+        confirmed_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Confirmed At
+        sent_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Sent At
+      type: object
+      required:
+      - id
+      - child_id
+      - note_date
+      - status
+      - content
+      - open_checks
+      - confirmed_at
+      - sent_at
+      title: NoteView
+    NotificationList:
+      properties:
+        total:
+          type: integer
+          title: Total
+        page:
+          type: integer
+          title: Page
+        size:
+          type: integer
+          title: Size
+        items:
+          items:
+            $ref: '#/components/schemas/NotificationView'
+          type: array
+          title: Items
+      type: object
+      required:
+      - total
+      - page
+      - size
+      - items
+      title: NotificationList
+    NotificationResponse:
+      properties:
+        notification:
+          $ref: '#/components/schemas/NotificationView'
+      type: object
+      required:
+      - notification
+      title: NotificationResponse
+    NotificationView:
+      properties:
+        id:
+          type: integer
+          title: Id
+        kind:
+          type: string
+          enum:
+          - needs_info
+          - new_card
+          - urgent_complaint
+          - uncertain_complaint
+          - director_report
+          - on_hold
+          - sent_or_booked
+          - parent_confirmed
+          - completed
+          - rejected
+          - note_sent
+          - slot_hold_expired
+          - hold_resumed
+          title: Kind
+        title:
+          type: string
+          title: Title
+        body:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Body
+        request_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Request Id
+        subject_type:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Subject Type
+        subject_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Subject Id
+        read_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Read At
+        deliver_after:
+          type: string
+          format: date-time
+          title: Deliver After
+      type: object
+      required:
+      - id
+      - kind
+      - title
+      - body
+      - request_id
+      - subject_type
+      - subject_id
+      - read_at
+      - deliver_after
+      title: NotificationView
+    OpenCheck:
+      properties:
+        id:
+          type: string
+          title: Id
+        item_key:
+          type: string
+          title: Item Key
+        kind:
+          type: string
+          enum:
+          - not_in_memo
+          - sensitive
+          - other_child
+          - date_check
+          - absent
+          - draft_failed
+          - check_failed
+          - request_missed
+          title: Kind
+        problem:
+          type: string
+          title: Problem
+        sentence:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Sentence
+        request_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Request Id
+      type: object
+      required:
+      - id
+      - item_key
+      - kind
+      - problem
+      title: OpenCheck
+    Overview:
+      properties:
+        unassigned:
+          type: integer
+          title: Unassigned
+        waiting:
+          type: integer
+          title: Waiting
+        delayed:
+          type: integer
+          title: Delayed
+        done_today:
+          type: integer
+          title: Done Today
+        completed_unconfirmed:
+          type: integer
+          title: Completed Unconfirmed
+        reassignments:
+          items:
+            $ref: '#/components/schemas/Reassignment'
+          type: array
+          title: Reassignments
+        eval:
+          items:
+            $ref: '#/components/schemas/EvalView'
+          type: array
+          title: Eval
+      type: object
+      required:
+      - unassigned
+      - waiting
+      - delayed
+      - done_today
+      - completed_unconfirmed
+      - reassignments
+      - eval
+      title: Overview
+    ParentChoice:
+      properties:
+        slot_id:
+          type: integer
+          title: Slot Id
+        period:
+          $ref: '#/components/schemas/Period'
+        room:
+          type: string
+          title: Room
+        chosen_at:
+          type: string
+          format: date-time
+          title: Chosen At
+        hold_expires_at:
+          type: string
+          format: date-time
+          title: Hold Expires At
+      type: object
+      required:
+      - slot_id
+      - period
+      - room
+      - chosen_at
+      - hold_expires_at
+      title: ParentChoice
+    Period:
+      properties:
+        start:
+          type: string
+          format: date-time
+          title: Start
+        end:
+          type: string
+          format: date-time
+          title: End
+      type: object
+      required:
+      - start
+      - end
+      title: Period
+      description: DB의 tstzrange를 API에서는 시작·끝으로 주고받는다.
+    Person:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        display_name:
+          type: string
+          title: Display Name
+      type: object
+      required:
+      - id
+      - display_name
+      title: Person
+    ReassignIn:
+      properties:
+        assignee_id:
+          type: string
+          format: uuid
+          title: Assignee Id
+        reason:
+          type: string
+          maxLength: 500
+          minLength: 1
+          pattern: \S
+          title: Reason
+      type: object
+      required:
+      - assignee_id
+      - reason
+      title: ReassignIn
+    ReassignResponse:
+      properties:
+        card:
+          $ref: '#/components/schemas/AssignmentView'
+      type: object
+      required:
+      - card
+      title: ReassignResponse
+    Reassignment:
+      properties:
+        card_id:
+          type: string
+          format: uuid
+          title: Card Id
+        from:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: From
+        to:
+          type: string
+          format: uuid
+          title: To
+        reason:
+          type: string
+          title: Reason
+        at:
+          type: string
+          format: date-time
+          title: At
+      type: object
+      required:
+      - card_id
+      - from
+      - to
+      - reason
+      - at
+      title: Reassignment
+    ReclassifyIn:
+      properties:
+        version:
+          type: integer
+          minimum: 1.0
+          title: Version
+        risk_level:
+          type: string
+          enum:
+          - normal
+          - urgent
+          title: Risk Level
+        risk_category:
+          anyOf:
+          - type: string
+            enum:
+            - child_safety
+            - staff_attack
+            - legal_external
+            - privacy_leak
+          - type: 'null'
+          title: Risk Category
+        reason:
+          type: string
+          maxLength: 500
+          minLength: 1
+          pattern: \S
+          title: Reason
+      type: object
+      required:
+      - version
+      - risk_level
+      - reason
+      title: ReclassifyIn
+    ReclassifyResponse:
+      properties:
+        request:
+          $ref: '#/components/schemas/StaffRequest'
+      type: object
+      required:
+      - request
+      title: ReclassifyResponse
+    RejectionOut:
+      properties:
+        reason_code:
+          type: string
+          title: Reason Code
+        reason_text:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reason Text
+      type: object
+      required:
+      - reason_code
+      title: RejectionOut
+    RequestAccepted:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        status:
+          type: string
+          enum:
+          - received
+          - classified
+          - needs_info
+          - assigned
+          - awaiting_review
+          - approved
+          - sent_or_booked
+          - completed
+          - on_hold
+          - escalated
+          - rejected
+          title: Status
+        stream_url:
+          type: string
+          title: Stream Url
+      type: object
+      required:
+      - id
+      - status
+      - stream_url
+      title: RequestAccepted
+    RequestAcceptedOut:
+      properties:
+        request:
+          $ref: '#/components/schemas/RequestAccepted'
+      type: object
+      required:
+      - request
+      title: RequestAcceptedOut
+    RequestCreateIn:
+      properties:
+        client_request_id:
+          type: string
+          maxLength: 64
+          minLength: 8
+          title: Client Request Id
+          description: 같은 제출을 두 번 받지 않기 위한 키
+        type:
+          type: string
+          enum:
+          - inquiry
+          - consultation
+          - complaint
+          title: Type
+          description: medication·pickup은 T46에서 연다
+        body:
+          type: string
+          maxLength: 2000
+          minLength: 1
+          title: Body
+        child_id:
+          type: string
+          format: uuid
+          title: Child Id
+        previous_request_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Previous Request Id
+          description: 끝난 요청을 다시 열 때(T04 2.1)
+      type: object
+      required:
+      - client_request_id
+      - type
+      - body
+      - child_id
+      title: RequestCreateIn
+    RequestDetailOut:
+      properties:
+        request:
+          $ref: '#/components/schemas/RequestView'
+        messages:
+          items:
+            $ref: '#/components/schemas/MessageOut'
+          type: array
+          title: Messages
+        timeline:
+          items:
+            $ref: '#/components/schemas/TimelineItem'
+          type: array
+          title: Timeline
+        consultation:
+          anyOf:
+          - $ref: '#/components/schemas/ConsultationOut'
+          - type: 'null'
+        rejection:
+          anyOf:
+          - $ref: '#/components/schemas/RejectionOut'
+          - type: 'null'
+        sources:
+          items:
+            $ref: '#/components/schemas/SourceOut'
+          type: array
+          title: Sources
+      type: object
+      required:
+      - request
+      - messages
+      - timeline
+      title: RequestDetailOut
+      description: 학부모용. 위험 등급·보류 이유·도구 호출·처리한 교직원은 넣지 않는다(계약표 2.1).
+    RequestItem:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        type:
+          type: string
+          enum:
+          - inquiry
+          - consultation
+          - complaint
+          - pickup
+          title: Type
+        title:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Title
+        status:
+          type: string
+          enum:
+          - received
+          - classified
+          - needs_info
+          - assigned
+          - awaiting_review
+          - approved
+          - sent_or_booked
+          - completed
+          - on_hold
+          - escalated
+          - rejected
+          title: Status
+        status_label:
+          type: string
+          title: Status Label
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+        next_action:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Next Action
+        hold_until:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Hold Until
+      type: object
+      required:
+      - id
+      - type
+      - title
+      - status
+      - status_label
+      - updated_at
+      - next_action
+      title: RequestItem
+    RequestList:
+      properties:
+        total:
+          type: integer
+          title: Total
+        page:
+          type: integer
+          title: Page
+        size:
+          type: integer
+          title: Size
+        items:
+          items:
+            $ref: '#/components/schemas/RequestItem'
+          type: array
+          title: Items
+      type: object
+      required:
+      - total
+      - page
+      - size
+      - items
+      title: RequestList
+    RequestState:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        status:
+          type: string
+          enum:
+          - received
+          - classified
+          - needs_info
+          - assigned
+          - awaiting_review
+          - approved
+          - sent_or_booked
+          - completed
+          - on_hold
+          - escalated
+          - rejected
+          title: Status
+        parent_confirmed_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Parent Confirmed At
+      type: object
+      required:
+      - id
+      - status
+      title: RequestState
+    RequestView:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        type:
+          type: string
+          enum:
+          - inquiry
+          - consultation
+          - complaint
+          - pickup
+          title: Type
+        title:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Title
+        status:
+          type: string
+          enum:
+          - received
+          - classified
+          - needs_info
+          - assigned
+          - awaiting_review
+          - approved
+          - sent_or_booked
+          - completed
+          - on_hold
+          - escalated
+          - rejected
+          title: Status
+        status_label:
+          type: string
+          title: Status Label
+        missing_fields:
+          items:
+            type: string
+          type: array
+          title: Missing Fields
+        hold_until:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Hold Until
+        parent_confirmed_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Parent Confirmed At
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+      type: object
+      required:
+      - id
+      - type
+      - title
+      - status
+      - status_label
+      - missing_fields
+      - created_at
+      - updated_at
+      title: RequestView
+    RuleDecisionIn:
+      properties:
+        decision:
+          type: string
+          enum:
+          - activate
+          - decline
+          title: Decision
+      type: object
+      required:
+      - decision
+      title: RuleDecisionIn
+    RuleResponse:
+      properties:
+        rule:
+          $ref: '#/components/schemas/RuleState'
+      type: object
+      required:
+      - rule
+      title: RuleResponse
+    RuleState:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        status:
+          type: string
+          title: Status
+      type: object
+      required:
+      - id
+      - status
+      title: RuleState
+    RuleView:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        reason_code:
+          type: string
+          title: Reason Code
+        rule_text:
+          type: string
+          title: Rule Text
+        status:
+          type: string
+          title: Status
+      type: object
+      required:
+      - id
+      - reason_code
+      - rule_text
+      - status
+      title: RuleView
+    SendResponse:
+      properties:
+        sent_count:
+          type: integer
+          title: Sent Count
+      type: object
+      required:
+      - sent_count
+      title: SendResponse
+    SlotChoicesIn:
+      properties:
+        slot_ids:
+          anyOf:
+          - items:
+              type: integer
+            type: array
+            maxItems: 3
+            minItems: 1
+          - type: 'null'
+          title: Slot Ids
+        none_fit:
+          type: boolean
+          title: None Fit
+          default: false
+        preferred_times:
+          anyOf:
+          - type: string
+            maxLength: 200
+            minLength: 1
+          - type: 'null'
+          title: Preferred Times
+      type: object
+      title: SlotChoicesIn
+    SlotOut:
+      properties:
+        id:
+          type: integer
+          title: Id
+        period:
+          $ref: '#/components/schemas/Period'
+        room:
+          type: string
+          title: Room
+        status:
+          type: string
+          enum:
+          - proposed
+          - chosen_by_parent
+          - confirmed
+          - discarded
+          title: Status
+      type: object
+      required:
+      - id
+      - period
+      - room
+      - status
+      title: SlotOut
+    SlotState:
+      properties:
+        id:
+          type: integer
+          title: Id
+        status:
+          type: string
+          title: Status
+      type: object
+      required:
+      - id
+      - status
+      title: SlotState
+    SourceOut:
+      properties:
+        document_title:
+          type: string
+          title: Document Title
+        location:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Location
+        effective_from:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Effective From
+      type: object
+      required:
+      - document_title
+      title: SourceOut
+    StaffRequest:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        type:
+          type: string
+          enum:
+          - inquiry
+          - consultation
+          - complaint
+          - pickup
+          title: Type
+        title:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Title
+        status:
+          type: string
+          enum:
+          - received
+          - classified
+          - needs_info
+          - assigned
+          - awaiting_review
+          - approved
+          - sent_or_booked
+          - completed
+          - on_hold
+          - escalated
+          - rejected
+          title: Status
+        status_label:
+          type: string
+          title: Status Label
+        missing_fields:
+          items:
+            type: string
+          type: array
+          title: Missing Fields
+        hold_until:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Hold Until
+        parent_confirmed_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Parent Confirmed At
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+        body:
+          type: string
+          title: Body
+        risk_level:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Risk Level
+        risk_category:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Risk Category
+        repeat_count:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Repeat Count
+        classroom_id:
+          type: string
+          format: uuid
+          title: Classroom Id
+      type: object
+      required:
+      - id
+      - type
+      - title
+      - status
+      - status_label
+      - missing_fields
+      - created_at
+      - updated_at
+      - body
+      - risk_level
+      - risk_category
+      - repeat_count
+      - classroom_id
+      title: StaffRequest
+    TimelineItem:
+      properties:
+        label:
+          type: string
+          title: Label
+        at:
+          type: string
+          format: date-time
+          title: At
+      type: object
+      required:
+      - label
+      - at
+      title: TimelineItem
+    UserOut:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        role:
+          type: string
+          enum:
+          - parent
+          - teacher
+          - director
+          title: Role
+        display_name:
+          type: string
+          title: Display Name
+        org_id:
+          type: string
+          format: uuid
+          title: Org Id
+        classroom_ids:
+          items:
+            type: string
+            format: uuid
+          type: array
+          title: Classroom Ids
+          description: 담임만. 대체 담임은 기간 안인 반만
+      type: object
+      required:
+      - id
+      - role
+      - display_name
+      - org_id
+      title: UserOut
+  securitySchemes:
+    HTTPBearer:
+      type: http
+      scheme: bearer

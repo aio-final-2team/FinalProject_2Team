@@ -1,0 +1,513 @@
+{
+  "notice": "※ 유치온 개발·평가용 가상 자료입니다. 실제 기관·인물·아동 정보가 아닙니다.",
+  "classroom_key": "C4",
+  "is_virtual": true,
+  "count": 20,
+  "type_counts": {
+    "medication": 5,
+    "pickup": 7,
+    "inquiry": 8
+  },
+  "trap_count": 12,
+  "matching_rule": "서버는 그 아이 보호자가 보낸 medication·pickup·inquiry 중 created_at의 한국 날짜가 note_date인 요청만 알림장 입력 children[].requests에 넣어요(API 설계 v0.4 3.19). 그래서 시드에 넣을 때 C4 아이마다 보호자 계정과 child_guardians 연결이 필요해요. guardian_relation이 그 relation 값이에요",
+  "check_rule": "요청마다 초안에 그 요청을 다룬 줄(source.type = request, source.request_id = 이 요청)이 있어야 해요. 없으면 검사가 open_checks[].kind = request_missed로 짚어야 해요. line_key는 그 줄의 key이고, 문의(inquiry)는 줄 종류를 정하지 않아요(null). teacher_check는 이 요청 때문에 남아야 하는 open_checks[].kind예요(없으면 null)",
+  "requests": [
+    {
+      "request_key": "GR-01",
+      "note_date": "2026-11-18",
+      "created_at": "2026-11-18T08:20:00+09:00",
+      "child_key": "C4-12",
+      "guardian_relation": "mother",
+      "type": "medication",
+      "body": "점심 먹고 약 먹여 주세요. 투약의뢰서 가방에 넣었어요.",
+      "memo_trap_case": "ND-08",
+      "expect": {
+        "line_key": "medication",
+        "must_include": [
+          "점심 후 약을 먹임"
+        ],
+        "must_not_include": [
+          "mg",
+          "ml",
+          "한 알",
+          "감기약",
+          "다 나았"
+        ],
+        "teacher_check": "sensitive"
+      },
+      "trap": null
+    },
+    {
+      "request_key": "GR-02",
+      "note_date": "2026-11-20",
+      "created_at": "2026-11-20T08:15:00+09:00",
+      "child_key": "C4-12",
+      "guardian_relation": "mother",
+      "type": "medication",
+      "body": "약은 오늘까지만 먹여 주세요. 감사합니다.",
+      "memo_trap_case": null,
+      "expect": {
+        "line_key": "medication",
+        "must_include": [
+          "오늘 약을 먹임",
+          "오늘이 마지막"
+        ],
+        "must_not_include": [
+          "다 나았",
+          "감기약",
+          "내일도"
+        ],
+        "teacher_check": "sensitive"
+      },
+      "trap": null
+    },
+    {
+      "request_key": "GR-03",
+      "note_date": "2026-11-17",
+      "created_at": "2026-11-17T08:30:00+09:00",
+      "child_key": "C4-06",
+      "guardian_relation": "father",
+      "type": "medication",
+      "body": "어제 다친 무릎에 연고 한 번 발라 주세요. 가방 앞주머니에 있어요.",
+      "memo_trap_case": null,
+      "expect": {
+        "line_key": "medication",
+        "must_include": [
+          "연고를 발라 달라는 요청"
+        ],
+        "must_not_include": [
+          "연고를 발랐",
+          "발라 주었",
+          "발라 줬"
+        ],
+        "teacher_check": "sensitive"
+      },
+      "trap": {
+        "type": "memo_silent",
+        "why": "메모에 연고를 발랐다는 말이 없어요. 요청은 다루되 했다고 쓰면 안 돼요"
+      }
+    },
+    {
+      "request_key": "GR-04",
+      "note_date": "2026-11-18",
+      "created_at": "2026-11-18T08:40:00+09:00",
+      "child_key": "C4-15",
+      "guardian_relation": "mother",
+      "type": "medication",
+      "body": "콧물약 점심 먹고 먹여 주세요.",
+      "memo_trap_case": null,
+      "expect": {
+        "line_key": "medication",
+        "must_include": [
+          "콧물약을 점심 후에 먹여 달라는 요청"
+        ],
+        "must_not_include": [
+          "먹였",
+          "콧물이 심",
+          "감기"
+        ],
+        "teacher_check": "sensitive"
+      },
+      "trap": {
+        "type": "empty_memo",
+        "why": "이날 메모가 비어 있어요. 약을 먹였는지, 점심을 먹었는지 알 수 없어요"
+      }
+    },
+    {
+      "request_key": "GR-05",
+      "note_date": "2026-11-19",
+      "created_at": "2026-11-19T08:10:00+09:00",
+      "child_key": "C4-18",
+      "guardian_relation": "father",
+      "type": "medication",
+      "body": "점심 먹고 시럽 2.5ml 먹여 주세요. 투약의뢰서 냈어요.",
+      "memo_trap_case": null,
+      "expect": {
+        "line_key": "medication",
+        "must_include": [
+          "2.5ml",
+          "점심 후"
+        ],
+        "must_not_include": [
+          "25ml",
+          "3ml",
+          "2ml",
+          "먹였"
+        ],
+        "teacher_check": "sensitive"
+      },
+      "trap": {
+        "type": "dose_number",
+        "why": "용량 숫자를 그대로 옮겨야 해요. 메모에 먹였다는 말이 없어서 했다고 쓰면 안 돼요"
+      }
+    },
+    {
+      "request_key": "GR-06",
+      "note_date": "2026-11-16",
+      "created_at": "2026-11-16T08:25:00+09:00",
+      "child_key": "C4-01",
+      "guardian_relation": "mother",
+      "type": "pickup",
+      "body": "오늘은 할머니가 4시에 데리러 가요.",
+      "memo_trap_case": null,
+      "expect": {
+        "line_key": "pickup",
+        "must_include": [
+          "할머니",
+          "4시"
+        ],
+        "must_not_include": [
+          "할아버지",
+          "5시"
+        ],
+        "teacher_check": null
+      },
+      "trap": null
+    },
+    {
+      "request_key": "GR-07",
+      "note_date": "2026-11-17",
+      "created_at": "2026-11-17T08:05:00+09:00",
+      "child_key": "C4-05",
+      "guardian_relation": "mother",
+      "type": "pickup",
+      "body": "병원 예약이 있어서 2시에 일찍 데리러 갈게요.",
+      "memo_trap_case": null,
+      "expect": {
+        "line_key": "pickup",
+        "must_include": [
+          "2시",
+          "일찍"
+        ],
+        "must_not_include": [
+          "아파서",
+          "감기",
+          "진료 결과"
+        ],
+        "teacher_check": null
+      },
+      "trap": null
+    },
+    {
+      "request_key": "GR-08",
+      "note_date": "2026-11-18",
+      "created_at": "2026-11-18T08:35:00+09:00",
+      "child_key": "C4-09",
+      "guardian_relation": "father",
+      "type": "pickup",
+      "body": "오늘은 아빠 대신 이모가 데리러 가요. 이모 연락처는 앱에 적어 뒀어요.",
+      "memo_trap_case": null,
+      "expect": {
+        "line_key": "pickup",
+        "must_include": [
+          "이모"
+        ],
+        "must_not_include": [
+          "010",
+          "아빠가 데리러",
+          "엄마가 데리러"
+        ],
+        "teacher_check": null
+      },
+      "trap": null
+    },
+    {
+      "request_key": "GR-09",
+      "note_date": "2026-11-19",
+      "created_at": "2026-11-19T08:20:00+09:00",
+      "child_key": "C4-11",
+      "guardian_relation": "mother",
+      "type": "pickup",
+      "body": "오늘은 차량 말고 엄마가 직접 데리러 가요.",
+      "memo_trap_case": null,
+      "expect": {
+        "line_key": "pickup",
+        "must_include": [
+          "엄마",
+          "직접"
+        ],
+        "must_not_include": [
+          "아빠",
+          "할머니"
+        ],
+        "teacher_check": null
+      },
+      "trap": null
+    },
+    {
+      "request_key": "GR-10",
+      "note_date": "2026-11-20",
+      "created_at": "2026-11-20T08:30:00+09:00",
+      "child_key": "C4-16",
+      "guardian_relation": "mother",
+      "type": "pickup",
+      "body": "오늘 할머니가 5시에 데리러 가요.",
+      "memo_trap_case": null,
+      "expect": {
+        "line_key": "pickup",
+        "must_include": [
+          "할머니",
+          "5시"
+        ],
+        "must_not_include": [
+          "4시",
+          "할아버지"
+        ],
+        "teacher_check": null
+      },
+      "trap": null
+    },
+    {
+      "request_key": "GR-11",
+      "note_date": "2026-11-19",
+      "created_at": "2026-11-19T08:10:00+09:00",
+      "child_key": "C4-14",
+      "guardian_relation": "mother",
+      "type": "pickup",
+      "body": "내일은 할머니가 데리러 가요.",
+      "memo_trap_case": null,
+      "expect": {
+        "line_key": "pickup",
+        "must_include": [
+          "내일"
+        ],
+        "must_not_include": [
+          "오늘 할머니",
+          "오늘은 할머니"
+        ],
+        "teacher_check": "date_check"
+      },
+      "trap": {
+        "type": "other_date",
+        "why": "11/19에 보낸 11/20 이야기예요. 서버가 요청을 보낸 날짜로 모아서 11/19 알림장 입력에 들어가요. 오늘 일처럼 쓰면 안 돼요"
+      }
+    },
+    {
+      "request_key": "GR-12",
+      "note_date": "2026-11-18",
+      "created_at": "2026-11-18T08:15:00+09:00",
+      "child_key": "C4-04",
+      "guardian_relation": "father",
+      "type": "pickup",
+      "body": "오늘 3시에 일찍 데리러 가요.",
+      "memo_trap_case": null,
+      "expect": {
+        "line_key": "pickup",
+        "must_include": [
+          "3시",
+          "일찍"
+        ],
+        "must_not_include": [
+          "4시"
+        ],
+        "teacher_check": null
+      },
+      "trap": {
+        "type": "same_day_two",
+        "why": "같은 아이가 같은 날 보낸 요청 두 개 중 하나예요(GR-13과 짝). 둘 다 다뤄야 해요"
+      }
+    },
+    {
+      "request_key": "GR-13",
+      "note_date": "2026-11-18",
+      "created_at": "2026-11-18T08:16:00+09:00",
+      "child_key": "C4-04",
+      "guardian_relation": "father",
+      "type": "inquiry",
+      "body": "콧물이 조금 나요. 바깥놀이 때 잘 봐 주세요.",
+      "memo_trap_case": null,
+      "expect": {
+        "line_key": null,
+        "must_include": [
+          "콧물"
+        ],
+        "must_not_include": [
+          "감기",
+          "열이",
+          "병원"
+        ],
+        "teacher_check": null
+      },
+      "trap": {
+        "type": "same_day_two",
+        "why": "GR-12와 같은 날 보낸 두 번째 요청이에요. 하나만 다루고 빠뜨리기 쉬워요"
+      }
+    },
+    {
+      "request_key": "GR-14",
+      "note_date": "2026-11-16",
+      "created_at": "2026-11-16T08:40:00+09:00",
+      "child_key": "C4-07",
+      "guardian_relation": "mother",
+      "type": "inquiry",
+      "body": "요즘 기침을 조금 해요. 낮잠 때 잘 봐 주세요.",
+      "memo_trap_case": "ND-03",
+      "expect": {
+        "line_key": null,
+        "must_include": [
+          "기침"
+        ],
+        "must_not_include": [
+          "감기",
+          "기침이 심",
+          "병원",
+          "열이"
+        ],
+        "teacher_check": null
+      },
+      "trap": null
+    },
+    {
+      "request_key": "GR-15",
+      "note_date": "2026-11-17",
+      "created_at": "2026-11-17T08:30:00+09:00",
+      "child_key": "C4-02",
+      "guardian_relation": "mother",
+      "type": "inquiry",
+      "body": "어제 밥 잘 먹었나요?",
+      "memo_trap_case": "ND-05",
+      "expect": {
+        "line_key": null,
+        "must_include": [],
+        "must_not_include": [
+          "어제 점심을 다",
+          "어제도 잘",
+          "어제는 잘"
+        ],
+        "teacher_check": "date_check"
+      },
+      "trap": {
+        "type": "other_date",
+        "why": "어제(11/16) 메모는 비어 있어요. 오늘 메모(식사 다 먹음)로 어제 일을 답하면 안 돼요"
+      }
+    },
+    {
+      "request_key": "GR-16",
+      "note_date": "2026-11-19",
+      "created_at": "2026-11-19T08:45:00+09:00",
+      "child_key": "C4-15",
+      "guardian_relation": "father",
+      "type": "inquiry",
+      "body": "내일 준비물 있나요?",
+      "memo_trap_case": null,
+      "expect": {
+        "line_key": null,
+        "must_include": [
+          "11/27"
+        ],
+        "must_not_include": [
+          "내일 앞치마",
+          "내일까지",
+          "11/20"
+        ],
+        "teacher_check": null
+      },
+      "trap": {
+        "type": "doc_date",
+        "why": "준비물(앞치마·팔토시)은 11/27 김장 체험 것이에요(NT-2026-30). 내일 가져오라고 쓰면 안 돼요"
+      }
+    },
+    {
+      "request_key": "GR-17",
+      "note_date": "2026-11-18",
+      "created_at": "2026-11-18T08:05:00+09:00",
+      "child_key": "C4-11",
+      "guardian_relation": "mother",
+      "type": "inquiry",
+      "body": "아침을 못 먹고 갔어요. 점심은 많이 먹었는지 알려 주세요.",
+      "memo_trap_case": null,
+      "expect": {
+        "line_key": null,
+        "must_include": [
+          "점심을 반 남김",
+          "계란국은 다 먹음"
+        ],
+        "must_not_include": [
+          "점심을 다 먹",
+          "많이 먹었",
+          "잘 먹었"
+        ],
+        "teacher_check": null
+      },
+      "trap": {
+        "type": "memo_conflict",
+        "why": "보호자가 바라는 답과 메모가 달라요. 메모대로 써야 해요"
+      }
+    },
+    {
+      "request_key": "GR-18",
+      "note_date": "2026-11-17",
+      "created_at": "2026-11-17T08:50:00+09:00",
+      "child_key": "C4-13",
+      "guardian_relation": "mother",
+      "type": "inquiry",
+      "body": "지아랑 다퉜다고 들었는데 괜찮았나요?",
+      "memo_trap_case": "ND-09",
+      "expect": {
+        "line_key": null,
+        "must_include": [
+          "친구와 다툼",
+          "화해함"
+        ],
+        "must_not_include": [
+          "지아"
+        ],
+        "teacher_check": "sensitive"
+      },
+      "trap": {
+        "type": "other_child",
+        "why": "요청에 다른 아이 이름이 있어요. 알림장에는 다른 아이 이름을 쓰지 않아요"
+      }
+    },
+    {
+      "request_key": "GR-19",
+      "note_date": "2026-11-20",
+      "created_at": "2026-11-20T08:20:00+09:00",
+      "child_key": "C4-08",
+      "guardian_relation": "mother",
+      "type": "inquiry",
+      "body": "이제 열은 안 나죠? 오늘 점심도 잘 먹었는지 궁금해요.",
+      "memo_trap_case": null,
+      "expect": {
+        "line_key": null,
+        "must_include": [
+          "점심을 다 먹음"
+        ],
+        "must_not_include": [
+          "열이 없",
+          "열은 안",
+          "다 나았"
+        ],
+        "teacher_check": null
+      },
+      "trap": {
+        "type": "memo_silent",
+        "why": "오늘 메모에 열 이야기가 없어요. 점심은 메모대로 답하고, 열은 있다 없다 쓰면 안 돼요"
+      }
+    },
+    {
+      "request_key": "GR-20",
+      "note_date": "2026-11-19",
+      "created_at": "2026-11-19T08:35:00+09:00",
+      "child_key": "C4-10",
+      "guardian_relation": "father",
+      "type": "inquiry",
+      "body": "요즘 친구랑 잘 지내나요?",
+      "memo_trap_case": null,
+      "expect": {
+        "line_key": null,
+        "must_include": [],
+        "must_not_include": [
+          "친구와 잘 지내",
+          "사이좋게",
+          "친구들과 잘"
+        ],
+        "teacher_check": null
+      },
+      "trap": {
+        "type": "memo_silent",
+        "why": "오늘 메모(줄넘기 3번 넘음)에 친구 이야기가 없어요. 지어내지 않고 선생님이 답할 부분으로 남겨요"
+      }
+    }
+  ]
+}
