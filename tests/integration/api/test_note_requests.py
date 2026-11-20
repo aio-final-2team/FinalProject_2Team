@@ -62,7 +62,11 @@ def test_child_requests_input_and_demo_omission(client, teacher):
                                "kind": "request_missed", "problem": "보호자 요청을 초안에 반영해 주세요",
                                "sentence": None, "request_id": str(seed.REQUEST_PICKUP)}]
         else:
-            assert lines == missed == []
+            child_requests = mock_notes.requests_for_child(
+                store.state().children[UUID(note["child_id"])], store.now().date())
+            assert {line["source"]["request_id"] for line in lines} == {
+                str(req["request_id"]) for req in child_requests}
+            assert missed == []
 
 
 @pytest.mark.parametrize("request_type,key", [("inquiry", "day"), ("medication", "medication"), ("pickup", "pickup")])

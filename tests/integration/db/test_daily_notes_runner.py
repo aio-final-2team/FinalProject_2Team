@@ -253,5 +253,5 @@ def test_notification_uses_schedule_and_does_not_delay_parent_at_night(db_client
     assert db_client.post(BASE + "/daily-notes/send", headers=teacher, json=batch()).json()["sent_count"] == 20
     with seeded_db.connect() as connection:
         after = connection.scalars(text("SELECT deliver_after FROM notifications")).all()
-    assert calls == ["parent", "parent"] and len(after) == 2
+    assert calls == ["parent"] * 18 and len(after) == 18
     assert all(at == Night.now() for at in after)

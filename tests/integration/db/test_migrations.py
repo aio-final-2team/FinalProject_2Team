@@ -166,7 +166,7 @@ def test_seed_twice_keeps_same_rows_and_password_hash(db_engine, alembic_config)
     first = snapshot()
     run_seed()
     assert snapshot() == first
-    assert {table: len(rows) for table, rows in first.items()} == dict(zip(tables, (1, 2, 5, 2, 21, 3, 1, 3, 3, 2), strict=True))
+    assert {table: len(rows) for table, rows in first.items()} == dict(zip(tables, (1, 2, 21, 2, 21, 19, 1, 3, 3, 22), strict=True))
     classrooms = {row["id"]: row for row in first["classrooms"]}
     assert (classrooms[seed.CLASS_STAR]["name"], classrooms[seed.CLASS_STAR]["age_group"]) == ("만 4세 별빛반", 4)
     assert (classrooms[seed.CLASS_SUN]["name"], classrooms[seed.CLASS_SUN]["age_group"]) == ("만 5세 햇님반", 5)
@@ -193,8 +193,9 @@ def test_seed_twice_keeps_same_rows_and_password_hash(db_engine, alembic_config)
             for row in first["classroom_staff"]} == {
         (row["classroom_id"], row["user_id"], row["valid_from"], row["valid_to"])
         for row in seed.CLASSROOM_STAFF}
-    assert {(row["child_id"], row["user_id"]) for row in first["child_guardians"]} == {
-        (child["id"], guardian) for child in seed.CHILDREN for guardian in child["guardian_ids"]}
+    assert {(row["child_id"], row["user_id"], row["relation"]) for row in first["child_guardians"]} == {
+        (child["id"], guardian, seed.GUARDIAN_RELATIONS.get((child["id"], guardian), "other"))
+        for child in seed.CHILDREN for guardian in child["guardian_ids"]}
     requests = {row["id"]: row for row in first["requests"]}
     for expected in seed.DEMO_NOTE_REQUESTS:
         assert all(requests[expected["id"]][key] == value for key, value in expected.items())

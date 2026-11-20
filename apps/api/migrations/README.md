@@ -14,7 +14,7 @@ python -m alembic -c apps/api/alembic.ini upgrade head
 PYTHONPATH=apps/api python -m db.seeds.demo
 ```
 
-시드는 모의 API와 같은 UUID·로그인 ID·`demo1234`를 씁니다. 가상 원 1개, 2026학년도 반 2개, 계정 5개, 아이 21명(만 4세 별빛반 20명·만 5세 햇님반 1명), 보호자 연결 3개, 담임 배정 2개, 상담실 1개예요. 반·교사 표시 이름은 develop의 모의 시드와 같아요. 별빛반의 새 아이 18명은 PR #262 `roster_c4.json`의 이름·순서를 모의 시드에서 함께 읽고, `C4-NN` → `demo_id("54NN")`으로 옮겨요. 보호자는 없어요. 비밀번호는 argon2id 해시로 저장합니다. `ON CONFLICT DO NOTHING`이라 다시 실행해도 기존 행·해시·토큰 판을 덮어쓰지 않습니다. 요청·카드·문서 시연 데이터는 아직 채우지 않습니다.
+시드는 모의 API와 같은 UUID·로그인 ID·`demo1234`를 씁니다. 가상 원 1개, 2026학년도 반 2개, 계정 21개, 아이 21명(만 4세 별빛반 20명·만 5세 햇님반 1명), 보호자 연결 19개, 담임 배정 2개, 상담실 1개예요. 반·교사 표시 이름은 develop의 모의 시드와 같아요. 별빛반의 새 아이 18명은 PR #262 `roster_c4.json`의 이름·순서로 `C4-NN` → `demo_id("54NN")`을 써요. PR #269 `guardian_requests.json`의 요청 20개는 접수 시각·본문을 그대로 옮겨요. 요청이 있는 16명에게 `demo_id("44NN")`·`parent-c4-NN` 보호자를 연결해요. 관계는 원본 값을 쓰되, C4-15만 GR-04의 mother·GR-16의 father가 달라 먼저 나온 mother를 유지해요. 전체 요청은 기존 두 개를 합쳐 22개이고 자료·조각은 각각 3개예요. 비밀번호는 argon2id 해시로 저장합니다. `ON CONFLICT DO NOTHING`이라 다시 실행해도 기존 행·해시·토큰 판·요청 접수 시각을 덮어쓰지 않습니다. 카드는 채우지 않아요.
 
 현재는 T19와 아이별 메모 마이그레이션까지 끝난 단계예요. 기본 `DATA_BACKEND=mock` API는 그대로 동작합니다. `DATA_BACKEND=db` API 연결은 T24·T27에서 이어 붙입니다. 그 전까지 DB 모드 기동은 설명과 함께 중단됩니다.
 

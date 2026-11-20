@@ -1,8 +1,9 @@
-"""가상 원·계정·반·아이·상담실과 알림장용 식단·보호자 요청 두 개.
+"""가상 원·계정·반·아이·상담실과 알림장용 식단·보호자 요청 22개.
 
 저장소 루트에서 PYTHONPATH=apps/api python -m db.seeds.demo 로 실행한다.
 모의 seed의 고정 ID를 함께 쓰고, 이미 있는 행은 덮어쓰지 않는다.
 출처 PR #262 roster_c4.json(가상): 별빛반 18명도 app.mock.seed에서 함께 읽는다.
+출처 PR #269 guardian_requests.json(가상): 20개 요청·16명 보호자도 같은 시드를 쓴다.
 """
 
 from datetime import datetime
@@ -45,8 +46,9 @@ def seed_demo(connection):
         for guardian in child["guardian_ids"]:
             connection.execute(text("""
                 INSERT INTO child_guardians (child_id, org_id, user_id, relation)
-                VALUES (:child_id, :org_id, :user_id, 'other') ON CONFLICT DO NOTHING
-            """), {"child_id": child["id"], "org_id": seed.ORG, "user_id": guardian})
+                VALUES (:child_id, :org_id, :user_id, :relation) ON CONFLICT DO NOTHING
+            """), {"child_id": child["id"], "org_id": seed.ORG, "user_id": guardian,
+                   "relation": seed.GUARDIAN_RELATIONS.get((child["id"], guardian), "other")})
     for room in seed.ROOMS:
         connection.execute(text("""
             INSERT INTO rooms (id, org_id, name) VALUES (:id, :org_id, :name) ON CONFLICT DO NOTHING
@@ -66,10 +68,10 @@ def seed_demo(connection):
             INSERT INTO requests (id,org_id,classroom_id,child_id,requester_id,client_request_id,type,body,created_at)
             VALUES (:id,:org,:class,:child_id,:requester_id,:key,:type,:body,:now) ON CONFLICT DO NOTHING
         """), {**request, "org": seed.ORG, "class": seed.CLASS_STAR, "key": f"demo:{request['id']}",
-               "now": datetime.now(KST)})
+               "now": request.get("created_at", datetime.now(KST))})
 
 
 if __name__ == "__main__":
     with transaction() as connection:
         seed_demo(connection)
-    print("가상 원 시드 완료: 계정 5개, 비밀번호 demo1234 (이미 있는 행은 유지)")
+    print(f"가상 원 시드 완료: 계정 {len(seed.USERS)}개, 비밀번호 demo1234 (이미 있는 행은 유지)")

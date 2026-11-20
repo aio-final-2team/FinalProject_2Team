@@ -166,7 +166,7 @@ def test_seed_names_roster_order_and_guardians():
         (seed.CLASS_STAR, "만 4세 별빛반"), (seed.CLASS_SUN, "만 5세 햇님반")]
     assert [(u["login_id"], u["display_name"]) for u in seed.USERS[:2]] == [
         ("teacher01", "별빛반 선생님"), ("teacher02", "햇님반 선생님")]
-    roster = [child for child in seed.CHILDREN if not child["guardian_ids"]]
+    roster = seed.CHILDREN[3:]
     assert [child["display_name"] for child in roster] == [
         "가온", "나래", "다온", "라온", "마루", "별하", "새봄", "아라", "여름",
         "윤슬", "이든", "지아", "지안", "채온", "하람", "한결", "해든", "로아"]
