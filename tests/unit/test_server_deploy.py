@@ -56,12 +56,16 @@ def test_server_compose_replaces_ports_and_preserves_database_volume(backend, ov
     expected = {"DAILY_NOTE_WRITER_TIMEOUT": "420" if override else "300",
                 "NOTE_DRAFT_CONCURRENCY": "3" if override else "5",
                 "OPENAI_API_KEY": "[TEST]-unused-model-key",
+                "LAW_GO_KR_OC": "[TEST]-law-oc" if override else "",
+                "DATA_GO_KR_API_KEY": "[TEST]-data-go-kr-key" if override else "",
                 **{f"LLM_MODEL_{role}": f"[TEST]-{role}" for role in
                    ("DEFAULT", "SUPERVISOR", "DOCUMENT", "MEMORY", "CHECKER", "CODE")}}
     env.update(expected)
     if not override:
         env.pop("DAILY_NOTE_WRITER_TIMEOUT")
         env.pop("NOTE_DRAFT_CONCURRENCY")
+        env.pop("LAW_GO_KR_OC")
+        env.pop("DATA_GO_KR_API_KEY")
     result = subprocess.run(["docker", "compose", "--env-file", "/dev/null", "-f", "compose.yaml",
                              "-f", "infra/team-server/compose.server.yaml", "config", "--format", "json"],
                             cwd=ROOT, env=env, capture_output=True, text=True, check=True)
