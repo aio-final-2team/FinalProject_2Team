@@ -5,7 +5,6 @@ import { todayKST } from "@/domain/notes";
 import { useSession } from "@/app/session";
 import { Wordmark, SymbolMark } from "@/components/Brand";
 import { Icon } from "@/components/Icon";
-import { filterOf } from "@/domain/types";
 import type { Role } from "@/domain/types";
 
 /**
@@ -15,9 +14,9 @@ import type { Role } from "@/domain/types";
 export function StaffLayout({ role }: { role: Exclude<Role, "parent"> }) {
   const { signOut, user } = useSession();
   const nav = useNavigate();
-  const { data } = useCards();
+  const { data } = useCards("review");
   const notes = useNotes(role === "teacher" ? user?.classroom_ids[0] : undefined, todayKST());
-  const review = data?.filter((c) => filterOf(c) === "review").length ?? 0;
+  const review = data?.counts.review ?? 0;
   const noteLeft = notes.data?.filter((n) => n.status === "needs_check").length ?? 0;
   const base = `/${role}`;
   /* 11/27까지 교사 탭은 홈 · 알림장 (문의는 따로, 11/20 제안) */

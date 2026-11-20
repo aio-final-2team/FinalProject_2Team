@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { newKey, useCard, useCardAction } from "@/api/cards";
+import { ApiError } from "@/api/client";
 import { Button } from "@/components/Button";
 import { Icon } from "@/components/Icon";
 import { Sheet } from "@/components/Sheet";
@@ -10,7 +11,7 @@ import { TYPE_LABEL } from "@/domain/status";
 import type { Card, CardAction, Role } from "@/domain/types";
 import { BackLink } from "./InboxPage";
 
-type SheetKind = null | "send" | "reject" | "hold" | "complete" | "confirm_slot" | "note" | "reassign";
+type SheetKind = null | "send" | "reject" | "hold" | "complete" | "confirm_slot" | "note" | "reclassify";
 
 const Section = ({ title, children }: { title: string; children: ReactNode }) => (
   <section className="grid gap-2">
@@ -68,13 +69,13 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
   };
   const run = (body: CardAction, ok: { title: string; sub?: string }) =>
     act.mutate(
-      { body, key: key.current },
+      { body, card: c, key: key.current },
       {
         onSuccess: () => {
           setSheet(null);
           toast({ kind: "ok", ...ok });
         },
-        onError: () => toast({ kind: "error", title: "처리하지 못했어요", sub: "연결을 확인하고 다시 눌러 주세요", action: { label: "다시 시도", run: () => run(body, ok) } }),
+        onError: (error) => toast({ kind: "error", title: "처리하지 못했어요", sub: error instanceof ApiError ? `${error.message}${error.code ? ` (${error.code})` : ""}` : "연결을 확인하고 다시 눌러 주세요", action: { label: "다시 시도", run: () => run(body, ok) } }),
       },
     );
   const send = () => {
@@ -83,7 +84,7 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
     const body: CardAction = { action: "approve_send", draft };
     const k = key.current;
     sendTimer.current = window.setTimeout(() => {
-      act.mutate({ body, key: k }, { onSettled: () => setPendingSend(false) });
+      act.mutate({ body, card: c, key: k }, { onSettled: () => setPendingSend(false) });
     }, 5000);
     toast({
       kind: "undo",
@@ -102,6 +103,11 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
 
   const isOpen = !["completed", "rejected", "sent_or_booked"].includes(c.status) || (c.parentConfirmedAt && c.status === "sent_or_booked");
   const director = role === "director";
+  const holdDates = [1, 2, 7].map((days) => {
+    const d = new Date();
+    d.setDate(d.getDate() + days);
+    return d.toISOString().slice(0, 10);
+  });
 
   return (
     <article className="mx-auto grid max-w-[720px] gap-5 px-4 pb-40 pt-[max(16px,env(safe-area-inset-top))] lg:px-8 lg:pt-8">
@@ -248,14 +254,15 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
       <Sheet open={sheet === "hold"} onClose={() => setSheet(null)} title="언제까지 보류할까요?">
         <p className="text-sub text-ink2">학부모에게는 예정일만 보이고, 이유는 교직원끼리만 봐요.</p>
         <ReasonChips options={["원장님 확인 필요", "자료 확인 중", "학부모 통화 예정"]} value={reason} onChange={setReason} />
-        <ReasonChips options={["내일", "모레", "11/20(목)"]} value={text} onChange={setText} />
+        <ReasonChips options={holdDates} value={text} onChange={setText} />
         <Button loading={act.isPending} lockedReason={reason && text ? undefined : "이유와 예정일을 골라 주세요"} onClick={() => run({ action: "hold", reason, until: text }, { title: "보류했어요", sub: `${text}까지` })}>보류하기</Button>
         <Button variant="plain" size="sm" onClick={() => setSheet(null)}>취소</Button>
       </Sheet>
 
       <Sheet open={sheet === "complete"} onClose={() => setSheet(null)} title="이 민원을 완료할까요?">
         <p className="text-sub text-ink2">학부모가 {c.parentConfirmedAt ? "확인했어요" : "아직 확인하지 않았어요"}. 완료하면 학부모 화면에 '완료'로 보여요.</p>
-        <Button loading={act.isPending} onClick={() => run({ action: "complete" }, { title: "처리 완료했어요", sub: "완료 필터로 옮겼어요" })}>처리 완료</Button>
+        {!c.parentConfirmedAt && <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} placeholder="학부모 확인 전 완료하는 이유" className="rounded-xl bg-g px-3.5 py-3 text-[15px] outline-none" />}
+        <Button loading={act.isPending} lockedReason={!c.parentConfirmedAt && !reason.trim() ? "완료 이유를 적어 주세요" : undefined} onClick={() => run({ action: "complete", reason: reason.trim() || undefined }, { title: "처리 완료했어요", sub: "완료 필터로 옮겼어요" })}>처리 완료</Button>
         <Button variant="plain" size="sm" onClick={() => setSheet(null)}>취소</Button>
       </Sheet>
 
@@ -272,9 +279,12 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
         <Button variant="plain" size="sm" onClick={() => setSheet(null)}>취소</Button>
       </Sheet>
 
-      <Sheet open={sheet === "reassign"} onClose={() => setSheet(null)} title="다른 선생님께 맡길까요?">
-        <ReasonChips options={["담임 부재", "대체 담임 기간", "업무 조정"]} value={reason} onChange={setReason} />
-        <Button loading={act.isPending} lockedReason={reason ? undefined : "이유를 고르면 맡길 수 있어요"} onClick={() => run({ action: "note", text: `재배정 · ${reason}` }, { title: "재배정했어요", sub: reason })}>재배정</Button>
+      <Sheet open={sheet === "reclassify"} onClose={() => setSheet(null)} title="긴급 사유를 골라 주세요">
+        <ReasonChips options={["아이 안전", "교직원 위협", "법적·외부기관", "개인정보 유출"]} value={text} onChange={setText} />
+        <Button loading={act.isPending} lockedReason={text ? undefined : "긴급 사유를 골라 주세요"} onClick={() => {
+          const categories = { "아이 안전": "child_safety", "교직원 위협": "staff_attack", "법적·외부기관": "legal_external", "개인정보 유출": "privacy_leak" } as const;
+          run({ action: "reclassify", risk: "urgent", riskCategory: categories[text as keyof typeof categories], reason: `담임 판단 · ${text}` }, { title: "긴급으로 분류했어요", sub: "원장님께도 알렸어요" });
+        }}>긴급으로 분류</Button>
         <Button variant="plain" size="sm" onClick={() => setSheet(null)}>취소</Button>
       </Sheet>
     </article>
@@ -288,7 +298,7 @@ function TeacherActions({ c, open, draft, slot, pending, run }: { c: Card; open:
         <p className="text-center text-sub text-ink2">일반이나 긴급으로 다시 분류해 주세요</p>
         <div className="grid grid-cols-2 gap-2">
           <Button variant="tinted" loading={pending} onClick={() => run({ action: "reclassify", risk: "normal", reason: "담임 판단" }, { title: "일반으로 분류했어요", sub: "확인 필요로 옮겼어요" })}>일반으로</Button>
-          <Button variant="navy" loading={pending} onClick={() => run({ action: "reclassify", risk: "urgent", reason: "담임 판단" }, { title: "긴급으로 분류했어요", sub: "원장님께도 알렸어요" })}>긴급으로</Button>
+          <Button variant="navy" loading={pending} onClick={() => open("reclassify")}>긴급으로</Button>
         </div>
       </>
     );
@@ -320,7 +330,7 @@ function DirectorActions({ c, open }: { c: Card; open: (k: SheetKind) => void })
     <>
       <p className="text-center text-sub text-ink2">민원 회신은 담임 승인으로만 나가요</p>
       <div className="grid grid-cols-2 gap-2">
-        <Button variant="tinted" onClick={() => open("reassign")}>재배정</Button>
+        <Button variant="tinted" lockedReason="담당 교직원 목록 API 연결 후 사용할 수 있어요">재배정</Button>
         <Button onClick={() => open("note")}>{c.directorNote ? "지시 고치기" : "지시 남기기"}</Button>
       </div>
     </>

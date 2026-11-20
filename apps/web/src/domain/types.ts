@@ -8,6 +8,9 @@ export type Role = "parent" | "teacher" | "director";
 
 export type Card = {
   id: string;
+  version?: number;
+  kind?: string;
+  inboxFilter?: InboxFilter;
   requestId: string;
   type: RequestType;
   status: Status;
@@ -39,7 +42,7 @@ export type CardAction =
   | { action: "hold"; reason: string; until: string }
   | { action: "escalate" }
   | { action: "complete"; reason?: string }
-  | { action: "reclassify"; risk: "normal" | "urgent"; reason: string }
+  | { action: "reclassify"; risk: "normal" | "urgent"; reason: string; riskCategory?: "child_safety" | "staff_attack" | "legal_external" | "privacy_leak" }
   | { action: "confirm_slot"; slotId: string }
   | { action: "note"; text: string };
 

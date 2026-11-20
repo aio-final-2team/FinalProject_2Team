@@ -4,7 +4,7 @@ import { Icon } from "@/components/Icon";
 import { SkeletonRows, StateView } from "@/components/StateView";
 import { Pill, WeightIcon } from "@/components/Tags";
 import { INBOX_FILTERS, TYPE_LABEL, type InboxFilter } from "@/domain/status";
-import { filterOf, reviewRank, type Card, type Role } from "@/domain/types";
+import { reviewRank, type Card, type Role } from "@/domain/types";
 import { CardDetail } from "./CardDetail";
 
 const EMPTY: Record<InboxFilter, string> = {
@@ -26,7 +26,7 @@ function ago(iso: string) {
 function weightOf(c: Card) {
   if (c.risk === "urgent") return "urgent" as const;
   if (c.status === "completed") return "done" as const;
-  if (filterOf(c) === "review" || filterOf(c) === "judge") return "action" as const;
+  if (c.inboxFilter === "review" || c.inboxFilter === "judge") return "action" as const;
   return "normal" as const;
 }
 
@@ -78,10 +78,9 @@ export function InboxPage({ role }: { role: Exclude<Role, "parent"> }) {
   const { cardId } = useParams();
   const [params, setParams] = useSearchParams();
   const filter = (params.get("filter") as InboxFilter) || "review";
-  const { data, isLoading, isError, refetch, dataUpdatedAt } = useCards();
-  const counts = Object.fromEntries(INBOX_FILTERS.map((f) => [f.key, data?.filter((c) => filterOf(c) === f.key).length ?? 0]));
-  const list = (data ?? [])
-    .filter((c) => filterOf(c) === filter)
+  const { data, isLoading, isError, refetch, dataUpdatedAt } = useCards(filter);
+  const counts = data?.counts ?? Object.fromEntries(INBOX_FILTERS.map((f) => [f.key, 0]));
+  const list = (data?.items ?? [])
     .sort((a, b) => (filter === "review" ? reviewRank(a) - reviewRank(b) : 0) || +new Date(a.createdAt) - +new Date(b.createdAt));
   const q = `?filter=${filter}`;
   const base = `/${role}/inbox`;
@@ -93,7 +92,7 @@ export function InboxPage({ role }: { role: Exclude<Role, "parent"> }) {
         <h1 className="text-title font-bold tracking-[-0.025em]">받은함</h1>
         {role === "director" && counts.review > 0 && (
           <p className="mt-1 text-sub text-ink2">
-            원장 보고 <b className="text-ink">{data?.filter((c) => c.escalated && filterOf(c) === "review").length ?? 0}건</b>을 먼저 봐 주세요
+            원장 보고 <b className="text-ink">{data?.items.filter((c) => c.escalated).length ?? 0}건</b>을 먼저 봐 주세요
           </p>
         )}
         <div className="-mx-4 mt-3 flex gap-1.5 overflow-x-auto px-4 [scrollbar-width:none] lg:mx-0 lg:flex-wrap lg:px-0" role="tablist" aria-label="받은함 필터">
