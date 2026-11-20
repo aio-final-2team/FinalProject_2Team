@@ -20,7 +20,7 @@
 
 ## 알림장: 메모와 대조한다
 
-입력: 아이별 알림장 `content.items[]`, 그 아이 메모 {child_memo}, 반 공통 {activities}·{supplies}, 식단 근거.
+입력: 아이별 알림장 `content.items[]`, 그 아이 메모 {child_memo}, 그날 보호자 요청 {requests}, 반 공통 {activities}·{supplies}, 식단 {menu}.
 
 | 문제 | 이럴 때 | `open_checks.kind` |
 | --- | --- | --- |
@@ -29,13 +29,14 @@
 | 다른 아이 | 알림장에 다른 아이 이름이 있거나, 메모가 다른 아이 이야기로 보인다 | `other_child` |
 | 날짜 | 메모의 날짜가 준비물·통신문 날짜와 다르다 | `date_check` |
 | 결석 | 메모가 결석이다. 보낼지 선생님이 정한다 | `absent` |
+| 보호자 요청 누락 | 그날 보호자 요청 중 `source.request_id`로 다룬 줄이 없는 것이 있다 | `request_missed` (`request_id`에 그 요청 ID, `sentence`는 null) |
 
-- `not_in_memo`는 `return_to_step`으로 자료 AI에 돌려보낸다(최대 2번). 나머지는 고칠 문제가 아니라 선생님이 볼 일이라 돌려보내지 않고 `open_checks`로만 남긴다.
-- 항목마다 `kind`와 함께 `problem`(선생님이 읽을 설명 한 문장)과 `sentence`(걸린 초안 문장, 없으면 null)를 남긴다(API 설계 v0.4 3.7).
+- `not_in_memo`·`request_missed`는 `return_to_step`으로 자료 AI에 돌려보낸다(최대 2번). 나머지는 고칠 문제가 아니라 선생님이 볼 일이라 돌려보내지 않고 `open_checks`로만 남긴다.
+- 항목마다 `kind`와 함께 `problem`(선생님이 읽을 설명 한 문장)과 `sentence`(걸린 초안 문장, 없으면 null)를 남긴다. 보호자 요청 누락이면 `request_id`도 남긴다(API 설계 v0.4 3.7).
 - 메모가 빈 아이는 `child` 줄이 없으면 통과다.
 
 ## 결과
-- `check_draft`로 결과를 남긴다: `passed`, `issues[] { field, problem }`. 답변 초안이면 `field`는 위 다섯 항목 중 하나다. 알림장이면 `open_checks[] { id, item_key, kind, problem, sentence }`로 저장된다. `problem`은 무엇이 왜 틀렸는지 한 문장으로 쓴다.
+- `check_draft`로 결과를 남긴다: `passed`, `issues[] { field, problem }`. 답변 초안이면 `field`는 위 다섯 항목 중 하나다. 알림장이면 `open_checks[] { id, item_key, kind, problem, sentence, request_id? }`로 저장된다. `problem`은 무엇이 왜 틀렸는지 한 문장으로 쓴다.
 - 통과하지 못하면 `return_to_step`으로 앞 단계에 돌려보낸다. 최대 2번이다.
 - 2번 돌려보내도 통과하지 못하면 더 돌려보내지 않고 사람 카드로 넘긴다.
 
