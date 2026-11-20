@@ -96,6 +96,47 @@ def _hold_until(connection, req):
     """), {"id": req["id"], "org": req["org_id"]})
 
 
+def choices(user, request_id, body):
+    from app.modules.consultations.slots import propose_slots
+
+    with transaction() as connection:
+        scope.request_in_scope(user, request_id, connection=connection)
+        req = _expire(connection, _lock(connection, request_id))
+        if req["type"] != "consultation" or req["status"] != "needs_info":
+            raise ApiError(409, "INVALID_TRANSITION")
+        card = connection.execute(text("""
+            SELECT * FROM cards WHERE request_id=:id AND kind='consult_slots'
+              AND status IN ('pending','in_review') ORDER BY created_at DESC,id DESC
+            LIMIT 1 FOR NO KEY UPDATE
+        """), {"id": request_id}).mappings().one_or_none()
+        if card is None:
+            raise ApiError(409, "INVALID_TRANSITION")
+        current_round = connection.scalar(text("SELECT coalesce(max(round),0) FROM consultation_slots WHERE card_id=:id"),
+                                          {"id": card["id"]})
+        slots = connection.execute(text("""
+            SELECT id,status FROM consultation_slots WHERE card_id=:id AND round=:round AND status='proposed'
+            ORDER BY rank FOR NO KEY UPDATE
+        """), {"id": card["id"], "round": current_round}).mappings().all()
+        if body.none_fit:
+            connection.execute(text("UPDATE consultation_slots SET status='discarded' WHERE card_id=:id"),
+                               {"id": card["id"]})
+            slots = propose_slots(connection, req, card, card["assignee_id"], current_round + 1)
+            record(connection, req, "info_requested", card=card, actor_type="user", actor_id=user.id,
+                   preferred_times=body.preferred_times)
+        else:
+            selected = [row for row in slots if row["id"] in body.slot_ids]
+            if len(selected) != len(body.slot_ids):
+                scope._checked(user, None, False, "slot", body.slot_ids)
+            slots = [dict(connection.execute(text("""
+                UPDATE consultation_slots SET status='chosen_by_parent',chosen_at=clock_timestamp()
+                WHERE id=:id RETURNING id,status
+            """), {"id": row["id"]}).mappings().one()) for row in selected]
+            set_status(connection, req, "awaiting_review", action="checked", card=card,
+                       actor_type="user", actor_id=user.id)
+        return {"slots": [dict(row) for row in slots], "request": {
+            key: req[key] for key in ("id", "status", "parent_confirmed_at")}}
+
+
 def detail(user, request_id):
     with transaction() as connection:
         req = dict(scope.request_in_scope(user, request_id, connection=connection))

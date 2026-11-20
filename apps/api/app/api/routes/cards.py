@@ -11,8 +11,8 @@ from app.api.schemas.views import (CardList, CardDetail, DecisionResponse, Recla
                                   ReassignResponse, RuleResponse, Overview)
 from app.api.schemas.common import errors
 from app.core.auth import CurrentUser, require_roles
-# 상담 확정·기억 규칙 결정은 T35·T39에서 연결해요.
-from app.core.workflows import workflow_user, require_workflow_roles
+# 기억 규칙 결정은 T39에서 연결해요.
+from app.core.workflows import workflow_user
 from app import backend
 
 router = APIRouter(tags=["교직원 받은함"])
@@ -49,7 +49,7 @@ def reclassify(card_id: UUID, body: ReclassifyIn, user: CurrentUser = Depends(st
 
 
 @router.post("/cards/{card_id}/bookings", response_model=BookingResponse, responses=errors(401, 403, 404, 409, 422))
-def book(card_id: UUID, body: BookingIn, user: CurrentUser = Depends(require_workflow_roles("teacher"))):
+def book(card_id: UUID, body: BookingIn, user: CurrentUser = Depends(require_roles("teacher"))):
     return backend.cards.book(user, card_id, body)
 
 

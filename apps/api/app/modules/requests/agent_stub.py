@@ -1,10 +1,10 @@
 """모의 분류·카드 만들기를 DB에 옮긴 대역이에요. 실제 요청 그래프로 교체해요.
 
-T29에서 Celery 워커로 옮겨요. 상담 후보는 모의 시간표이며 충돌 계산은 T35에서 연결해요.
+T29에서 Celery 워커로 옮겨요. 상담 후보는 DB 일정·예약에서 계산해요.
 """
 
 import json
-from datetime import datetime, time, timedelta
+from datetime import datetime
 
 from sqlalchemy import text
 
@@ -13,6 +13,7 @@ from app.core.request_rules import classify
 from app.core.schedule import KST, due_at
 from app.modules.requests.complaints import repeat_count
 from app.modules.requests.events import record, set_status
+from app.modules.consultations.slots import propose_slots
 
 
 def new_card(connection, req, kind, assignee, draft=None):
@@ -25,26 +26,6 @@ def new_card(connection, req, kind, assignee, draft=None):
            "draft": json.dumps(draft or {})}).mappings().one())
     record(connection, req, "created", card=card, actor_type="agent", agent_name="supervisor")
     return card
-
-
-def _propose_stub_slots(connection, req, card, teacher):
-    room = connection.scalar(text("SELECT id FROM rooms WHERE org_id=:org AND is_active ORDER BY id LIMIT 1"),
-                             {"org": req["org_id"]})
-    if room is None or teacher is None:
-        return
-    first = datetime.now(KST).date() + timedelta(days=1)
-    while first.weekday() >= 5:
-        first += timedelta(days=1)
-    second = first + timedelta(days=1)
-    while second.weekday() >= 5:
-        second += timedelta(days=1)
-    for rank, (day, hour) in enumerate(((first, 15), (first, 16), (second, 15)), 1):
-        start = datetime.combine(day, time(hour), KST)
-        connection.execute(text("""
-            INSERT INTO consultation_slots (card_id,org_id,teacher_id,room_id,period,rank)
-            VALUES (:card,:org,:teacher,:room,tstzrange(:start,:end,'[)'),:rank)
-        """), {"card": card["id"], "org": req["org_id"], "teacher": teacher, "room": room,
-               "start": start, "end": start + timedelta(minutes=30), "rank": rank})
 
 
 def run_request(request_id):
@@ -83,7 +64,7 @@ def run_request(request_id):
         set_status(connection, req, "assigned", action="assigned", actor_type="agent", agent_name="supervisor")
         if req["type"] == "consultation":
             card = new_card(connection, req, "consult_slots", teacher)
-            _propose_stub_slots(connection, req, card, teacher)
+            propose_slots(connection, req, card, teacher)
             set_status(connection, req, "needs_info", action="info_requested", card=card,
                        actor_type="agent", agent_name="code")
             return

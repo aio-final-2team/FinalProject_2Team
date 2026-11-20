@@ -10,7 +10,9 @@ from app.core import scope
 from app.core.db import transaction
 from app.core.errors import ApiError
 from app.core.schedule import due_at
-from app.modules.requests.agent_stub import new_card, _propose_stub_slots
+from app.modules.requests.agent_stub import new_card
+from app.modules.consultations.slots import propose_slots
+from app.modules.consultations.bookings import book_slot
 from app.modules.requests.events import record, set_status
 from app.modules.requests.requests import _expire, _lock
 
@@ -223,11 +225,45 @@ def decide(user, card_id, body):
                     ),
                     {"id": req["id"]},
                 )
-                _propose_stub_slots(connection, req, next_card, next_card["assignee_id"])
+                propose_slots(connection, req, next_card, next_card["assignee_id"])
                 set_status(connection, req, "needs_info", action="info_requested", card=next_card)
             else:
                 set_status(connection, req, "awaiting_review", action="drafted", card=next_card)
         return result(card, req, next_card)
+
+
+def book(user, card_id, body):
+    with locked(user, card_id) as (connection, card, req):
+        if req is None or card["kind"] != "consult_slots":
+            raise ApiError(409, "INVALID_TRANSITION")
+        # 재배정만 받은 다른 반 교사는 조회할 수 있어도 대신 확정하지 못해요.
+        if user.role != "teacher" or not scope._classroom(connection, user, req["classroom_id"]):
+            raise ApiError(403, "FORBIDDEN_ROLE")
+        version(connection, card, body.version)
+        slot = connection.execute(text("""
+            SELECT s.*,r.name AS room FROM consultation_slots s JOIN rooms r
+              ON (r.id,r.org_id)=(s.room_id,s.org_id)
+            WHERE s.id=:id AND s.card_id=:card AND s.org_id=:org FOR NO KEY UPDATE OF s
+        """), {"id": body.slot_id, "card": card_id, "org": user.org_id}).mappings().one_or_none()
+        if slot is None:
+            scope._checked(user, None, False, "slot", body.slot_id)
+        if slot["status"] != "chosen_by_parent":
+            raise ApiError(409, "SLOT_NOT_CHOSEN")
+        if req["status"] != "awaiting_review" or card["status"] != "pending":
+            raise ApiError(409, "INVALID_TRANSITION")
+        booking_id = book_slot(connection, slot, request_id=req["id"], confirmed_by=user.id)
+        approval(connection, card, user, "approve")
+        connection.execute(text("""
+            UPDATE consultation_slots SET status=CASE WHEN id=:slot THEN 'confirmed' ELSE 'discarded' END
+            WHERE card_id=:card
+        """), {"slot": slot["id"], "card": card_id})
+        actor = {"card": card, "actor_type": "user", "actor_id": user.id}
+        set_status(connection, req, "approved", action="approved", **actor)
+        set_status(connection, req, "sent_or_booked", action="booked", **actor)
+        touch(connection, card, "done")
+        return {"booking": {"id": booking_id, "room": slot["room"],
+                            "period": {"start": slot["period"].lower, "end": slot["period"].upper}},
+                "request": result(card, req)["request"]}
 
 
 def reclassify(user, card_id, body):

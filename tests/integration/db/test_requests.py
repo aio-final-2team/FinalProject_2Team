@@ -120,7 +120,7 @@ def test_agent_failure_preserves_request_and_hands_off_without_private_error(db_
 def test_stub_transaction_rolls_back_then_handoff_once(db_client, parent, seeded_db, monkeypatch):
     def fail(*args):
         raise RuntimeError("[TEST] 분류 뒤 실패")
-    monkeypatch.setattr(agent_stub, "_propose_stub_slots", fail)
+    monkeypatch.setattr(agent_stub, "propose_slots", fail)
     rid = create(db_client, parent, type="consultation").json()["request"]["id"]
     assert [e["action"] for e in rows(seeded_db, "events", rid)] == ["created", "tool_failed", "created", "checked"]
     assert len(rows(seeded_db, "cards", rid)) == 1
