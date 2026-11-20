@@ -3,6 +3,7 @@
 from dataclasses import replace
 
 from app.api.labels import parent_label
+from app.core.care import unregistered_pickup_key
 from app.core.constants import CARE_REQUEST_TYPES, CARE_MESSAGE_NOTICE, UNREGISTERED_PICKUP_CHECK, NOTIFICATION_TITLES as TITLES
 from app.core.schedule import deliver_after
 from app.core.errors import ApiError
@@ -11,12 +12,12 @@ from app.mock.records import Notification
 
 
 
-def create(ev, recipient_id, kind, body=None, subject_id=None):
+def create(ev, recipient_id, kind, body=None, subject_id=None, *, dedupe_key=None):
     state = store.state()
     recipient = state.users.get(recipient_id)
     if recipient is None or recipient.org_id != ev.org_id:
         return
-    key = f"event:{ev.id}:{recipient_id}"
+    key = dedupe_key or f"event:{ev.id}:{recipient_id}"
     if any(n.dedupe_key == key for n in state.notifications.values()):
         return
     req = state.requests.get(ev.request_id)
@@ -40,7 +41,8 @@ def notify_event(ev, req, card):
         return
     if req.type in CARE_REQUEST_TYPES:
         if ev.detail.get("unregistered_pickup"):
-            create(ev, store.director_of(req.org_id), "care_requested", UNREGISTERED_PICKUP_CHECK)
+            create(ev, store.director_of(req.org_id), "care_requested", UNREGISTERED_PICKUP_CHECK,
+                   dedupe_key=unregistered_pickup_key(req.id, ev.detail.get("pickup_snapshot", {})))
         elif ev.detail.get("care_message"):
             create(ev, req.assignee_id or store.director_of(req.org_id), "care_requested", CARE_MESSAGE_NOTICE)
         elif ev.action == "created" and ev.to_status == "received":

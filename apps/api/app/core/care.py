@@ -1,9 +1,16 @@
 """T46 초안의 확인 상태와 알림장 표시. 투약 수치·인계자 신원은 추측하지 않아요."""
 
 from copy import deepcopy
+import json
 
 from app.core.errors import ApiError
 from app.core.constants import CARE_REQUEST_TYPES, MEDICATION_FIELDS
+
+
+def unregistered_pickup_key(request_id, snapshot):
+    identity = json.dumps([snapshot.get("pickup_name"), snapshot.get("pickup_relation")],
+                          ensure_ascii=False, separators=(",", ":"))
+    return f"unregistered_pickup:{request_id}:{identity}"
 
 
 def input_detail(req_type, *, pickup_guardian_id=None, pickup_name=None, pickup_relation=None,

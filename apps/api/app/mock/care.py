@@ -50,7 +50,8 @@ def decision(user, request_id, body):
                                      version=current["version"], pickup_snapshot=snapshot)
             if body.decision == "confirm" and current["unregistered_pickup"]:
                 store.add_event(req, "checked", actor_type="user", actor_id=user.id,
-                                unregistered_pickup=True, label=UNREGISTERED_PICKUP_CHECK, version=current["version"])
+                                unregistered_pickup=True, label=UNREGISTERED_PICKUP_CHECK, version=current["version"],
+                                pickup_snapshot=snapshot)
         return {"request": {"id": req.id, "status": req.status}, "care": view(req)}
 
 

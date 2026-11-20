@@ -276,6 +276,54 @@ def test_unregistered_pickup_is_marked_and_director_notified_once(client, parent
     assert decide(client, teacher, rid, "complete").status_code == 200
 
 
+@pytest.mark.parametrize("identity", [{}, {"pickup_name": "[TEST] 김영희", "pickup_relation": "할머니"}])
+def test_unregistered_pickup_reconfirmation_keeps_one_director_notice(client, parent, teacher, care_backend, identity):
+    rid = create(client, parent, "pickup", pickup_guardian_id=None, **identity).json()["request"]["id"]
+    for version in range(1, 4):
+        confirmed = decide(client, teacher, rid)
+        assert confirmed.status_code == 200, confirmed.text
+        assert confirmed.json()["care"]["version"] == version
+        assert decide(client, teacher, rid).json() == confirmed.json()
+        if version < 3:
+            correction = client.post(f"{BASE}/requests/{rid}/messages", headers=parent,
+                                     json={"body": "[TEST] 귀가 시간만 정정해요. 인계자는 같아요."})
+            assert correction.status_code == 201, correction.text
+    warnings = [e for e in events(care_backend, rid) if e["detail"].get("unregistered_pickup")]
+    assert [e["detail"]["version"] for e in warnings] == [1, 2, 3]
+    rows = notices(care_backend, rid)
+    director_notices = [n for n in rows if str(n["recipient_id"]) == str(seed.DIRECTOR)]
+    assert len(director_notices) == 1 and director_notices[0]["body"] == "미등록 인계자 확인"
+    assert len([n for n in rows if n["kind"] == "care_confirmed"]) == 3
+    assert len([n for n in rows if n["body"] == "보호자가 내용을 추가했어요. 다시 확인해 주세요."]) == 2
+
+
+@pytest.mark.parametrize("changed", [{"pickup_name": "[TEST] 이영희"}, {"pickup_relation": "이모"}])
+def test_unregistered_pickup_notice_distinguishes_identity_and_request(client, parent, teacher, care_backend, changed):
+    identity = {"pickup_guardian_id": None, "pickup_name": "[TEST] 김영희", "pickup_relation": "할머니"}
+    rid = create(client, parent, "pickup", **identity).json()["request"]["id"]
+    assert decide(client, teacher, rid).status_code == 200
+    # 인계자 수정 HTTP는 없어요. 확인 이력→알림 경계에 바뀐 신원을 주입해 키를 검증해요.
+    for snapshot in ({**identity, **changed}, {**identity, **changed}, identity):
+        detail = {"unregistered_pickup": True, "pickup_snapshot": snapshot}
+        if care_backend == "mock":
+            with store._lock:
+                store.add_event(store.state().requests[UUID(rid)], "checked", **detail)
+        else:
+            from app.modules.requests.events import record
+            with transaction() as connection:
+                req = connection.execute(text("SELECT * FROM requests WHERE id=:id FOR NO KEY UPDATE"),
+                                         {"id": rid}).mappings().one()
+                record(connection, req, "checked", **detail)
+    director_notices = [n for n in notices(care_backend, rid) if str(n["recipient_id"]) == str(seed.DIRECTOR)]
+    assert len(director_notices) == 2
+    assert all(n["body"] == "미등록 인계자 확인" for n in director_notices)
+    other = create(client, parent, "pickup", **identity).json()["request"]["id"]
+    assert decide(client, teacher, other).status_code == 200
+    other_notices = [n for n in notices(care_backend, other) if str(n["recipient_id"]) == str(seed.DIRECTOR)]
+    assert len(other_notices) == 1
+    assert other_notices[0]["dedupe_key"] not in {n["dedupe_key"] for n in director_notices}
+
+
 @pytest.mark.parametrize("fields,missing", [({}, ["medication_name", "medication_dose", "medication_time"]),
     ({"medication_name": "[TEST] 약", "medication_dose": "  "}, ["medication_dose", "medication_time"]),
     ({"medication_name": "[TEST] 약", "medication_dose": "2.5mL", "medication_time": "점심 뒤"}, [])])

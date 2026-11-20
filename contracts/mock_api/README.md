@@ -109,6 +109,7 @@ API 33 POST /daily-notes/drafts/{input_id}/regenerate는 저장한 반 입력으
 자기 요청 목록·상세·대화·SSE에서도 보여요. 실제 완료는 교직원 confirm 뒤 complete로만 기록해요.
 [제안] 귀가는 등록 pickup_guardian_id 또는 미등록 pickup_name·pickup_relation을 받아요.
 미등록도 접수·확인하고 unregistered_pickup=true·별도 확인 이력·원장 알림을 남겨요.
+원장 경고는 같은 요청·인계자 이름·관계마다 한 번이에요. 정정 후 같은 인계자를 다시 확인해도 늘지 않아요.
 투약 세 칸 medication_name·medication_dose·medication_time 누락은 missing_fields로 표시해요.
 교직원은 상세 care.version 또는 목록 version을 confirm·complete에 반드시 보내요.
 보호자 새 글마다 version을 올리고 received로 돌려 confirmed_at을 지워요. 옛 판은 CARD_VERSION_CONFLICT예요.
