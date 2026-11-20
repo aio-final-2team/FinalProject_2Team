@@ -21,14 +21,6 @@ services:
     depends_on:
       - api
 
-  dashboard:
-    build:
-      context: apps/dashboard
-    ports:
-      - "8501:8501"
-    depends_on:
-      - api
-
   db:
     image: pgvector/pgvector:pg16
     environment:

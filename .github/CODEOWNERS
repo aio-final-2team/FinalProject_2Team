@@ -1,3 +1,12 @@
-# Add team GitHub handles to the matching paths after repository members are confirmed.
-# Example: /apps/api/ @github-handle
-# Example: /agents/ @github-handle
+/Docs/                @jihye-jjye
+/Docs/Step2/          @twlaude
+/apps/api/            @twlaude
+/db/                  @twlaude
+/contracts/           @twlaude
+/apps/web/            @sungju920
+/agents/              @youngmin-0707
+/data/                @youngmin-0707
+/infra/               @glory-mint
+/tools/               @glory-mint
+/compose.yaml         @glory-mint
+/.github/workflows/   @glory-mint
