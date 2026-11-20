@@ -16,8 +16,13 @@ def _readable(req):
         raise ApiError(501, "NOT_IMPLEMENTED")
 
 
+def _parent_readable(user, req):
+    if user.role == "parent" and req["type"] in DEFERRED_REQUEST_TYPES:
+        scope._checked(user, req, False, "request", req["id"], request_id=req["id"])
+
+
 def _lock(connection, request_id):
-    return dict(connection.execute(text("SELECT * FROM requests WHERE id=:id FOR UPDATE"),
+    return dict(connection.execute(text("SELECT * FROM requests WHERE id=:id FOR NO KEY UPDATE"),
                                    {"id": request_id}).mappings().one())
 
 
@@ -65,7 +70,7 @@ def _expire(connection, req):
     if not expired:
         return req
     req = _lock(connection, req["id"])
-    cards = connection.execute(text("SELECT * FROM cards WHERE request_id=:id ORDER BY id FOR UPDATE"),
+    cards = connection.execute(text("SELECT * FROM cards WHERE request_id=:id ORDER BY id FOR NO KEY UPDATE"),
                                {"id": req["id"]}).mappings().all()
     for row in cards:
         card = dict(row)
@@ -94,9 +99,8 @@ def _hold_until(connection, req):
 def detail(user, request_id):
     with transaction() as connection:
         req = dict(scope.request_in_scope(user, request_id, connection=connection))
+        _parent_readable(user, req)
         if req["type"] in DEFERRED_REQUEST_TYPES:
-            if user.role == "parent":
-                scope._checked(user, req, False, "request", request_id, request_id=request_id)
             first = connection.execute(text("""
                 SELECT id,sender_type,body,created_at FROM request_messages
                 WHERE request_id=:id AND org_id=:org AND sender_type='user' ORDER BY id LIMIT 1
@@ -184,7 +188,8 @@ def listing(user, status, page, size, sort):
 def message(user, request_id, body, *, background_tasks):
     rerun = False
     with transaction() as connection:
-        scope.request_in_scope(user, request_id, connection=connection)
+        initial = scope.request_in_scope(user, request_id, connection=connection)
+        _parent_readable(user, initial)
         req = _expire(connection, _lock(connection, request_id))
         _readable(req)
         if req["status"] in ("completed", "rejected"):
@@ -217,7 +222,8 @@ def message(user, request_id, body, *, background_tasks):
 
 def confirm(user, request_id):
     with transaction() as connection:
-        scope.request_in_scope(user, request_id, connection=connection)
+        initial = scope.request_in_scope(user, request_id, connection=connection)
+        _parent_readable(user, initial)
         req = _lock(connection, request_id)
         if req["type"] != "complaint" or req["status"] != "sent_or_booked":
             raise ApiError(409, "INVALID_TRANSITION")

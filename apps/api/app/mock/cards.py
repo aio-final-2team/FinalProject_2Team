@@ -68,7 +68,8 @@ def decide(user, card_id, body):
             raise ApiError(403, "FORBIDDEN_ROLE")
         valid = req is not None and req.status not in ("completed", "rejected")
         if decision == "complete":
-            valid = valid and card.kind == "reply_draft" and req.type == "complaint" and req.status == "sent_or_booked"
+            valid = (valid and card.kind == "reply_draft" and card.status == "done"
+                     and req.type == "complaint" and req.status == "sent_or_booked")
         elif decision == "resume":
             valid = valid and card.status == "on_hold" and req.status == "on_hold"
         else:
@@ -155,8 +156,20 @@ def reclassify(user, card_id, body):
         req.risk_level, req.risk_category = body.risk_level, body.risk_category if body.risk_level == "urgent" else None
         for related in store.cards_of(req.id):
             related.due_at = due_at(req.created_at, req.type, req.risk_level, related.kind)
-        touch(card)
-        store.set_request_status(req, "awaiting_review", action="risk_reclassified", card=card,
+        reports = [c for c in store.cards_of(req.id) if c.kind == "director_report"
+                   and c.status not in ("done", "rejected")]
+        closed_target = False
+        if user.role == "director" and body.risk_level == "normal":
+            for report_card in reports:
+                touch(report_card, "done")
+                closed_target = closed_target or report_card.id == card.id
+                if report_card.id != card.id:
+                    store.add_event(req, "risk_reclassified", card=report_card, actor_type="user", actor_id=user.id,
+                                    reason=body.reason, previous_risk_level=previous)
+            reports = []
+        if not closed_target:
+            touch(card)
+        store.set_request_status(req, "escalated" if reports else "awaiting_review", action="risk_reclassified", card=card,
                                  actor_type="user", actor_id=user.id, reason=body.reason, previous_risk_level=previous)
         if body.risk_level == "urgent":
             report_card = report(req)

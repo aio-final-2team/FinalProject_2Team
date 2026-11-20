@@ -51,7 +51,7 @@ def notify_event(connection, event, req, card):
         enqueue(connection, event, req, req["assignee_id"], "parent_confirmed")
     elif action == "slot_hold_expired":
         enqueue(connection, event, req, card["assignee_id"], "slot_hold_expired")
-    elif to == "awaiting_review":
+    elif to == "awaiting_review" and action != "risk_reclassified":
         automatic = action == "resumed" and event["detail"].get("automatic")
         if action != "resumed" or automatic:
             recipient = card["assignee_id"] if card else req["assignee_id"]

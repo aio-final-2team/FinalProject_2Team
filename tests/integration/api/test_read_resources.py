@@ -266,3 +266,34 @@ def test_documents_filter_org_class_period_and_keep_staff_visibility(
     data = client.get(BASE + "/documents", headers=teacher).json()
     assert data["total"] == 1 and data["items"][0]["id"] == str(seed.OLD_NOTICE)
     err(client.get(f"{BASE}/requests/{seed.REQUEST_COUGH}", headers=teacher), 404, "NOT_FOUND")
+
+
+@pytest.mark.parametrize("kind", ["medication", "pickup"])
+@pytest.mark.parametrize("action", ["messages", "stream", "confirm"])
+def test_deferred_parent_actions_are_404_before_mutation_or_stream(client, read_backend, monkeypatch, kind, action):
+    from app.modules.requests import streams
+
+    monkeypatch.setattr(streams, "MAX_SECONDS", 0)
+    req = next(r for r in seed.DEMO_NOTE_REQUESTS if r["type"] == kind)
+    guardian = next(u for u in seed.USERS if u["id"] == req["requester_id"])
+    token = client.post(BASE + "/auth/login", json={"login_id": guardian["login_id"], "password": "demo1234"}).json()["access_token"]
+    headers = {"Authorization": "Bearer " + token}
+    path = f"{BASE}/requests/{req['id']}/{action}"
+    if read_backend == "mock":
+        count = len(store.messages_of(req["id"]))
+    else:
+        with transaction() as connection:
+            count = connection.scalar(text("SELECT count(*) FROM request_messages WHERE request_id=:id"), {"id": req["id"]})
+    response = client.get(path, headers=headers) if action == "stream" else client.post(
+        path, headers=headers, json={"body": "[TEST] 숨긴 요청에 추가"} if action == "messages" else None)
+    err(response, 404, "NOT_FOUND")
+    assert response.headers["content-type"].startswith("application/json")
+    if read_backend == "mock":
+        assert len(store.messages_of(req["id"])) == count
+        assert store.state().requests[req["id"]].parent_confirmed_at is None
+        assert store.events_of(req["id"])[-1].action == "permission_denied"
+    else:
+        with transaction() as connection:
+            assert connection.scalar(text("SELECT count(*) FROM request_messages WHERE request_id=:id"), {"id": req["id"]}) == count
+            assert connection.scalar(text("SELECT parent_confirmed_at FROM requests WHERE id=:id"), {"id": req["id"]}) is None
+            assert connection.scalar(text("SELECT action FROM events WHERE request_id=:id ORDER BY id DESC LIMIT 1"), {"id": req["id"]}) == "permission_denied"

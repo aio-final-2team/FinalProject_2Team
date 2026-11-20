@@ -237,3 +237,108 @@ def test_invalid_reassignment_target_is_404_and_does_not_change_card(db_client, 
             seed.TEACHER,
             1,
         )
+
+
+def test_decision_waits_for_other_connection_request_lock(db_client, seeded_db, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+    from app.modules.cards import cards
+
+    rid, cid = create(db_client)
+    entered = Event()
+    original = cards._lock
+    teacher = auth(seed.TEACHER)
+
+    def lock(connection, request_id):
+        entered.set()
+        return original(connection, request_id)
+
+    monkeypatch.setattr(cards, "_lock", lock)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        with seeded_db.begin() as blocker:
+            blocker.execute(text("SELECT id FROM requests WHERE id=:id FOR UPDATE"), {"id": rid})
+            future = pool.submit(db_client.post, f"{BASE}/cards/{cid}/decisions", headers=teacher,
+                                 json={"version": 1, "decision": "approve"})
+            assert entered.wait(3), "[TEST] 결정이 잠금 입구에 도달하지 않았어요"
+            from concurrent.futures import wait
+            assert not wait([future], timeout=0.5).done, "[TEST] 요청 잠금 중 결정이 끝났어요"
+        response = future.result(timeout=5)
+    assert response.status_code == 200, response.text
+
+
+def test_overlapping_approve_and_hold_only_commit_one_decision(db_client, seeded_db, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor, wait
+    from threading import Event
+    from app.modules.cards import cards
+
+    rid, cid = create(db_client)
+    teacher = auth(seed.TEACHER)
+    checked, release, contender = Event(), Event(), Event()
+    original_version, original_lock = cards.version, cards._lock
+
+    def version(*args, **kwargs):
+        original_version(*args, **kwargs)
+        checked.set()
+        assert release.wait(5), "[TEST] 판 검사 뒤 잠금을 풀지 못했어요"
+
+    def lock(*args):
+        if checked.is_set():
+            contender.set()
+        return original_lock(*args)
+
+    monkeypatch.setattr(cards, "version", version)
+    monkeypatch.setattr(cards, "_lock", lock)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        approved = pool.submit(db_client.post, f"{BASE}/cards/{cid}/decisions", headers=teacher,
+                               json={"version": 1, "decision": "approve"})
+        try:
+            assert checked.wait(3)
+            held = pool.submit(db_client.post, f"{BASE}/cards/{cid}/decisions", headers=teacher, json={
+                "version": 1, "decision": "hold", "reason_text": "[TEST] 경합 보류",
+                "hold_until": (datetime.now(KST).date() + timedelta(days=1)).isoformat()})
+            assert contender.wait(3)
+            assert not wait([held], timeout=0.5).done
+        finally:
+            release.set()
+        first, second = approved.result(timeout=5), held.result(timeout=5)
+    assert first.status_code == 200, first.text
+    assert second.status_code == 409 and second.json()["error"]["code"] == "ALREADY_DECIDED"
+    with seeded_db.connect() as connection:
+        assert connection.scalar(text("SELECT count(*) FROM approvals WHERE card_id=:id"), {"id": cid}) == 1
+        assert connection.scalar(text("SELECT count(*) FROM events WHERE request_id=:id AND action='sent'"), {"id": rid}) == 1
+        assert connection.scalar(text("SELECT count(*) FROM events WHERE request_id=:id AND action='held'"), {"id": rid}) == 0
+        assert connection.scalar(text("SELECT status FROM requests WHERE id=:id"), {"id": rid}) == "sent_or_booked"
+
+
+def test_permission_denied_event_commits_while_decision_holds_request_and_card_locks(db_client, seeded_db, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+    from app.modules.cards import cards
+
+    rid, cid = create(db_client)
+    teacher, other = auth(seed.TEACHER), auth(seed.TEACHER_OTHER)
+    locked, release = Event(), Event()
+    original = cards.version
+
+    def version(*args, **kwargs):
+        original(*args, **kwargs)
+        locked.set()
+        assert release.wait(5), "[TEST] 거부 이력 INSERT가 결정 잠금을 기다렸어요"
+
+    monkeypatch.setattr(cards, "version", version)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        approved = pool.submit(db_client.post, f"{BASE}/cards/{cid}/decisions", headers=teacher,
+                               json={"version": 1, "decision": "approve"})
+        try:
+            assert locked.wait(3)
+            denied = pool.submit(db_client.get, f"{BASE}/cards/{cid}", headers=other).result(timeout=1)
+            assert denied.status_code == 404, denied.text
+            assert not approved.done()
+            with seeded_db.connect() as connection:
+                assert connection.scalar(text("""SELECT count(*) FROM events
+                    WHERE request_id=:request AND card_id=:card AND action='permission_denied'"""),
+                    {"request": rid, "card": cid}) == 1
+        finally:
+            release.set()
+        response = approved.result(timeout=5)
+    assert response.status_code == 200, response.text

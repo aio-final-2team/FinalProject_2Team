@@ -84,7 +84,7 @@ def _item(connection, card):
             {"id": card["display_classroom"], "org": card["org_id"]},
         )
         .mappings()
-        .one()
+        .one_or_none()
     )
     person = (
         connection.execute(
@@ -115,7 +115,7 @@ def _item(connection, card):
         )
         if card["kind"] == "consult_slots"
         else None,
-        "classroom": dict(classroom),
+        "classroom": dict(classroom) if classroom else None,
         "assignee": dict(person) if person else None,
         "is_delayed": bool(card["due_at"] and card["due_at"] < datetime.now(KST)),
     }

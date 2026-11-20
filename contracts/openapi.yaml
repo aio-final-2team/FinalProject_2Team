@@ -2048,7 +2048,9 @@ components:
           - type: 'null'
           title: Parent Choice Count
         classroom:
-          $ref: '#/components/schemas/ClassroomView'
+          anyOf:
+          - $ref: '#/components/schemas/ClassroomView'
+          - type: 'null'
         assignee:
           anyOf:
           - $ref: '#/components/schemas/Person'

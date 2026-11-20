@@ -325,3 +325,104 @@ def test_no_text_draft_cannot_be_approved(client, parent, teacher, director):
     )
     err(decision(client, teacher, cid), 409, "INVALID_TRANSITION")
     assert detail(client, teacher, cid)["card"]["version"] == 1
+
+
+@pytest.mark.parametrize("uncertain", [True, False])
+def test_teacher_reclassification_keeps_report_until_director_instruction(
+    client, parent, teacher, director, uncertain
+):
+    rid, cid = create(client, parent, teacher, body="[TEST] 판단 필요 민원" if uncertain else "[TEST] 버스 문의")
+    version = 1
+    if not uncertain:
+        assert decision(client, teacher, cid, "escalate").status_code == 200
+        version += 1
+    reports = client.get(BASE + "/cards?kind=director_report&size=100", headers=director).json()["items"]
+    report = next(c for c in reports if c["request_id"] == rid)
+    response = client.post(f"{BASE}/cards/{cid}/reclassify", headers=teacher, json={
+        "version": version, "risk_level": "normal", "reason": "[TEST] 위험 등급만 변경"})
+    assert response.status_code == 200, response.text
+    assert response.json()["request"]["status"] == "escalated"
+    assert response.json()["request"]["risk_level"] == "normal"
+    err(decision(client, teacher, cid, "edit_approve", version=version + 1,
+                 edited_content={"text": "[TEST] 원장 지시 전 회신"}), 409, "INVALID_TRANSITION")
+    saved = detail(client, teacher, cid)
+    assert saved["timeline"][-1]["from_status"] == saved["timeline"][-1]["to_status"] == "escalated"
+    assert detail(client, director, report["id"])["card"]["status"] == "pending"
+    response = client.post(f"{BASE}/cards/{report['id']}/instructions", headers=director,
+                           json={"version": 1, "instruction": "[TEST] 확인 후 회신"})
+    assert response.status_code == 200, response.text
+    assert decision(client, teacher, cid, "edit_approve", version=version + 1,
+                    edited_content={"text": "[TEST] 지시 확인 후 회신"}).status_code == 200
+
+
+@pytest.mark.parametrize("target_report", [False, True])
+def test_director_normal_closes_report_and_restores_overview_without_new_card_notification(
+    client, parent, teacher, director, card_backend, target_report
+):
+    baseline = client.get(BASE + "/overview", headers=director).json()["waiting"]
+    rid, cid = create(client, parent, teacher, body="[TEST] 판단 필요 민원")
+    report = next(c for c in client.get(BASE + "/cards?kind=director_report", headers=director).json()["items"]
+                  if c["request_id"] == rid)
+    assert client.get(BASE + "/overview", headers=director).json()["waiting"] == baseline + 2
+    target = report["id"] if target_report else cid
+    response = client.post(f"{BASE}/cards/{target}/reclassify", headers=director, json={
+        "version": 1, "risk_level": "normal", "reason": "[TEST] 원장 일반 분류"})
+    assert response.status_code == 200, response.text
+    assert response.json()["request"]["status"] == "awaiting_review"
+    closed = detail(client, director, report["id"])
+    assert (closed["card"]["status"], closed["card"]["version"]) == ("done", 2)
+    assert any(e["action"] == "risk_reclassified" and e["card_id"] == report["id"]
+               and e["detail"]["reason"] == "[TEST] 원장 일반 분류" for e in closed["timeline"])
+    reports = client.get(BASE + "/cards?kind=director_report", headers=director).json()["items"]
+    assert not any(c["request_id"] == rid for c in reports)
+    assert client.get(BASE + "/overview", headers=director).json()["waiting"] == baseline + 1
+    if card_backend == "mock":
+        notifications = [n.kind for n in store.state().notifications.values() if str(n.request_id) == rid]
+    else:
+        with transaction() as connection:
+            notifications = list(connection.scalars(text("SELECT kind FROM notifications WHERE request_id=:id"), {"id": rid}))
+            saved = connection.execute(text("SELECT closed_at,version FROM cards WHERE id=:id"), {"id": report["id"]}).one()
+            assert saved.closed_at is not None and saved.version == 2
+    assert notifications == ["uncertain_complaint", "uncertain_complaint"]
+    assert decision(client, teacher, cid, "edit_approve", version=1 if target_report else 2,
+                    edited_content={"text": "[TEST] 원장 분류 후 안내"}).status_code == 200
+    assert client.get(BASE + "/overview", headers=director).json()["waiting"] == baseline
+
+
+def test_rejected_reply_cannot_complete_newer_sent_reply(client, parent, teacher):
+    rid, old = create(client, parent, teacher)
+    rejected = decision(client, teacher, old, "reject", reason_code="tone")
+    assert rejected.status_code == 200, rejected.text
+    current = rejected.json()["next_card_id"]
+    assert decision(client, teacher, current).status_code == 200
+    before = detail(client, teacher, old)
+    err(decision(client, teacher, old, "complete", version=2, reason_text="[TEST] 옛 카드 완료"),
+        409, "INVALID_TRANSITION")
+    assert detail(client, teacher, old) == before
+    assert client.get(f"{BASE}/requests/{rid}", headers=parent).json()["request"]["status"] == "sent_or_booked"
+    assert decision(client, teacher, current, "complete", version=2, reason_text="[TEST] 현재 회신 완료").status_code == 200
+
+
+def test_rule_without_classroom_does_not_break_director_inbox(client, parent, teacher, director, card_backend):
+    from app.mock.records import Rule
+
+    _, reply = create(client, parent, teacher)
+    rule_id, card_id = uuid4(), uuid4()
+    if card_backend == "mock":
+        store.state().rules[rule_id] = Rule(rule_id, seed.ORG, seed.DIRECTOR, "tone", "[TEST] 규칙", {})
+        store.state().cards[card_id] = store.Card(card_id, seed.ORG, None, "rule_proposal", assignee_id=seed.DIRECTOR,
+                                                subject_type="memory_rule", subject_id=rule_id)
+    else:
+        with transaction() as connection:
+            values = {"org": seed.ORG, "owner": seed.DIRECTOR, "rule": rule_id, "card": card_id}
+            connection.execute(text("""INSERT INTO memory_rules (id,org_id,owner_id,reason_code,rule_text,rule_json)
+                VALUES (:rule,:org,:owner,'tone','[TEST] 규칙','{}')"""), values)
+            connection.execute(text("""INSERT INTO cards (id,org_id,kind,assignee_id,subject_type,subject_id)
+                VALUES (:card,:org,'rule_proposal',:owner,'memory_rule',:rule)"""), values)
+    response = client.get(BASE + "/cards?size=100", headers=director)
+    assert response.status_code == 200, response.text
+    rows = {c["id"]: c for c in response.json()["items"]}
+    assert rows[str(card_id)]["classroom"] is None
+    assert rows[reply]["classroom"]["id"] == str(seed.CLASS_STAR)
+    assert detail(client, director, card_id)["rule"]["id"] == str(rule_id)
+    assert str(card_id) not in {c["id"] for c in client.get(BASE + "/cards?size=100", headers=teacher).json()["items"]}

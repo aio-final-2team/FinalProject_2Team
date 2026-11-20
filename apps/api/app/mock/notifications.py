@@ -58,7 +58,7 @@ def notify_event(ev, req, card):
         create(ev, req.assignee_id, "parent_confirmed")
     elif ev.action == "slot_hold_expired":
         create(ev, card.assignee_id, "slot_hold_expired")
-    elif ev.to_status == "awaiting_review":
+    elif ev.to_status == "awaiting_review" and ev.action != "risk_reclassified":
         automatic = ev.action == "resumed" and ev.detail.get("automatic")
         if ev.action != "resumed" or automatic:
             recipient = card.assignee_id if card else req.assignee_id

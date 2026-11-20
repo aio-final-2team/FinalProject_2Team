@@ -96,7 +96,7 @@ class CardItem(BaseModel):
     repeat_count: int | None
     check: CheckSummary | None
     parent_choice_count: int | None
-    classroom: ClassroomView
+    classroom: ClassroomView | None
     assignee: Person | None
     due_at: datetime | None
     is_delayed: bool

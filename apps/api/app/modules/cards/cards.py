@@ -25,10 +25,10 @@ def locked(user, card_id, *, decision=None):
                 req = _expire(connection, _lock(connection, initial["request_id"]))
                 # 대화·자동 만료와 같은 잠금 순서예요. 서로 다른 카드 결정도 직렬화해요.
                 connection.execute(
-                    text("SELECT id FROM cards WHERE request_id=:id ORDER BY id FOR UPDATE"), {"id": req["id"]}
+                    text("SELECT id FROM cards WHERE request_id=:id ORDER BY id FOR NO KEY UPDATE"), {"id": req["id"]}
                 ).all()
             card = dict(
-                connection.execute(text("SELECT * FROM cards WHERE id=:id FOR UPDATE"), {"id": card_id})
+                connection.execute(text("SELECT * FROM cards WHERE id=:id FOR NO KEY UPDATE"), {"id": card_id})
                 .mappings()
                 .one()
             )
@@ -130,6 +130,7 @@ def decide(user, card_id, body):
             valid = (
                 valid
                 and card["kind"] == "reply_draft"
+                and card["status"] == "done"
                 and req["type"] == "complaint"
                 and req["status"] == "sent_or_booked"
             )
@@ -253,11 +254,29 @@ def reclassify(user, card_id, body):
                     "due": due_at(req["created_at"], req["type"], req["risk_level"], related["kind"]),
                 },
             )
-        touch(connection, card)
+        reports = [dict(row) for row in connection.execute(text("""
+            SELECT * FROM cards WHERE request_id=:id AND kind='director_report'
+              AND status NOT IN ('done','rejected') ORDER BY id
+        """), {"id": req["id"]}).mappings()]
+        closed_target = False
+        if user.role == "director" and body.risk_level == "normal":
+            for report_card in reports:
+                touch(connection, report_card, "done")
+                if report_card["id"] == card["id"]:
+                    card.update(report_card)
+                    closed_target = True
+                # 닫은 보고 카드에도 같은 재분류 이유와 연결 이력을 남겨요.
+                if report_card["id"] != card["id"]:
+                    record(connection, req, "risk_reclassified", card=report_card,
+                           actor_type="user", actor_id=user.id, reason=body.reason,
+                           previous_risk_level=previous)
+            reports = []
+        if not closed_target:
+            touch(connection, card)
         set_status(
             connection,
             req,
-            "awaiting_review",
+            "escalated" if reports else "awaiting_review",
             action="risk_reclassified",
             card=card,
             actor_type="user",

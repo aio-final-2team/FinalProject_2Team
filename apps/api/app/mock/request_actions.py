@@ -9,13 +9,17 @@ from app.api.schemas.requests import (BookingOut, ConsultationOut, MessageOut, R
 from app.mock import documents, store
 
 
+def _parent_readable(user, req):
+    if user.role == "parent" and req.type in DEFERRED_REQUEST_TYPES:
+        store.deny(user, req=req)
+
+
 def detail(user, request_id):
     with store._lock:
         req = store.request_in_scope(user, request_id)
+        _parent_readable(user, req)
         label = parent_label if user.role == "parent" else staff_label
         if req.type in DEFERRED_REQUEST_TYPES:
-            if user.role == "parent":
-                store.deny(user, req=req)
             first = next((m for m in store.messages_of(req.id) if m.sender_type == "user"), None)
             return RequestDetailOut(
                 request=RequestView(id=req.id, type=req.type, title=req.title, status=req.status,
@@ -56,6 +60,7 @@ def detail(user, request_id):
 def message(user, request_id, body, *, background_tasks=None):
     with store._lock:
         req = store.request_in_scope(user, request_id)
+        _parent_readable(user, req)
         if req.status in ("completed", "rejected"):
             raise ApiError(409, "INVALID_TRANSITION")
         msg = store.Message(store.state().next_int(), req.id, "user", user.id, body)
@@ -100,6 +105,7 @@ def choices(user, request_id, body):
 def confirm(user, request_id):
     with store._lock:
         req = store.request_in_scope(user, request_id)
+        _parent_readable(user, req)
         if req.type != "complaint" or req.status != "sent_or_booked":
             raise ApiError(409, "INVALID_TRANSITION")
         if req.parent_confirmed_at is None:
@@ -136,4 +142,7 @@ def listing(user, status, page, size, sort):
 
 def stream(user, request_id):
     from app.api.streams import stream as response
-    return response(store.request_in_scope(user, request_id))
+    with store._lock:
+        req = store.request_in_scope(user, request_id)
+        _parent_readable(user, req)
+        return response(req)

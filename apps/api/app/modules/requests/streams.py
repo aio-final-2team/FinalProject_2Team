@@ -22,12 +22,15 @@ def _encode(event, data):
 
 
 def stream_request(user, request_id):
-    scope.request_in_scope(user, request_id)
+    from app.modules.requests.requests import _parent_readable
+
+    _parent_readable(user, scope.request_in_scope(user, request_id))
     trace_id = active_trace_id.get()
 
     def read(cursor):
         with transaction() as connection:
             req = scope.request_in_scope(user, request_id, connection=connection)
+            _parent_readable(user, req)
             rows = connection.execute(text("""
                 SELECT id,action,card_id,agent_name,to_status,created_at FROM events
                 WHERE request_id=:id AND org_id=:org AND id>:cursor ORDER BY id

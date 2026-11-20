@@ -135,5 +135,11 @@ def test_high_risk_handoff_has_two_cards_no_draft_or_automatic_reply(
             "version": 1, "risk_level": "normal", "reason": "[TEST] 사람이 확인했어요"})
         assert result.status_code == 200, result.text
         err(decision(client, teacher, cid, version=2), 409, "INVALID_TRANSITION")
+        err(decision(client, teacher, cid, "edit_approve", version=2,
+                     edited_content={"text": "[TEST] 원장 지시 전"}), 409, "INVALID_TRANSITION")
+        report = saved["director_report"]["id"]
+        instructed = client.post(f"{BASE}/cards/{report}/instructions", headers=director,
+                                 json={"version": 1, "instruction": "[TEST] 원장 확인 후 안내"})
+        assert instructed.status_code == 200, instructed.text
         assert decision(client, teacher, cid, "edit_approve", version=2,
                         edited_content={"text": "[TEST] 확인 뒤 직접 안내해요"}).status_code == 200

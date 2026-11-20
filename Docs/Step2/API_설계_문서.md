@@ -220,7 +220,7 @@ X-Request-ID: 6b0f1c2e-9a7d-4c1e-8f3a-2d5b7e9c1a40
 
 ### 3.2 요청 상세·스트림 — `GET /api/v1/requests/{request_id}`, `GET …/stream`
 
-T46 전까지 투약·귀가는 교직원 상세에서 알림장 출처용 최소 응답(유형·제목·첫 보호자 메시지, 나머지는 기본값)으로만 읽으며, 학부모 목록·total에서 제외하고 상세는 404로 숨긴다. 등록 본문의 유형은 3.1 그대로다.
+T46 전까지 투약·귀가는 교직원 상세에서 알림장 출처용 최소 응답(유형·제목·첫 보호자 메시지, 나머지는 기본값)으로만 읽으며, 학부모 목록·total에서 제외하고 상세·대화 추가·스트림·확인은 404로 숨긴다. 등록 본문의 유형은 3.1 그대로다.
 
 | 칸 | 내용 |
 | --- | --- |
@@ -483,7 +483,7 @@ T12 화면 지도(성주, PR #254)를 계약표 v0.7과 대조했을 때 화면�
 | `repeat_count` | integer | 민원만 | 같은 반·최근 30일·같은 주제 민원 수. `topic_key = other`면 `null` | 조회 때 셈(`requests_repeat_idx`) |
 | `check { passed, issue_count }` | 객체 | 검사가 끝난 카드 | 검사 AI 결과 요약. 검사를 못 했으면 `null` | `cards.check_result` |
 | `parent_choice_count` | integer | 상담 후보 카드 | 학부모가 체크한 시간 수(지금 회차) | `consultation_slots`(`status = chosen_by_parent`) 개수 |
-| `classroom { id, name }` | 객체 | 항상 | 반 이름. 원장 화면에서 반을 구분하려고 준다 | `requests.classroom_id` → `classrooms.name` |
+| `classroom { id, name }` | 객체 | 항상 | 반 이름. 규칙 제안 카드는 반이 없으면 null이다. 원장 화면에서 반을 구분하려고 준다 | `requests.classroom_id` → `classrooms.name` |
 
 **카드 상세** (`GET /api/v1/cards/{card_id}`)
 
@@ -770,7 +770,7 @@ data: {"request_status": "awaiting_review"}
 | ⑤ 검증·권한 | 담임·원장만. 원장 보고 카드는 원장만. 요청이 민원이고 awaiting_review·escalated여야 하며, 판을 확인한다. uncertain만으로 제한하지 않는다. |
 | ⑥ 정상 응답 | 200 + 교직원용 request. 응답에 card는 없으므로 새 판은 카드 상세에서 받는다. |
 | ⑦ 오류 응답 | 아래 오류 표. |
-| ⑧ 실행 규칙 | 일반이면 risk_category를 지우고 awaiting_review로, 긴급이면 원장 보고 카드를 확보하고 escalated로 바꾼다. 같은 요청 카드의 due_at을 접수 시각 기준으로 다시 계산하며 호출한 카드 판만 1 올린다. 초안은 새로 만들지 않는다. |
+| ⑧ 실행 규칙 | 일반이면 risk_category를 지운다. 열린 원장 보고 카드가 있으면 담임은 위험 등급만 바꾸고 escalated를 유지한다. 원장이 일반으로 내리면 열린 원장 보고 카드를 done으로 닫고 risk_reclassified 이력에 해당 카드 ID를 남기며 요청을 awaiting_review로 바꾼다. 열린 보고 카드가 없으면 일반은 awaiting_review로, 긴급은 원장 보고 카드를 확보하고 escalated로 바꾼다. 같은 요청 카드의 due_at을 접수 시각 기준으로 다시 계산하며 호출한 카드와 이번에 닫은 보고 카드의 판을 각각 1 올린다. 초안은 새로 만들지 않고 재분류 자체는 new_card 알림을 만들지 않는다. |
 
 | 필드 | 위치 | 타입 | 필수 | 빈값 | 제약 | 설명 |
 | --- | --- | --- | --- | --- | --- | --- |
