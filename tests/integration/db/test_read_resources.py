@@ -17,8 +17,14 @@ def teacher(db_client):
 
 
 def test_request_detail_reads_first_guardian_message_without_mutation(db_client, teacher, seeded_db):
+    at = datetime.fromisoformat("2026-11-19T15:30:00+00:00")
     with seeded_db.begin() as connection:
         values = {"org": seed.ORG, "id": seed.REQUEST_COUGH, "teacher": seed.TEACHER, "parent": seed.PARENT}
+        assert connection.scalar(text("SHOW TimeZone")) == "Asia/Seoul"
+        connection.execute(text("UPDATE requests SET type='complaint',created_at=:at,parent_confirmed_at=:at WHERE id=:id"),
+                           {**values, "at": at})
+        connection.execute(text("UPDATE request_messages SET created_at=:at WHERE request_id=:id"),
+                           {**values, "at": at})
         connection.execute(text("""
             INSERT INTO request_messages (org_id,request_id,sender_type,sender_id,body)
             VALUES (:org,:id,'user',:teacher,'[TEST] 교직원'),
@@ -31,6 +37,11 @@ def test_request_detail_reads_first_guardian_message_without_mutation(db_client,
         assert response.status_code == 200, response.text
         data = response.json()
         assert len(data["messages"]) == 1 and data["messages"][0]["body"] == "기침해요"
+        for value in (data["request"]["created_at"], data["request"]["parent_confirmed_at"],
+                      data["messages"][0]["created_at"]):
+            assert value == "2026-11-20T00:30:00+09:00"
+            assert datetime.fromisoformat(value) == at
+        assert data["request"]["updated_at"].endswith("+09:00")
         assert (data["timeline"], data["consultation"], data["rejection"]) == ([], None, None)
     with seeded_db.connect() as connection:
         assert connection.scalar(text("SELECT count(*) FROM events")) == before

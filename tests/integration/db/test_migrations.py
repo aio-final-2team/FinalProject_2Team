@@ -249,7 +249,7 @@ def test_seed_twice_keeps_same_rows_and_password_hash(db_engine, alembic_config)
         assert (documents[document_id]["title"], documents[document_id]["doc_type"],
                 documents[document_id]["status"], chunks[document_id]) == (title, kind, status, content)
 
-    # 날짜 갱신은 명시한 데모 요청 22개의 접수 시각만 바꾼다. 일반 요청은 그대로 둔다.
+    # 날짜 갱신은 데모 요청과 첫 보호자 메시지를 맞춘다. 일반 요청은 그대로 둔다.
     unrelated = uuid4()
     with db_engine.begin() as connection:
         connection.execute(text("""
@@ -301,9 +301,22 @@ def test_refresh_requests_preserves_fixture_offsets_and_daily_input(seeded_db, m
     originals = {r["id"]: r["created_at"] for r in seed.DEMO_NOTE_REQUESTS if "created_at" in r}
     shift = today - max(dt.astimezone(KST).date() for dt in originals.values())
     with seeded_db.begin() as connection:
+        first_messages = dict(connection.execute(text("SELECT request_id,id FROM request_messages")).all())
+        extra = connection.scalar(text("""
+            INSERT INTO request_messages (org_id,request_id,sender_type,sender_id,body,created_at)
+            SELECT org_id,id,'user',requester_id,'[TEST] 추가 대화',created_at + interval '1 minute'
+            FROM requests WHERE id=:id RETURNING id
+        """), {"id": seed.demo_id("7214")})
+        extra_before = dict(connection.execute(text("SELECT * FROM request_messages WHERE id=:id"),
+                                               {"id": extra}).mappings().one())
         for _ in range(2):
             seed_demo(connection, refresh_note_requests=True)
             actual = dict(connection.execute(text("SELECT id,created_at FROM requests")).all())
+            messages = dict(connection.execute(text("SELECT id,created_at FROM request_messages")).all())
+            assert all(messages[mid] == actual[rid] for rid, mid in first_messages.items())
+            assert dict(connection.execute(text("SELECT * FROM request_messages WHERE id=:id"),
+                                           {"id": extra}).mappings().one()) == extra_before
+            assert len(messages) == len(first_messages) + 1
             for rid, original in originals.items():
                 assert actual[rid] == original + shift
             assert actual[seed.REQUEST_COUGH] == actual[seed.REQUEST_PICKUP] == current

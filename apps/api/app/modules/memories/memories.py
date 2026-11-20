@@ -12,6 +12,8 @@ def list_memories(user, kind, page, size, sort):
     direction = "DESC" if sort.startswith("-") else "ASC"
     with transaction() as connection:
         total = connection.scalar(text("SELECT count(*) FROM memories WHERE " + condition), values)
+        if values["offset"] >= total:
+            return {"items": [], "total": total, "page": page, "size": size}
         items = connection.execute(text("""
             SELECT id, kind, reason_code, content, structured, created_at FROM memories WHERE
         """ + condition + f" ORDER BY created_at {direction}, id {direction} LIMIT :limit OFFSET :offset"),

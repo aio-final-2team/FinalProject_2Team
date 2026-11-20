@@ -23,6 +23,8 @@ def list_documents(user, page, size, sort):
     direction = "DESC" if sort.startswith("-") else "ASC"
     with transaction() as connection:
         total = connection.scalar(text("SELECT count(*)" + conditions), values)
+        if values["offset"] >= total:
+            return {"items": [], "total": total, "page": page, "size": size}
         rows = connection.execute(text("""
             SELECT d.*,
                 ARRAY(SELECT dc.classroom_id FROM document_classrooms dc

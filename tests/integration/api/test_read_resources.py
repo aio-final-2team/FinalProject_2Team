@@ -45,8 +45,10 @@ def test_seed_request_has_first_guardian_message(client, request_id, request_typ
     assert (req["id"], req["type"], req["title"], req["status"]) == (str(request_id), request_type, body, "received")
     assert req["missing_fields"] == [] and req["hold_until"] is None
     assert req["parent_confirmed_at"] is None
+    assert all(req[key].endswith("+09:00") for key in ("created_at", "updated_at"))
     assert "risk_level" not in req and "assignee_id" not in req
     assert data["messages"][0]["sender_type"] == "user" and data["messages"][0]["body"] == body
+    assert data["messages"][0]["created_at"].endswith("+09:00")
     assert isinstance(data["messages"][0]["id"], int) and data["messages"][0]["id"] > 0
     assert data["sources"] == []
 
@@ -158,6 +160,13 @@ def test_document_list_seed_pagination_sort_and_roles(client, teacher, director,
 @pytest.mark.parametrize("query", [{"page": 0}, {"size": 0}, {"size": 101}, {"sort": "title"}])
 def test_document_list_validates_query(client, teacher, query):
     err(client.get(BASE + "/documents", headers=teacher, params=query), 422, "VALIDATION_FAILED")
+
+
+def test_document_list_huge_page_is_empty(client, teacher):
+    for page in (10**17, 10**30):
+        response = client.get(BASE + "/documents", headers=teacher, params={"page": page, "size": 100})
+        assert response.status_code == 200, response.text
+        assert response.json() == {"items": [], "total": 3, "page": page, "size": 100}
 
 
 def test_documents_filter_org_class_period_and_keep_staff_visibility(

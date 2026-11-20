@@ -104,6 +104,8 @@ def list_notes(user, note_date, classroom_id, page, size, sort):
               "limit": size, "offset": (page-1)*size}
     with transaction() as connection:
         total = connection.scalar(text("SELECT count(*)" + query), values)
+        if values["offset"] >= total:
+            return {"items": [], "total": total, "page": page, "size": size}
         items = connection.execute(text("SELECT n.*" + query +
                                    f" ORDER BY n.created_at {direction}, c.created_at {direction},"
                                    f" c.id {direction}, n.id {direction} LIMIT :limit OFFSET :offset"),

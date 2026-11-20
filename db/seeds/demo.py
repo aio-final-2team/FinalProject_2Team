@@ -84,12 +84,21 @@ def seed_demo(connection, *, refresh_note_requests=False):
         latest = max(r["created_at"].astimezone(KST).date() for r in seed.DEMO_NOTE_REQUESTS if "created_at" in r)
         shift = now.date() - latest
         # 고정 fixture 날짜 사이 간격·시각은 유지하고, 날짜 없는 두 예시는 현재 시각을 쓴다.
+        refreshed = [{"org": seed.ORG, "id": r["id"],
+                      "now": r["created_at"].astimezone(KST) + shift if "created_at" in r else now}
+                     for r in seed.DEMO_NOTE_REQUESTS]
+        # 명시한 날짜 갱신은 최초 보호자 메시지도 맞춰요. 재실행해도 같은 행만 고쳐요.
+        connection.execute(text("""
+            UPDATE request_messages SET created_at=:now WHERE id=(
+                SELECT m.id FROM request_messages m JOIN requests r
+                  ON (r.id,r.org_id)=(m.request_id,m.org_id)
+                WHERE r.id=:id AND r.org_id=:org AND m.sender_type='user' AND m.sender_id=r.requester_id
+                ORDER BY m.id LIMIT 1)
+        """), refreshed)
         connection.execute(text("""
             UPDATE requests SET created_at=:now
             WHERE org_id=:org AND id=:id
-        """), [{"org": seed.ORG, "id": r["id"],
-                "now": r["created_at"].astimezone(KST) + shift if "created_at" in r else now}
-               for r in seed.DEMO_NOTE_REQUESTS])
+        """), refreshed)
 
 
 if __name__ == "__main__":

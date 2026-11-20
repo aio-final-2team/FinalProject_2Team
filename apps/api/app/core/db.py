@@ -21,7 +21,8 @@ def database_url():
 @lru_cache(maxsize=1)
 def get_engine():
     """프로세스마다 엔진 하나. mock 모드에서는 만들거나 접속하지 않는다."""
-    return create_engine(database_url(), pool_pre_ping=True)
+    return create_engine(database_url(), pool_pre_ping=True,
+                         connect_args={"options": "-c timezone=Asia/Seoul"})
 
 
 @contextmanager

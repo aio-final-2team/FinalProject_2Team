@@ -59,6 +59,7 @@ def test_inquiry_and_day_survive_draft_edit_confirm_and_send(client, teacher, pa
     visible = client.get(BASE + "/daily-notes", headers=parent, params={"date": batch()["note_date"]})
     [sent] = visible.json()["items"]
     assert sent["content"] == note["content"] and sent["status"] == "sent"
+    assert all(sent[key].endswith("+09:00") for key in ("confirmed_at", "sent_at"))
 
 
 @pytest.mark.parametrize("source", [{"type": "teacher_input"}, {"type": "request"}])
@@ -196,6 +197,17 @@ def test_classroom_list_permissions_and_pagination(client, teacher, teacher_othe
         "sort": "created_at"}).json() for page in (1, 2)]
     assert all(p["total"] == 20 and len(p["items"]) == 10 for p in pages)
     assert len({n["id"] for p in pages for n in p["items"]}) == 20
+
+
+def test_note_list_huge_page_is_empty(client, teacher):
+    for total in (0, 20):
+        if total:
+            assert draft(client, teacher).status_code == 202
+        for page in (10**17, 10**30):
+            response = client.get(BASE + "/daily-notes", headers=teacher, params={
+                "date": batch()["note_date"], "classroom_id": str(seed.CLASS_STAR), "page": page, "size": 100})
+            assert response.status_code == 200, response.text
+            assert response.json() == {"items": [], "total": total, "page": page, "size": 100}
 
 
 def test_scope_and_roles_on_all_note_operations(client, teacher, teacher_other, parent, director):

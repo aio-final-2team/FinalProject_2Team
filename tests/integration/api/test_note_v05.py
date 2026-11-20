@@ -217,3 +217,10 @@ def test_memory_empty_validation_and_role_permissions(client, teacher, parent, d
         for headers, status, code in (({}, 401, "UNAUTHENTICATED"), (parent, 403, "FORBIDDEN_ROLE"),
                                       (director, 403, "FORBIDDEN_ROLE")):
             err(client.request(method, BASE + path, headers=headers), status, code)
+
+
+def test_memory_list_huge_page_is_empty(client, teacher, memory_ids):
+    for page in (10**17, 10**30):
+        response = client.get(BASE + "/memories", headers=teacher, params={"page": page, "size": 100})
+        assert response.status_code == 200, response.text
+        assert response.json() == {"items": [], "total": 3, "page": page, "size": 100}
