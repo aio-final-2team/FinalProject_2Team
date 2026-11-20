@@ -2,7 +2,7 @@
 
 저장소 루트에서 PYTHONPATH=apps/api python -m db.seeds.demo 로 실행한다.
 모의 seed의 고정 ID를 함께 쓰고, 이미 있는 행은 덮어쓰지 않는다.
-출처 PR #262 roster_c5.json(가상): 햇살반 18명도 app.mock.seed에서 함께 읽는다.
+출처 PR #262 roster_c4.json(가상): 별빛반 18명도 app.mock.seed에서 함께 읽는다.
 """
 
 from argon2 import PasswordHasher
@@ -17,7 +17,7 @@ def seed_demo(connection):
         INSERT INTO organizations (id, name, is_virtual)
         VALUES (:id, '가상 햇살유치원', true) ON CONFLICT DO NOTHING
     """), {"id": seed.ORG})
-    for classroom, age in zip(seed.CLASSROOMS, (5, 4), strict=True):
+    for classroom, age in zip(seed.CLASSROOMS, (4, 5), strict=True):
         connection.execute(text("""
             INSERT INTO classrooms (id, org_id, name, age_group, school_year)
             VALUES (:id, :org_id, :name, :age, 2026) ON CONFLICT DO NOTHING

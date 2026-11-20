@@ -167,8 +167,8 @@ def test_seed_twice_keeps_same_rows_and_password_hash(db_engine, alembic_config)
     assert snapshot() == first
     assert {table: len(rows) for table, rows in first.items()} == dict(zip(tables, (1, 2, 5, 2, 21, 3, 1), strict=True))
     classrooms = {row["id"]: row for row in first["classrooms"]}
-    assert (classrooms[seed.CLASS_STAR]["name"], classrooms[seed.CLASS_STAR]["age_group"]) == ("만 5세반(햇살반)", 5)
-    assert (classrooms[seed.CLASS_SUN]["name"], classrooms[seed.CLASS_SUN]["age_group"]) == ("만 4세 별빛반", 4)
+    assert (classrooms[seed.CLASS_STAR]["name"], classrooms[seed.CLASS_STAR]["age_group"]) == ("만 4세 별빛반", 4)
+    assert (classrooms[seed.CLASS_SUN]["name"], classrooms[seed.CLASS_SUN]["age_group"]) == ("만 5세 햇님반", 5)
     assert first["organizations"][0]["id"] == seed.ORG
     assert first["organizations"][0]["is_virtual"] is True
     users = {row["id"]: row for row in first["users"]}
@@ -186,6 +186,8 @@ def test_seed_twice_keeps_same_rows_and_password_hash(db_engine, alembic_config)
         assert (child["display_name"], child["classroom_id"], child["org_id"], child["is_virtual"]) == (
             expected["display_name"], expected["classroom_id"], seed.ORG, True)
     assert sum(row["classroom_id"] == seed.CLASS_STAR for row in children.values()) == 20
+    assert sum(row["classroom_id"] == seed.CLASS_SUN for row in children.values()) == 1
+    assert children.keys().isdisjoint(seed.demo_id(f"55{number:02d}") for number in range(1, 19))
     assert {(row["classroom_id"], row["user_id"], row["valid_from"], row["valid_to"])
             for row in first["classroom_staff"]} == {
         (row["classroom_id"], row["user_id"], row["valid_from"], row["valid_to"])

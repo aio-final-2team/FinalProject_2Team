@@ -155,14 +155,19 @@ def test_classroom_children_assignment_period(client, teacher, period, allowed):
 
 def test_seed_names_roster_order_and_guardians():
     assert [(c["id"], c["name"]) for c in seed.CLASSROOMS] == [
-        (seed.CLASS_STAR, "만 5세반(햇살반)"), (seed.CLASS_SUN, "만 4세 별빛반")]
+        (seed.CLASS_STAR, "만 4세 별빛반"), (seed.CLASS_SUN, "만 5세 햇님반")]
     assert [(u["login_id"], u["display_name"]) for u in seed.USERS[:2]] == [
-        ("teacher01", "햇살반 선생님"), ("teacher02", "별빛반 선생님")]
+        ("teacher01", "별빛반 선생님"), ("teacher02", "햇님반 선생님")]
     roster = [child for child in seed.CHILDREN if not child["guardian_ids"]]
     assert [child["display_name"] for child in roster] == [
         "가온", "나래", "다온", "라온", "마루", "별하", "새봄", "아라", "여름",
         "윤슬", "이든", "지아", "지안", "채온", "하람", "한결", "해든", "로아"]
-    assert [child["id"] for child in roster] == [seed.demo_id(f"55{number:02d}") for number in range(1, 19)]
+    assert [child["id"] for child in roster] == [seed.demo_id(f"54{number:02d}") for number in range(1, 19)]
     assert all(child["classroom_id"] == seed.CLASS_STAR for child in roster)
+    assert len(seed.CHILDREN) == 21
+    assert sum(child["classroom_id"] == seed.CLASS_STAR for child in seed.CHILDREN) == 20
+    assert sum(child["classroom_id"] == seed.CLASS_SUN for child in seed.CHILDREN) == 1
+    assert {child["id"] for child in seed.CHILDREN}.isdisjoint(
+        seed.demo_id(f"55{number:02d}") for number in range(1, 19))
     assert [(c["display_name"], c["guardian_ids"]) for c in seed.CHILDREN[:3]] == [
         ("하늘", [seed.PARENT]), ("바다", [seed.PARENT_OTHER]), ("노을", [seed.PARENT_OTHER])]

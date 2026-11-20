@@ -1,6 +1,6 @@
 """모의 API의 데모 데이터(계약표 부록 A, API 설계 문서 부록 A).
 
-출처 PR #262 roster_c5.json(가상): 햇살반 18명의 이름과 순서를 옮겼다.
+출처 PR #262 roster_c4.json(가상): 별빛반 18명의 이름과 순서를 옮겼다.
 
 고정 UUID 규칙: 00000000-0000-4000-8000-0000000XXXXX
   0001 기관 · 01xx 반 · 02xx 교사 · 03xx 원장 · 04xx 학부모 · 05xx 아이 · 06xx 상담실
@@ -18,8 +18,8 @@ def demo_id(suffix: str) -> UUID:
 DEMO_PASSWORD = "demo1234"
 
 ORG = demo_id("1")                       # KG-DEMO-01 가상 햇살유치원
-CLASS_STAR = demo_id("101")              # CL-DEMO-01 만 5세반(햇살반)
-CLASS_SUN = demo_id("102")               # CL-DEMO-02 만 4세 별빛반
+CLASS_STAR = demo_id("101")              # CL-DEMO-01 만 4세 별빛반
+CLASS_SUN = demo_id("102")               # CL-DEMO-02 만 5세 햇님반
 TEACHER = demo_id("201")                 # T-DEMO-01 우리 반 담임
 TEACHER_OTHER = demo_id("202")           # T-DEMO-02 다른 반 교사
 DIRECTOR = demo_id("301")                # D-DEMO-01 원장
@@ -30,13 +30,13 @@ CHILD_OTHER = demo_id("502")             # C-DEMO-02 다른 아이
 ROOM = demo_id("601")                    # RM-DEMO-01 상담실
 
 CLASSROOMS = [
-    {"id": CLASS_STAR, "name": "만 5세반(햇살반)"},
-    {"id": CLASS_SUN, "name": "만 4세 별빛반"},
+    {"id": CLASS_STAR, "name": "만 4세 별빛반"},
+    {"id": CLASS_SUN, "name": "만 5세 햇님반"},
 ]
 
 USERS = [
-    {"id": TEACHER, "role": "teacher", "login_id": "teacher01", "display_name": "햇살반 선생님"},
-    {"id": TEACHER_OTHER, "role": "teacher", "login_id": "teacher02", "display_name": "별빛반 선생님"},
+    {"id": TEACHER, "role": "teacher", "login_id": "teacher01", "display_name": "별빛반 선생님"},
+    {"id": TEACHER_OTHER, "role": "teacher", "login_id": "teacher02", "display_name": "햇님반 선생님"},
     {"id": DIRECTOR, "role": "director", "login_id": "director01", "display_name": "원장님"},
     {"id": PARENT, "role": "parent", "login_id": "parent01", "display_name": "하늘이 보호자"},
     {"id": PARENT_OTHER, "role": "parent", "login_id": "parent02", "display_name": "바다 보호자"},
@@ -69,7 +69,7 @@ CHILDREN.append({"id": demo_id("503"), "classroom_id": CLASS_STAR, "display_name
 
 for number, name in enumerate(("가온", "나래", "다온", "라온", "마루", "별하", "새봄", "아라", "여름",
                                "윤슬", "이든", "지아", "지안", "채온", "하람", "한결", "해든", "로아"), start=1):
-    CHILDREN.append({"id": demo_id(f"55{number:02d}"), "classroom_id": CLASS_STAR,
+    CHILDREN.append({"id": demo_id(f"54{number:02d}"), "classroom_id": CLASS_STAR,
                      "display_name": name, "guardian_ids": []})
 
 DEMO_REQUESTS = [
