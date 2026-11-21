@@ -367,21 +367,38 @@ def _next_weekday(d: date) -> date:
 
 
 def _propose_slots(card: Card, teacher: UUID | None, round_no: int = 1) -> list[Slot]:
-    """다음 평일 15:00·16:00, 그다음 평일 15:00 (30분씩, 회차마다 최대 3개)."""
+    """평일 15:00·16:00 중 확정·살아 있는 체크와 겹치지 않는 세 칸을 골라요."""
     first = now().date()
     for _ in range(round_no):
         first = _next_weekday(first)
-    second = _next_weekday(first)
-    starts = [(first, time(15)), (first, time(16)), (second, time(15))]
     room = next(iter(_state.rooms))
+    teacher = teacher or seed.TEACHER
     out = []
-    for rank, (d, t) in enumerate(starts, start=1):
-        start = datetime.combine(d, t, KST)
-        slot = Slot(id=_state.next_int(), card_id=card.id, org_id=card.org_id, teacher_id=teacher or seed.TEACHER,
-                    room_id=room, period={"start": start, "end": start + timedelta(minutes=30)},
-                    round=round_no, rank=rank)
-        _state.slots[slot.id] = slot
-        out.append(slot)
+    day = first
+    for _ in range(14):
+        for hour in (15, 16):
+            start = datetime.combine(day, time(hour), KST)
+            end = start + timedelta(minutes=30)
+
+            def overlaps(period):
+                return start < period["end"] and period["start"] < end
+
+            if any(b.org_id == card.org_id and b.status == "confirmed"
+                   and (b.teacher_id == teacher or b.room_id == room) and overlaps(b.period)
+                   for b in _state.bookings.values()):
+                continue
+            if any(s.org_id == card.org_id and overlaps(s.period) and (
+                    _state.cards[s.card_id].request_id == card.request_id
+                    or (s.status == "chosen_by_parent" and s.chosen_at > now()-timedelta(hours=24)
+                        and (s.teacher_id == teacher or s.room_id == room))) for s in _state.slots.values()):
+                continue
+            slot = Slot(id=_state.next_int(), card_id=card.id, org_id=card.org_id, teacher_id=teacher,
+                        room_id=room, period={"start": start, "end": end}, round=round_no, rank=len(out)+1)
+            _state.slots[slot.id] = slot
+            out.append(slot)
+            if len(out) == 3:
+                return out
+        day = _next_weekday(day)
     return out
 
 
@@ -458,6 +475,8 @@ def expire(request_id=None):
                 card.updated_at = now()
                 if req:
                     set_request_status(req, "awaiting_review", action="resumed", card=card, automatic=True)
+            if req is None or req.status != "awaiting_review":
+                continue
             expired = [s for s in _state.slots.values() if s.card_id == card.id
                        and s.status == "chosen_by_parent" and s.chosen_at + timedelta(hours=24) <= now()]
             for slot in expired:

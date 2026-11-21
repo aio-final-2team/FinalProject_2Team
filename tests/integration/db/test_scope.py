@@ -197,11 +197,11 @@ def test_wrong_role_is_403_before_pending_workflow(db_client, login_id, path):
     assert response.status_code == 403 and response.json()["error"]["code"] == "FORBIDDEN_ROLE"
 
 
-def test_unimplemented_workflows_never_use_mock(db_client, records):
+def test_booking_route_validates_body_instead_of_using_pending_workflow(db_client, records):
     user = users.get_user(seed.TEACHER)
     response = db_client.post(f"/api/v1/cards/{records['local_card']}/bookings",
                              headers={"Authorization": "Bearer " + issue_token(user)})
-    assert response.status_code == 501 and response.json()["error"]["code"] == "NOT_IMPLEMENTED"
+    assert response.status_code == 422 and response.json()["error"]["code"] == "VALIDATION_FAILED"
 
 
 def test_invalid_password_hash_is_401(db_client, seeded_db):
@@ -240,9 +240,6 @@ def test_parent_note_classroom_filter_does_not_deny_or_log(db_client, records, s
 
 
 @pytest.mark.parametrize("method,path,actor", [
-    ("POST", "/requests/{local_request}/slot-choices", seed.PARENT),
-    ("POST", "/cards/{local_card}/bookings", seed.TEACHER),
-    ("POST", "/memory-rules/{local_card}/decision", seed.TEACHER),
     ("POST", "/documents", seed.TEACHER),
     ("GET", "/documents/{local_card}", seed.TEACHER),
 ])

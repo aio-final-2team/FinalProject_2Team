@@ -1,5 +1,7 @@
 """이력별 알림 생성과 모의 발송기."""
 
+from dataclasses import replace
+
 from app.api.labels import parent_label
 from app.core.constants import NOTIFICATION_TITLES as TITLES
 from app.core.schedule import deliver_after
@@ -58,6 +60,13 @@ def notify_event(ev, req, card):
         create(ev, req.assignee_id, "parent_confirmed")
     elif ev.action == "slot_hold_expired":
         create(ev, card.assignee_id, "slot_hold_expired")
+    elif (ev.action == "risk_reclassified" and ev.from_status == "escalated"
+          and ev.to_status == "awaiting_review" and req.risk_level == "normal"):
+        replies = [c for c in store.cards_of(req.id) if c.kind == "reply_draft"
+                   and c.status in ("pending", "in_review")]
+        if replies:
+            reply = max(replies, key=lambda c: (c.created_at, c.id))
+            create(replace(ev, card_id=reply.id), reply.assignee_id, "new_card")
     elif ev.to_status == "awaiting_review" and ev.action != "risk_reclassified":
         automatic = ev.action == "resumed" and ev.detail.get("automatic")
         if ev.action != "resumed" or automatic:

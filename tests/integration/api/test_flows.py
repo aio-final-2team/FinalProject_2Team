@@ -106,15 +106,17 @@ def test_concurrent_decisions_only_one_succeeds(client, parent, teacher):
 
 def test_slot_collision_is_atomic_and_nonoverlap_is_allowed(client, parent, teacher):
     pairs = [create(client, parent, "consultation", "시간 상담") for _ in range(2)]
-    for rid, cid in pairs:
+    for index, (rid, cid) in enumerate(pairs):
         slots = client.get(f"{BASE}/requests/{rid}", headers=parent).json()["consultation"]["slots"]
-        assert client.post(f"{BASE}/requests/{rid}/slot-choices", headers=parent, json={"slot_ids": [s["id"] for s in slots]}).status_code == 200
+        assert client.post(f"{BASE}/requests/{rid}/slot-choices", headers=parent, json={"slot_ids": [s["id"] for s in slots[index:index+1]]}).status_code == 200
     first = store.slots_of_request(UUID(pairs[0][0]))
     second = store.slots_of_request(UUID(pairs[1][0]))
+    second[1].period = dict(first[0].period)  # 이전 중복 체크를 가정해 최종 제약도 확인해요.
     assert client.post(f"{BASE}/cards/{pairs[0][1]}/bookings", headers=teacher, json={"version": 1, "slot_id": first[0].id}).status_code == 200
-    err(client.post(f"{BASE}/cards/{pairs[1][1]}/bookings", headers=teacher, json={"version": 1, "slot_id": second[0].id}), 409, "SLOT_TAKEN")
+    err(client.post(f"{BASE}/cards/{pairs[1][1]}/bookings", headers=teacher, json={"version": 1, "slot_id": second[1].id}), 409, "SLOT_TAKEN")
     assert store.state().cards[UUID(pairs[1][1])].version == 1
-    assert second[0].status == "chosen_by_parent"
+    assert second[1].status == "chosen_by_parent"
+    second[1].period = dict(first[1].period)
     assert client.post(f"{BASE}/cards/{pairs[1][1]}/bookings", headers=teacher, json={"version": 1, "slot_id": second[1].id}).status_code == 200
 
 

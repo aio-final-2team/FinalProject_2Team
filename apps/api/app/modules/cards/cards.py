@@ -10,9 +10,12 @@ from app.core import scope
 from app.core.db import transaction
 from app.core.errors import ApiError
 from app.core.schedule import due_at
-from app.modules.requests.agent_stub import new_card, _propose_stub_slots
+from app.modules.requests.agent_stub import new_card
+from app.modules.consultations.slots import propose_slots
+from app.modules.consultations.bookings import book_slot
 from app.modules.requests.events import record, set_status
 from app.modules.requests.requests import _expire, _lock
+from app.modules.memories.memories import remember_rejection
 
 
 @contextmanager
@@ -32,6 +35,7 @@ def locked(user, card_id, *, decision=None):
                 .mappings()
                 .one()
             )
+            card["classroom_id"] = initial["classroom_id"]
             yield connection, card, req
     except IntegrityError as error:
         if error.orig.sqlstate == "23505" and error.orig.diag.constraint_name == "approvals_card_id_card_version_key":
@@ -154,6 +158,8 @@ def decide(user, card_id, body):
         ):
             raise ApiError(409, "INVALID_TRANSITION")
         approval(connection, card, user, choice, body.reason_code, body.reason_text, body.edited_content)
+        if choice in ("reject", "dismiss"):
+            remember_rejection(connection, user, card, choice, body.reason_code, body.reason_text)
         actor = {"card": card, "actor_type": "user", "actor_id": user.id}
         next_card = None
         if choice in ("approve", "edit_approve"):
@@ -178,6 +184,7 @@ def decide(user, card_id, body):
             card["hold_until"] = None
             set_status(connection, req, "awaiting_review", action="resumed", **actor)
             touch(connection, card, "pending")
+            req = _expire(connection, req)
         elif choice == "dismiss":
             set_status(
                 connection,
@@ -223,11 +230,76 @@ def decide(user, card_id, body):
                     ),
                     {"id": req["id"]},
                 )
-                _propose_stub_slots(connection, req, next_card, next_card["assignee_id"])
+                propose_slots(connection, req, next_card, next_card["assignee_id"])
                 set_status(connection, req, "needs_info", action="info_requested", card=next_card)
             else:
                 set_status(connection, req, "awaiting_review", action="drafted", card=next_card)
         return result(card, req, next_card)
+
+
+def rule_decision(user, rule_id, body):
+    with transaction() as connection:
+        values = {"id": rule_id, "org": user.org_id, "owner": user.id}
+        rule = connection.execute(text("""
+            SELECT * FROM memory_rules WHERE id=:id AND org_id=:org AND owner_id=:owner
+        """), values).mappings().one_or_none()
+        scope._checked(user, rule, rule is not None, "memory_rule", rule_id)
+        connection.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))"),
+                           {"key": f"memory-rule:{user.org_id}:{user.id}:{rule['reason_code']}"})
+        # 일반 카드 결정·재배정과 같은 카드 → 규칙 순서예요. 범위 밖 행은 잠그지 않아요.
+        card = connection.execute(text("""
+            SELECT * FROM cards WHERE subject_type='memory_rule' AND subject_id=:id AND org_id=:org
+              AND kind='rule_proposal' ORDER BY created_at,id LIMIT 1 FOR NO KEY UPDATE
+        """), values).mappings().one_or_none()
+        rule = connection.execute(text("""
+            SELECT * FROM memory_rules WHERE id=:id AND org_id=:org AND owner_id=:owner FOR NO KEY UPDATE
+        """), values).mappings().one()
+        if rule["status"] != "proposed" or card is None or card["status"] not in ("pending", "in_review"):
+            raise ApiError(409, "INVALID_TRANSITION")
+        card = dict(card)
+        action = "approve" if body.decision == "activate" else "reject"
+        status = "active" if body.decision == "activate" else "declined"
+        approval(connection, card, user, action, reason_code=rule["reason_code"])
+        connection.execute(text("UPDATE memory_rules SET status=:status,decided_at=clock_timestamp() WHERE id=:id"),
+                           {"id": rule_id, "status": status})
+        touch(connection, card, "done")
+        record(connection, None, "approved" if action == "approve" else "rejected", card=card,
+               actor_type="user", actor_id=user.id)
+        return {"rule": {"id": rule_id, "status": status}}
+
+
+def book(user, card_id, body):
+    with locked(user, card_id) as (connection, card, req):
+        # 재배정만 받은 다른 반 교사는 조회할 수 있어도 대신 확정하지 못해요.
+        if user.role != "teacher" or not scope._classroom(connection, user, card["classroom_id"]):
+            raise ApiError(403, "FORBIDDEN_ROLE")
+        version(connection, card, body.version)
+        slot = connection.execute(text("""
+            SELECT s.*,r.name AS room FROM consultation_slots s JOIN rooms r
+              ON (r.id,r.org_id)=(s.room_id,s.org_id)
+            WHERE s.id=:id AND s.card_id=:card AND s.org_id=:org FOR NO KEY UPDATE OF s
+        """), {"id": body.slot_id, "card": card_id, "org": user.org_id}).mappings().one_or_none()
+        if slot is None:
+            scope._checked(user, None, False, "slot", body.slot_id)
+        if req is None or card["kind"] != "consult_slots" or req["status"] == "escalated":
+            raise ApiError(409, "INVALID_TRANSITION")
+        if slot["status"] != "chosen_by_parent":
+            raise ApiError(409, "SLOT_NOT_CHOSEN")
+        if req["status"] != "awaiting_review" or card["status"] != "pending":
+            raise ApiError(409, "INVALID_TRANSITION")
+        booking_id = book_slot(connection, slot, request_id=req["id"], confirmed_by=user.id)
+        approval(connection, card, user, "approve")
+        connection.execute(text("""
+            UPDATE consultation_slots SET status=CASE WHEN id=:slot THEN 'confirmed' ELSE 'discarded' END
+            WHERE card_id=:card
+        """), {"slot": slot["id"], "card": card_id})
+        actor = {"card": card, "actor_type": "user", "actor_id": user.id}
+        set_status(connection, req, "approved", action="approved", **actor)
+        set_status(connection, req, "sent_or_booked", action="booked", **actor)
+        touch(connection, card, "done")
+        return {"booking": {"id": booking_id, "room": slot["room"],
+                            "period": {"start": slot["period"].lower, "end": slot["period"].upper}},
+                "request": result(card, req)["request"]}
 
 
 def reclassify(user, card_id, body):
@@ -309,9 +381,10 @@ def instruct(user, card_id, body):
         reply = (
             connection.execute(
                 text(
-                    "SELECT * FROM cards WHERE request_id=:id AND kind='reply_draft' ORDER BY created_at DESC,id DESC LIMIT 1"
+                    "SELECT * FROM cards WHERE request_id=:id AND kind=:kind AND status IN ('pending','in_review') "
+                    "ORDER BY created_at DESC,id DESC LIMIT 1"
                 ),
-                {"id": req["id"]},
+                {"id": req["id"], "kind": "consult_slots" if req["type"] == "consultation" else "reply_draft"},
             )
             .mappings()
             .one_or_none()
@@ -340,7 +413,7 @@ def reassign(user, card_id, body):
         )
         if target is None:
             scope._checked(user, None, False, "assignee", body.assignee_id)
-        if card["kind"] == "director_report" or card["status"] in ("done", "rejected"):
+        if card["kind"] in ("director_report", "rule_proposal") or card["status"] in ("done", "rejected"):
             raise ApiError(409, "INVALID_TRANSITION")
         previous = card["assignee_id"]
         card["assignee_id"] = target["id"]

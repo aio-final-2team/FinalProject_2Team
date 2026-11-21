@@ -16,13 +16,17 @@ def classroom_of(card):
     if card.subject_type == "daily_note_batch":
         return state.note_inputs[card.subject_id].classroom_id
     owner_id = state.rules[card.subject_id].owner_id if card.subject_type == "memory_rule" else card.assignee_id
-    return next((assignment.classroom_id for assignment in state.classroom_staff if assignment.user_id == owner_id), None)
+    return next(iter(store.classroom_ids_of(owner_id)), None)
+
+
+def visible_to(user, card):
+    return card.org_id == user.org_id and (user.role != "teacher" or card.assignee_id == user.id
+            or (card.kind != "rule_proposal" and classroom_of(card) in store.classroom_ids_of(user.id)))
 
 
 def in_scope(user, card_id):
     card = store.state().cards.get(card_id)
-    if card is None or card.org_id != user.org_id or (user.role == "teacher"
-            and card.assignee_id != user.id and classroom_of(card) not in store.classroom_ids_of(user.id)):
+    if card is None or not visible_to(user, card):
         store.deny(user, req=store.state().requests.get(card.request_id) if card and card.org_id == user.org_id else None,
                    card=card if card and card.org_id == user.org_id else None)
     store.expire(card.request_id)
@@ -88,6 +92,9 @@ def decide(user, card_id, body):
         if decision in ("approve", "edit_approve") and not content.get("text", "").strip():
             raise ApiError(409, "INVALID_TRANSITION")
         record(card, user, decision, body.reason_code, body.reason_text, body.edited_content)
+        if decision in ("reject", "dismiss"):
+            from app.mock.memories import remember_rejection
+            remember_rejection(user, card, decision, body.reason_code, body.reason_text)
         actor = {"card": card, "actor_type": "user", "actor_id": user.id}
         next_card = None
         if decision in ("approve", "edit_approve"):
@@ -108,6 +115,7 @@ def decide(user, card_id, body):
             card.hold_until = None
             store.set_request_status(req, "awaiting_review", action="resumed", **actor)
             touch(card, "pending")
+            store.expire(req.id)
         elif decision == "dismiss":
             store.set_request_status(req, "rejected", action="dismissed", reason_code=body.reason_code,
                                      reason_text=body.reason_text, **actor)
@@ -188,12 +196,14 @@ def book(user, card_id, body):
         slot = store.state().slots.get(body.slot_id)
         if slot is None or slot.card_id != card.id:
             store.deny(user)
-        if card.kind != "consult_slots":
+        if card.kind != "consult_slots" or req.status == "escalated":
             raise ApiError(409, "INVALID_TRANSITION")
         if slot.status != "chosen_by_parent":
             raise ApiError(409, "SLOT_NOT_CHOSEN")
         if req.status != "awaiting_review" or card.status != "pending":
             raise ApiError(409, "INVALID_TRANSITION")
+        if slot.period["start"] <= store.now():
+            raise ApiError(409, "SLOT_PAST")
         for booking in store.state().bookings.values():
             overlaps = slot.period["start"] < booking.period["end"] and booking.period["start"] < slot.period["end"]
             if booking.status == "confirmed" and (booking.request_id == req.id or (overlaps
@@ -219,9 +229,13 @@ def instruct(user, card_id, body):
         req = store.state().requests.get(card.request_id)
         if card.kind != "director_report" or card.status not in ("pending", "in_review") or req.status != "escalated":
             raise ApiError(409, "INVALID_TRANSITION")
+        kind = "consult_slots" if req.type == "consultation" else "reply_draft"
+        reply = next((c for c in reversed(store.cards_of(req.id)) if c.kind == kind
+                      and c.status in ("pending", "in_review")), None)
+        if reply is None:
+            raise ApiError(409, "INVALID_TRANSITION")
         record(card, user, "instruct", reason_text=body.instruction)
         touch(card, "done")
-        reply = next(c for c in reversed(store.cards_of(req.id)) if c.kind == "reply_draft")
         store.set_request_status(req, "awaiting_review", action="instructed", card=reply, actor_type="user", actor_id=user.id)
         return result(card, req)
 
@@ -232,7 +246,7 @@ def reassign(user, card_id, body):
         target = store.get_user(body.assignee_id)
         if target is None or target.org_id != user.org_id or target.role != "teacher" or not target.is_active:
             store.deny(user)
-        if card.kind == "director_report" or card.status in ("done", "rejected"):
+        if card.kind in ("director_report", "rule_proposal") or card.status in ("done", "rejected"):
             raise ApiError(409, "INVALID_TRANSITION")
         previous, card.assignee_id = card.assignee_id, target.id
         req = store.state().requests.get(card.request_id)
@@ -253,9 +267,12 @@ def rule_decision(user, rule_id, body):
             store.deny(user)
         if rule.status != "proposed":
             raise ApiError(409, "INVALID_TRANSITION")
+        card = next((c for c in store.state().cards.values() if c.org_id == user.org_id
+                     and c.subject_type == "memory_rule" and c.subject_id == rule.id and c.kind == "rule_proposal"), None)
+        if card is None or card.status not in ("pending", "in_review"):
+            raise ApiError(409, "INVALID_TRANSITION")
         rule.status = "active" if body.decision == "activate" else "declined"
         rule.decided_at = store.now()
-        card = next(c for c in store.state().cards.values() if c.subject_id == rule.id)
         record(card, user, "approve" if body.decision == "activate" else "reject", reason_code=rule.reason_code)
         touch(card, "done")
         store.add_event(None, "approved" if body.decision == "activate" else "rejected", card=card,

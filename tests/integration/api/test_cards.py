@@ -356,7 +356,7 @@ def test_teacher_reclassification_keeps_report_until_director_instruction(
 
 
 @pytest.mark.parametrize("target_report", [False, True])
-def test_director_normal_closes_report_and_restores_overview_without_new_card_notification(
+def test_director_normal_closes_report_and_notifies_returned_reply_once(
     client, parent, teacher, director, card_backend, target_report
 ):
     baseline = client.get(BASE + "/overview", headers=director).json()["waiting"]
@@ -377,14 +377,28 @@ def test_director_normal_closes_report_and_restores_overview_without_new_card_no
     assert not any(c["request_id"] == rid for c in reports)
     assert client.get(BASE + "/overview", headers=director).json()["waiting"] == baseline + 1
     if card_backend == "mock":
-        notifications = [n.kind for n in store.state().notifications.values() if str(n.request_id) == rid]
+        notifications = [(n.kind, str(n.recipient_id), str(n.card_id))
+                         for n in store.state().notifications.values() if str(n.request_id) == rid]
     else:
         with transaction() as connection:
-            notifications = list(connection.scalars(text("SELECT kind FROM notifications WHERE request_id=:id"), {"id": rid}))
+            notifications = [(n.kind, str(n.recipient_id), str(n.card_id)) for n in connection.execute(
+                text("SELECT kind,recipient_id,card_id FROM notifications WHERE request_id=:id"), {"id": rid})]
             saved = connection.execute(text("SELECT closed_at,version FROM cards WHERE id=:id"), {"id": report["id"]}).one()
             assert saved.closed_at is not None and saved.version == 2
-    assert notifications == ["uncertain_complaint", "uncertain_complaint"]
-    assert decision(client, teacher, cid, "edit_approve", version=1 if target_report else 2,
+    assert sorted(n[0] for n in notifications) == ["new_card", "uncertain_complaint", "uncertain_complaint"]
+    assert [n for n in notifications if n[0] == "new_card"] == [("new_card", str(seed.TEACHER), cid)]
+    err(client.post(f"{BASE}/cards/{target}/reclassify", headers=director, json={
+        "version": 1, "risk_level": "normal", "reason": "[TEST] 같은 판 재시도"}), 409, "CARD_VERSION_CONFLICT")
+    # 이미 담임 단계인 요청의 일반 재분류는 알림을 더 만들지 않아요.
+    response = client.post(f"{BASE}/cards/{cid}/reclassify", headers=director, json={
+        "version": 1 if target_report else 2, "risk_level": "normal", "reason": "[TEST] 일반 유지"})
+    assert response.status_code == 200, response.text
+    if card_backend == "mock":
+        assert len([n for n in store.state().notifications.values() if str(n.request_id) == rid]) == 3
+    else:
+        with transaction() as connection:
+            assert connection.scalar(text("SELECT count(*) FROM notifications WHERE request_id=:id"), {"id": rid}) == 3
+    assert decision(client, teacher, cid, "edit_approve", version=2 if target_report else 3,
                     edited_content={"text": "[TEST] 원장 분류 후 안내"}).status_code == 200
     assert client.get(BASE + "/overview", headers=director).json()["waiting"] == baseline
 

@@ -53,6 +53,8 @@ def _visible(connection, user):
         LEFT JOIN memory_rules mr ON c.subject_type='memory_rule' AND (mr.id,mr.org_id)=(c.subject_id,c.org_id)
         LEFT JOIN LATERAL (SELECT s.classroom_id FROM classroom_staff s
             WHERE s.org_id=c.org_id AND s.user_id=coalesce(mr.owner_id,c.assignee_id)
+              AND (s.valid_from IS NULL OR s.valid_from<=CURRENT_DATE)
+              AND (s.valid_to IS NULL OR s.valid_to>=CURRENT_DATE)
             ORDER BY s.created_at,s.classroom_id LIMIT 1) owner_class ON true
         WHERE c.org_id=:org AND (:director OR c.assignee_id=:user OR EXISTS (
             SELECT 1 FROM classroom_staff s WHERE s.org_id=c.org_id AND s.user_id=:user

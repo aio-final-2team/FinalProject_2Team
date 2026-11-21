@@ -61,8 +61,7 @@ def listing(user, filter, request_type, risk_level, kind, assignee, page, size):
         store.expire()
         candidates = []
         for card in store.state().cards.values():
-            if card.org_id != user.org_id or (user.role == "teacher" and card.assignee_id != user.id
-                    and cards.classroom_of(card) not in store.classroom_ids_of(user.id)):
+            if not cards.visible_to(user, card):
                 continue
             row = item(card)
             if ((risk_level and row["risk_level"] != risk_level)

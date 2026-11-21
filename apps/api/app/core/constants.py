@@ -9,3 +9,15 @@ NOTIFICATION_TITLES = {
     "slot_hold_expired": "잡아 둔 시간이 풀렸어요", "hold_resumed": "보류 카드가 재개됐어요",
 }
 DEFERRED_REQUEST_TYPES = ("medication", "pickup")
+REJECTION_RULE_THRESHOLD = 3
+
+# 자유 글에서 시간·선호를 추측하지 않는 기억 대역이에요. 구체적인 조건 추출은 기억 AI가 맡아요.
+REJECTION_RULE_TEXTS = {
+    "wrong_fact": "담임이 지적한 사실을 확인한 뒤 초안을 제안해 주세요.",
+    "tone": "담임이 남긴 말투 관련 거절 이유를 확인해 초안을 제안해 주세요.",
+    "missing_info": "담임이 지적한 정보와 근거를 확인한 뒤 초안을 제안해 주세요.",
+    "privacy": "개인정보 관련 거절 이유를 확인한 뒤 초안을 제안해 주세요.",
+    "policy": "담임이 지적한 원 방침을 확인한 뒤 초안을 제안해 주세요.",
+    "slot_unavailable": "담임이 남긴 상담 시간 거절 이유를 확인해 후보를 제안해 주세요.",
+    "room_unavailable": "담임이 남긴 상담실 거절 이유를 확인해 후보를 제안해 주세요.",
+}

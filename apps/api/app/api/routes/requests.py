@@ -8,8 +8,6 @@ from app.api.schemas.common import errors
 from app.api.schemas.requests import (RequestAccepted, RequestAcceptedOut,
                                       RequestCreateIn, RequestDetailOut)
 from app.core.auth import CurrentUser, current_user, require_roles
-# 상담 시간 체크(API 8)는 T35에서 연결해요.
-from app.core.workflows import require_workflow_roles
 from app.core.errors import trace_id_of
 from app import backend
 from app.api.schemas.actions import MessageIn, SlotChoicesIn
@@ -63,8 +61,10 @@ def add_message(request_id: UUID, body: MessageIn, background_tasks: BackgroundT
     return backend.request_actions.message(user, request_id, body.body, background_tasks=background_tasks)
 
 
-@router.post("/requests/{request_id}/slot-choices", response_model=ChoicesResponse, responses=errors(401, 403, 404, 409, 422))
-def choose_slots(request_id: UUID, body: SlotChoicesIn, user: CurrentUser = Depends(require_workflow_roles("parent"))):
+@router.post("/requests/{request_id}/slot-choices", response_model=ChoicesResponse,
+             responses={**errors(401, 403, 404, 409, 422),
+                        409: {**errors(409)[409], "description": "SLOT_PAST: 이미 시작한 후보; SLOT_TAKEN: 예약·체크 충돌"}})
+def choose_slots(request_id: UUID, body: SlotChoicesIn, user: CurrentUser = Depends(require_roles("parent"))):
     return backend.request_actions.choices(user, request_id, body)
 
 

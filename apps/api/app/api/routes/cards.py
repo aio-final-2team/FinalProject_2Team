@@ -10,9 +10,7 @@ from app.api.schemas.actions import (InboxFilter, CardKind, DecisionIn, Reclassi
 from app.api.schemas.views import (CardList, CardDetail, DecisionResponse, ReclassifyResponse, BookingResponse,
                                   ReassignResponse, RuleResponse, Overview)
 from app.api.schemas.common import errors
-from app.core.auth import CurrentUser, require_roles
-# 상담 확정·기억 규칙 결정은 T35·T39에서 연결해요.
-from app.core.workflows import workflow_user, require_workflow_roles
+from app.core.auth import CurrentUser, current_user, require_roles
 from app import backend
 
 router = APIRouter(tags=["교직원 받은함"])
@@ -48,8 +46,10 @@ def reclassify(card_id: UUID, body: ReclassifyIn, user: CurrentUser = Depends(st
     return backend.cards.reclassify(user, card_id, body)
 
 
-@router.post("/cards/{card_id}/bookings", response_model=BookingResponse, responses=errors(401, 403, 404, 409, 422))
-def book(card_id: UUID, body: BookingIn, user: CurrentUser = Depends(require_workflow_roles("teacher"))):
+@router.post("/cards/{card_id}/bookings", response_model=BookingResponse,
+             responses={**errors(401, 403, 404, 409, 422),
+                        409: {**errors(409)[409], "description": "SLOT_PAST: 이미 시작한 후보; SLOT_TAKEN: 예약 충돌"}})
+def book(card_id: UUID, body: BookingIn, user: CurrentUser = Depends(require_roles("teacher"))):
     return backend.cards.book(user, card_id, body)
 
 
@@ -64,7 +64,7 @@ def reassign(card_id: UUID, body: ReassignIn, user: CurrentUser = Depends(requir
 
 
 @router.post("/memory-rules/{rule_id}/decision", response_model=RuleResponse, responses=errors(401, 404, 409, 422))
-def rule_decision(rule_id: UUID, body: RuleDecisionIn, user: CurrentUser = Depends(workflow_user)):
+def rule_decision(rule_id: UUID, body: RuleDecisionIn, user: CurrentUser = Depends(current_user)):
     return backend.cards.rule_decision(user, rule_id, body)
 
 
