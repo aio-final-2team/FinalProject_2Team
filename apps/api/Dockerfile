@@ -9,6 +9,11 @@ COPY apps/api/requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
 COPY apps/api/app ./app
 COPY agents ./agents
+COPY apps/api/alembic.ini ./apps/api/alembic.ini
+COPY apps/api/migrations ./apps/api/migrations
+COPY db/seeds ./db/seeds
+COPY apps/api/entrypoint.sh ./apps/api/entrypoint.sh
 
 EXPOSE 8000
+ENTRYPOINT ["bash", "/app/apps/api/entrypoint.sh"]
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

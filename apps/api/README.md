@@ -1,9 +1,38 @@
 # apps/api
 
-FastAPI 애플리케이션입니다. 태웅 담당의 인증·요청·상담·카드·이력 API를 구현합니다.
+FastAPI 애플리케이션이에요. 저장소 루트에서 Docker로 바로 띄워요.
+
+```sh
+docker compose up
+```
+
+처음에는 이미지도 만들어요. 코드를 바꾼 뒤에는 `docker compose up --build`로 다시 만들어요.
+`.env`가 없어도 기본 `mock`으로 떠요.
+API는 `http://localhost:8000`, 화면은 `http://localhost:5173`이에요.
+데모 로그인은 `teacher01` / `demo1234`예요. DB는 `localhost:15432`에서 접속해요.
+`API_PORT`·`POSTGRES_PORT`로 호스트 포트를 바꿀 수 있어요. 컨테이너끼리는 `db:5432`를 써요.
+`API_PORT`를 바꾸면 화면이 쓰는 `VITE_API_BASE_URL`도 같은 API 주소로 맞춰요.
+
+DB 모드는 다음 순서로 켜요.
+
+```sh
+cp .env.example .env
+# .env의 DATA_BACKEND를 db로 바꾸고, 아래 명령으로 만든 값을 JWT_SECRET에 넣어요.
+python3 -c 'import secrets; print(secrets.token_urlsafe(32))'
+docker compose up --build
+```
+
+Compose는 루트 `.env`를 자동으로 읽고, 셸에 같은 변수가 있으면 셸 값을 먼저 써요.
+`DATA_BACKEND`·`JWT_SECRET`·`DAILY_NOTE_WRITER`와 API 설정을 컨테이너에 전달해요.
+DB 모드의 시작 순서는 설정 검사 → `alembic upgrade head` → 데모 시드 → uvicorn이에요.
+마이그레이션이나 시드가 실패하면 API를 시작하지 않아요. 시드는 기존 행을 덮어쓰지 않아요.
+mock에서는 마이그레이션·시드를 실행하지 않아요. API는 DB에 접속하지 않고 모의 데이터를 써요.
+Compose의 DB 서비스는 두 모드에서 함께 떠요. `docker compose down`은 DB 볼륨을 유지해요.
+DB 계정·비밀번호를 바꿀 때는 `.env`의 `POSTGRES_*`와 `DATABASE_URL`을 함께 맞춰요.
+이미 만들어진 DB 볼륨의 계정·비밀번호는 환경 변수를 바꿔도 자동으로 바뀌지 않아요.
 
 `DATA_BACKEND` 기본값은 `mock`이에요. `db`는 PostgreSQL의 계정과 관계를 읽어요.
-DB 주소는 `DATABASE_URL`로 받아요. 마이그레이션·시드는 별도로 실행해요.
+DB 주소는 `DATABASE_URL`로 받아요. Docker 밖에서는 마이그레이션·시드를 직접 실행해요.
 DB 모드는 `JWT_SECRET`에 32바이트 이상의 별도 키가 필요해요. 값이 없거나 mock 기본값·
 `.env.example`의 예시 값이면 기동을 중단해요. mock의 개발용 기본값은 그대로 쓸 수 있어요.
 
@@ -21,6 +50,37 @@ DB 모드는 `JWT_SECRET`에 32바이트 이상의 별도 키가 필요해요. �
 
 인증·알림장 HTTP 시험은 mock·DB 두 모드로 돌아요. `tools/test_db.sh`가 전용 임시 DB에서
 마이그레이션·기관 경계·범위·인증·알림장 시험을 실행하고 컨테이너를 지워요.
+
+## 로컬 검사
+
+Python 3.12 이상과 가상환경을 준비한 뒤 저장소 루트에서 실행해요.
+
+```sh
+uv venv .venv
+uv pip install --python .venv/bin/python -r apps/api/requirements-dev.txt
+tools/check.sh
+tools/test_db.sh
+```
+
+`tools/check.sh`는 ruff 기본 규칙(E4·E7·E9·F)과 mock 전체 시험을 차례로 실행해요.
+기존 미사용 import·늦은 import·짧은 변수·lambda 지적은 pyproject에 파일별 예외로 뒀어요.
+일괄 포맷은 하지 않아요.
+DB 시험 변수가 셸에 남아 있어도 check는 mock만 실행해요. DB 검사는 별도 명령이에요.
+두 스크립트의 모든 출력에는 `[TEST]`가 붙어요. DB 검사는 Docker가 필요해요.
+
+## 알림장 코드 읽는 순서
+
+`POST /daily-notes/drafts` 요청 하나를 아래 순서로 따라가요.
+
+1. `app/api/routes/resources.py`의 `draft_notes`에서 요청을 받아요. 본문은 `app/api/schemas/actions.py`에서 검사해요.
+2. `app/core/auth.py`가 토큰·계정을 보고, `app/backend.py`가 mock 또는 DB 구현을 골라요.
+3. DB의 `app/modules/daily_notes/notes.py`가 `app/core/scope.py`로 담임의 반·배정 기간을 검사해요.
+4. 같은 모듈이 `app/core/db.py`의 트랜잭션 안에서 SQL로 입력·묶음 카드를 저장해요.
+5. `app/modules/daily_notes/runner.py`가 뒤에서 초안을 만들고 아이별 알림장을 SQL로 저장해요.
+
+표 정의와 변경 순서는 `migrations/README.md`를 봐요.
+
+## 초안 실행과 데모
 
 DB 초안은 입력을 `queued`로 저장하고 같은 프로세스의 BackgroundTasks에서 실행해요.
 `running`을 거쳐 `succeeded` 또는 `failed`가 돼요. `DAILY_NOTE_WRITER`는
