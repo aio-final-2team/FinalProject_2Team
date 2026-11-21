@@ -2195,6 +2195,7 @@ paths:
                   items:
                     contentMediaType: application/octet-stream
                     type: string
+                  maxItems: 10
                   title: Files
                   type: array
                 child_ids:
@@ -2430,6 +2431,7 @@ paths:
                   items:
                     contentMediaType: application/octet-stream
                     type: string
+                  maxItems: 10
                   title: Files
                   type: array
                 child_ids:

@@ -8,13 +8,14 @@ from fastapi import UploadFile
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.schemas.common import Page
+from app.core.constants import MAX_PHOTOS
 
 PhotoScope = Literal["family", "class", "org"]
 
 
 class PostUpload(BaseModel):
     body: str = Field(min_length=1, max_length=2000)
-    files: list[UploadFile] = []
+    files: list[UploadFile] = Field(default=[], max_length=MAX_PHOTOS)
     child_ids: str = "[]"
 
 

@@ -370,17 +370,33 @@ def test_failed_delete_audit_preserves_post_photo_and_file(client, parent, monke
     assert not any(e["action"] == "feed_post_deleted" for e in audit(feed_backend))
 
 
-def test_disk_delete_failure_leaves_only_orphan_file_after_commit(client, parent, monkeypatch):
-    own = post(client, parent)
-    photo = backend.feed.file(backend.users.get_user(seed.PARENT), UUID(own["photos"][0]["id"]))
-    path = media.path(photo["storage_path"])
+@pytest.mark.parametrize("photo_count", [1, 2])
+def test_disk_delete_failure_leaves_only_orphan_file_after_commit(
+        client, parent, monkeypatch, caplog, feed_backend, photo_count):
+    own = post(client, parent, tags=[[]] * photo_count)
+    photos = [backend.feed.file(backend.users.get_user(seed.PARENT), UUID(p["id"])) for p in own["photos"]]
+    paths = [media.path(p["storage_path"]) for p in photos]
+    original = media.remove
     def fail_remove(name):
-        raise OSError("[TEST] 지우기 실패")
+        if name == photos[0]["storage_path"]:
+            raise OSError(f"[TEST] 지우기 실패 {paths[0]} token=test-secret")
+        return original(name)
     monkeypatch.setattr(media, "remove", fail_remove)
-    err(client.delete(f"{BASE}/posts/{own['id']}", headers=parent), 500, "INTERNAL_ERROR")
-    assert path.is_file()
+    with caplog.at_level("WARNING", logger=backend.feed.__name__):
+        response = client.delete(f"{BASE}/posts/{own['id']}", headers=parent)
+    assert response.status_code == 204 and response.content == b""
+    warnings = [r for r in caplog.records if r.name == backend.feed.__name__]
+    assert [r.getMessage() for r in warnings] == [f"feed_photo_delete_failed photo_id={photos[0]['id']}"]
+    assert warnings[0].levelname == "WARNING" and warnings[0].exc_info is None
+    assert paths[0].is_file() and all(not p.exists() for p in paths[1:])
     err(client.get(f"{BASE}/posts/{own['id']}", headers=parent), 404, "NOT_FOUND")
-    err(client.get(own["photos"][0]["file_url"], headers=parent), 404, "NOT_FOUND")
+    for photo in own["photos"]:
+        err(client.get(photo["file_url"], headers=parent), 404, "NOT_FOUND")
+    assert own["id"] not in {p["id"] for p in client.get(CLASS + "/posts", headers=parent).json()["items"]}
+    album_ids = {p["id"] for p in client.get(CLASS + "/albums", headers=parent).json()["items"]}
+    assert not album_ids.intersection(p["id"] for p in own["photos"])
+    deleted = [e for e in audit(feed_backend) if e["action"] == "feed_post_deleted"]
+    assert len(deleted) == 1 and deleted[0]["detail"]["post_id"] == own["id"]
 
 
 def test_author_can_delete_after_losing_class_access(client, parent, feed_backend):

@@ -18,6 +18,10 @@ def test_contract_matches_application():
     # 투약·귀가는 별도 교직원 목록이에요. 기존 받은함 응답의 유형 계약은 그대로예요.
     assert app.openapi()["components"]["schemas"]["CardItem"]["properties"]["request_type"]["anyOf"][0]["enum"] == [
         "inquiry", "consultation", "complaint"]
+    for target in ("classrooms/{classroom_id}", "organizations/{org_id}"):
+        schema = app.openapi()["paths"][f"/api/v1/{target}/posts"]["post"]["requestBody"]["content"][
+            "multipart/form-data"]["schema"]
+        assert schema["properties"]["files"]["maxItems"] == 10
 
 
 def test_all_49_documented_endpoints_exist(client):

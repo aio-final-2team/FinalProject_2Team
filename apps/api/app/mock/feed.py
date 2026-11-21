@@ -1,11 +1,14 @@
 """[제안] T54 메모리 구현. 요청 하나는 기존 저장소 잠금 안에서 처리해요."""
 
+import logging
 from uuid import uuid4
 
 from app.core import feed as rules, media
 from app.core.errors import ApiError
 from app.core.request_id import active_trace_id
 from app.mock import store
+
+log = logging.getLogger(__name__)
 
 
 def record(user, action, **detail):
@@ -118,11 +121,14 @@ def delete(user, post_id):
         post, _ = checked(user, post_id, include_hidden=True, deleting=True)
         if post["author_id"] != user.id:
             deny(user, post_id)
-        paths = [p["storage_path"] for p in photos(post_id)]
+        post_photos = photos(post_id)
         record(user, "feed_post_deleted", post_id=str(post_id))
         post["deleted_at"] = store.now()
-    for name in paths:
-        media.remove(name)
+    for photo in post_photos:
+        try:
+            media.remove(photo["storage_path"])
+        except OSError:
+            log.warning("feed_photo_delete_failed photo_id=%s", photo["id"])
 
 
 def hide(user, post_id):
