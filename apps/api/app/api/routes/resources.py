@@ -71,7 +71,8 @@ def patch_note(note_id: UUID, body: NotePatchIn, user: CurrentUser = Depends(not
     return backend.notes.patch(user, note_id, body)
 
 
-@router.post("/daily-notes/send", response_model=SendResponse, responses=errors(401, 403, 404, 409, 422))
+@router.post("/daily-notes/send", response_model=SendResponse, responses=errors(401, 403, 404, 409, 422),
+             description="초안 작업이 queued·running·failed면 409 NOTE_BATCH_BLOCKED, details.blocked=[]로 답해요.")
 def send_notes(body: NoteBatchIn, user: CurrentUser = Depends(note_roles("teacher"))):
     return backend.notes.send(user, body)
 

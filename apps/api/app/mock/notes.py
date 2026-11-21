@@ -107,9 +107,13 @@ def patch(user, note_id, body):
             for line in body.content.items:
                 if line.source.type == "document":
                     from app.mock.documents import in_scope
-                    in_scope(user, line.source.document_id)
+                    document = in_scope(user, line.source.document_id)
+                    if document.visibility not in ("parents", "all"):
+                        raise ApiError(422, "VALIDATION_FAILED", field="content.items[].source.document_id")
                 if line.source.type == "request":
-                    store.request_in_scope(user, line.source.request_id)
+                    request = store.request_in_scope(user, line.source.request_id)
+                    if request.child_id != note.child_id:
+                        raise ApiError(422, "VALIDATION_FAILED", field="content.items[].source.request_id")
             note.content = body.content.model_dump(exclude_none=True)
         note.open_checks = remaining
         note.status = "needs_check" if remaining else "draft"
@@ -155,6 +159,10 @@ def list_notes(user, note_date, classroom_id, page, size, sort):
 def send(user, body):
     with store._lock:
         store.classroom_in_scope(user, body.classroom_id)
+        entry = next((i for i in store.state().note_inputs.values() if i.org_id == user.org_id
+                      and i.classroom_id == body.classroom_id and i.note_date == body.note_date), None)
+        if entry is not None and entry.draft_status != "succeeded":
+            raise ApiError(409, "NOTE_BATCH_BLOCKED", blocked=[])
         selected = [n for n in store.state().notes.values() if n.org_id == user.org_id and n.note_date == body.note_date
                     and store.state().note_inputs[n.input_id].classroom_id == body.classroom_id and n.status != "sent"]
         blocked = [{"note_id": n.id, "child_id": n.child_id, "open_checks": n.open_checks} for n in selected if n.status != "ready"]

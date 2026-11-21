@@ -2,6 +2,7 @@
 
 import os
 import re
+from math import isfinite
 from dataclasses import dataclass
 from datetime import date, time
 
@@ -20,6 +21,7 @@ class Settings:
     immediate_risk_categories: tuple[str, ...] = ("child_safety",)
     data_backend: str = "mock"
     daily_note_writer: str = "app.modules.daily_notes.stub_writer:write"
+    daily_note_writer_timeout: float = 120.0
 
 
 def load_settings() -> Settings:
@@ -40,6 +42,9 @@ def load_settings() -> Settings:
     categories = tuple(c.strip() for c in os.getenv("IMMEDIATE_RISK_CATEGORIES", "child_safety").split(","))
     if any(c not in ("child_safety", "staff_attack", "legal_external", "privacy_leak") for c in categories):
         raise ValueError("IMMEDIATE_RISK_CATEGORIES: 긴급 위험 종류 필요")
+    writer_timeout = float(os.getenv("DAILY_NOTE_WRITER_TIMEOUT", "120"))
+    if not isfinite(writer_timeout) or writer_timeout <= 0:
+        raise ValueError("DAILY_NOTE_WRITER_TIMEOUT: 0보다 큰 초 필요")
     return Settings(
         jwt_secret=jwt_secret,
         jwt_access_ttl_hours=int(os.getenv("JWT_ACCESS_TTL_HOURS", "12")),
@@ -49,6 +54,7 @@ def load_settings() -> Settings:
         work_hours=work_hours, immediate_risk_categories=categories,
         data_backend=backend,
         daily_note_writer=os.getenv("DAILY_NOTE_WRITER", "app.modules.daily_notes.stub_writer:write"),
+        daily_note_writer_timeout=writer_timeout,
     )
 
 

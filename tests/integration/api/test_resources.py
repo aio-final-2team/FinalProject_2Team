@@ -62,7 +62,9 @@ def test_notes_batch_blocks_all_then_sends_once(client, teacher, parent, parent_
         assert visible["total"] == 1 and visible["items"][0]["child_id"] == str(child)
         assert visible["items"][0]["open_checks"] == []
         assert any(n["kind"] == "note_sent" and n["subject_type"] == "daily_note" for n in client.get(BASE + "/notifications", headers=headers).json()["items"])
-    assert len([n for n in store.state().notifications.values() if n.kind == "note_sent"]) == 2
+    expected = {(child["id"], guardian) for child in seed.CHILDREN if child["classroom_id"] == seed.CLASS_STAR
+                for guardian in child["guardian_ids"]}
+    assert len([n for n in store.state().notifications.values() if n.kind == "note_sent"]) == len(expected)
     err(client.post(BASE + "/daily-notes/send", headers=director, json=batch), 403, "FORBIDDEN_ROLE")
     assert client.get(BASE + "/daily-notes", headers=director, params={"date": store.now().date().isoformat()}).json()["total"] == 20
 

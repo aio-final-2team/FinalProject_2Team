@@ -6,6 +6,8 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+from datetime import UTC, datetime
+from uuid import uuid4
 
 import pytest
 from alembic import command
@@ -151,8 +153,8 @@ def test_seed_twice_keeps_same_rows_and_password_hash(db_engine, alembic_config)
     root = Path(__file__).resolve().parents[3]
     env = {**os.environ, "PYTHONPATH": str(root / "apps/api")}
 
-    def run_seed():
-        subprocess.run([sys.executable, "-m", "db.seeds.demo"], cwd=root, env=env,
+    def run_seed(*args):
+        subprocess.run([sys.executable, "-m", "db.seeds.demo", *args], cwd=root, env=env,
                        capture_output=True, text=True, check=True)
     tables = ("organizations", "classrooms", "users", "classroom_staff", "children", "child_guardians", "rooms",
               "documents", "document_chunks", "requests")
@@ -166,7 +168,7 @@ def test_seed_twice_keeps_same_rows_and_password_hash(db_engine, alembic_config)
     first = snapshot()
     run_seed()
     assert snapshot() == first
-    assert {table: len(rows) for table, rows in first.items()} == dict(zip(tables, (1, 2, 5, 2, 21, 3, 1, 3, 3, 2), strict=True))
+    assert {table: len(rows) for table, rows in first.items()} == dict(zip(tables, (1, 2, 21, 2, 21, 19, 1, 3, 3, 22), strict=True))
     classrooms = {row["id"]: row for row in first["classrooms"]}
     assert (classrooms[seed.CLASS_STAR]["name"], classrooms[seed.CLASS_STAR]["age_group"]) == ("만 4세 별빛반", 4)
     assert (classrooms[seed.CLASS_SUN]["name"], classrooms[seed.CLASS_SUN]["age_group"]) == ("만 5세 햇님반", 5)
@@ -193,8 +195,9 @@ def test_seed_twice_keeps_same_rows_and_password_hash(db_engine, alembic_config)
             for row in first["classroom_staff"]} == {
         (row["classroom_id"], row["user_id"], row["valid_from"], row["valid_to"])
         for row in seed.CLASSROOM_STAFF}
-    assert {(row["child_id"], row["user_id"]) for row in first["child_guardians"]} == {
-        (child["id"], guardian) for child in seed.CHILDREN for guardian in child["guardian_ids"]}
+    assert {(row["child_id"], row["user_id"], row["relation"]) for row in first["child_guardians"]} == {
+        (child["id"], guardian, seed.GUARDIAN_RELATIONS.get((child["id"], guardian), "other"))
+        for child in seed.CHILDREN for guardian in child["guardian_ids"]}
     requests = {row["id"]: row for row in first["requests"]}
     for expected in seed.DEMO_NOTE_REQUESTS:
         assert all(requests[expected["id"]][key] == value for key, value in expected.items())
@@ -204,6 +207,33 @@ def test_seed_twice_keeps_same_rows_and_password_hash(db_engine, alembic_config)
     for document_id, title, kind, status, content in seed.DEMO_DOCUMENTS:
         assert (documents[document_id]["title"], documents[document_id]["doc_type"],
                 documents[document_id]["status"], chunks[document_id]) == (title, kind, status, content)
+
+    # 날짜 갱신은 명시한 데모 요청 22개의 접수 시각만 바꾼다. 일반 요청은 그대로 둔다.
+    unrelated = uuid4()
+    with db_engine.begin() as connection:
+        connection.execute(text("""
+            INSERT INTO requests (id,org_id,classroom_id,child_id,requester_id,client_request_id,type,body,created_at)
+            SELECT :id,org_id,classroom_id,child_id,requester_id,:key,type,'[TEST] 일반 요청',created_at
+            FROM requests WHERE id=:source
+        """), {"id": unrelated, "key": f"test:{unrelated}", "source": seed.REQUEST_COUGH})
+    before_refresh = snapshot()
+    start = datetime.now(UTC)
+    run_seed("--refresh-note-requests")
+    end = datetime.now(UTC)
+    refreshed = snapshot()
+    for table in tables:
+        if table != "requests":
+            assert refreshed[table] == before_refresh[table]
+            continue
+        for old, new in zip(before_refresh[table], refreshed[table], strict=True):
+            if old["id"] == unrelated:
+                assert new == old
+            else:
+                assert start <= new["created_at"] <= end
+                assert dict(new) == {**old, "created_at": new["created_at"]}
+    assert len({r["created_at"] for r in refreshed["requests"] if r["id"] != unrelated}) == 1
+    run_seed()
+    assert snapshot() == refreshed
 
 
 def test_transaction_commits_and_rolls_back(db_engine, alembic_config):

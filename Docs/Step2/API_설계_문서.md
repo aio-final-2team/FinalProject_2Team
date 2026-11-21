@@ -438,7 +438,7 @@ HTTP/1.1 200 OK
 | ④ 요청 본문 | `classroom_id`(UUID, 필수, 우리 반), `note_date`(date, 필수, 오늘 또는 지난날) |
 | ⑤ 검증·권한 | 그 반 담임만(대체 담임은 기간 안). 원장은 보내지 않는다 |
 | ⑥ 정상 응답 | 200 + `sent_count`. 아이마다 `daily_notes.status = sent`, 학부모에게 `note_sent` 알림 |
-| ⑦ 오류 응답 | 403, 404, 409 `NOTE_BATCH_BLOCKED`(`details.blocked[] { note_id, child_id, open_checks[] }`), 422 |
+| ⑦ 오류 응답 | 403, 404, 409 `NOTE_BATCH_BLOCKED`(`details.blocked[] { note_id, child_id, open_checks[] }`), 422. 초안 작업이 queued·running·failed면 409 `NOTE_BATCH_BLOCKED`, `details.blocked=[]`다. |
 | ⑧ 실행 규칙 | 한 트랜잭션에서 반 전체를 잠그고 확인한 뒤 보낸다. 이미 보낸 알림장은 다시 보내지 않고 `sent_count`에서 뺀다 |
 
 ```json
@@ -1023,7 +1023,7 @@ HTTP/1.1 200 OK
 | ② 요청 헤더 | `Authorization`(필수), `X-Request-ID`(권장), `Content-Type: application/json`. |
 | ③ 경로·쿼리 | note_id(UUID, 필수). |
 | ④ 요청 본문 | content·resolved_checks·confirm, 모두 선택. |
-| ⑤ 검증·권한 | teacher와 현재 담당 반만. 문서·요청 출처도 범위를 검사한다. sent는 수정 불가. 없는 확인 ID와 미해결 항목을 남긴 confirm은 저장된 확인 항목과 대조해야 알 수 있어 서버가 409로 막는다(4.1). |
+| ⑤ 검증·권한 | teacher와 현재 담당 반만. 문서·요청 출처도 범위를 검사한다. 요청의 child_id가 알림장 아이와 다르거나 문서 visibility가 parents·all이 아니면 422 VALIDATION_FAILED다. sent는 수정 불가. 없는 확인 ID와 미해결 항목을 남긴 confirm은 저장된 확인 항목과 대조해야 알 수 있어 서버가 409로 막는다(4.1). |
 | ⑥ 정상 응답 | 200 + note. confirm=true이고 미해결 0개면 ready·confirmed_at을 남긴다. |
 | ⑦ 오류 응답 | 아래 오류 표. |
 | ⑧ 실행 규칙 | content를 보내면 전체 내용을 바꾼다. confirm=false(기본)이면 기존 확인을 지우고 미해결 유무에 따라 needs_check·draft로 되돌린다. 빈 본문도 기존 확인을 해제한다. 오류면 수정하지 않는다. |
@@ -1052,7 +1052,7 @@ HTTP/1.1 200 OK
 | 403 | `FORBIDDEN_ROLE` | 허용하지 않은 역할 |
 | 404 | `NOT_FOUND` | 없거나 기관·반·소유 범위 밖 |
 | 409 | `INVALID_TRANSITION` | sent 수정, 없는 resolved_checks ID, confirm인데 미해결 항목 있음(details.open_checks) |
-| 422 | `VALIDATION_FAILED` | 형식·출처 필수 칸 |
+| 422 | `VALIDATION_FAILED` | 형식·출처 필수 칸, 다른 아이·아이 없는 요청 출처, visibility가 staff인 문서 출처 |
 
 ### 3.22 자료 올리기 — `POST /api/v1/documents`
 
