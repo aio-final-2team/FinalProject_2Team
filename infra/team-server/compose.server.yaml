@@ -16,6 +16,14 @@ services:
       retries: 12
       start_period: 15s
 
+  worker:
+    environment:
+      DATA_BACKEND: ${DATA_BACKEND:-db}
+
+  beat:
+    environment:
+      DATA_BACKEND: ${DATA_BACKEND:-db}
+
   web:
     restart: unless-stopped
     build:
