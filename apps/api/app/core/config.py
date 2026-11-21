@@ -19,6 +19,7 @@ class Settings:
     mock_stream_delay_ms: int = 300
     work_hours: tuple[time, time] = (time(9), time(18))
     immediate_risk_categories: tuple[str, ...] = ("child_safety",)
+    media_dir: str = "var/media"
     data_backend: str = "mock"
     daily_note_writer: str = "app.modules.daily_notes.stub_writer:write"
     daily_note_writer_timeout: float = 300.0
@@ -58,6 +59,7 @@ def load_settings() -> Settings:
         holidays=tuple(date.fromisoformat(d.strip()) for d in os.getenv("HOLIDAYS", "").split(",") if d.strip()),
         mock_stream_delay_ms=max(0, int(os.getenv("MOCK_STREAM_DELAY_MS", "300"))),
         work_hours=work_hours, immediate_risk_categories=categories,
+        media_dir=os.getenv("MEDIA_DIR", "var/media"),
         data_backend=backend,
         daily_note_writer=os.getenv("DAILY_NOTE_WRITER", "app.modules.daily_notes.stub_writer:write"),
         daily_note_writer_timeout=writer_timeout,

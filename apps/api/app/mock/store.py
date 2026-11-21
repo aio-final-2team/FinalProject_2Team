@@ -57,6 +57,7 @@ class Child:
     classroom_id: UUID
     display_name: str
     guardian_ids: list[UUID]
+    photo_scope: str = "family"
 
 
 @dataclass
@@ -159,7 +160,7 @@ class _State:
         self.users = {u["id"]: User(org_id=org, password=seed.DEMO_PASSWORD, **u) for u in seed.USERS}
         self.classrooms = {c["id"]: Classroom(org_id=org, **c) for c in seed.CLASSROOMS}
         self.classroom_staff = [ClassroomStaff(**s) for s in seed.CLASSROOM_STAFF]
-        self.children = {c["id"]: Child(org_id=org, **c) for c in seed.CHILDREN}
+        self.children = {c["id"]: Child(org_id=org, **{**c, "guardian_ids": list(c["guardian_ids"])}) for c in seed.CHILDREN}
         self.rooms = {r["id"]: Room(org_id=org, **r) for r in seed.ROOMS}
         self.requests: dict[UUID, Request] = {}
         self.messages: list[Message] = []
@@ -176,6 +177,8 @@ class _State:
         self.rules: dict[UUID, Rule] = {}
         self.note_inputs: dict[UUID, NoteInput] = {}
         self.notes: dict[UUID, Note] = {}
+        self.feed_posts = {}
+        self.feed_photos = {}
         self.memories = {}
         self._seq = 1000
 

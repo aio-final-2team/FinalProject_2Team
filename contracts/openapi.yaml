@@ -2053,6 +2053,774 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
           description: Unprocessable Entity
+  /api/v1/classrooms/{classroom_id}/posts:
+    get:
+      tags:
+      - '[제안] 피드·앨범'
+      summary: Class Listing
+      operationId: class_listing_api_v1_classrooms__classroom_id__posts_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: classroom_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Classroom Id
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+          title: Page
+      - name: size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 20
+          title: Size
+      - name: sort
+        in: query
+        required: false
+        schema:
+          enum:
+          - -created_at
+          - created_at
+          type: string
+          default: -created_at
+          title: Sort
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostList'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+    post:
+      tags:
+      - '[제안] 피드·앨범'
+      summary: Class Create
+      operationId: class_create_api_v1_classrooms__classroom_id__posts_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: classroom_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Classroom Id
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostResponse'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '413':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Request Entity Too Large
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              properties:
+                body:
+                  maxLength: 2000
+                  minLength: 1
+                  title: Body
+                  type: string
+                files:
+                  default: []
+                  items:
+                    contentMediaType: application/octet-stream
+                    type: string
+                  maxItems: 10
+                  title: Files
+                  type: array
+                child_ids:
+                  default: '[]'
+                  title: Child Ids
+                  type: string
+              required:
+              - body
+              title: PostUpload
+              type: object
+  /api/v1/classrooms/{classroom_id}/albums:
+    get:
+      tags:
+      - '[제안] 피드·앨범'
+      summary: Class Album
+      operationId: class_album_api_v1_classrooms__classroom_id__albums_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: classroom_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Classroom Id
+      - name: child_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Child Id
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+          title: Page
+      - name: size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 20
+          title: Size
+      - name: sort
+        in: query
+        required: false
+        schema:
+          enum:
+          - -created_at
+          - created_at
+          type: string
+          default: -created_at
+          title: Sort
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Album'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+  /api/v1/organizations/{org_id}/posts:
+    get:
+      tags:
+      - '[제안] 피드·앨범'
+      summary: Org Listing
+      operationId: org_listing_api_v1_organizations__org_id__posts_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: org_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Org Id
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+          title: Page
+      - name: size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 20
+          title: Size
+      - name: sort
+        in: query
+        required: false
+        schema:
+          enum:
+          - -created_at
+          - created_at
+          type: string
+          default: -created_at
+          title: Sort
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostList'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+    post:
+      tags:
+      - '[제안] 피드·앨범'
+      summary: Org Create
+      operationId: org_create_api_v1_organizations__org_id__posts_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: org_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Org Id
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostResponse'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '413':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Request Entity Too Large
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              properties:
+                body:
+                  maxLength: 2000
+                  minLength: 1
+                  title: Body
+                  type: string
+                files:
+                  default: []
+                  items:
+                    contentMediaType: application/octet-stream
+                    type: string
+                  maxItems: 10
+                  title: Files
+                  type: array
+                child_ids:
+                  default: '[]'
+                  title: Child Ids
+                  type: string
+              required:
+              - body
+              title: PostUpload
+              type: object
+  /api/v1/organizations/{org_id}/albums:
+    get:
+      tags:
+      - '[제안] 피드·앨범'
+      summary: Org Album
+      operationId: org_album_api_v1_organizations__org_id__albums_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: org_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Org Id
+      - name: child_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Child Id
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+          title: Page
+      - name: size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 20
+          title: Size
+      - name: sort
+        in: query
+        required: false
+        schema:
+          enum:
+          - -created_at
+          - created_at
+          type: string
+          default: -created_at
+          title: Sort
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Album'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+  /api/v1/posts/{post_id}:
+    get:
+      tags:
+      - '[제안] 피드·앨범'
+      summary: Detail
+      operationId: detail_api_v1_posts__post_id__get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: post_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Post Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostResponse'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+    delete:
+      tags:
+      - '[제안] 피드·앨범'
+      summary: Delete
+      operationId: delete_api_v1_posts__post_id__delete
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: post_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Post Id
+      responses:
+        '204':
+          description: Successful Response
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+    patch:
+      tags:
+      - '[제안] 피드·앨범'
+      summary: Hide
+      operationId: hide_api_v1_posts__post_id__patch
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: post_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Post Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HidePost'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostResponse'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+  /api/v1/photos/{photo_id}/file:
+    get:
+      tags:
+      - '[제안] 피드·앨범'
+      summary: Photo File
+      operationId: photo_file_api_v1_photos__photo_id__file_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: photo_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Photo Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/webp:
+              schema:
+                type: string
+                format: binary
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+  /api/v1/children/{child_id}/photo-scope:
+    get:
+      tags:
+      - '[제안] 피드·앨범'
+      summary: Get Scope
+      operationId: get_scope_api_v1_children__child_id__photo_scope_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: child_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Child Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScopeResponse'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+    patch:
+      tags:
+      - '[제안] 피드·앨범'
+      summary: Patch Scope
+      operationId: patch_scope_api_v1_children__child_id__photo_scope_patch
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: child_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Child Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScopePatch'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScopeResponse'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
   /health:
     get:
       tags:
@@ -2071,6 +2839,29 @@ paths:
                 title: Response Health Health Get
 components:
   schemas:
+    Album:
+      properties:
+        total:
+          type: integer
+          title: Total
+        page:
+          type: integer
+          title: Page
+        size:
+          type: integer
+          title: Size
+        items:
+          items:
+            $ref: '#/components/schemas/PhotoView'
+          type: array
+          title: Items
+      type: object
+      required:
+      - total
+      - page
+      - size
+      - items
+      title: Album
     AssignmentView:
       properties:
         assignee:
@@ -3186,6 +3977,17 @@ components:
       - quote
       - is_current
       title: EvidenceView
+    HidePost:
+      properties:
+        status:
+          type: string
+          const: hidden
+          title: Status
+      additionalProperties: false
+      type: object
+      required:
+      - status
+      title: HidePost
     InstructionIn:
       properties:
         version:
@@ -3904,6 +4706,42 @@ components:
       - id
       - display_name
       title: Person
+    PhotoView:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        post_id:
+          type: string
+          format: uuid
+          title: Post Id
+        media_type:
+          type: string
+          enum:
+          - image/jpeg
+          - image/png
+          - image/webp
+          title: Media Type
+        size_bytes:
+          type: integer
+          title: Size Bytes
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        file_url:
+          type: string
+          title: File Url
+      type: object
+      required:
+      - id
+      - post_id
+      - media_type
+      - size_bytes
+      - created_at
+      - file_url
+      title: PhotoView
     PickupGuardian:
       properties:
         id:
@@ -3929,6 +4767,88 @@ components:
       required:
       - items
       title: PickupGuardiansOut
+    PostList:
+      properties:
+        total:
+          type: integer
+          title: Total
+        page:
+          type: integer
+          title: Page
+        size:
+          type: integer
+          title: Size
+        items:
+          items:
+            $ref: '#/components/schemas/PostView'
+          type: array
+          title: Items
+      type: object
+      required:
+      - total
+      - page
+      - size
+      - items
+      title: PostList
+    PostResponse:
+      properties:
+        post:
+          $ref: '#/components/schemas/PostView'
+      type: object
+      required:
+      - post
+      title: PostResponse
+    PostView:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        lane:
+          type: string
+          enum:
+          - class
+          - org
+          title: Lane
+        classroom_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Classroom Id
+        author_id:
+          type: string
+          format: uuid
+          title: Author Id
+        body:
+          type: string
+          title: Body
+        status:
+          type: string
+          enum:
+          - published
+          - hidden
+          title: Status
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        photos:
+          items:
+            $ref: '#/components/schemas/PhotoView'
+          type: array
+          title: Photos
+      type: object
+      required:
+      - id
+      - lane
+      - classroom_id
+      - author_id
+      - body
+      - status
+      - created_at
+      - photos
+      title: PostView
     ReassignIn:
       properties:
         assignee_id:
@@ -4470,6 +5390,39 @@ components:
       - rule_text
       - status
       title: RuleView
+    ScopePatch:
+      properties:
+        photo_scope:
+          type: string
+          enum:
+          - family
+          - class
+          - org
+          title: Photo Scope
+      additionalProperties: false
+      type: object
+      required:
+      - photo_scope
+      title: ScopePatch
+    ScopeResponse:
+      properties:
+        photo_scope:
+          type: string
+          enum:
+          - family
+          - class
+          - org
+          title: Photo Scope
+        child_id:
+          type: string
+          format: uuid
+          title: Child Id
+      additionalProperties: false
+      type: object
+      required:
+      - photo_scope
+      - child_id
+      title: ScopeResponse
     SendResponse:
       properties:
         sent_count:

@@ -6,6 +6,7 @@ services:
       context: .
       dockerfile: apps/api/Dockerfile
     environment: &api-environment
+      MEDIA_DIR: ${MEDIA_DIR:-/media}
       DATA_BACKEND: ${DATA_BACKEND:-mock}
       SEED_DEMO: ${SEED_DEMO:-true}
       RUN_IN: ${RUN_IN:-api}
@@ -32,6 +33,8 @@ services:
       LLM_MODEL_CHECKER: ${LLM_MODEL_CHECKER:-}
       LLM_MODEL_CODE: ${LLM_MODEL_CODE:-}
       LANGSMITH_API_KEY: ${LANGSMITH_API_KEY:-}
+    volumes:
+      - media_data:${MEDIA_DIR:-/media}
     depends_on:
       db:
         condition: service_healthy
@@ -126,3 +129,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  media_data:

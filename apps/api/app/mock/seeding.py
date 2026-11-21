@@ -56,3 +56,19 @@ def populate():
                       due_at=due_at(store.now(), kind="rule_proposal"))
     state.cards[card.id] = card
     store.add_event(None, "created", card=card)
+
+    from app.core import media
+    media.reset_mock()
+    for child in state.children.values():
+        child.photo_scope = seed.PHOTO_SCOPES.get(child.id, "family")
+    for data in seed.FEED_POSTS:
+        state.feed_posts[data["id"]] = {**data, "org_id": seed.ORG, "status": "published",
+                                        "deleted_at": None, "created_at": seed.FEED_CREATED_AT}
+    png = seed.feed_png()
+    metadata = media.inspect(png)
+    for photo_id, post_id, tags in seed.FEED_PHOTOS:
+        name = f"mock/{photo_id}.png"
+        if not media.path(name).exists():
+            media.save(png, metadata, file_id=photo_id, mock=True)
+        state.feed_photos[photo_id] = {"id": photo_id, "post_id": post_id, "org_id": seed.ORG, **metadata,
+                                       "storage_path": name, "child_ids": tags, "created_at": seed.FEED_CREATED_AT}

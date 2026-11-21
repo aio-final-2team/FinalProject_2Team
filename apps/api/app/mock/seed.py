@@ -160,3 +160,36 @@ DEMO_DOCUMENTS = [
     (NOTICE, "가상 행사 안내", "notice", "active", "행사는 별빛반과 햇님반이 함께 참여해요."),
     (OLD_NOTICE, "가상 행사 안내 옛 판", "notice", "superseded", "지난 행사 안내입니다."),
 ]
+
+# [제안] T54 가상 사진. 반·원 글 두 개씩, 단색 PNG 다섯 장이에요.
+PHOTO_SCOPES = {CHILD: "family", demo_id("503"): "class", demo_id("5401"): "org"}
+FEED_POSTS = [
+    {"id": demo_id("e01"), "lane": "class", "classroom_id": CLASS_STAR, "author_id": PARENT,
+     "body": "함께 블록 놀이를 했어요."},
+    {"id": demo_id("e02"), "lane": "class", "classroom_id": CLASS_STAR, "author_id": PARENT_OTHER,
+     "body": "가상 소풍 사진을 나눠요."},
+    {"id": demo_id("e03"), "lane": "org", "classroom_id": None, "author_id": TEACHER,
+     "body": "우리 원 가상 행사예요."},
+    {"id": demo_id("e04"), "lane": "org", "classroom_id": None, "author_id": PARENT_OTHER,
+     "body": "가상 전시를 구경해요."},
+]
+FEED_PHOTOS = [
+    (demo_id("f01"), demo_id("e01"), [demo_id("503")]),
+    (demo_id("f02"), demo_id("e02"), [CHILD]),
+    (demo_id("f03"), demo_id("e03"), [demo_id("5401")]),
+    (demo_id("f04"), demo_id("e03"), [CHILD, demo_id("503")]),
+    (demo_id("f05"), demo_id("e04"), []),
+]
+FEED_CREATED_AT = datetime.fromisoformat("2026-11-21T09:00:00+09:00")
+
+
+def feed_png():
+    """실제 인물 대신 코드로 만든 2×2 단색 PNG예요."""
+    import struct
+    import zlib
+
+    def chunk(kind, data):
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 2, 2, 8, 2, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress((b"\x00" + b"\x70\xb0\x90" * 2) * 2)) + chunk(b"IEND", b""))
