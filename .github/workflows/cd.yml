@@ -93,21 +93,23 @@ jobs:
           git checkout "$GIT_REF"
           git pull --ff-only origin "$GIT_REF" || true
 
-          docker compose up -d --build --remove-orphans
+          infra/team-server/deploy.sh
+          compose=(docker compose --env-file infra/team-server/.env.server -f compose.yaml -f infra/team-server/compose.server.yaml)
+          api_port=$("${compose[@]}" config --format json | python3 -c 'import json, sys; print(next(p["published"] for p in json.load(sys.stdin)["services"]["api"]["ports"] if p["target"] == 8000))')
 
           echo "Waiting for API health check (/health)..."
           for i in $(seq 1 15); do
-            if curl -fsS http://localhost:8000/health >/dev/null; then
+            if curl --max-time 5 -fsS "http://127.0.0.1:${api_port}/health" >/dev/null; then
               echo "API health check passed."
-              docker compose ps
+              "${compose[@]}" ps
               exit 0
             fi
             sleep 2
           done
 
           echo "API health check failed after retries."
-          docker compose ps
-          docker compose logs --tail=50 api
+          "${compose[@]}" ps
+          "${compose[@]}" logs --tail=50 api
           exit 1
           EOF
 

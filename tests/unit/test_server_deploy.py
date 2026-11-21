@@ -64,7 +64,8 @@ def test_server_compose_replaces_ports_and_preserves_database_volume(backend, ov
         env["API_IMAGE"] = image
     else:
         env.pop("API_IMAGE", None)
-    expected = {"DAILY_NOTE_WRITER_TIMEOUT": "420" if override else "300",
+    expected = {"SEED_DEMO": "false" if override else "true",
+                "DAILY_NOTE_WRITER_TIMEOUT": "420" if override else "300",
                 "NOTE_DRAFT_CONCURRENCY": "3" if override else "5",
                 "OPENAI_API_KEY": "[TEST]-unused-model-key",
                 "LAW_GO_KR_OC": "[TEST]-law-oc" if override else "",
@@ -73,6 +74,7 @@ def test_server_compose_replaces_ports_and_preserves_database_volume(backend, ov
                    ("DEFAULT", "SUPERVISOR", "DOCUMENT", "MEMORY", "CHECKER", "CODE")}}
     env.update(expected)
     if not override:
+        env.pop("SEED_DEMO")
         env.pop("DAILY_NOTE_WRITER_TIMEOUT")
         env.pop("NOTE_DRAFT_CONCURRENCY")
         env.pop("LAW_GO_KR_OC")

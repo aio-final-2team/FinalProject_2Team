@@ -34,7 +34,8 @@ app = FastAPI(
     title="유치온 API",
     version="0.1.0",
     description="T13 API 설계 문서(Docs/Step2/API_설계_문서.md)의 엔드포인트. "
-                "지금은 모의 API라 메모리 안 데모 데이터로 답한다(contracts/mock_api/README.md).",
+                "DATA_BACKEND=mock은 메모리 데모 데이터, db는 PostgreSQL을 사용해요. "
+                "DB 지원 범위는 apps/api/README.md의 진행표를 봐 주세요.",
     lifespan=lifespan,
 )
 app.add_middleware(

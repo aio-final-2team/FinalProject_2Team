@@ -99,8 +99,9 @@ DB 볼륨이 생긴 뒤 `POSTGRES_*`만 바꿔도 기존 DB 계정·비밀번호
 ## 5. 서버 배포 절차
 
 PR의 CI는 API·웹 이미지 빌드를 확인합니다(WBS T74).
-기존 GitHub Actions의 **Manual Deploy (Docker Compose)**는 루트 Compose와 API 8000 상태 검사만 사용해요.
-서버용 덮어쓰기 설정과 아직 연결되지 않았으므로 아래 절차로 배포해요. 워크플로 연결은 별도 확인이 필요해요.
+GitHub Actions의 **Manual Deploy (Docker Compose)**도 아래 서버 배포 스크립트를 실행해요.
+상태 검사는 `.env.server`의 `SERVER_API_PORT`(기본 18000)를 서버 Compose 설정에서 읽어 사용해요.
+CD 비밀값은 아직 넣지 않아 수동 배포만 확인했어요. 워크플로 실제 실행은 별도 확인이 필요해요.
 
 ### 5-1. 최초 배포
 

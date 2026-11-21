@@ -25,6 +25,7 @@ docker compose up --build
 Compose는 루트 `.env`를 자동으로 읽고, 셸에 같은 변수가 있으면 셸 값을 먼저 써요.
 `DATA_BACKEND`·`JWT_SECRET`·`DAILY_NOTE_WRITER`와 API 설정을 컨테이너에 전달해요.
 DB 모드의 시작 순서는 설정 검사 → `alembic upgrade head` → 데모 시드 → uvicorn이에요.
+`SEED_DEMO`는 기본 true이고, false면 DB 기동 때 데모 시드만 건너뛰어요. 마이그레이션은 그대로 실행해요.
 마이그레이션이나 시드가 실패하면 API를 시작하지 않아요. 시드는 기존 행을 덮어쓰지 않아요.
 mock에서는 마이그레이션·시드를 실행하지 않아요. API는 DB에 접속하지 않고 모의 데이터를 써요.
 Compose의 DB 서비스는 두 모드에서 함께 떠요. `docker compose down`은 DB 볼륨을 유지해요.
