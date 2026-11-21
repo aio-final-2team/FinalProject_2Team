@@ -7,6 +7,7 @@ services:
       dockerfile: apps/api/Dockerfile
     environment: &api-environment
       DATA_BACKEND: ${DATA_BACKEND:-mock}
+      SEED_DEMO: ${SEED_DEMO:-true}
       RUN_IN: ${RUN_IN:-api}
       CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
       REQUEST_AGENT: ${REQUEST_AGENT:-app.modules.requests.agent_stub:run_request}

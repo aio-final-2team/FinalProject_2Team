@@ -11,11 +11,12 @@ ROOT = Path(__file__).resolve().parents[2]
 ENTRYPOINT = ROOT / "apps/api/entrypoint.sh"
 
 
-@pytest.mark.parametrize("backend,fail_step", [
-    (None, None), ("mock", None), ("db", None),
-    ("db", "settings"), ("db", "migrate"), ("db", "seed"),
+@pytest.mark.parametrize("backend,fail_step,seed_demo", [
+    (None, None, None), ("mock", None, None), ("db", None, None),
+    ("db", "settings", None), ("db", "migrate", None), ("db", "seed", None),
+    ("db", None, "true"), ("db", None, "false"), ("db", "migrate", "false"),
 ])
-def test_startup_sequence_and_failure(tmp_path, backend, fail_step):
+def test_startup_sequence_and_failure(tmp_path, backend, fail_step, seed_demo):
     log = tmp_path / "calls"
     python = tmp_path / "python"
     python.write_text('''#!/usr/bin/env bash
@@ -35,15 +36,19 @@ printf '%s\n' "$@" >> "$CALL_LOG"
 ''')
     python.chmod(0o755)
     server.chmod(0o755)
-    env = {key: value for key, value in os.environ.items() if key != "DATA_BACKEND"}
+    env = {key: value for key, value in os.environ.items() if key not in ("DATA_BACKEND", "SEED_DEMO")}
     env.update(PATH=f"{tmp_path}:{env['PATH']}", CALL_LOG=str(log), FAIL_STEP=fail_step or "")
     if backend is not None:
         env["DATA_BACKEND"] = backend
+    if seed_demo is not None:
+        env["SEED_DEMO"] = seed_demo
     result = subprocess.run(["bash", str(ENTRYPOINT), str(server), "argument with spaces"],
                             cwd=ROOT, env=env, capture_output=True, text=True, check=False)
     expected = ["settings"]
     if backend == "db":
-        expected += ["migrate", "seed"]
+        expected += ["migrate"]
+        if seed_demo != "false":
+            expected += ["seed"]
     if fail_step:
         expected = expected[:expected.index(fail_step) + 1]
     else:
