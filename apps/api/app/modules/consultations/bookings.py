@@ -19,6 +19,13 @@ def book_slot(connection, slot, *, request_id, confirmed_by):
         lock_resources(connection, [slot])
         if connection.scalar(text("SELECT :start<=clock_timestamp()"), {"start": slot["period"].lower}):
             raise ApiError(409, "SLOT_PAST")
+        if connection.scalar(text("""
+            SELECT EXISTS (SELECT 1 FROM consultation_bookings b
+              WHERE b.org_id=:org AND b.status='confirmed'
+                AND (b.teacher_id=:teacher OR b.room_id=:room)
+                AND tstzrange(lower(b.period),coalesce(b.expected_end_at,upper(b.period)),'[)') && :period)
+        """), {"org": slot["org_id"], "teacher": slot["teacher_id"], "room": slot["room_id"], "period": slot["period"]}):
+            raise ApiError(409, "SLOT_TAKEN")
         return connection.scalar(text("""
             INSERT INTO consultation_bookings (org_id,request_id,slot_id,teacher_id,room_id,period,confirmed_by)
             VALUES (:org,:request,:slot,:teacher,:room,:period,:user) RETURNING id

@@ -1,10 +1,15 @@
 services:
   api:
+    image: yuchion-api:local
+    pull_policy: never
     build:
       context: .
       dockerfile: apps/api/Dockerfile
-    environment:
+    environment: &api-environment
       DATA_BACKEND: ${DATA_BACKEND:-mock}
+      RUN_IN: ${RUN_IN:-api}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
+      REQUEST_AGENT: ${REQUEST_AGENT:-app.modules.requests.agent_stub:run_request}
       DATABASE_URL: ${DATABASE_URL:-postgresql://yuchion:yuchion-local@db:5432/yuchion}
       JWT_SECRET: ${JWT_SECRET:-local-dev-only-change-me-32-bytes-min}
       JWT_ACCESS_TTL_HOURS: ${JWT_ACCESS_TTL_HOURS:-12}
@@ -31,6 +36,59 @@ services:
         condition: service_healthy
     ports:
       - "${API_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    profiles: [worker]
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  worker:
+    image: yuchion-api:local
+    pull_policy: never
+    restart: unless-stopped
+    profiles: [worker]
+    environment: *api-environment
+    # 마이그레이션·시드는 API 하나만 해요. threads는 DB 엔진의 fork 공유를 피해요.
+    entrypoint: ["celery"]
+    command: ["-A", "app.worker:celery_app", "worker", "-Q", "default,notes", "--pool=threads", "--concurrency=${WORKER_CONCURRENCY:-4}", "--loglevel=INFO"]
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.worker:celery_app inspect ping -d celery@$$HOSTNAME --timeout=5"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    depends_on:
+      api:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  beat:
+    image: yuchion-api:local
+    pull_policy: never
+    restart: unless-stopped
+    profiles: [worker]
+    environment: *api-environment
+    entrypoint: ["celery"]
+    command: ["-A", "app.worker:celery_app", "beat", "--schedule=/tmp/yuchion-celerybeat", "--loglevel=INFO"]
+    depends_on:
+      api:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   web:
     build:
@@ -60,3 +118,4 @@ services:
 
 volumes:
   postgres_data:
+  redis_data:

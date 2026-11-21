@@ -20,27 +20,17 @@ def test_seed_requests_are_readable_and_scoped(client, teacher, parent, parent_o
         req = store.state().requests[request_id]
         assert (req.child_id, req.requester_id, req.classroom_id) == (child_id, requester_id, seed.CLASS_STAR)
         assert (req.type, req.body, req.status) == (request_type, text, "received")
-        for headers in ((owner, teacher) if request_type == "inquiry" else (teacher,)):
+        for headers in (owner, teacher):
             response = client.get(f"{BASE}/requests/{request_id}", headers=headers)
             assert response.status_code == 200, response.text
             assert response.json()["request"]["type"] == request_type
             assert response.json()["messages"][0]["body"] == text
         listing = client.get(BASE + "/requests", headers=owner)
         assert listing.status_code == 200, listing.text
-        assert (str(request_id) in {req["id"] for req in listing.json()["items"]}) == (request_type == "inquiry")
-        if request_type == "pickup":
-            err(client.get(f"{BASE}/requests/{request_id}", headers=owner), 404, "NOT_FOUND")
+        assert str(request_id) in {req["id"] for req in listing.json()["items"]}
         for headers in (other, teacher_other):
             err(client.get(f"{BASE}/requests/{request_id}", headers=headers), 404, "NOT_FOUND")
 
-
-@pytest.mark.parametrize("request_type", ["medication", "pickup"])
-def test_note_link_does_not_enable_t46_registration(client, parent, request_type):
-    before = set(store.state().requests)
-    response = client.post(BASE + "/requests", headers=parent, json={
-        "client_request_id": "not-open-yet", "child_id": str(seed.CHILD), "type": request_type, "body": "요청"})
-    err(response, 422, "VALIDATION_FAILED")
-    assert set(store.state().requests) == before
 
 
 def test_child_requests_input_and_demo_omission(client, teacher):

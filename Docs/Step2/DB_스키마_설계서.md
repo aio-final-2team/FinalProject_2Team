@@ -1,17 +1,27 @@
 # 유치온 데이터베이스 스키마 설계서 (T09)
 
-문서 버전 v0.10 | 작성 상태: 민원 회신 후 받은함 분류(11/20) 반영
+문서 버전 v0.15 | 작성 상태: 상담 지연 상한(11/21) 반영
 
 | 항목 | 내용 |
 | --- | --- |
 | 작업 | T09 데이터베이스 스키마 설계서 (#166) |
 | 작성 | 태웅 · 검토 영민 |
-| 판 | v0.10 · 2026-11-20. 0004로 회신 후 민원 카드를 처리 완료 전까지 받은함에 남겨요. v0.9 · 2026-11-20. 0003 알림장 원본·이력 연결을 더했어요. v0.8 · 2026-11-20. 아이별 메모 배열과 0002를 더했어요(아래 변경 이력). v0.7 · 2026-11-18. T10 회의 결과(FB-014) 반영: 학부모 미확인 민원은 이유 글이 있어야 처리 완료(트리거 `approvals_unconfirmed_complete_reason`), 202로 접수하는 자료 올리기·알림장 초안의 진행 상태 칸(`ingest_status`·`draft_status`, 강사님 API 작성법 11/18 수정본 '202는 상태 조회가 있어야 함'), 원장 현황에 '학부모 미확인 완료' 수(`completed_unconfirmed`), `topic_key` 주제 10개 + `other`, 처리 기한은 주말·공휴일 제외, 근무 시간 밖 긴급 알림은 아이 안전만 바로. 강사 피드백 FB-001-3에 따라 세 흐름의 화면·API·DB 상태 대조(8.3)와 흐름별 DB 시험 23개(9.1)를 더함. v0.6 · 2026-11-18. `topic_key` = 에이전트 `create_card`의 `topic_key` 인자(계약표 v0.6 4.2). T10 계약표 v0.5의 영민 리뷰 반영(`topic_key` 정해진 목록·`other`는 반복 수 제외, 같은 질문 묶기 MVP 제외). 여러 반 대상 자료를 위해 `documents.classroom_id`를 연결 표 `document_classrooms`로 바꾸고 근거 검색에 반 조건을 더함(FB-003-2). v0.5 · 2026-11-17. T10 계약표 v0.3의 정한 규칙·기본값에 맞춤(알림 종류·자동 재개·거절 이유·처리 기한). v0.4는 강사님 'DB 스키마 설계서 작성법'(11/16)의 목차·체크리스트 반영, v0.1~v0.3은 초안 1~3(T04 합의·대조 검토 반영) |
+| 판 | v0.15 · 2026-11-21. 0009로 상담 예상 종료의 당일·3시간 상한을 더했어요. v0.14 · 2026-11-20. 0008로 투약·귀가 접수/확인 알림을 더했어요. v0.13 · 2026-11-20. 0007로 상담 예상 종료 시각·알림·이력을 더했어요. v0.12 · 2026-11-20. 0006으로 요청 에이전트 재전달 이력을 더했어요. v0.11 · 2026-11-20. 0005로 알림 다음 발송 시각을 더했어요. v0.10 · 2026-11-20. 0004로 회신 후 민원 카드를 처리 완료 전까지 받은함에 남겨요. v0.9 · 2026-11-20. 0003 알림장 원본·이력 연결을 더했어요. v0.8 · 2026-11-20. 아이별 메모 배열과 0002를 더했어요(아래 변경 이력). v0.7 · 2026-11-18. T10 회의 결과(FB-014) 반영: 학부모 미확인 민원은 이유 글이 있어야 처리 완료(트리거 `approvals_unconfirmed_complete_reason`), 202로 접수하는 자료 올리기·알림장 초안의 진행 상태 칸(`ingest_status`·`draft_status`, 강사님 API 작성법 11/18 수정본 '202는 상태 조회가 있어야 함'), 원장 현황에 '학부모 미확인 완료' 수(`completed_unconfirmed`), `topic_key` 주제 10개 + `other`, 처리 기한은 주말·공휴일 제외, 근무 시간 밖 긴급 알림은 아이 안전만 바로. 강사 피드백 FB-001-3에 따라 세 흐름의 화면·API·DB 상태 대조(8.3)와 흐름별 DB 시험 23개(9.1)를 더함. v0.6 · 2026-11-18. `topic_key` = 에이전트 `create_card`의 `topic_key` 인자(계약표 v0.6 4.2). T10 계약표 v0.5의 영민 리뷰 반영(`topic_key` 정해진 목록·`other`는 반복 수 제외, 같은 질문 묶기 MVP 제외). 여러 반 대상 자료를 위해 `documents.classroom_id`를 연결 표 `document_classrooms`로 바꾸고 근거 검색에 반 조건을 더함(FB-003-2). v0.5 · 2026-11-17. T10 계약표 v0.3의 정한 규칙·기본값에 맞춤(알림 종류·자동 재개·거절 이유·처리 기한). v0.4는 강사님 'DB 스키마 설계서 작성법'(11/16)의 목차·체크리스트 반영, v0.1~v0.3은 초안 1~3(T04 합의·대조 검토 반영) |
 | 대상 DB | PostgreSQL 16 + pgvector 0.8 (`compose.yaml`의 `pgvector/pgvector:pg16`). Supabase를 쓰지 않는 이유는 5.1 |
-| DDL | [`db_schema_draft.sql`](db_schema_draft.sql) — 최종 설계 모양이에요. 실제 적용은 `apps/api/migrations`의 0001 → 0002 → 0003 → 0004로 해요 |
+| DDL | [`db_schema_draft.sql`](db_schema_draft.sql) — 최종 설계 모양이에요. 실제 적용은 `apps/api/migrations`의 0001 → 0002 → 0003 → 0004 → 0005 → 0006 → 0007 → 0008 → 0009로 해요 |
 | 기준 문서 | 기획서 1116판 3장 FR-01~FR-13, 4장 NFR, 6장 공통 상태, 7장 기술과 데이터 · T04 흐름·권한 명세(11/17 팀 합의, PR #234) · T10 [입출력 계약표](입출력_계약표_초안.md) v0.7(1.1 정한 규칙, 6장 11/18 회의 확정) |
 
-변경 이력: **v0.10 · 2026-11-20** — 0004로 staff_inbox의 민원 회신 예외를 API와 맞췄어요. 발송한 reply_draft는 학부모 확인 전 in_progress, 확인 후 needs_review로 남고 처리 완료 뒤 done이 돼요. 거절한 옛 카드는 done을 유지해요. head의 표·뷰·트리거·FK·컬럼 수는 v0.9와 같아요.
+변경 이력: **v0.15 · 2026-11-21** — 0009는 상담 예상 종료를 원래 종료 + 3시간 이내·예약 시작과 같은 KST 날짜로 제한해요. 표·뷰·트리거·FK·컬럼 수는 같아요. 지연 변경에 따른 옛 알림은 consultation_reminded.detail.outcome=superseded로 남겨요.
+
+변경 이력: **v0.14 · 2026-11-20** — T46 팀 확인 전 초안이에요. 0008은 notifications.kind에 care_requested·care_confirmed를 더해요. 인계자 UUID는 접수 events.detail.pickup_guardian_id, 실제 확인/완료는 care_decision·actor·created_at에 저장해요. requests.status는 received→assigned→completed예요. 알림장 request_status는 저장하지 않는 조회 값이에요. head는 표 27·뷰 2·트리거 2·FK 58·컬럼 271개로 같아요.
+
+변경 이력: **v0.13 · 2026-11-20** — 0007로 consultation_bookings.expected_end_at, consultation_ending·consultation_delayed 알림, consultation_delay_reported·consultation_reminded 이력을 더했어요. 지연은 담임의 명시된 기록만 쓰고 대체 시간은 제안으로만 안내해요. head 컬럼은 271개예요.
+
+변경 이력: **v0.12 · 2026-11-20** — 0006으로 events.action에 agent_requeued를 더했어요. 카드 없는 요청은 5분 뒤 한 번 재전달하고, 그 뒤 5분이 지나도 카드가 없을 때만 인계해요. 표·컬럼·FK 개수는 같아요.
+
+변경 이력: **v0.11 · 2026-11-20** — 0005로 notifications.next_attempt_at을 더했어요. 기존 deliver_after와 목록 노출은 유지하고, 발송 실패를 최대 3회 시도하며 60초·120초 뒤에 다시 보내요. head는 표 27개·뷰 2개·트리거 2개·FK 58개·컬럼 270개예요.
+
+이전 변경 이력: **v0.10 · 2026-11-20** — 0004로 staff_inbox의 민원 회신 예외를 API와 맞췄어요. 발송한 reply_draft는 학부모 확인 전 in_progress, 확인 후 needs_review로 남고 처리 완료 뒤 done이 돼요. 거절한 옛 카드는 done을 유지해요. head의 표·뷰·트리거·FK·컬럼 수는 v0.9와 같아요.
 
 이전 변경 이력: **v0.9 · 2026-11-20** — 0003으로 daily_notes.ai_original과 events.daily_note_id·알림장 이력 네 종류를 더했어요. 기관 짝 FK와 인덱스를 연결했어요. head는 표 27개·뷰 2개·트리거 2개·FK 58개·컬럼 269개예요. 기존 원본은 적용 시점 content로 채워요. 교사 수정 때 유지하고, 미수정 초안의 재생성 때 마지막 AI 초안으로 갱신해요(T13 v0.5.1, DDL 구조 변경 없음). 0003을 되돌리면 원본 칸·알림장 연결·새 이력 네 종류는 사라져요.
 
@@ -27,7 +37,7 @@
 | 체크리스트(가이드 22쪽) | 이 문서 |
 | --- | --- |
 | ERD 그림과 관계 명세 표가 서로 일치한다 | 1.2·1.3. ERD 선 58개 = 관계 표 58행 = DDL FK 제약 58개(9장 C3) |
-| 모든 컬럼에 타입·제약·의미가 적혀 있다 | 2장, 컬럼 269개 전부 |
+| 모든 컬럼에 타입·제약·의미가 적혀 있다 | 2장, 컬럼 271개 전부 |
 | 모든 테이블에 기본키와 created_at이 있다 | 2장. 표 27개 모두(9장 C1·C2) |
 | API 설계 문서와 필드명·ID 형식이 같다 | 2.0 ID 형식 표. T10 계약표와 맞춤, T13 API 설계 문서에서 필드 대응표를 더함(작성 예정) |
 | 벡터 차원, 인덱스 연산자, 임베딩 모델이 적혀 있다 | 3장 |
@@ -282,7 +292,7 @@ FK를 걸 수 없는 참조는 두 곳이다. `cards.subject_id`와 `notificatio
 
 ## 2. 엔터티 정의
 
-컬럼마다 타입 / 제약 / 의미를 적는다(269개). 표는 DDL을 적용한 DB 카탈로그에서 뽑아서 DDL과 같다. 값이 정해진 컬럼은 허용 값을 적었다. 여러 컬럼에 걸친 제약은 영역 표 아래 '표 제약'에 있다.
+컬럼마다 타입 / 제약 / 의미를 적는다(271개). 표는 DDL을 적용한 DB 카탈로그에서 뽑아서 DDL과 같다. 값이 정해진 컬럼은 허용 값을 적었다. 여러 컬럼에 걸친 제약은 영역 표 아래 '표 제약'에 있다.
 
 ### 2.0 공통 규칙과 ID 형식
 
@@ -430,7 +440,7 @@ FK를 걸 수 없는 참조는 두 곳이다. `cards.subject_id`와 `notificatio
 | `events` | `actor_id` | `uuid` / NULL 허용, FK (actor_id, org_id) → users | 한 사람(사람일 때만. 시스템·AI면 비움) |
 | `events` | `agent_name` | `text` / NULL 허용 | 한 AI(감독·자료·기억·검사 등) |
 | `events` | `daily_note_id` | `uuid` / NULL 허용, FK (daily_note_id, org_id) → daily_notes | 아이별 알림장 이력(v0.9) |
-| `events` | `action` | `text` / NOT NULL, 값 29가지 | 기존 25가지와 알림장 drafted·edited·confirmed·sent(v0.9) |
+| `events` | `action` | `text` / NOT NULL, 값 32가지 | 기존 25가지와 알림장 drafted·edited·confirmed·sent(v0.9), 요청 재전달 agent_requeued(v0.12), 상담 지연 기록·알림(v0.13) |
 | `events` | `from_status` | `text` / NULL 허용 | 바뀌기 전 상태 |
 | `events` | `to_status` | `text` / NULL 허용 | 바뀐 뒤 상태 |
 | `events` | `detail` | `jsonb` / NOT NULL, 기본값 '{}' | 부가 정보. 비밀값·불필요한 개인정보 금지 |
@@ -478,6 +488,8 @@ FK를 걸 수 없는 참조는 두 곳이다. `cards.subject_id`와 `notificatio
 - 알림장 묶음 카드와 규칙 제안 카드는 요청이 없으므로 `subject_type`·`subject_id`로 대상을 가리킨다.
 
 **처리 이력**
+
+- v0.12 `agent_requeued`는 카드가 없는 요청을 한 번 재전달한 시스템 이력이에요. created_at부터 5분이 더 지나야 card_missing으로 인계해요. 요청 상태·알림은 바꾸지 않아요.
 
 - v0.9 알림장 이력은 `daily_note_drafted`·`daily_note_edited`·`daily_note_confirmed`·`daily_note_sent`이며 `daily_note_id`에 잇는다. 상태 변경과 같은 트랜잭션에서 저장한다. 이력에는 메모·초안 원문을 복사하지 않는다.
 - `events.action`: 생성·분류·정보 요청·배정·재배정·초안·검사·돌려보내기·승인·거절·보류·보류 재개(`resumed`)·원장 보고·원장 지시(`instructed`)·발송·예약·완료·도구 호출·도구 실패·권한 거부·학부모 확인·위험 등급 다시 분류·반려·원에 남은 답으로 답함. 부재 재배정(FR-19)은 `reassigned`에 이전 담당·새 담당·이유를 `detail`로 남긴다. 권한 없는 요청도 `permission_denied`로 남긴다(NFR-01).
@@ -571,12 +583,13 @@ FK를 걸 수 없는 참조는 두 곳이다. `cards.subject_id`와 `notificatio
 | `consultation_bookings` | `status` | `text` / NOT NULL, 값: confirmed·cancelled·done, 기본값 'confirmed' | 확정·취소·끝남 |
 | `consultation_bookings` | `confirmed_by` | `uuid` / NOT NULL, FK (confirmed_by, org_id) → users | 확정한 담임 |
 | `consultation_bookings` | `created_at` | `timestamptz` / NOT NULL, 기본값 now() | 확정 시각 |
+| `consultation_bookings` | `expected_end_at` | `timestamptz` / NULL 허용, 유한한 시각·예정 종료 뒤, 원래 종료 + 3시간 이내·예약 시작과 같은 KST 날짜 | 담임이 기록한 예상 종료. 비면 지연으로 판단하지 않아요(v0.13) |
 
 - `rooms` 표 제약: `UNIQUE (id, org_id)` · `UNIQUE (org_id, name)`
 - `consultation_slots` 표 제약: `CHECK ((status <> 'chosen_by_parent') OR (chosen_at IS NOT NULL))` · `UNIQUE (card_id, round, rank)` · `UNIQUE (id, org_id)`
 - `consultation_bookings` 표 제약: `EXCLUDE(gist) (room_id WITH =, period WITH &&) WHERE (status = 'confirmed')` · `EXCLUDE(gist) (teacher_id WITH =, period WITH &&) WHERE (status = 'confirmed')` · `부분 UNIQUE (request_id) WHERE (status = 'confirmed')`
 
-`consultation_bookings`에는 배제 제약 두 개를 둔다. 확정된 예약끼리 **같은 상담실의 시간이 겹치거나, 같은 담임의 시간이 겹치면** DB가 저장을 거부한다. 일정 계산 코드가 미리 확인하더라도, 저장 직전에 두 사람이 동시에 확정하면 겹칠 수 있다. 이 제약이 있으면 동시에 저장해도 한 건만 성공한다(FR-05, AC-02). 취소된 예약은 제약에서 빠지므로 그 시간을 다시 예약할 수 있다. 학부모가 후보를 체크하면 `status = 'chosen_by_parent'`와 `chosen_at`을 함께 저장한다(시각이 없으면 거부). 담임 확정까지 `chosen_at`부터 24시간 그 시간을 잡아 두어, 일정 계산 코드가 다른 요청의 후보로 내지 않는다(계약표 6장 ⑥). 24시간이 지나면 시스템이 잡아 두기를 풀고 `events`에 `slot_hold_expired`(시스템 행위자)를 남긴 뒤 담임에게 `slot_hold_expired` 알림을 보낸다. 후보 상태는 그대로 두므로 담임이 그 뒤에 확정해도 되고, 그사이 같은 시간에 다른 예약이 확정됐으면 배제 제약이 막는다. 담임 거절이나 저장 순간 충돌로 후보를 다시 낼 때는 같은 카드에서 `round`를 1 올리고, 앞 회차 후보는 `discarded`로 남긴다(T04 4.1). 상담 지연·종료 10분 전 알림(FR-17, T48)은 이 표의 `period`를 읽어 `notifications`에 넣는다.
+`consultation_bookings`에는 배제 제약 두 개를 둔다. 확정된 예약끼리 **같은 상담실의 시간이 겹치거나, 같은 담임의 시간이 겹치면** DB가 저장을 거부한다. 일정 계산 코드가 미리 확인하더라도, 저장 직전에 두 사람이 동시에 확정하면 겹칠 수 있다. 이 제약이 있으면 동시에 저장해도 한 건만 성공한다(FR-05, AC-02). 취소된 예약은 제약에서 빠지므로 그 시간을 다시 예약할 수 있다. 학부모가 후보를 체크하면 `status = 'chosen_by_parent'`와 `chosen_at`을 함께 저장한다(시각이 없으면 거부). 담임 확정까지 `chosen_at`부터 24시간 그 시간을 잡아 두어, 일정 계산 코드가 다른 요청의 후보로 내지 않는다(계약표 6장 ⑥). 24시간이 지나면 시스템이 잡아 두기를 풀고 `events`에 `slot_hold_expired`(시스템 행위자)를 남긴 뒤 담임에게 `slot_hold_expired` 알림을 보낸다. 후보 상태는 그대로 두므로 담임이 그 뒤에 확정해도 되고, 그사이 같은 시간에 다른 예약이 확정됐으면 배제 제약이 막는다. 담임 거절이나 저장 순간 충돌로 후보를 다시 낼 때는 같은 카드에서 `round`를 1 올리고, 앞 회차 후보는 `discarded`로 남긴다(T04 4.1). 상담 지연·종료 10분 전 알림(FR-17, T48)은 `period`와 담임이 기록한 `expected_end_at`을 읽어 `notifications`에 넣어요. NULL인 과거 예약을 지연이라고 추측하지 않아요.
 
 ### 2.5 기억·개인 규칙·원에 남은 답
 
@@ -669,7 +682,7 @@ FK를 걸 수 없는 참조는 두 곳이다. `cards.subject_id`와 `notificatio
 | `notifications` | `card_id` | `uuid` / NULL 허용, FK (card_id, org_id) → cards | 관련 카드 |
 | `notifications` | `subject_type` | `text` / NULL 허용 | 요청·카드가 아닌 대상 종류 |
 | `notifications` | `subject_id` | `uuid` / NULL 허용 | 그 대상 ID |
-| `notifications` | `kind` | `text` / NOT NULL, 값 13가지 | 알림 종류 13가지(2.6 글머리) |
+| `notifications` | `kind` | `text` / NOT NULL, 값 15가지 | 알림 종류 15가지(2.6 글머리) |
 | `notifications` | `title` | `text` / NOT NULL | 제목 |
 | `notifications` | `body` | `text` / NULL 허용 | 내용 |
 | `notifications` | `dedupe_key` | `text` / NOT NULL, UNIQUE | 중복 막는 키(2.6 글머리) |
@@ -680,6 +693,7 @@ FK를 걸 수 없는 참조는 두 곳이다. `cards.subject_id`와 `notificatio
 | `notifications` | `created_at` | `timestamptz` / NOT NULL, 기본값 now() | 만든 시각 |
 | `notifications` | `sent_at` | `timestamptz` / NULL 허용 | 보낸 시각 |
 | `notifications` | `read_at` | `timestamptz` / NULL 허용 | 읽은 시각 |
+| `notifications` | `next_attempt_at` | `timestamptz` / NOT NULL, 기본값 now() | 다음 발송 시각. 재시도·근무 시간 연기에도 목록 노출 시각은 유지해요(v0.11) |
 | `eval_runs` | `id` | `bigint` / PK, 자동 증가 | 평가 실행 ID |
 | `eval_runs` | `suite` | `text` / NOT NULL, 값: bfcl·team30·service | 평가 묶음 |
 | `eval_runs` | `requested_model` | `text` / NOT NULL | 요청한 모델 ID |
@@ -703,8 +717,8 @@ FK를 걸 수 없는 참조는 두 곳이다. `cards.subject_id`와 `notificatio
 
 **알림**
 
-- `notifications.dedupe_key`: 알림은 처리 이력 한 건에서 생기므로 `event:<events.id>:<받는 사람 ID>`로 만든다(정함). 같은 이력으로 발송을 다시 시도해도 키가 같아 한 번만 들어가고, 같은 카드가 다시 보류되는 것처럼 새 이력이 생기면 새 알림이 된다. 재시도는 최대 3번이다(FR-12).
-- `notifications.kind`: T04 9장 알림 시점 11가지와 계약표 6장 기본값 2가지, 모두 13가지만 받는다. `needs_info` · `new_card`(새 카드) · `urgent_complaint`(긴급 민원) · `uncertain_complaint`(판단 필요 민원) · `director_report`(반복 3번째 원장 보고) · `on_hold` · `sent_or_booked` · `parent_confirmed`(학부모가 확인함) · `completed`(민원 완료) · `rejected` · `note_sent`(오늘 알림장) · `slot_hold_expired`(잡아 둔 상담 시간이 풀림 → 담임, ⑥) · `hold_resumed`(보류 카드가 예정일에 자동 재개 → 담당, ⑨). 최종 기능(상담 지연 알림 T48 등)은 그때 값을 더한다.
+- `notifications.dedupe_key`: 알림은 처리 이력 한 건에서 생기므로 `event:<events.id>:<받는 사람 ID>`로 만든다(정함). 같은 이력으로 발송을 다시 시도해도 키가 같아 한 번만 들어가고, 같은 카드가 다시 보류되는 것처럼 새 이력이 생기면 새 알림이 된다. 재시도는 최대 3번이다(FR-12). T48 주기 알림은 `consultation:<예약 ID>:<종류>:<받는 사람 ID>`로 만들어 같은 예약의 같은 안내를 한 번만 남겨요.
+- `notifications.kind`: T04 9장 알림 시점 11가지와 계약표 6장 기본값 2가지, T48 두 가지를 합쳐 모두 15가지만 받는다. `needs_info` · `new_card`(새 카드) · `urgent_complaint`(긴급 민원) · `uncertain_complaint`(판단 필요 민원) · `director_report`(반복 3번째 원장 보고) · `on_hold` · `sent_or_booked` · `parent_confirmed`(학부모가 확인함) · `completed`(민원 완료) · `rejected` · `note_sent`(오늘 알림장) · `slot_hold_expired`(잡아 둔 상담 시간이 풀림 → 담임, ⑥) · `hold_resumed`(보류 카드가 예정일에 자동 재개 → 담당, ⑨). `consultation_ending`은 예정 종료 10분 이내 담임 알림, `consultation_delayed`는 앞 상담의 명시된 예상 종료와 겹치는 예약의 담임·학부모 대체 시간 제안이에요. 자세한 기준은 API 설계 6.6.2예요.
 - `subject_type`·`subject_id`: 요청·카드가 아닌 대상을 가리킨다. 지금은 `note_sent` 알림이 아이별 알림장(`daily_note`)을 가리킬 때만 쓴다.
 - `deliver_after`: 이 시각이 지나야 보낸다. 근무 시간(평일 09~18시) 밖에 생긴 알림은 다음 근무 시작 시각을 넣는다. 긴급 민원 중 **아이 안전(`risk_category = child_safety`)만** 지금 시각을 넣어 바로 보내고, 나머지 긴급 3가지와 판단 필요 민원은 다음 근무 시간에 보낸다(FR-21, 계약표 6장 ⑬, T10 회의 11/18). 발송기는 `status = 'pending' AND deliver_after <= now()`만 꺼낸다(9.1 F3-5).
 

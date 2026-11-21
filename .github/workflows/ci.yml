@@ -7,6 +7,87 @@ permissions:
   contents: read
 
 jobs:
+  test-mock:
+    name: Test API (mock)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATA_BACKEND: mock
+      DAILY_NOTE_WRITER: app.modules.daily_notes.stub_writer:write
+      RUN_IN: api
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: |
+            apps/api/requirements.txt
+            apps/api/requirements-dev.txt
+      - name: Install test dependencies
+        run: python -m pip install -r apps/api/requirements-dev.txt
+      - name: Run mock tests
+        run: |
+          python -m pytest -q
+
+  test-db:
+    name: Test API (PostgreSQL)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DAILY_NOTE_WRITER: app.modules.daily_notes.stub_writer:write
+      RUN_IN: api
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: yuchion
+          POSTGRES_PASSWORD: yuchion_test
+          POSTGRES_DB: yuchion_test
+        ports:
+          - 5432/tcp
+        options: >-
+          --health-cmd "pg_isready -U yuchion -d yuchion_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: |
+            apps/api/requirements.txt
+            apps/api/requirements-dev.txt
+      - name: Install test dependencies
+        run: python -m pip install -r apps/api/requirements-dev.txt
+      - name: Configure isolated test database
+        env:
+          TEST_PG_PORT: ${{ job.services.postgres.ports['5432'] }}
+          TEST_PG_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          test_url="postgresql+psycopg://yuchion:yuchion_test@127.0.0.1:${TEST_PG_PORT}/yuchion_test"
+          {
+            echo "TEST_DATABASE_URL=$test_url"
+            echo "DATABASE_URL=$test_url"
+            echo "TEST_DB_CONTAINER=$TEST_PG_CONTAINER"
+            python -c 'import secrets; print("JWT_SECRET=" + secrets.token_urlsafe(32))'
+          } >> "$GITHUB_ENV"
+      - name: Run database tests
+        env:
+          DATA_BACKEND: db
+        run: |
+          python -m pytest -q -rs tests/integration/db
+      - name: Run shared HTTP tests with both backends
+        env:
+          DATA_BACKEND: mock
+        run: |
+          python -m pytest -q -rs tests/integration/api/test_auth.py tests/integration/api/test_daily_notes.py \
+            tests/integration/api/test_read_resources.py tests/integration/api/test_note_v05.py tests/integration/api/test_requests.py \
+            tests/integration/api/test_cards.py tests/integration/api/test_complaints.py \
+            tests/integration/api/test_consultations.py tests/integration/api/test_memories.py
+
   build-images:
     name: Build ${{ matrix.name }} image
     runs-on: ubuntu-latest

@@ -151,8 +151,8 @@ class NoteLine(BaseModel):
     def child_source(self):
         if self.key == "child" and self.source.type != "teacher_input":
             raise ValueError("아이 메모의 출처는 teacher_input이에요")
-        if self.key == "inquiry" and self.source.type != "request":
-            raise ValueError("보호자 문의의 출처는 request예요")
+        if self.key in ("inquiry", "medication", "pickup") and self.source.type != "request":
+            raise ValueError("보호자 요청 줄의 출처는 request예요")
         return self
 
 
@@ -164,3 +164,7 @@ class NotePatchIn(BaseModel):
     content: NoteContent | None = None
     resolved_checks: list[str] = Field(default_factory=list)
     confirm: bool = False
+
+
+class ConsultationDelayIn(BaseModel):
+    expected_end_at: datetime

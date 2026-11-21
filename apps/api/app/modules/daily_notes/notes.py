@@ -10,6 +10,8 @@ from app.core import scope
 from app.core.config import settings
 from app.core.db import transaction
 from app.core.errors import ApiError
+from app.core.care import note_content
+from app.core.jobs import dispatch
 from app.core.schedule import KST, deliver_after, due_at
 from app.modules.daily_notes.events import edited_child_ids, record
 
@@ -59,14 +61,21 @@ def draft(user, body, background_tasks):
                 SELECT * FROM daily_note_inputs WHERE org_id=:org AND classroom_id=:class AND note_date=:date
             """), values).mappings().one()
     if created:
-        from app.modules.daily_notes.runner import run_daily_note_drafts
-        background_tasks.add_task(run_daily_note_drafts, entry["id"])
+        dispatch("daily_note", entry["id"], background_tasks)
     return draft_view(entry), created
 
 
-def view(note):
-    return {name: note[name] for name in ("id", "child_id", "note_date", "status", "content",
+def view(note, *, connection=None, requests=None):
+    result = {name: note[name] for name in ("id", "child_id", "note_date", "status", "content",
                                          "open_checks", "confirmed_at", "sent_at")}
+    if requests is None:
+        with (transaction() if connection is None else nullcontext(connection)) as connection:
+            requests = {str(r["id"]): r for r in connection.execute(text(
+                "SELECT id,type,status,child_id FROM requests WHERE org_id=:org AND child_id=:child"),
+                {"org": note["org_id"], "child": note["child_id"]}).mappings()}
+    result["content"] = note_content(note["content"], {key: r for key, r in requests.items()
+                                                    if r["child_id"] == note["child_id"]})
+    return result
 
 
 def regenerate(user, input_id, background_tasks):
@@ -95,8 +104,7 @@ def regenerate(user, input_id, background_tasks):
             WHERE subject_type='daily_note_batch' AND subject_id=:id AND org_id=:org
         """), {**values, "detail": json.dumps({"draft_started_at": datetime.now(KST).isoformat(),
                                                "regenerated_by": str(user.id)})})
-    from app.modules.daily_notes.runner import run_daily_note_drafts
-    background_tasks.add_task(run_daily_note_drafts, input_id)
+    dispatch("daily_note", input_id, background_tasks)
     return {**draft_view(entry), "kept_edited": kept_edited}
 
 
@@ -126,7 +134,12 @@ def list_notes(user, note_date, classroom_id, page, size, sort):
                                    f" ORDER BY n.created_at {direction}, c.created_at {direction},"
                                    f" c.id {direction}, n.id {direction} LIMIT :limit OFFSET :offset"),
                                    values).mappings().all()
-    return {"items": [view(row) for row in items], "total": total, "page": page, "size": size}
+        request_ids = list({str(line.get("source", {}).get("request_id")) for row in items
+                            for line in row["content"]["items"] if line.get("source", {}).get("request_id")})
+        requests = {str(r["id"]): r for r in connection.execute(text("""
+            SELECT id,type,status,child_id FROM requests WHERE org_id=:org AND id=ANY(CAST(:ids AS uuid[]))
+        """), {"org": user.org_id, "ids": request_ids}).mappings()} if request_ids else {}
+        return {"items": [view(row, requests=requests) for row in items], "total": total, "page": page, "size": size}
 
 
 def _check_sources(user, content, child_id, connection):
@@ -135,7 +148,8 @@ def _check_sources(user, content, child_id, connection):
     for line in content.items:
         if line.source.type == "request":
             request = scope.request_in_scope(user, line.source.request_id, connection=connection)
-            if request["child_id"] != child_id:
+            if request["child_id"] != child_id or (
+                    line.key in ("medication", "pickup") and request["type"] != line.key):
                 raise ApiError(422, "VALIDATION_FAILED", field="content.items[].source.request_id")
         if line.source.type == "document":
             row = connection.execute(text("""
@@ -182,7 +196,7 @@ def patch(user, note_id, body):
             record(connection, updated, "checked", actor_id=user.id, from_status="needs_check")
         if body.confirm:
             record(connection, updated, "daily_note_confirmed", actor_id=user.id, from_status=note["status"])
-    return {"note": view(updated)}
+        return {"note": view(updated, connection=connection)}
 
 
 def send(user, body):

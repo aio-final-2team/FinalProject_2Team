@@ -3,32 +3,18 @@
 from datetime import timedelta
 
 from app.core.errors import ApiError
-from app.core.constants import DEFERRED_REQUEST_TYPES
+from app.core.constants import CARE_REQUEST_TYPES
 from app.api.labels import parent_label, staff_label
 from app.api.schemas.common import Period
 from app.api.schemas.requests import (BookingOut, ConsultationOut, MessageOut, RequestDetailOut,
                                       RequestView, SlotOut, TimelineItem)
-from app.mock import documents, store
-
-
-def _parent_readable(user, req):
-    if user.role == "parent" and req.type in DEFERRED_REQUEST_TYPES:
-        store.deny(user, req=req)
+from app.mock import care, documents, store
 
 
 def detail(user, request_id):
     with store._lock:
         req = store.request_in_scope(user, request_id)
-        _parent_readable(user, req)
         label = parent_label if user.role == "parent" else staff_label
-        if req.type in DEFERRED_REQUEST_TYPES:
-            first = next((m for m in store.messages_of(req.id) if m.sender_type == "user"), None)
-            return RequestDetailOut(
-                request=RequestView(id=req.id, type=req.type, title=req.title, status=req.status,
-                                    status_label=label(req.status, req.type), missing_fields=[],
-                                    created_at=req.created_at, updated_at=req.updated_at),
-                messages=[MessageOut(id=first.id, sender_type=first.sender_type, body=first.body,
-                                     created_at=first.created_at)] if first else [], timeline=[])
         timeline: list[TimelineItem] = []
         for e in store.events_of(req.id):
             if e.to_status is None:
@@ -44,14 +30,17 @@ def detail(user, request_id):
                 for s in store.slots_of_request(req.id) if s.status != "discarded"
             ], booking=BookingOut(id=booking.id, room=store.room_name(booking.room_id), period=Period(**booking.period))
                 if booking else None)
+        care_state = care.view(req) if req.type in CARE_REQUEST_TYPES else None
         return RequestDetailOut(
             request=RequestView(id=req.id, type=req.type, title=req.title, status=req.status,
-                                status_label=label(req.status, req.type), missing_fields=req.missing_fields,
+                                status_label=label(req.status, req.type),
+                                missing_fields=care_state["missing_fields"] if care_state else req.missing_fields,
                                 hold_until=store.hold_until_of(req.id), parent_confirmed_at=req.parent_confirmed_at,
                                 created_at=req.created_at, updated_at=req.updated_at),
             messages=[MessageOut(id=m.id, sender_type=m.sender_type, body=m.body, created_at=m.created_at)
                       for m in store.messages_of(req.id)],
             timeline=timeline, consultation=consultation,
+            care=care_state,
             rejection=store.rejection_of(req.id) if req.status == "rejected" else None,
             sources=[source for card in store.approved_cards_of(req.id)
                      for source in documents.evidence(card, parent=user.role == "parent")]
@@ -62,12 +51,15 @@ def detail(user, request_id):
 def message(user, request_id, body, *, background_tasks=None):
     with store._lock:
         req = store.request_in_scope(user, request_id)
-        _parent_readable(user, req)
         if req.status in ("completed", "rejected"):
             raise ApiError(409, "INVALID_TRANSITION")
         msg = store.Message(store.state().next_int(), req.id, "user", user.id, body)
         store.state().messages.append(msg)
-        store.add_event(req, "created", actor_type="user", actor_id=user.id, message_id=msg.id)
+        if req.type in CARE_REQUEST_TYPES:
+            store.set_request_status(req, "received", action="returned", actor_type="user", actor_id=user.id,
+                                     care_message=True, message_id=msg.id, version=care.view(req)["version"] + 1)
+        else:
+            store.add_event(req, "created", actor_type="user", actor_id=user.id, message_id=msg.id)
         req.updated_at = store.now()
         if req.type == "complaint" and req.status == "sent_or_booked":
             req.parent_confirmed_at = None
@@ -75,7 +67,7 @@ def message(user, request_id, body, *, background_tasks=None):
             card.status, card.closed_at = "pending", None
             card.version += 1
             store.set_request_status(req, "awaiting_review", action="returned", card=card, actor_type="user", actor_id=user.id)
-        elif req.status == "needs_info" and req.type != "consultation":
+        elif req.status == "needs_info" and req.type not in (*CARE_REQUEST_TYPES, "consultation"):
             store._run_mock_ai(req, None)
         return {"message": msg.__dict__}
 
@@ -112,7 +104,7 @@ def choices(user, request_id, body):
                            and s.chosen_at > store.now()-timedelta(hours=24)
                            and store.state().cards[s.card_id].org_id == req.org_id]
                 if any((other.teacher_id == slot.teacher_id or other.room_id == slot.room_id)
-                       and slot.period["start"] < other.period["end"]
+                       and slot.period["start"] < (getattr(other, "expected_end_at", None) or other.period["end"])
                        and other.period["start"] < slot.period["end"] for other in others):
                     raise ApiError(409, "SLOT_TAKEN")
             for slot in chosen:
@@ -125,7 +117,6 @@ def choices(user, request_id, body):
 def confirm(user, request_id):
     with store._lock:
         req = store.request_in_scope(user, request_id)
-        _parent_readable(user, req)
         if req.type != "complaint" or req.status != "sent_or_booked":
             raise ApiError(409, "INVALID_TRANSITION")
         if req.parent_confirmed_at is None:
@@ -146,7 +137,7 @@ def create(user, *, background_tasks=None, **values):
 def listing(user, status, page, size, sort):
     with store._lock:
         store.expire()
-        requests = [r for r in store.requests_of(user, status) if r.type not in DEFERRED_REQUEST_TYPES]
+        requests = store.requests_of(user, status)
         requests.sort(key=lambda r: getattr(r, sort.lstrip("-")), reverse=sort.startswith("-"))
         def item(r):
             action = None
@@ -164,5 +155,4 @@ def stream(user, request_id):
     from app.api.streams import stream as response
     with store._lock:
         req = store.request_in_scope(user, request_id)
-        _parent_readable(user, req)
         return response(req)

@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 from app.api.schemas.common import Page, Period
 from app.api.schemas.requests import MessageOut, RequestStatus, RequestType, SourceOut, BookingOut, RequestView
-from app.api.schemas.actions import CardKind, NoteContent
+from app.api.schemas.actions import CardKind, NoteLine
 
 
 class RequestItem(BaseModel):
@@ -24,6 +24,16 @@ class RequestItem(BaseModel):
 
 class RequestList(Page):
     items: list[RequestItem]
+
+
+class CareRequestItem(RequestItem):
+    version: int
+    unregistered_pickup: bool
+    missing_fields: list[str]
+
+
+class CareRequestList(Page):
+    items: list[CareRequestItem]
 
 
 class MessageResponse(BaseModel):
@@ -87,7 +97,7 @@ class CardItem(BaseModel):
     status_label: str
     version: int
     request_id: UUID | None
-    request_type: RequestType | None
+    request_type: Literal["inquiry", "consultation", "complaint"] | None
     title: str
     urgency: str | None
     risk_level: str | None
@@ -229,7 +239,7 @@ class NotificationView(BaseModel):
     id: int
     kind: Literal["needs_info", "new_card", "urgent_complaint", "uncertain_complaint", "director_report",
                   "on_hold", "sent_or_booked", "parent_confirmed", "completed", "rejected", "note_sent",
-                  "slot_hold_expired", "hold_resumed"]
+                  "slot_hold_expired", "hold_resumed", "consultation_ending", "consultation_delayed", "care_requested", "care_confirmed"]
     title: str
     body: str | None
     request_id: UUID | None
@@ -271,12 +281,20 @@ class OpenCheck(BaseModel):
     request_id: UUID | None = None
 
 
+class NoteLineOut(NoteLine):
+    request_status: RequestStatus | None = Field(default=None, description="투약·귀가 출처 요청의 현재 상태(읽기 전용)")
+
+
+class NoteContentOut(BaseModel):
+    items: list[NoteLineOut]
+
+
 class NoteView(BaseModel):
     id: UUID
     child_id: UUID
     note_date: date
     status: Literal["draft", "needs_check", "ready", "sent"]
-    content: NoteContent
+    content: NoteContentOut
     open_checks: list[OpenCheck]
     confirmed_at: datetime | None
     sent_at: datetime | None
@@ -332,3 +350,15 @@ class DocumentResponse(BaseModel):
 
 class DocumentList(Page):
     items: list[DocumentView]
+
+
+class DelayedBooking(BaseModel):
+    id: UUID
+    period: Period
+    status: Literal["confirmed"]
+    expected_end_at: datetime
+
+
+class ConsultationDelayResponse(BaseModel):
+    booking: DelayedBooking
+    affected_bookings: int = Field(ge=0)

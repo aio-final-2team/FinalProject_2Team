@@ -31,6 +31,22 @@ Compose의 DB 서비스는 두 모드에서 함께 떠요. `docker compose down`
 DB 계정·비밀번호를 바꿀 때는 `.env`의 `POSTGRES_*`와 `DATABASE_URL`을 함께 맞춰요.
 이미 만들어진 DB 볼륨의 계정·비밀번호는 환경 변수를 바꿔도 자동으로 바뀌지 않아요.
 
+워커를 쓰려면 `.env`에 `DATA_BACKEND=db`·별도 `JWT_SECRET`·`RUN_IN=worker`를 넣고 실행해요.
+
+```sh
+docker compose --profile worker up --build
+```
+
+기본 `RUN_IN=api`는 기존 BackgroundTasks 실행을 유지해요. worker 프로필은 Redis·Celery worker·Beat를 더해요.
+API가 마이그레이션·시드를 끝내고 정상 응답한 뒤 worker·Beat가 시작해요. 두 서비스는 DB 초기화를 반복하지 않아요.
+`CELERY_BROKER_URL` 기본값은 Compose 내부 Redis 주소예요. Redis 포트는 호스트에 열지 않아요.
+Redis는 appendonly와 전용 볼륨을 써요. API·worker는 같은 DB·작성기·에이전트·근무 시간·모델 설정을 받아요.
+worker는 `threads`로 실행하고 `WORKER_CONCURRENCY`(기본 4)만큼 동시에 처리해요.
+알림장 초안은 `notes`, 요청·발송·점검은 `default` 큐로 보내고 worker가 두 큐를 읽어요.
+API 이미지를 한 번 빌드해 worker·Beat도 함께 써요. 두 서비스는 종료되면 자동 재시작하고 worker는 ping으로 상태를 확인해요.
+설정이 맞지 않으면 worker·Beat 시작 때 경고해요. worker 모드 API는 시작 때 브로커를 한 번 확인하고, 실패해도 경고를 남긴 뒤 계속 떠요.
+mock은 메모리를 프로세스끼리 공유하지 않으므로 기존 API 안 대역만 쓰고, 워커 주기 작업은 DB를 열지 않아요.
+
 `DATA_BACKEND` 기본값은 `mock`이에요. `db`는 PostgreSQL의 계정과 관계를 읽어요.
 DB 주소는 `DATABASE_URL`로 받아요. Docker 밖에서는 마이그레이션·시드를 직접 실행해요.
 DB 모드는 `JWT_SECRET`에 32바이트 이상의 별도 키가 필요해요. 값이 없거나 mock 기본값·
@@ -43,12 +59,15 @@ DB 모드는 `JWT_SECRET`에 32바이트 이상의 별도 키가 필요해요. �
 | 알림장·반 아이 목록(API 22~26·30) | 구현 | 초안·조회·수정·확인·반 전체 발송과 보호자 알림 행 구현 |
 | 원본·이력·다시 만들기·내 기억(API 31~33) | 구현 | 0003 원본 보존·아이별 이력·미확인 재생성·개인 기억 조회/삭제 |
 | 요청 생성·목록·상세·스트림·대화·확인(API 3~7·9) | 구현 | 요청 저장·대역 분류/카드·이력·알림 행 구현 |
+| 투약·귀가(T46, API 34~36, 팀 확인 전 초안) | 구현 | 등록 인계자·교직원 확인/완료·상태/이력/알림 원자 저장 |
 | 자료 목록(API 28) | 구현 | 알림장 출처 확인용 읽기 구현 |
 | 받은함·카드 상세/SSE·결정·재분류·지시·재배정·원장 현황(API 12~16·18·19·21) | 구현 | 행 잠금·판 검사·승인/이력/알림을 한 트랜잭션으로 저장 |
 | 알림 목록·읽음(API 10·11) | 구현 | 본인 알림·노출 시각·첫 읽음 시각 보존 |
 | 민원 반복·고위험 원장 보고(T31) | 구현 | 같은 반·30일·주제 집계와 동시 분류·기한·알림 시각 검증 |
 | 상담 후보·시간 선택/확정(API 8·17, T35) | 구현 | 근무 시간·바쁜 일정·담임/상담실 충돌 계산, 동시 확정·알림 행 구현 |
+| 상담 종료·지연 알림(T48, API 37 [제안] v0.6) | 구현 | 담임 지연 입력·시각별 알림/대체 시간 갱신·당일/3시간 상한, 종료 입력·화면·예약 변경은 후속 |
 | 거절 이유 기억·규칙 제안/결정(API 20, T39) | 구현 | 개인 기억·세 번째 제안·주인 결정·승인 전 미적용 구현 |
+| 워커·서비스 안 알림(T26) | API 안 대역 유지 | Celery·Beat·중복 발송 잠금·최대 3회 시도/백오프 구현 |
 | 자료 올리기/상세 | 구현 | 다음 항목에서 차례로 연결해요 |
 
 아직 연결하지 않은 DB API는 인증·역할·상세 경로의 범위를 검사한 뒤 공통 오류
@@ -63,7 +82,7 @@ DB 모드는 `JWT_SECRET`에 32바이트 이상의 별도 키가 필요해요. �
 요청 상세는 현재 담임·대체 담임의 배정 기간과 카드 재배정·기관·보호자 범위를 검사해요.
 DB에서는 전체 대화와 상태 표시 이름만 담은 진행 기록, 상담 후보·예약, 반려 이유와 보류 예정일을 읽어요.
 회신 뒤에는 승인된 카드의 출처를 읽어요. 초안은 카드에 저장하고 공개 대화에 넣지 않아요.
-투약·귀가는 교직원에게 첫 보호자 메시지의 최소 상세만 보여요. 학부모 목록·상세·대화·스트림·확인은 T46 전까지 404로 숨겨요.
+투약·귀가는 T46 팀 확인 전 초안 v0.6으로 열었어요. 학부모 자기 요청 조회·대화·스트림과 교직원 실제 확인·완료를 지원해요.
 자료 목록은 교직원만 봐요. 원 전체 자료와 현재 담당 반 자료를, 원장은 기관 전체를 읽어요.
 교직원은 `visibility`의 세 값 모두 읽어요. 학부모의 요청 출처는 `parents`·`all`만 보여요.
 자료 적용일이 비어 있으면 생성한 한국 날짜를 읽기 기본값으로 써요. DDL의 빈 날짜를 바꾸지는 않아요.
@@ -76,11 +95,12 @@ DB에서는 전체 대화와 상태 표시 이름만 담은 진행 기록, 상�
 
 DB 요청은 요청·첫 메시지·created 이력을 한 트랜잭션에서 저장하고 202로 접수해요.
 같은 (requester_id, client_request_id)로 재전송하면 새 메시지·작업 없이 기존 요청과 현재 상태를 200으로 줘요.
-FastAPI BackgroundTasks가 같은 API 프로세스에서 요청 대역을 불러요.
+`RUN_IN=api`면 FastAPI BackgroundTasks가 같은 API 프로세스에서 요청 대역을 불러요.
+`RUN_IN=worker`면 저장을 커밋한 뒤 Celery에 요청 UUID만 보내요.
 직접 실행할 때 REQUEST_AGENT=모듈:함수로 입구를 골라요. 기본값은
 app.modules.requests.agent_stub:run_request이고 인자는 요청 UUID 하나예요.
 입구는 카드 저장과 요청 상태 변경을 한 트랜잭션에서 처리해야 해요.
-Compose의 사용자 지정 입구 전달·Celery 주기 실행은 워커 항목에서 연결해요.
+Compose도 `REQUEST_AGENT`를 API·worker에 같이 전달해요. 기본 입구는 두 실행 모드에서 같아요.
 
 대역은 모의 낱말 분류와 카드 만들기를 DB로 옮긴 코드예요. 실제 모델·외부 API는 부르지 않아요.
 근거를 찾았다고 꾸미지 않고 card_evidence는 비우며 draft.no_evidence를 남겨요.
@@ -88,19 +108,41 @@ DB 상담 후보는 근무 시간·바쁜 일정·담임/상담실 예약·유�
 시간 선택·담임 확정 API도 DB에 연결했어요. 자세한 계산 범위는 [상담 모듈](app/modules/consultations/README.md)을 봐 주세요.
 위험 분류는 두 모드가 같은 낱말 대역을 써요. 실제 감독 AI의 분류 품질은 별도로 평가해요.
 요청 이력과 notifications 행은 상태 변경과 같은 트랜잭션에 저장해요.
-알림은 pending·dedupe_key·deliver_after를 채워요. 목록·읽음은 연결했고 발송기는 워커 항목에서 열어요.
+알림은 pending·dedupe_key·deliver_after를 채워요. 목록·읽음은 같은 기관의 본인 알림만 보여요.
+Beat는 1분마다 발송 작업을 넣어요. 앱 안 알림 행을 sent로 바꾸고 외부 알림은 보내지 않아요.
+T48 상담 점검도 1분마다 실행해요. 담임에게 종료 10분 이내 알림을, 명시된 지연의 영향을 받는
+예약에는 담임·학부모 대체 시간 제안을 한 번 남겨요. 실제 지연은 시간 경과로 추측하지 않아요.
+[제안] v0.6 `POST /consultations/{booking_id}/delay`로 그 반의 예약 담임이 expected_end_at을 기록해요.
+시작한 상담의 현재·원래 종료보다 뒤이며 같은 KST 날짜·원래 종료 + 3시간 이내여야 해요(0009).
+값이 바뀌면 알림·대체 시간을 다시 계산하고 옛 제안은 superseded 이력을 남겨요.
+종료 알림은 근무 밖에도 즉시예요. 발송 기록만 held, 목록 노출은 유지해요.
+실제 종료 입력·화면·예약 변경/취소는 후속 계약이에요. 자세한 조건·한계는 [상담 모듈](app/modules/consultations/README.md)을 봐 주세요.
+행 잠금·SKIP LOCKED와 유니크 dedupe_key로 동시에 실행해도 한 번만 처리해요.
+발송은 총 3회까지 시도해요. 실패하면 60초·120초 뒤에 다시 시도하고 세 번째 실패는 failed로 남겨요.
+`next_attempt_at`만 바꿔 원래 노출 시각·읽은 시각을 유지해요. Beat 시각 차이를 고려해 조회에 5초 여유를 두되 deliver_after·근무 시작 시각보다 일찍 보내지 않아요. 실패 이유는 고정 코드만 남기고 tool_failed 이력을 기록해요.
+최종 실패는 연결 카드에 notify_failed를 남겨 기존 상세 경고로 보여요.
+비활성 수신자는 재시도 없이 failed로 남겨요. 성공 시 attempts를 올리고 sent_at을 처음 한 번 기록해요.
+발송 시점에도 근무 시간을 다시 검사해 늦어진 주기 작업·재시도가 퇴근 뒤 일반 알림을 보내지 않아요.
 
 학부모 스트림은 저장된 이력에서 단계만 읽고 완료 상태에서 done을 보내요.
 진행 중에는 짧게 다시 읽으며 최대 5분 후 공통 error로 닫아요. 초안·카드·내부 실패 이유는 보내지 않아요.
 DB 읽기만 스레드에서 하고 poll 대기는 비동기로 기다려 다른 API의 스레드를 계속 쓸 수 있어요.
 입구가 예외를 내면 요청을 보존하고 초안 없는 미배정 카드로 넘겨요(ai_failed).
 중간에 프로세스가 멈춘 경우 app.modules.requests.runner.sweep_missing_cards(now)로
-5분 넘게 received·classified·assigned이고 카드가 없는 요청을 한 번만 인계해요(card_missing).
-아직 계약이 없는 투약·귀가 요청은 누락 카드 점검에서 제외해요.
-시드의 보호자 문의는 받은함 대상이에요. 담당 없는 인계 카드가 생기면 같은 기관 원장에게 new_card 알림을 한 번 남겨요.
-T46 전까지 투약·귀가는 교직원이 알림장 출처용 상세(유형·제목·첫 보호자 메시지)만 읽어요.
+5분 넘게 received·classified·assigned이고 카드가 없으면 처리를 한 번 다시 넣고 agent_requeued 이력만 남겨요.
+그 뒤 5분이 더 지나도 카드가 없을 때만 인계해요(card_missing). 재전달은 요청 잠금 안에서 한 번만 정하고 커밋 뒤 실행해요.
+투약·귀가는 사람이 확인하는 별도 흐름이라 AI 카드 생성·누락 카드 점검에서 제외해요.
+DB 시드의 보호자 문의 9건은 받은함 대상이에요. `RUN_IN=api`에서는 자동 점검을 돌리지 않아
+시드 문의는 접수됨·카드 없음으로 남아요. 새로 접수한 요청은 BackgroundTasks에서 처리해요.
+`RUN_IN=worker`에서는 Beat의 5분 주기 점검이 접수 후 5분 넘게 카드가 없는 시드 문의를
+한 번 다시 전달해요. 기본 대역이 정상 실행되면 9건 모두 담임의 `pending` 회신 초안 카드가 돼요.
+미배정 데모는 입구 예외(`ai_failed`)나 재전달 뒤에도
+5분 넘게 카드가 없는 경우(`card_missing`)를 써요.
+담당 없는 인계 카드가 생기면 같은 기관 원장에게 new_card 알림을 한 번 남겨요.
+투약·귀가는 보호자 원문·대화·확인 상태를 읽어요. 실제 확인·완료는 T13 3.27의 팀 확인 전 초안이에요.
 학부모의 내 요청 목록·total에서는 빼고 상세는 404로 숨겨요. 등록 계약은 열지 않아요.
-이 함수의 주기 실행은 아직 없어요. API 문서는 1분, 작업 계획 워커 항목은 5분으로 적혀 있어 연결 때 주기를 맞춰야 해요.
+Beat는 5분마다 누락 카드 점검과 알림장 복구를 실행해요. 지난 주기 작업은 점검 290초·발송과 상담 알림 55초 뒤 만료돼요. T13의 점검 주기도 5분으로 맞췄어요.
+큐 전달이 실패해도 접수 행은 남아요. 요청은 점검에서 한 번 재전달한 뒤 계속 카드가 없으면 인계하고 queued 알림장은 다시 전달해요.
 추가 대화와 확인은 요청 행을 먼저 잠가요. 민원 회신 뒤 추가 글은 확인을 지우고
 회신 카드를 pending으로 돌리며 version을 올려요. 확인 재시도는 처음 시각과 알림을 유지해요.
 범위 함수의 connection 인자로 호출 쪽 트랜잭션을 쓰고, 404 거부 이력만 별도로 커밋해요.
@@ -143,7 +185,7 @@ eval_runs는 기관 칸이 없는 공통 평가 기록이며 최근 20건을 보
 교직원 SSE는 저장 이력의 단계와 현재 카드 초안을 재생해요. 실시간 모델 토큰은 아직 없어요.
 요청 없는 카드도 상세·SSE로 읽고 done.request_status는 null이에요.
 알림 목록·읽음은 본인 기관·수신자·deliver_after를 검사하고 첫 read_at을 보존해요.
-DB 조회는 pending을 sent로 바꾸지 않아요. 실제 발송·재시도는 워커 항목에서 연결해요.
+DB 조회는 pending을 sent로 바꾸지 않아요. 발송·재시도는 별도 워커 작업이 처리해요. 목록·읽음 조회는 발송 상태를 바꾸지 않아요.
 
 ## 로컬 검사
 
@@ -176,7 +218,8 @@ DB 시험 변수가 셸에 남아 있어도 check는 mock만 실행해요. DB �
 
 ## 초안 실행과 데모
 
-DB 초안은 입력을 `queued`로 저장하고 같은 프로세스의 BackgroundTasks에서 실행해요.
+DB 초안은 입력을 `queued`로 저장해요. `RUN_IN=api`는 같은 프로세스의 BackgroundTasks,
+`RUN_IN=worker`는 Celery 태스크에서 같은 runner를 실행해요.
 `running`을 거쳐 `succeeded` 또는 `failed`가 돼요. `DAILY_NOTE_WRITER`는
 `모듈:함수` 형식이고 기본값은 `app.modules.daily_notes.stub_writer:write`예요.
 `DAILY_NOTE_WRITER=graph`로 고르면 영민님 그래프의 `draft_daily_notes(payload)`를 불러요.
@@ -192,8 +235,10 @@ DB 초안은 입력을 `queued`로 저장하고 같은 프로세스의 Backgroun
 수정·확인 요청의 `resolved_checks`에는 조회 응답의 ID를 보내요.
 그래프 연결 시험은 가짜 writer·checker를 주입하며 실제 모델은 부르지 않아요.
 
-지금은 **API 프로세스 하나**로 실행해요. 여러 worker나 API 복제본을 함께 띄우면 안 돼요.
-앱 시작 때 남은 `running`을 `queued`로 되돌리고 모든 `queued` 입력을 다시 실행해요.
+지금은 **API·worker·Beat 각각 하나**로 실행해요. API 안 실행 모드는 API 재시작 때
+남은 `running`을 `queued`로 되돌리고 모든 `queued` 입력을 다시 실행해요.
+worker 모드의 API 재시작·5분 점검은 작성기 시간 제한을 넘긴 `running`만 되돌려요.
+진행 중 worker 작업은 유지해요. queued 중복 전달은 runner의 원자적 상태 검사로 한 실행만 가져가요.
 기동을 기다리는 동안 초안을 전부 만들지는 않아요. 복구 작업도 뒤에서 차례로 실행해요.
 writer는 `DAILY_NOTE_WRITER_TIMEOUT`초(기본 300초) 안에 답해야 해요.
 시간이 지나면 기존 `failed`·`UPSTREAM_UNAVAILABLE` 경로로 끝내고 늦은 결과는 저장하지 않아요.
@@ -217,12 +262,13 @@ PYTHONPATH=apps/api python -m db.seeds.demo --refresh-note-requests
 0003부터 선생님이 받은 마지막 AI 초안은 `daily_notes.ai_original`에 보존해요. 교사 수정·확인·발송으로는 바꾸지 않고 미수정 초안을 재생성할 때 갱신해요. 기존 행은 적용 시점의 내용으로 채워요.
 수정·확인·발송·초안 저장은 `events.daily_note_id`로 아이별 이력을 남겨요.
 지금 발송은 `note_sent` 알림을
-`pending`으로 저장하고 `deliver_after`를 계산해요. 알림 발송기는 다음 워커 항목에서 연결해요.
+`pending`으로 저장하고 `deliver_after`를 계산해요. 워커가 보낼 시각 이후 sent로 바꿔요.
 
 `POST /daily-notes/drafts/{input_id}/regenerate`는 저장 입력으로 draft·needs_check만 다시 만들어요.
 ready와 교사 수정본(content ≠ ai_original 또는 daily_note_edited 이력)은 그대로 두고, sent가 하나라도 있으면 409예요.
 응답은 RegenerateResponse로 kept_edited(접수 시 보존한 미확인 수정본 수)를 더해요. 다른 초안 API 응답은 그대로예요.
 failed와 시간 제한을 넘긴 queued·running은 재접수해요. 제한 안의 queued·running은 현재 상태를 돌려주며 작성기를 다시 부르지 않아요.
+worker의 멈춘 실행 복구는 작성기 제한 시간에 60초를 더해 판단해요.
 DB는 입력 행의 PostgreSQL xmin을 실행 판으로 써서 이전 작업의 늦은 성공·실패를 버려요.
 새 초안은 기존 알림장 ID를 보존하고 content와 ai_original을 함께 바꿔요. 실행 중 교사 수정·확인도 저장 직전에 다시 검사해요.
 반 묶음 카드 draft.draft_started_at은 접수·실행 시각, draft.regenerated_by와 새 drafted 이력 detail.regenerated_by는 재생성 요청자예요.
@@ -232,9 +278,33 @@ DB는 입력 행의 PostgreSQL xmin을 실행 판으로 써서 이전 작업의 
 
 알려진 한계:
 
+- worker·Beat는 `RUN_IN=worker`일 때만 DB 주기 작업을 해요. API 안 실행 모드의 기존 알림 조회는 유지하지만 예약 발송은 worker 모드로 켜야 해요.
+- 두 큐는 같은 worker의 스레드 수를 나눠 써요. 모든 스레드가 긴 작업에 차면 다른 작업이 늦어질 수 있어요. 전용 worker·복제본·작성 중 heartbeat는 별도 설계가 필요해요.
+
 - 시간 초과는 대기·결과 저장만 끝내요. 실행 중인 writer 스레드는 멈추지 않아서 모델 호출이 계속될 수 있어요. 호출별 제한·취소는 writer 쪽에서 처리해야 해요.
 - 알림장이 0개인 반을 보내면 `sent_count=0`이고 묶음 카드는 `pending`으로 남아요.
 - 같은 날 반을 옮긴 아이는 `(child_id, note_date)` 중복으로 묶음 전체가 실패할 수 있어요. 발송 차단의 `open_checks`에서 DB는 `request_id: null`을 포함하고 mock은 키를 생략할 수 있어요.
 - 0003 이전 알림장의 ai_original은 적용 시점 content로 채워요. 이미 보낸 행의 최종본과 실제 AI 원본을 구분할 수 없어 학습 자료로 쓸 때 제외·검토가 필요해요.
 - events의 알림장 FK는 자동 삭제하지 않아요. 시연 초기화에서 알림장을 지우려면 해당 이력을 먼저 지워야 해요. 현재 삭제 API는 없어요.
 - 모의 반 묶음 카드 타임라인은 card_id로 이력을 모으므로 아이별 daily_note_sent는 표시되지 않아요. 보호자 알림은 생성돼요.
+
+### 투약·귀가 시연 — 팀 확인 전 초안
+
+[제안] 학부모가 POST /requests에 유형 medication·pickup과 원문을 보내요. FR-16·AC-09에 맞춰 미등록 인계자·투약 누락을 표시해요.
+등록 인계자는 pickup_guardian_id, 미등록이면 pickup_name·pickup_relation을 보내요. 각 문자열은 100자 이하예요.
+이름만 있거나 기존 원문만 있는 귀가도 받아요. 상세 care와 교직원 목록의 unregistered_pickup=true로 경고해요.
+투약 medication_name·medication_dose·medication_time이 없거나 공백이면 missing_fields에 표시해요.
+AI로 원문을 해석해 채우지 않아요. 누락은 422로 막지 않고 교직원이 확인해요.
+GET /children/{id}/pickup-guardians는 현재 활성 등록 인계자를 보여요.
+GET /care-requests는 교직원 목록이며 version·unregistered_pickup·missing_fields를 포함해요.
+sort는 다른 목록과 같은 created_at·updated_at 오름/내림차순이에요.
+POST /requests/{id}/care-decisions에 decision=confirm·complete, 교직원이 본 care.version(필수)을 보내요.
+등록 인계자면 같은 UUID를 다시 보내고, 미등록이면 생략해요. 미등록 confirm은 별도 확인 이력과 원장 알림 1건을 남겨요.
+확인 당시 인계자를 보존하므로 이후 비활성·연결 해제가 complete를 막지 않아요.
+version은 최초 1·보호자 추가 글마다 +1이에요. 확인 뒤 정정·취소 글이 오면 received·confirmed_at=null로 돌아가요.
+담당자에게 알리고 교직원이 새 대화 전체를 읽고 다시 확인해요. 옛 판 결정은 CARD_VERSION_CONFLICT예요.
+원문·구조화 입력은 보존하고 자동 취소하지 않아요. 새 글·결정은 요청 잠금 안에서 이력·알림과 함께 저장해요.
+귀가 알림은 근무 밖·주말에도 즉시이며 실패 재시도도 미루지 않아요. 투약 교직원 알림은 기존 근무 시간을 따라요.
+알림장 medication·pickup 줄의 읽기 전용 request_status는 현재 상태예요. 원문·AI 원본은 바꾸지 않아요.
+목록은 한 연결에서 출처 요청 상태를 한 번에 읽어요. 새 DDL 없이 head 0009예요.
+팀 확인 전 초안의 상세 필드·오류·결정은 T13 3.27·T10 v0.17을 따라요.

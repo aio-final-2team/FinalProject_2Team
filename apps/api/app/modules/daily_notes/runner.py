@@ -105,10 +105,16 @@ def _validated(result, payload):
     return rows
 
 
-def requeue_daily_note_drafts():
-    """단일 API 프로세스의 시작 때만 호출한다. 저장은 한 트랜잭션이라 부분 초안은 없다."""
+def requeue_daily_note_drafts(*, stale_only=False):
+    """API 단독 실행은 시작 때 복구하고, worker 모드는 제한을 넘긴 실행만 복구해요."""
     with transaction() as connection:
-        connection.execute(text("UPDATE daily_note_inputs SET draft_status='queued' WHERE draft_status='running'"))
+        connection.execute(text("""
+            UPDATE daily_note_inputs i SET draft_status='queued' WHERE draft_status='running'
+              AND (NOT :stale_only OR coalesce((
+                SELECT (c.draft->>'draft_started_at')::timestamptz FROM cards c
+                WHERE c.subject_type='daily_note_batch' AND c.subject_id=i.id AND c.org_id=i.org_id
+              ), i.created_at) < now()-make_interval(secs=>:timeout))
+        """), {"stale_only": stale_only, "timeout": settings.daily_note_writer_timeout + 60})
         return connection.scalars(text("""
             SELECT id FROM daily_note_inputs WHERE draft_status='queued' ORDER BY created_at, id
         """)).all()

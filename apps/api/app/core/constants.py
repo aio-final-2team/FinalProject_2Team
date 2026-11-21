@@ -7,8 +7,13 @@ NOTIFICATION_TITLES = {
     "sent_or_booked": "답변 도착", "parent_confirmed": "학부모가 확인했어요 · 처리 완료를 눌러 주세요",
     "completed": "처리 완료", "rejected": "처리할 수 없는 요청이에요", "note_sent": "오늘 알림장",
     "slot_hold_expired": "잡아 둔 시간이 풀렸어요", "hold_resumed": "보류 카드가 재개됐어요",
+    "care_requested": "투약·귀가 요청이 왔어요", "care_confirmed": "선생님이 요청을 확인했어요",
+    "consultation_ending": "상담 종료가 가까워요", "consultation_delayed": "상담 대체 시간을 확인해 주세요",
 }
-DEFERRED_REQUEST_TYPES = ("medication", "pickup")
+CARE_REQUEST_TYPES = ("medication", "pickup")
+MEDICATION_FIELDS = ("medication_name", "medication_dose", "medication_time")
+UNREGISTERED_PICKUP_CHECK = "미등록 인계자 확인"
+CARE_MESSAGE_NOTICE = "보호자가 내용을 추가했어요. 다시 확인해 주세요."
 REJECTION_RULE_THRESHOLD = 3
 
 # 자유 글에서 시간·선호를 추측하지 않는 기억 대역이에요. 구체적인 조건 추출은 기억 AI가 맡아요.

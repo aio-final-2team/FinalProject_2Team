@@ -23,12 +23,17 @@ class Settings:
     daily_note_writer: str = "app.modules.daily_notes.stub_writer:write"
     daily_note_writer_timeout: float = 300.0
     request_agent: str = "app.modules.requests.agent_stub:run_request"
+    run_in: str = "api"
+    celery_broker_url: str = "redis://redis:6379/0"
 
 
 def load_settings() -> Settings:
     backend = os.getenv("DATA_BACKEND", "mock")
     if backend not in ("mock", "db"):
         raise ValueError("DATA_BACKEND: mock 또는 db 필요")
+    run_in = os.getenv("RUN_IN", "api")
+    if run_in not in ("api", "worker"):
+        raise ValueError("RUN_IN: api 또는 worker 필요")
     jwt_secret = os.getenv("JWT_SECRET", _MOCK_JWT_SECRET)
     if backend == "db" and (jwt_secret in (_MOCK_JWT_SECRET, _EXAMPLE_JWT_SECRET)
                             or len(jwt_secret.encode("utf-8")) < 32):
@@ -57,6 +62,8 @@ def load_settings() -> Settings:
         daily_note_writer=os.getenv("DAILY_NOTE_WRITER", "app.modules.daily_notes.stub_writer:write"),
         daily_note_writer_timeout=writer_timeout,
         request_agent=os.getenv("REQUEST_AGENT", "app.modules.requests.agent_stub:run_request"),
+        run_in=run_in,
+        celery_broker_url=os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0"),
     )
 
 

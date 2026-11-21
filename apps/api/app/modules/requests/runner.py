@@ -1,6 +1,7 @@
 """같은 API 프로세스의 백그라운드 입구. T29에서 워커 태스크로도 불러요."""
 
 from importlib import import_module
+from datetime import timedelta
 
 from sqlalchemy import text
 
@@ -35,7 +36,8 @@ def run_request(request_id):
 
 
 def sweep_missing_cards(now):
-    """5분을 넘긴 진행 중 요청만 미배정 카드로 넘겨요. 주기 실행은 T29에서 붙여요."""
+    """5분 넘게 카드가 없으면 한 번 재전달하고, 5분 더 없을 때만 인계해요."""
+    requeued, handed_off = [], 0
     with transaction() as connection:
         rows = connection.execute(text("""
             SELECT * FROM requests r
@@ -46,6 +48,26 @@ def sweep_missing_cards(now):
         """), {"now": now}).mappings().all()
         for row in rows:
             # 잠금을 기다리는 사이 다른 실행이 카드를 커밋했는지도 다시 봐요.
-            if not connection.scalar(text("SELECT EXISTS (SELECT 1 FROM cards WHERE request_id=:id)"), {"id": row["id"]}):
+            if connection.scalar(text("SELECT EXISTS (SELECT 1 FROM cards WHERE request_id=:id)"), {"id": row["id"]}):
+                continue
+            # 요청 잠금 뒤 새 문장으로 읽어 동시 점검의 재전달 이력도 확인해요.
+            retried_at = connection.scalar(text("""
+                SELECT max(created_at) FROM events WHERE request_id=:id AND action='agent_requeued'
+            """), {"id": row["id"]})
+            if retried_at is None:
+                connection.execute(text("""
+                    INSERT INTO events(org_id,request_id,actor_type,action,created_at)
+                    VALUES (:org,:id,'system','agent_requeued',:now)
+                """), {"org": row["org_id"], "id": row["id"], "now": now})
+                requeued.append(row["id"])
+            elif retried_at <= now - timedelta(minutes=5):
                 _handoff(connection, dict(row), "card_missing")
-        return len(rows)
+                handed_off += 1
+    # 먼저 커밋해요. eager·API 안 실행도 요청 잠금을 다시 잡을 수 있어야 해요.
+    for request_id in requeued:
+        if settings.run_in == "worker":
+            from app.core.jobs import publish
+            publish("request", request_id)
+        else:
+            run_request(request_id)
+    return len(requeued) + handed_off

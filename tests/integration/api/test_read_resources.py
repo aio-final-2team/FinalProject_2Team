@@ -42,10 +42,13 @@ def test_seed_request_has_first_guardian_message(client, request_id, request_typ
     response = client.get(f"{BASE}/requests/{request_id}", headers={"Authorization": "Bearer " + token})
     assert response.status_code == 200, response.text
     data = response.json()
-    assert set(data) == {"request", "messages", "timeline", "consultation", "rejection", "sources"}
+    assert set(data) == {"request", "messages", "timeline", "consultation", "rejection", "sources", "care"}
     req = data["request"]
     assert (req["id"], req["type"], req["title"], req["status"]) == (str(request_id), request_type, body, "received")
-    assert req["missing_fields"] == [] and req["hold_until"] is None
+    # 원문만 있는 투약 시드는 구조화 필수값을 추측하지 않고 누락으로 표시해요(T46 15a).
+    assert req["missing_fields"] == (["medication_name", "medication_dose", "medication_time"]
+                                     if request_type == "medication" else [])
+    assert req["hold_until"] is None
     assert req["parent_confirmed_at"] is None
     assert all(req[key].endswith("+09:00") for key in ("created_at", "updated_at"))
     assert "risk_level" not in req and "assignee_id" not in req
@@ -55,15 +58,16 @@ def test_seed_request_has_first_guardian_message(client, request_id, request_typ
     assert data["sources"] == []
 
 
-@pytest.mark.parametrize("login,visible", [("parent-c4-12", 0), ("parent02", 0), ("parent-c4-04", 1)])
-def test_deferred_types_hidden_from_parent_detail_and_paginated_total(client, login, visible):
+@pytest.mark.parametrize("login", ["parent-c4-12", "parent02", "parent-c4-04"])
+def test_care_types_visible_in_parent_detail_and_paginated_total(client, login):
     guardian = next(u for u in seed.USERS if u["login_id"] == login)
     own = [r for r in seed.DEMO_NOTE_REQUESTS if r["requester_id"] == guardian["id"]]
+    visible = len(own)
     token = client.post(BASE + "/auth/login", json={"login_id": login, "password": "demo1234"}).json()["access_token"]
     headers = {"Authorization": "Bearer " + token}
     for request in own:
         if request["type"] in ("medication", "pickup"):
-            err(client.get(f"{BASE}/requests/{request['id']}", headers=headers), 404, "NOT_FOUND")
+            assert client.get(f"{BASE}/requests/{request['id']}", headers=headers).status_code == 200
     # 숨긴 요청보다 뒤에 생긴 공개 문의를 포함해 쪽 크기·total을 검사해요.
     created = client.post(BASE + "/requests", headers=headers, json={
         "client_request_id": str(uuid4()), "child_id": str(own[0]["child_id"]),
@@ -75,13 +79,13 @@ def test_deferred_types_hidden_from_parent_detail_and_paginated_total(client, lo
         assert response.status_code == 200, response.text
         data = response.json()
         assert data["total"] == visible + 1
-        assert all(r["type"] == "inquiry" for r in data["items"])
+        assert all(r["type"] in ("inquiry", "medication", "pickup") for r in data["items"])
         ids.extend(r["id"] for r in data["items"])
     assert len(set(ids)) == visible + 1 and created.json()["request"]["id"] in ids
 
 
 @pytest.mark.parametrize("request_id", [seed.demo_id("7201"), seed.REQUEST_PICKUP])
-def test_deferred_staff_detail_keeps_scope_and_only_first_user_message(client, teacher, teacher_other, read_backend, request_id):
+def test_care_staff_detail_keeps_scope_and_shows_conversation(client, teacher, teacher_other, read_backend, request_id):
     if read_backend == "mock":
         for sender in ("agent", "user"):
             store.state().messages.append(store.Message(store.state().next_int(), request_id, sender, seed.TEACHER,
@@ -96,8 +100,8 @@ def test_deferred_staff_detail_keeps_scope_and_only_first_user_message(client, t
     response = client.get(f"{BASE}/requests/{request_id}", headers=teacher)
     assert response.status_code == 200, response.text
     data = response.json()
-    assert len(data["messages"]) == 1 and "숨길 후속 대화" not in response.text
-    assert data["timeline"] == [] and data["sources"] == [] and data["consultation"] is None
+    assert len(data["messages"]) == 3 and "숨길 후속 대화" in response.text
+    assert data["sources"] == [] and data["consultation"] is None
     assert data["rejection"] is None and data["request"]["hold_until"] is None
     err(client.get(f"{BASE}/requests/{request_id}", headers=teacher_other), 404, "NOT_FOUND")
 
@@ -270,30 +274,17 @@ def test_documents_filter_org_class_period_and_keep_staff_visibility(
 
 @pytest.mark.parametrize("kind", ["medication", "pickup"])
 @pytest.mark.parametrize("action", ["messages", "stream", "confirm"])
-def test_deferred_parent_actions_are_404_before_mutation_or_stream(client, read_backend, monkeypatch, kind, action):
-    from app.modules.requests import streams
-
-    monkeypatch.setattr(streams, "MAX_SECONDS", 0)
+def test_care_parent_conversation_and_stream_open_but_complaint_confirm_stays_separate(client, kind, action):
     req = next(r for r in seed.DEMO_NOTE_REQUESTS if r["type"] == kind)
     guardian = next(u for u in seed.USERS if u["id"] == req["requester_id"])
     token = client.post(BASE + "/auth/login", json={"login_id": guardian["login_id"], "password": "demo1234"}).json()["access_token"]
     headers = {"Authorization": "Bearer " + token}
     path = f"{BASE}/requests/{req['id']}/{action}"
-    if read_backend == "mock":
-        count = len(store.messages_of(req["id"]))
-    else:
-        with transaction() as connection:
-            count = connection.scalar(text("SELECT count(*) FROM request_messages WHERE request_id=:id"), {"id": req["id"]})
     response = client.get(path, headers=headers) if action == "stream" else client.post(
-        path, headers=headers, json={"body": "[TEST] 숨긴 요청에 추가"} if action == "messages" else None)
-    err(response, 404, "NOT_FOUND")
-    assert response.headers["content-type"].startswith("application/json")
-    if read_backend == "mock":
-        assert len(store.messages_of(req["id"])) == count
-        assert store.state().requests[req["id"]].parent_confirmed_at is None
-        assert store.events_of(req["id"])[-1].action == "permission_denied"
+        path, headers=headers, json={"body": "[TEST] 추가 안내"} if action == "messages" else None)
+    if action == "confirm":
+        err(response, 409, "INVALID_TRANSITION")
     else:
-        with transaction() as connection:
-            assert connection.scalar(text("SELECT count(*) FROM request_messages WHERE request_id=:id"), {"id": req["id"]}) == count
-            assert connection.scalar(text("SELECT parent_confirmed_at FROM requests WHERE id=:id"), {"id": req["id"]}) is None
-            assert connection.scalar(text("SELECT action FROM events WHERE request_id=:id ORDER BY id DESC LIMIT 1"), {"id": req["id"]}) == "permission_denied"
+        assert response.status_code == (200 if action == "stream" else 201), response.text
+        if action == "stream":
+            assert "event: done" in response.text and "event: stage" not in response.text

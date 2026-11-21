@@ -342,3 +342,29 @@ def test_new_candidates_skip_live_checks_and_confirmed_bookings(client, parent, 
     # 제안부터 빈 칸을 주므로 이어지는 보호자 체크도 성공해요.
     new_rid = detail(client, teacher, new_cid)["request"]["id"]
     assert choose(client, parent, new_rid, candidates[:1]).status_code == 200
+
+
+@pytest.mark.parametrize("stage", ["choice", "booking"])
+def test_previously_issued_candidate_rejects_new_delay_overlap(
+    client, parent, teacher, consultation_backend, stage
+):
+    from types import SimpleNamespace
+    from app.core.db import get_engine
+    from tests.integration.api.test_consultation_reminders import booking
+    rid, cid, offered = prepare(client, parent, teacher)
+    slot = offered[0]
+    if stage == "booking":
+        assert choose(client, parent, rid, [slot]).status_code == 200
+    start = datetime.fromisoformat(slot["period"]["start"])
+    engine = get_engine() if consultation_backend == "db" else None
+    bid, _ = booking(SimpleNamespace(engine=engine), start-timedelta(minutes=30))
+    until = start+timedelta(minutes=20)
+    if engine:
+        with engine.begin() as c:
+            c.execute(text("UPDATE consultation_bookings SET expected_end_at=:until WHERE id=:id"),
+                      {"id": bid, "until": until})
+    else:
+        store.state().bookings[bid].expected_end_at = until
+    response = choose(client, parent, rid, [slot]) if stage == "choice" else book(client, teacher, cid, slot)
+    err(response, 409, "SLOT_TAKEN")
+    assert client.get(f"{BASE}/requests/{rid}", headers=parent).json()["consultation"]["booking"] is None

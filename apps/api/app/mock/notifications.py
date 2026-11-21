@@ -3,7 +3,8 @@
 from dataclasses import replace
 
 from app.api.labels import parent_label
-from app.core.constants import NOTIFICATION_TITLES as TITLES
+from app.core.care import unregistered_pickup_key
+from app.core.constants import CARE_REQUEST_TYPES, CARE_MESSAGE_NOTICE, UNREGISTERED_PICKUP_CHECK, NOTIFICATION_TITLES as TITLES
 from app.core.schedule import deliver_after
 from app.core.errors import ApiError
 from app.mock import store
@@ -11,12 +12,12 @@ from app.mock.records import Notification
 
 
 
-def create(ev, recipient_id, kind, body=None, subject_id=None):
+def create(ev, recipient_id, kind, body=None, subject_id=None, *, dedupe_key=None):
     state = store.state()
     recipient = state.users.get(recipient_id)
     if recipient is None or recipient.org_id != ev.org_id:
         return
-    key = f"event:{ev.id}:{recipient_id}"
+    key = dedupe_key or f"event:{ev.id}:{recipient_id}"
     if any(n.dedupe_key == key for n in state.notifications.values()):
         return
     req = state.requests.get(ev.request_id)
@@ -25,7 +26,7 @@ def create(ev, recipient_id, kind, body=None, subject_id=None):
         body=body, dedupe_key=key, request_id=ev.request_id, card_id=ev.card_id,
         subject_type="daily_note" if subject_id else None, subject_id=subject_id, created_at=ev.created_at,
         deliver_after=deliver_after(ev.created_at, recipient.role, req.risk_level if req else None,
-                                    req.risk_category if req else None))
+                                    req.risk_category if req else None, request_type=req.type if req else None))
     state.notifications[notification.id] = notification
 
 
@@ -37,6 +38,18 @@ def notify_event(ev, req, card):
             note = store.state().notes[ev.daily_note_id]
             for guardian in store.state().children[note.child_id].guardian_ids:
                 create(ev, guardian, "note_sent", subject_id=note.id)
+        return
+    if req.type in CARE_REQUEST_TYPES:
+        if ev.detail.get("unregistered_pickup"):
+            create(ev, store.director_of(req.org_id), "care_requested", UNREGISTERED_PICKUP_CHECK,
+                   dedupe_key=unregistered_pickup_key(req.id, ev.detail.get("pickup_snapshot", {})))
+        elif ev.detail.get("care_message"):
+            create(ev, req.assignee_id or store.director_of(req.org_id), "care_requested", CARE_MESSAGE_NOTICE)
+        elif ev.action == "created" and ev.to_status == "received":
+            create(ev, req.assignee_id or store.director_of(req.org_id), "care_requested")
+        elif ev.detail.get("care_decision") in ("confirm", "complete"):
+            create(ev, req.requester_id, "care_confirmed" if ev.to_status == "assigned" else "completed",
+                   parent_label(ev.to_status, req.type))
         return
     parent_kinds = {"needs_info": "needs_info", "on_hold": "on_hold", "sent_or_booked": "sent_or_booked",
                     "rejected": "rejected"}

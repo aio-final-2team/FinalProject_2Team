@@ -21,7 +21,7 @@ from app.mock import seed
 from db.seeds.demo import seed_demo
 
 ROOT = Path(__file__).resolve().parents[3]
-HEAD_CATALOG = {"tables": 27, "views": 2, "triggers": 2, "foreign_keys": 58, "columns": 269}
+HEAD_CATALOG = {"tables": 27, "views": 2, "triggers": 2, "foreign_keys": 58, "columns": 271}
 
 
 def catalog(connection):
@@ -80,7 +80,7 @@ def test_upgrade_downgrade_upgrade(db_engine, alembic_config):
     command.upgrade(alembic_config, "head")
     with db_engine.connect() as connection:
         assert dict(catalog(connection)) == first_catalog
-        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0004"
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0009"
     assert schema_dump() == first_dump
 
     # 최신 설계를 직접 적용한 스키마도 마이그레이션 head와 같아야 한다.
@@ -141,10 +141,39 @@ def test_child_memos_backfill_constraints_and_revision_round_trip(db_engine, ale
     command.upgrade(alembic_config, "head")
     with db_engine.begin() as connection:
         assert dict(catalog(connection)) == HEAD_CATALOG
-        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0004"
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0009"
         assert dict(connection.execute(text("SELECT * FROM daily_note_inputs WHERE id=:id"),
                                        {"id": before["id"]}).mappings().one()) == {**before, "child_memos": []}
         connection.execute(text("DELETE FROM daily_note_inputs"))
+
+
+def test_requeue_action_upgrade_downgrade_preserves_requests_and_old_events(seeded_db, alembic_config):
+    with seeded_db.begin() as connection:
+        original = connection.scalar(text("""
+            INSERT INTO events(org_id,request_id,actor_type,action)
+            VALUES (:org,:request,'system','created') RETURNING id
+        """), {"org": seed.ORG, "request": seed.REQUEST_COUGH})
+        connection.execute(text("""
+            INSERT INTO events(org_id,request_id,actor_type,action)
+            VALUES (:org,:request,'system','agent_requeued')
+        """), {"org": seed.ORG, "request": seed.REQUEST_COUGH})
+        request_before = dict(connection.execute(text("SELECT * FROM requests WHERE id=:id"),
+                                                 {"id": seed.REQUEST_COUGH}).mappings().one())
+    command.downgrade(alembic_config, "0005")
+    with seeded_db.begin() as connection:
+        assert connection.scalar(text("SELECT count(*) FROM events WHERE id=:id"), {"id": original}) == 1
+        assert connection.scalar(text("SELECT count(*) FROM events WHERE action='agent_requeued'")) == 0
+        assert dict(connection.execute(text("SELECT * FROM requests WHERE id=:id"),
+                                       {"id": seed.REQUEST_COUGH}).mappings().one()) == request_before
+        with pytest.raises(IntegrityError) as error, connection.begin_nested():
+            connection.execute(text("INSERT INTO events(org_id,actor_type,action) VALUES (:org,'system','agent_requeued')"),
+                               {"org": seed.ORG})
+        assert error.value.orig.diag.constraint_name == "events_action_check"
+    command.upgrade(alembic_config, "head")
+    with seeded_db.begin() as connection:
+        connection.execute(text("INSERT INTO events(org_id,actor_type,action) VALUES (:org,'system','agent_requeued')"),
+                           {"org": seed.ORG})
+        assert dict(catalog(connection)) == HEAD_CATALOG
 
 
 def test_note_original_backfill_and_event_fk_revision_round_trip(db_engine, alembic_config):

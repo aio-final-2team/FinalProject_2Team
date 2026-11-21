@@ -10,8 +10,9 @@ from app.core.config import settings
 from app.core.schedule import KST, working_day
 
 
-def find_consult_slots(connection, teacher_id, date, *, org_id, request_id=None, rules=()):
+def find_consult_slots(connection, teacher_id, date, *, org_id, request_id=None, rules=(), now=None, not_before=None):
     """그날의 빈 시간 최대 세 개. 같은 시작 시각에는 상담실 하나만 골라요."""
+    now = now or datetime.now(KST)
     if not working_day(date):
         return []
     opening, closing = settings.work_hours
@@ -37,7 +38,8 @@ def find_consult_slots(connection, teacher_id, date, *, org_id, request_id=None,
         FROM generate_series(CAST(:start AS timestamptz), CAST(:end AS timestamptz)-interval '30 minutes',
                              interval '30 minutes') AS t(start)
         CROSS JOIN rooms r
-        WHERE r.org_id=:org AND r.is_active AND t.start>now()
+        WHERE r.org_id=:org AND r.is_active AND t.start>:now
+          AND t.start>=coalesce(CAST(:not_before AS timestamptz),:now)
           AND EXISTS (SELECT 1 FROM users u WHERE u.id=:teacher AND u.org_id=:org
                       AND u.role='teacher' AND u.is_active)
           AND NOT EXISTS (
@@ -46,10 +48,11 @@ def find_consult_slots(connection, teacher_id, date, *, org_id, request_id=None,
           AND NOT EXISTS (
             SELECT 1 FROM consultation_bookings b WHERE b.org_id=:org AND b.status='confirmed'
               AND (b.teacher_id=:teacher OR b.room_id=r.id)
-              AND b.period && tstzrange(t.start,t.start+interval '30 minutes','[)'))
+              AND tstzrange(lower(b.period),coalesce(b.expected_end_at,upper(b.period)),'[)')
+                  && tstzrange(t.start,t.start+interval '30 minutes','[)'))
           AND NOT EXISTS (
             SELECT 1 FROM consultation_slots s WHERE s.org_id=:org AND s.status='chosen_by_parent'
-              AND s.chosen_at>now()-interval '24 hours'
+              AND s.chosen_at>:now-interval '24 hours'
               AND (s.teacher_id=:teacher OR s.room_id=r.id)
               AND s.period && tstzrange(t.start,t.start+interval '30 minutes','[)')
               AND NOT EXISTS (SELECT 1 FROM cards c WHERE c.id=s.card_id AND c.request_id=:request))
@@ -58,7 +61,7 @@ def find_consult_slots(connection, teacher_id, date, *, org_id, request_id=None,
             WHERE c.request_id=:request AND s.period && tstzrange(t.start,t.start+interval '30 minutes','[)'))
         ORDER BY t.start,r.id LIMIT 3
     """), {"start": start, "end": end, "org": org_id, "teacher": teacher_id,
-           "request": request_id}).mappings()]
+           "request": request_id, "now": now, "not_before": not_before}).mappings()]
 
 
 def propose_slots(connection, req, card, teacher, round_no=None):

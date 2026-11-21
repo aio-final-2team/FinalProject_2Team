@@ -3,12 +3,13 @@
 from sqlalchemy import text
 
 from app.api.labels import parent_label
-from app.core.constants import NOTIFICATION_TITLES as TITLES
+from app.core.care import unregistered_pickup_key
+from app.core.constants import CARE_REQUEST_TYPES, CARE_MESSAGE_NOTICE, UNREGISTERED_PICKUP_CHECK, NOTIFICATION_TITLES as TITLES
 from app.core.schedule import deliver_after
 
 
 
-def enqueue(connection, event, req, recipient_id, kind, body=None):
+def enqueue(connection, event, req, recipient_id, kind, body=None, *, dedupe_key=None):
     org_id = req["org_id"] if req else event["org_id"]
     recipient = connection.execute(text("SELECT role FROM users WHERE id=:id AND org_id=:org"),
                                    {"id": recipient_id, "org": org_id}).mappings().one_or_none()
@@ -19,9 +20,9 @@ def enqueue(connection, event, req, recipient_id, kind, body=None):
         VALUES (:org,:recipient,:request,:card,:kind,:title,:body,:key,:deliver)
         ON CONFLICT (dedupe_key) DO NOTHING
     """), {"org": org_id, "recipient": recipient_id, "request": req["id"] if req else None, "card": event["card_id"],
-           "kind": kind, "title": TITLES[kind], "body": body, "key": f"event:{event['id']}:{recipient_id}",
+           "kind": kind, "title": TITLES[kind], "body": body, "key": dedupe_key or f"event:{event['id']}:{recipient_id}",
            "deliver": deliver_after(event["created_at"], recipient["role"], req["risk_level"] if req else None,
-                                    req["risk_category"] if req else None)})
+                                    req["risk_category"] if req else None, request_type=req.get("type") if req else None)})
 
 
 def notify_event(connection, event, req, card):
@@ -30,6 +31,27 @@ def notify_event(connection, event, req, card):
             enqueue(connection, event, None, card["assignee_id"], "new_card")
         return
     to, action = event["to_status"], event["action"]
+    if req.get("type") in CARE_REQUEST_TYPES:
+        if event["detail"].get("unregistered_pickup"):
+            director = connection.scalar(text(
+                "SELECT id FROM users WHERE org_id=:org AND role='director' AND is_active ORDER BY id LIMIT 1"),
+                {"org": req["org_id"]})
+            enqueue(connection, event, req, director, "care_requested", UNREGISTERED_PICKUP_CHECK,
+                    dedupe_key=unregistered_pickup_key(req["id"], event["detail"].get("pickup_snapshot", {})))
+        elif event["detail"].get("care_message"):
+            recipient = req["assignee_id"] or connection.scalar(text(
+                "SELECT id FROM users WHERE org_id=:org AND role='director' AND is_active ORDER BY id LIMIT 1"),
+                {"org": req["org_id"]})
+            enqueue(connection, event, req, recipient, "care_requested", CARE_MESSAGE_NOTICE)
+        elif action == "created" and to == "received":
+            recipient = req["assignee_id"] or connection.scalar(text(
+                "SELECT id FROM users WHERE org_id=:org AND role='director' AND is_active ORDER BY id LIMIT 1"),
+                {"org": req["org_id"]})
+            enqueue(connection, event, req, recipient, "care_requested")
+        elif event["detail"].get("care_decision") in ("confirm", "complete"):
+            enqueue(connection, event, req, req["requester_id"],
+                    "care_confirmed" if to == "assigned" else "completed", parent_label(to, req["type"]))
+        return
     parent_kinds = {"needs_info": "needs_info", "on_hold": "on_hold", "sent_or_booked": "sent_or_booked",
                     "rejected": "rejected"}
     if to == "completed" and req["type"] == "complaint":
@@ -79,7 +101,7 @@ def notify_event(connection, event, req, card):
 def listing(user, page, size, sort):
     from app.core.db import transaction
     with transaction() as connection:
-        # 발송기는 워커에서 연결해요. 노출은 기존 계약의 deliver_after를 기준으로 해요.
+        # 발송·재시도 상태와 별개로 노출은 기존 계약의 deliver_after를 기준으로 해요.
         rows = [dict(row) for row in connection.execute(text('''
             SELECT * FROM notifications WHERE org_id=:org AND recipient_id=:user AND deliver_after<=now()
             ORDER BY created_at,id

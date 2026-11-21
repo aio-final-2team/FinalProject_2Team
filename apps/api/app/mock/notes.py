@@ -5,6 +5,7 @@ from datetime import datetime
 from uuid import uuid4
 
 from app.core.errors import ApiError
+from app.core.care import note_content
 from app.core.config import settings
 from app.core.schedule import KST, due_at
 from app.mock import seed, store
@@ -161,7 +162,8 @@ def patch(user, note_id, body):
                         raise ApiError(422, "VALIDATION_FAILED", field="content.items[].source.document_id")
                 if line.source.type == "request":
                     request = store.request_in_scope(user, line.source.request_id)
-                    if request.child_id != note.child_id:
+                    if request.child_id != note.child_id or (
+                            line.key in ("medication", "pickup") and request.type != line.key):
                         raise ApiError(422, "VALIDATION_FAILED", field="content.items[].source.request_id")
             note.content = body.content.model_dump(exclude_none=True)
         note.open_checks = remaining
@@ -181,7 +183,10 @@ def patch(user, note_id, body):
 
 
 def view(note):
-    return {k: deepcopy(getattr(note, k)) for k in ("id", "child_id", "note_date", "status", "content", "open_checks", "confirmed_at", "sent_at")}
+    result = {k: deepcopy(getattr(note, k)) for k in ("id", "child_id", "note_date", "status", "content", "open_checks", "confirmed_at", "sent_at")}
+    result["content"] = note_content(note.content, {str(r.id): r.__dict__ for r in store.state().requests.values()
+                                                  if r.org_id == note.org_id and r.child_id == note.child_id})
+    return result
 
 
 def visible(user, note_date, classroom_id=None):
