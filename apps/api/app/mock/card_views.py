@@ -40,7 +40,7 @@ def staff_request(req):
 
 def item(card):
     req = store.state().requests.get(card.request_id)
-    classroom = store.state().classrooms[cards.classroom_of(card)]
+    classroom = store.state().classrooms.get(cards.classroom_of(card))
     check = card.check_result
     return {"id": card.id, "kind": card.kind, "status": card.status, "version": card.version,
             "status_label": staff_label(req.status, req.type) if req else "확인 필요" if card.status == "pending" else "완료",
@@ -52,7 +52,7 @@ def item(card):
             "check": {"passed": check["passed"], "issue_count": len(check.get("issues", []))} if check else None,
             "parent_choice_count": sum(s.status == "chosen_by_parent" for s in store.state().slots.values()
                                        if s.card_id == card.id) if card.kind == "consult_slots" else None,
-            "classroom": {"id": classroom.id, "name": classroom.name}, "assignee": person(card.assignee_id),
+            "classroom": {"id": classroom.id, "name": classroom.name} if classroom else None, "assignee": person(card.assignee_id),
             "due_at": card.due_at, "is_delayed": bool(card.due_at and card.due_at < store.now()), "hold_until": card.hold_until}
 
 

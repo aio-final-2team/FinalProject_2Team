@@ -12,32 +12,24 @@ from app.api.schemas.views import (NotificationList, NotificationResponse, Draft
                                   SendResponse, DocumentResponse, DocumentList, MemoryKind, MemoryList, RegenerateResponse)
 from app.api.schemas.common import errors
 from app.core.auth import CurrentUser, current_user as note_user, require_roles as note_roles
-# T27에서 걷을 목록: 자료·알림의 workflows 별칭. 알림장은 위 core.auth를 직접 쓴다.
-from app.core.workflows import workflow_user as current_user, require_workflow_roles as require_roles
+# 자료 쓰기·상세는 후속 항목에서 연결해요.
+from app.core.workflows import require_workflow_roles as require_roles
 from app import backend
-from app.backend import notifications, documents
+from app.backend import documents
 
 router = APIRouter(tags=["알림장·자료"])
 Sort = Literal["-created_at", "created_at"]
 
 
-def page_of(items, page, size, sort="-created_at"):
-    items = sorted(items, key=lambda item: item.created_at if hasattr(item, "created_at") else str(item.id),
-                   reverse=sort.startswith("-"))
-    return {"items": items[(page-1)*size:page*size], "total": len(items), "page": page, "size": size}
-
-
 @router.get("/notifications", response_model=NotificationList, responses=errors(401, 422))
 def notification_list(page: int = Query(1, ge=1), size: int = Query(20, ge=1, le=100), sort: Sort = "-created_at",
-                       user: CurrentUser = Depends(current_user)):
-    result = page_of(notifications.visible(user), page, size, sort)
-    result["items"] = [n.__dict__ for n in result["items"]]
-    return result
+                       user: CurrentUser = Depends(note_user)):
+    return backend.notifications.listing(user, page, size, sort)
 
 
 @router.post("/notifications/{notification_id}/read", response_model=NotificationResponse, responses=errors(401, 404, 422))
-def notification_read(notification_id: int, user: CurrentUser = Depends(current_user)):
-    return {"notification": notifications.read(user, notification_id).__dict__}
+def notification_read(notification_id: int, user: CurrentUser = Depends(note_user)):
+    return {"notification": backend.notifications.read(user, notification_id)}
 
 
 @router.get("/classrooms/{classroom_id}/children", response_model=ChildList, responses=errors(401, 403, 404, 422))

@@ -22,6 +22,7 @@ class Settings:
     data_backend: str = "mock"
     daily_note_writer: str = "app.modules.daily_notes.stub_writer:write"
     daily_note_writer_timeout: float = 300.0
+    request_agent: str = "app.modules.requests.agent_stub:run_request"
 
 
 def load_settings() -> Settings:
@@ -55,6 +56,7 @@ def load_settings() -> Settings:
         data_backend=backend,
         daily_note_writer=os.getenv("DAILY_NOTE_WRITER", "app.modules.daily_notes.stub_writer:write"),
         daily_note_writer_timeout=writer_timeout,
+        request_agent=os.getenv("REQUEST_AGENT", "app.modules.requests.agent_stub:run_request"),
     )
 
 

@@ -310,31 +310,10 @@ def create_request(user, *, client_request_id: str, type: str, body: str, child_
 
 
 # 모의 AI 분류 규칙. 실제 분류는 감독 AI(T14)가 한다. 화면 시연용으로 낱말만 본다.
-_URGENT_WORDS = {
-    "child_safety": ("다쳤", "다침", "학대", "때렸", "안전"),
-    "legal_external": ("고소", "신고", "변호사", "언론"),
-    "privacy_leak": ("개인정보", "사진 유출"),
-    "staff_attack": ("가만두지", "협박"),
-}
-_TOPIC_WORDS = {
-    "pickup_bus": ("버스", "등원", "하원"), "meal": ("급식", "밥", "식단", "간식"),
-    "safety": ("안전", "다쳤", "다침"), "fee": ("원비", "비용", "환불"),
-    "belongings": ("소지품", "가방", "옷", "분실"), "peer_conflict": ("친구", "다툼", "싸움"),
-    "health_hygiene": ("열", "아파", "위생", "감기"), "photo_record": ("사진", "앨범"),
-    "communication": ("연락", "답장", "알림장"), "teacher": ("선생님",),
-}
-
-
 def _classify(req: Request) -> None:
-    text = req.body
-    req.topic_key = next((k for k, words in _TOPIC_WORDS.items() if any(w in text for w in words)), "other")
-    req.urgency = "normal"
-    if req.type == "complaint":
-        category = next((k for k, words in _URGENT_WORDS.items() if any(w in text for w in words)), None)
-        req.risk_level = "uncertain" if "판단 필요" in text else ("urgent" if category else "normal")
-        req.risk_category = category
-        if category:
-            req.urgency = "urgent"
+    from app.core.request_rules import classify
+    for key, value in classify(req.type, req.body).items():
+        setattr(req, key, value)
 
 
 def _run_mock_ai(req: Request, trace_id: str | None) -> None:

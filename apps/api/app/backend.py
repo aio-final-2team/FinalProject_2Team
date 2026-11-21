@@ -16,5 +16,5 @@ else:
     from app.modules.requests import requests as request_actions
     # T27에서 걷을 목록: 미구현 라우트 호환용 store=users 별칭(core/workflows.py 참고).
     store = users
-    # 미구현 업무는 core/workflows.py에서 인증·범위를 검사한 뒤 501로 막는다.
-    cards = card_views = notifications = None
+    from app.modules.cards import cards, card_views
+    from app.modules.notifications import notifications

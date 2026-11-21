@@ -2048,7 +2048,9 @@ components:
           - type: 'null'
           title: Parent Choice Count
         classroom:
-          $ref: '#/components/schemas/ClassroomView'
+          anyOf:
+          - $ref: '#/components/schemas/ClassroomView'
+          - type: 'null'
         assignee:
           anyOf:
           - $ref: '#/components/schemas/Person'
@@ -3585,7 +3587,6 @@ components:
           - inquiry
           - consultation
           - complaint
-          - pickup
           title: Type
         title:
           anyOf:
@@ -3702,6 +3703,7 @@ components:
           - inquiry
           - consultation
           - complaint
+          - medication
           - pickup
           title: Type
         title:
@@ -3922,6 +3924,7 @@ components:
           - inquiry
           - consultation
           - complaint
+          - medication
           - pickup
           title: Type
         title:

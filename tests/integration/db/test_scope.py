@@ -199,7 +199,7 @@ def test_wrong_role_is_403_before_pending_workflow(db_client, login_id, path):
 
 def test_unimplemented_workflows_never_use_mock(db_client, records):
     user = users.get_user(seed.TEACHER)
-    response = db_client.get(f"/api/v1/cards/{records['local_card']}",
+    response = db_client.post(f"/api/v1/cards/{records['local_card']}/bookings",
                              headers={"Authorization": "Bearer " + issue_token(user)})
     assert response.status_code == 501 and response.json()["error"]["code"] == "NOT_IMPLEMENTED"
 
@@ -240,26 +240,11 @@ def test_parent_note_classroom_filter_does_not_deny_or_log(db_client, records, s
 
 
 @pytest.mark.parametrize("method,path,actor", [
-    ("POST", "/requests", seed.PARENT),
-    ("GET", "/requests", seed.PARENT),
-    ("GET", "/requests/{local_request}/stream", seed.PARENT),
-    ("POST", "/requests/{local_request}/messages", seed.PARENT),
     ("POST", "/requests/{local_request}/slot-choices", seed.PARENT),
-    ("POST", "/requests/{local_request}/confirm", seed.PARENT),
-    ("GET", "/cards", seed.TEACHER),
-    ("GET", "/cards/{local_card}", seed.TEACHER),
-    ("GET", "/cards/{local_card}/stream", seed.TEACHER),
-    ("POST", "/cards/{local_card}/decisions", seed.TEACHER),
-    ("POST", "/cards/{local_card}/reclassify", seed.TEACHER),
     ("POST", "/cards/{local_card}/bookings", seed.TEACHER),
-    ("POST", "/cards/{local_card}/instructions", seed.DIRECTOR),
-    ("POST", "/cards/{local_card}/reassign", seed.DIRECTOR),
     ("POST", "/memory-rules/{local_card}/decision", seed.TEACHER),
-    ("GET", "/overview", seed.DIRECTOR),
     ("POST", "/documents", seed.TEACHER),
     ("GET", "/documents/{local_card}", seed.TEACHER),
-    ("GET", "/notifications", seed.PARENT),
-    ("POST", "/notifications/1/read", seed.PARENT),
 ])
 def test_pending_endpoints_fail_closed(db_client, records, method, path, actor):
     path = path.format(**records, local_class=seed.CLASS_STAR)
@@ -290,8 +275,8 @@ def test_pending_guard_leaves_validation_to_the_declared_route(db_client):
         response = db_client.get("/api/v1" + path, headers=headers)
         assert response.status_code == 422
         assert response.json()["error"]["code"] == "VALIDATION_FAILED"
-    # 선언하지 않은 쿼리는 mock처럼 무시하고, 미구현 업무 경계는 그대로 둔다.
-    assert db_client.get("/api/v1/cards?classroom_id=not-a-uuid", headers=headers).status_code == 501
+    # 선언하지 않은 쿼리는 mock처럼 무시해요. 받은함은 T27-b에서 연결했어요.
+    assert db_client.get("/api/v1/cards?classroom_id=not-a-uuid", headers=headers).status_code == 200
 
 
 @pytest.fixture
@@ -370,3 +355,69 @@ def test_database_boundary_rejects_only_foreign_reference(seeded_db, boundary_re
         assert error.value.orig.diag.constraint_name == constraint
         # 같은 SQL의 참조만 이 원 값으로 바꾸면 저장된다. 시험 종료 때 되돌린다.
         connection.execute(text(statement), {**values, "ref": values[local]})
+
+
+def test_scope_functions_share_caller_connection_and_leave_rollback_to_caller(seeded_db, records):
+    user = users.get_user(seed.TEACHER)
+    with seeded_db.connect() as connection:
+        tx = connection.begin()
+        connection.execute(text("UPDATE requests SET title='[TEST] 미커밋' WHERE id=:id"), {"id": records["local_request"]})
+        assert scope.request_in_scope(user, records["local_request"], connection=connection)["title"] == "[TEST] 미커밋"
+        connection.execute(text("UPDATE children SET display_name='[TEST] 미커밋' WHERE id=:id"), {"id": seed.CHILD})
+        assert scope.child_in_scope(user, seed.CHILD, connection=connection)["display_name"] == "[TEST] 미커밋"
+        connection.execute(text("UPDATE classrooms SET name='[TEST] 미커밋' WHERE id=:id"), {"id": seed.CLASS_STAR})
+        assert scope.classroom_in_scope(user, seed.CLASS_STAR, connection=connection)["name"] == "[TEST] 미커밋"
+        connection.execute(text("UPDATE cards SET version=7 WHERE id=:id"), {"id": records["local_card"]})
+        assert scope.card_in_scope(user, records["local_card"], connection=connection)["version"] == 7
+        connection.execute(text("UPDATE daily_note_inputs SET activities='[TEST] 미커밋' WHERE id=:id"), {"id": records["local_input"]})
+        assert scope.note_input_in_scope(user, records["local_input"], connection=connection)["activities"] == "[TEST] 미커밋"
+        connection.execute(text("UPDATE daily_notes SET status='draft' WHERE id=:id"), {"id": records["local_note"]})
+        assert scope.note_in_scope(user, records["local_note"], connection=connection)["status"] == "draft"
+        tx.rollback()
+    assert scope.card_in_scope(user, records["local_card"])["version"] == 1
+    assert scope.note_in_scope(user, records["local_note"])["status"] == "sent"
+
+
+def test_denial_audit_survives_caller_transaction_rollback(seeded_db, records):
+    with pytest.raises(ApiError):
+        with seeded_db.begin() as connection:
+            connection.execute(text("UPDATE classrooms SET name='[TEST] 되돌릴 변경' WHERE id=:id"), {"id": seed.CLASS_STAR})
+            scope.request_in_scope(users.get_user(seed.TEACHER_OTHER), records["local_request"], connection=connection)
+    with seeded_db.connect() as connection:
+        assert connection.scalar(text("SELECT name FROM classrooms WHERE id=:id"), {"id": seed.CLASS_STAR}) != "[TEST] 되돌릴 변경"
+        assert connection.scalar(text("SELECT count(*) FROM events WHERE action='permission_denied'")) == 1
+
+
+@pytest.mark.parametrize("kind", ["daily_note", "rule_proposal"])
+def test_cards_without_request_have_literal_classroom_or_owner_scope(seeded_db, records, kind):
+    card_id = uuid4()
+    with seeded_db.begin() as connection:
+        if kind == "rule_proposal":
+            subject_id = connection.scalar(text("""
+                INSERT INTO memory_rules (org_id,owner_id,reason_code,rule_text,rule_json)
+                VALUES (:org,:owner,'tone','[TEST] 규칙','{}') RETURNING id
+            """), {"org": seed.ORG, "owner": seed.TEACHER})
+            subject_type = "memory_rule"
+        else:
+            subject_id, subject_type = records["local_input"], "daily_note_batch"
+        connection.execute(text("""
+            INSERT INTO cards (id,org_id,subject_type,subject_id,kind,assignee_id)
+            VALUES (:id,:org,:type,:subject,:kind,:owner)
+        """), {"id": card_id, "org": seed.ORG, "type": subject_type, "subject": subject_id, "kind": kind, "owner": seed.TEACHER})
+    for actor in (seed.TEACHER, seed.DIRECTOR):
+        row = scope.card_in_scope(users.get_user(actor), card_id)
+        assert row["request_id"] is None and row["request_type"] is None
+        assert row["classroom_id"] == (seed.CLASS_STAR if kind == "daily_note" else None)
+    for actor, code in ((seed.TEACHER_OTHER, 404), (seed.PARENT, 403), (records["teacher"], 404)):
+        with pytest.raises(ApiError) as error:
+            scope.card_in_scope(users.get_user(actor), card_id)
+        assert error.value.status == code
+    with seeded_db.begin() as connection:
+        connection.execute(text("""
+            INSERT INTO classroom_staff (org_id,classroom_id,user_id) VALUES (:org,:class,:user)
+        """), {"org": seed.ORG, "class": seed.CLASS_STAR, "user": seed.TEACHER_OTHER})
+    if kind == "daily_note":
+        assert scope.card_in_scope(users.get_user(seed.TEACHER_OTHER), card_id)["id"] == card_id
+    else:
+        with pytest.raises(ApiError):
+            scope.card_in_scope(users.get_user(seed.TEACHER_OTHER), card_id)

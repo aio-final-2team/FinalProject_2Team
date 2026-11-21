@@ -1,19 +1,12 @@
 """이력별 알림 생성과 모의 발송기."""
 
 from app.api.labels import parent_label
+from app.core.constants import NOTIFICATION_TITLES as TITLES
 from app.core.schedule import deliver_after
 from app.core.errors import ApiError
 from app.mock import store
 from app.mock.records import Notification
 
-TITLES = {
-    "needs_info": "정보가 더 필요해요", "new_card": "새 카드가 왔어요",
-    "urgent_complaint": "긴급 민원", "uncertain_complaint": "AI 판단 불확실 민원",
-    "director_report": "원장 보고 카드", "on_hold": "확인이 늦어지고 있어요",
-    "sent_or_booked": "답변 도착", "parent_confirmed": "학부모가 확인했어요 · 처리 완료를 눌러 주세요",
-    "completed": "처리 완료", "rejected": "처리할 수 없는 요청이에요", "note_sent": "오늘 알림장",
-    "slot_hold_expired": "잡아 둔 시간이 풀렸어요", "hold_resumed": "보류 카드가 재개됐어요",
-}
 
 
 def create(ev, recipient_id, kind, body=None, subject_id=None):
@@ -65,10 +58,13 @@ def notify_event(ev, req, card):
         create(ev, req.assignee_id, "parent_confirmed")
     elif ev.action == "slot_hold_expired":
         create(ev, card.assignee_id, "slot_hold_expired")
-    elif ev.to_status == "awaiting_review":
+    elif ev.to_status == "awaiting_review" and ev.action != "risk_reclassified":
         automatic = ev.action == "resumed" and ev.detail.get("automatic")
         if ev.action != "resumed" or automatic:
-            create(ev, card.assignee_id if card else req.assignee_id, "hold_resumed" if automatic else "new_card")
+            recipient = card.assignee_id if card else req.assignee_id
+            if card and card.status == "unassigned" and recipient is None:
+                recipient = store.director_of(req.org_id)
+            create(ev, recipient, "hold_resumed" if automatic else "new_card")
 
 
 def visible(user):
@@ -87,4 +83,10 @@ def read(user, notification_id):
         if notification is None:
             store.deny(user)
         notification.read_at = notification.read_at or store.now()
-        return notification
+        return notification.__dict__
+
+
+def listing(user, page, size, sort):
+    rows = sorted(visible(user), key=lambda row: row.created_at, reverse=sort.startswith('-'))
+    return {'items': [row.__dict__ for row in rows[(page-1)*size:page*size]],
+            'total': len(rows), 'page': page, 'size': size}

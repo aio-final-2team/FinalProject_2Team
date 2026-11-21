@@ -12,9 +12,14 @@ def db_client(seeded_db, monkeypatch):
     from app.core import users, workflows
     from app.modules.daily_notes import notes
     from app.modules.documents import documents
+    from app.modules.cards import cards, card_views
+    from app.modules.notifications import notifications
     from app.modules.requests import requests
     from app.main import app
 
+    monkeypatch.setattr(backend, "cards", cards)
+    monkeypatch.setattr(backend, "card_views", card_views)
+    monkeypatch.setattr(backend, "notifications", notifications)
     monkeypatch.setattr(backend, "users", users)
     monkeypatch.setattr(backend, "notes", notes)
     monkeypatch.setattr(backend, "documents", documents)

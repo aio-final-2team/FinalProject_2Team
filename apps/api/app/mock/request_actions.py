@@ -1,6 +1,7 @@
 """학부모의 대화·시간 체크·회신 확인."""
 
 from app.core.errors import ApiError
+from app.core.constants import DEFERRED_REQUEST_TYPES
 from app.api.labels import parent_label, staff_label
 from app.api.schemas.common import Period
 from app.api.schemas.requests import (BookingOut, ConsultationOut, MessageOut, RequestDetailOut,
@@ -8,10 +9,24 @@ from app.api.schemas.requests import (BookingOut, ConsultationOut, MessageOut, R
 from app.mock import documents, store
 
 
+def _parent_readable(user, req):
+    if user.role == "parent" and req.type in DEFERRED_REQUEST_TYPES:
+        store.deny(user, req=req)
+
+
 def detail(user, request_id):
     with store._lock:
         req = store.request_in_scope(user, request_id)
+        _parent_readable(user, req)
         label = parent_label if user.role == "parent" else staff_label
+        if req.type in DEFERRED_REQUEST_TYPES:
+            first = next((m for m in store.messages_of(req.id) if m.sender_type == "user"), None)
+            return RequestDetailOut(
+                request=RequestView(id=req.id, type=req.type, title=req.title, status=req.status,
+                                    status_label=label(req.status, req.type), missing_fields=[],
+                                    created_at=req.created_at, updated_at=req.updated_at),
+                messages=[MessageOut(id=first.id, sender_type=first.sender_type, body=first.body,
+                                     created_at=first.created_at)] if first else [], timeline=[])
         timeline: list[TimelineItem] = []
         for e in store.events_of(req.id):
             if e.to_status is None:
@@ -42,13 +57,15 @@ def detail(user, request_id):
         )
 
 
-def message(user, request_id, body):
+def message(user, request_id, body, *, background_tasks=None):
     with store._lock:
         req = store.request_in_scope(user, request_id)
+        _parent_readable(user, req)
         if req.status in ("completed", "rejected"):
             raise ApiError(409, "INVALID_TRANSITION")
         msg = store.Message(store.state().next_int(), req.id, "user", user.id, body)
         store.state().messages.append(msg)
+        store.add_event(req, "created", actor_type="user", actor_id=user.id, message_id=msg.id)
         req.updated_at = store.now()
         if req.type == "complaint" and req.status == "sent_or_booked":
             req.parent_confirmed_at = None
@@ -88,6 +105,7 @@ def choices(user, request_id, body):
 def confirm(user, request_id):
     with store._lock:
         req = store.request_in_scope(user, request_id)
+        _parent_readable(user, req)
         if req.type != "complaint" or req.status != "sent_or_booked":
             raise ApiError(409, "INVALID_TRANSITION")
         if req.parent_confirmed_at is None:
@@ -98,3 +116,33 @@ def confirm(user, request_id):
 
 def request_state(req):
     return {"id": req.id, "status": req.status, "parent_confirmed_at": req.parent_confirmed_at}
+
+
+def create(user, *, background_tasks=None, **values):
+    req, created = store.create_request(user, **values)
+    return {"id": req.id, "status": req.status}, created
+
+
+def listing(user, status, page, size, sort):
+    with store._lock:
+        store.expire()
+        requests = [r for r in store.requests_of(user, status) if r.type not in DEFERRED_REQUEST_TYPES]
+        requests.sort(key=lambda r: getattr(r, sort.lstrip("-")), reverse=sort.startswith("-"))
+        def item(r):
+            action = None
+            if r.status == "needs_info":
+                action = "시간을 골라 주세요" if r.type == "consultation" else "정보를 더 알려 주세요"
+            if r.type == "complaint" and r.status == "sent_or_booked" and r.parent_confirmed_at is None:
+                action = "답변을 확인해 주세요"
+            return {"id": r.id, "type": r.type, "title": r.title, "status": r.status,
+                    "status_label": parent_label(r.status, r.type), "updated_at": r.updated_at,
+                    "next_action": action, "hold_until": store.hold_until_of(r.id)}
+        return {"items": [item(r) for r in requests[(page-1)*size:page*size]], "total": len(requests), "page": page, "size": size}
+
+
+def stream(user, request_id):
+    from app.api.streams import stream as response
+    with store._lock:
+        req = store.request_in_scope(user, request_id)
+        _parent_readable(user, req)
+        return response(req)
