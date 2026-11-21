@@ -1,6 +1,7 @@
 """확장 저장소의 행. 칸 이름은 스키마 초안과 같다."""
 
 from dataclasses import dataclass, field
+from copy import deepcopy
 from datetime import date, datetime
 from uuid import UUID
 from app.core.schedule import KST
@@ -130,3 +131,20 @@ class Note:
     confirmed_by: UUID | None = None
     confirmed_at: datetime | None = None
     sent_at: datetime | None = None
+    ai_original: dict = field(default_factory=dict)
+
+    def __post_init__(self):
+        self.ai_original = deepcopy(self.content)
+
+
+@dataclass
+class Memory:
+    id: int
+    org_id: UUID
+    owner_id: UUID
+    kind: str
+    content: str
+    reason_code: str | None = None
+    structured: dict = field(default_factory=dict)
+    created_at: datetime = field(default_factory=lambda: datetime.now(KST))
+    deleted_at: datetime | None = None

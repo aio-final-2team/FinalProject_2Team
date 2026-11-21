@@ -24,6 +24,13 @@ def visible(user):
             or allowed.intersection(store.state().document_classrooms[d.id]))]
 
 
+def list_documents(user, page, size, sort):
+    with store._lock:
+        items = sorted(visible(user), key=lambda doc: doc.created_at, reverse=sort.startswith("-"))
+        return {"items": [view(doc) for doc in items[(page-1)*size:page*size]],
+                "total": len(items), "page": page, "size": size}
+
+
 def chunks(doc):
     return [c for c in store.state().chunks.values() if c.document_id == doc.id]
 

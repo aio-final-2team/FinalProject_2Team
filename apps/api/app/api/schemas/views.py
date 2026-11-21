@@ -258,6 +258,10 @@ class DraftResponse(BaseModel):
     error: JobError | None = None
 
 
+class RegenerateResponse(DraftResponse):
+    kept_edited: int = Field(ge=0)
+
+
 class OpenCheck(BaseModel):
     id: str
     item_key: str
@@ -284,6 +288,22 @@ class NoteList(Page):
 
 class NoteResponse(BaseModel):
     note: NoteView
+
+
+MemoryKind = Literal["rejection_reason", "preference", "tone"]
+
+
+class MemoryView(BaseModel):
+    id: int
+    kind: MemoryKind
+    reason_code: str | None
+    content: str
+    structured: dict
+    created_at: datetime
+
+
+class MemoryList(Page):
+    items: list[MemoryView]
 
 
 class SendResponse(BaseModel):

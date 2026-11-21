@@ -1,4 +1,4 @@
-"""계약 생성물과 명세 v0.4의 30개 경로를 대조한다."""
+"""계약 생성물과 명세 v0.5의 33개 경로를 대조한다."""
 
 import json
 from pathlib import Path
@@ -17,10 +17,10 @@ def test_contract_matches_application():
         "day", "meal", "medication", "pickup", "supplies", "child", "inquiry"}
 
 
-def test_all_30_documented_endpoints_exist(client):
+def test_all_33_documented_endpoints_exist(client):
     doc = (ROOT / "Docs/Step2/API_설계_문서.md").read_text().split("## 2. API 목록")[1].split("## 3.")[0]
-    endpoints = re.findall(r"\|\s*\d+\s*\|\s*(GET|POST|PATCH)\s*\|\s*`([^`]+)`", doc)
-    assert len(endpoints) == 30
+    endpoints = re.findall(r"\|\s*\d+\s*\|\s*(GET|POST|PATCH|DELETE)\s*\|\s*`([^`]+)`", doc)
+    assert len(endpoints) == 33
     contract = client.get("/openapi.json").json()
     assert contract == json.loads(json.dumps(app.openapi()))
     for method, path in endpoints:

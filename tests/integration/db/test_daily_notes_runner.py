@@ -185,7 +185,7 @@ def test_background_claims_running_and_deduplicates_concurrent_input(db_client, 
     with seeded_db.connect() as connection:
         assert connection.scalar(text("SELECT count(*) FROM daily_note_inputs")) == 1
         assert connection.scalar(text("SELECT count(*) FROM cards WHERE kind='daily_note'")) == 1
-        assert connection.scalar(text("SELECT count(*) FROM events")) == 0
+        assert connection.scalar(text("SELECT count(*) FROM events WHERE action='daily_note_drafted'")) == 20
 
 
 @pytest.mark.parametrize("failure", ["child_exception", "missing", "duplicate", "invalid_content", "foreign_source"])

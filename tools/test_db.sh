@@ -51,4 +51,5 @@ fi
 echo "임시 DB: $container, 포트 $port"
 python -m pytest -q -rs tests/integration/db "$@"
 # 공유 HTTP 시험은 fixture로 mock·DB를 고른다. 별도 프로세스로 설정을 분리한다.
-DATA_BACKEND=mock python -m pytest -q -rs tests/integration/api/test_auth.py tests/integration/api/test_daily_notes.py "$@"
+DATA_BACKEND=mock python -m pytest -q -rs tests/integration/api/test_auth.py tests/integration/api/test_daily_notes.py \
+    tests/integration/api/test_read_resources.py tests/integration/api/test_note_v05.py "$@"

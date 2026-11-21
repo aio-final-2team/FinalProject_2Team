@@ -21,7 +21,7 @@ from app.mock import seed
 from db.seeds.demo import seed_demo
 
 ROOT = Path(__file__).resolve().parents[3]
-HEAD_CATALOG = {"tables": 27, "views": 2, "triggers": 2, "foreign_keys": 57, "columns": 267}
+HEAD_CATALOG = {"tables": 27, "views": 2, "triggers": 2, "foreign_keys": 58, "columns": 269}
 
 
 def catalog(connection):
@@ -80,7 +80,7 @@ def test_upgrade_downgrade_upgrade(db_engine, alembic_config):
     command.upgrade(alembic_config, "head")
     with db_engine.connect() as connection:
         assert dict(catalog(connection)) == first_catalog
-        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0002"
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0003"
     assert schema_dump() == first_dump
 
     # 최신 설계를 직접 적용한 스키마도 마이그레이션 head와 같아야 한다.
@@ -133,7 +133,7 @@ def test_child_memos_backfill_constraints_and_revision_round_trip(db_engine, ale
     command.downgrade(alembic_config, "0001")
     assert schema_dump() == v1_dump
     with db_engine.connect() as connection:
-        assert dict(catalog(connection)) == {**HEAD_CATALOG, "columns": 266}
+        assert dict(catalog(connection)) == {**HEAD_CATALOG, "foreign_keys": 57, "columns": 266}
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0001"
         assert dict(connection.execute(text("SELECT * FROM daily_note_inputs WHERE id=:id"),
                                        {"id": before["id"]}).mappings().one()) == before
@@ -141,10 +141,50 @@ def test_child_memos_backfill_constraints_and_revision_round_trip(db_engine, ale
     command.upgrade(alembic_config, "head")
     with db_engine.begin() as connection:
         assert dict(catalog(connection)) == HEAD_CATALOG
-        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0002"
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0003"
         assert dict(connection.execute(text("SELECT * FROM daily_note_inputs WHERE id=:id"),
                                        {"id": before["id"]}).mappings().one()) == {**before, "child_memos": []}
         connection.execute(text("DELETE FROM daily_note_inputs"))
+
+
+def test_note_original_backfill_and_event_fk_revision_round_trip(db_engine, alembic_config):
+    command.downgrade(alembic_config, "base")
+    command.upgrade(alembic_config, "0002")
+    with db_engine.begin() as connection:
+        seed_demo(connection)
+        input_id = connection.scalar(text("""
+            INSERT INTO daily_note_inputs (org_id,classroom_id,author_id,note_date)
+            VALUES (:org,:class,:author,'2026-11-20') RETURNING id
+        """), {"org": seed.ORG, "class": seed.CLASS_STAR, "author": seed.TEACHER})
+        note_id = connection.scalar(text("""
+            INSERT INTO daily_notes (org_id,input_id,child_id,note_date,content)
+            VALUES (:org,:input,:child,'2026-11-20','{"items": []}') RETURNING id
+        """), {"org": seed.ORG, "input": input_id, "child": seed.CHILD})
+    old_dump = schema_dump()
+    command.upgrade(alembic_config, "head")
+    with db_engine.begin() as connection:
+        assert connection.scalar(text("SELECT ai_original FROM daily_notes WHERE id=:id"), {"id": note_id}) == {"items": []}
+        other_org = connection.scalar(text("INSERT INTO organizations (name) VALUES ('[TEST] 다른 기관') RETURNING id"))
+        for action in ("daily_note_drafted", "daily_note_edited", "daily_note_confirmed", "daily_note_sent"):
+            connection.execute(text("""
+                INSERT INTO events (org_id,daily_note_id,actor_type,action)
+                VALUES (:org,:note,'system',:action)
+            """), {"org": seed.ORG, "note": note_id, "action": action})
+        with pytest.raises(IntegrityError) as error, connection.begin_nested():
+            connection.execute(text("""
+                INSERT INTO events (org_id,daily_note_id,actor_type,action)
+                VALUES (:org,:note,'system','daily_note_drafted')
+            """), {"org": other_org, "note": note_id})
+        assert error.value.orig.sqlstate == "23503"
+    command.downgrade(alembic_config, "0002")
+    assert schema_dump() == old_dump
+    with db_engine.connect() as connection:
+        assert connection.scalar(text("SELECT count(*) FROM daily_notes")) == 1
+        assert connection.scalar(text("SELECT count(*) FROM events")) == 0
+    command.upgrade(alembic_config, "head")
+    with db_engine.connect() as connection:
+        assert dict(catalog(connection)) == HEAD_CATALOG
+        assert connection.scalar(text("SELECT ai_original FROM daily_notes WHERE id=:id"), {"id": note_id}) == {"items": []}
 
 
 def test_seed_twice_keeps_same_rows_and_password_hash(db_engine, alembic_config):
@@ -209,7 +249,7 @@ def test_seed_twice_keeps_same_rows_and_password_hash(db_engine, alembic_config)
         assert (documents[document_id]["title"], documents[document_id]["doc_type"],
                 documents[document_id]["status"], chunks[document_id]) == (title, kind, status, content)
 
-    # 날짜 갱신은 명시한 데모 요청 22개의 접수 시각만 바꾼다. 일반 요청은 그대로 둔다.
+    # 날짜 갱신은 데모 요청과 첫 보호자 메시지를 맞춘다. 일반 요청은 그대로 둔다.
     unrelated = uuid4()
     with db_engine.begin() as connection:
         connection.execute(text("""
@@ -261,9 +301,22 @@ def test_refresh_requests_preserves_fixture_offsets_and_daily_input(seeded_db, m
     originals = {r["id"]: r["created_at"] for r in seed.DEMO_NOTE_REQUESTS if "created_at" in r}
     shift = today - max(dt.astimezone(KST).date() for dt in originals.values())
     with seeded_db.begin() as connection:
+        first_messages = dict(connection.execute(text("SELECT request_id,id FROM request_messages")).all())
+        extra = connection.scalar(text("""
+            INSERT INTO request_messages (org_id,request_id,sender_type,sender_id,body,created_at)
+            SELECT org_id,id,'user',requester_id,'[TEST] 추가 대화',created_at + interval '1 minute'
+            FROM requests WHERE id=:id RETURNING id
+        """), {"id": seed.demo_id("7214")})
+        extra_before = dict(connection.execute(text("SELECT * FROM request_messages WHERE id=:id"),
+                                               {"id": extra}).mappings().one())
         for _ in range(2):
             seed_demo(connection, refresh_note_requests=True)
             actual = dict(connection.execute(text("SELECT id,created_at FROM requests")).all())
+            messages = dict(connection.execute(text("SELECT id,created_at FROM request_messages")).all())
+            assert all(messages[mid] == actual[rid] for rid, mid in first_messages.items())
+            assert dict(connection.execute(text("SELECT * FROM request_messages WHERE id=:id"),
+                                           {"id": extra}).mappings().one()) == extra_before
+            assert len(messages) == len(first_messages) + 1
             for rid, original in originals.items():
                 assert actual[rid] == original + shift
             assert actual[seed.REQUEST_COUGH] == actual[seed.REQUEST_PICKUP] == current

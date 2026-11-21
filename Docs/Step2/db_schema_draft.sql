@@ -1,6 +1,6 @@
--- 유치온 DB 스키마 초안 (T09) · 문서 버전 v0.8 (알림장 아이별 메모 11/20 반영)
+-- 유치온 DB 스키마 초안 (T09) · 문서 버전 v0.9 (알림장 원본·이력 11/20 반영)
 -- 설계서: Docs/Step2/DB_스키마_설계서.md
--- 이 파일은 최종 설계 모양이다. 실제 적용은 apps/api/migrations의 0001 → 0002로 한다.
+-- 이 파일은 최종 설계 모양이다. 실제 적용은 apps/api/migrations의 0001 → 0002 → 0003으로 한다.
 -- 대상: PostgreSQL 16 + pgvector 0.8 (compose.yaml의 pgvector/pgvector:pg16). Supabase는 쓰지 않는다(설계서 5.1)
 -- 기관 경계: 기관에 속한 표끼리는 (id, org_id) 짝으로 참조해서 다른 원 행을 섞어 넣으면 DB가 거부한다
 
@@ -339,18 +339,21 @@ CREATE TABLE events (
                                    'sent', 'booked', 'completed', 'tool_called',
                                    'tool_failed', 'permission_denied',
                                    'parent_confirmed', 'risk_reclassified', 'dismissed',
-                                   'answered_from_saved', 'slot_hold_expired')),
+                                   'answered_from_saved', 'slot_hold_expired',
+                                   'daily_note_drafted', 'daily_note_edited', 'daily_note_confirmed', 'daily_note_sent')),
     -- 시스템이 한 일(보류 예정일 자동 재개, 상담 시간 잡아 두기 풀림)은 actor_type = 'system', actor_id = NULL
     from_status  text,
     to_status    text,
     detail       jsonb NOT NULL DEFAULT '{}',   -- 비밀값·불필요한 개인정보는 넣지 않음
     created_at   timestamptz NOT NULL DEFAULT now(),
+    daily_note_id uuid,                 -- 아이별 알림장 연결(v0.9)
     FOREIGN KEY (request_id, org_id) REFERENCES requests(id, org_id),
     FOREIGN KEY (card_id, org_id) REFERENCES cards(id, org_id),
     FOREIGN KEY (actor_id, org_id) REFERENCES users(id, org_id)
 );
 CREATE INDEX events_request_idx ON events (request_id, id);
 CREATE INDEX events_card_idx    ON events (card_id, id);
+CREATE INDEX events_daily_note_idx ON events (daily_note_id, id);
 CREATE INDEX events_org_time_idx ON events (org_id, created_at DESC);
 
 -- ─────────────────────────────────────────────
@@ -564,6 +567,8 @@ CREATE TABLE daily_notes (
     confirmed_at   timestamptz,
     sent_at        timestamptz,
     created_at     timestamptz NOT NULL DEFAULT now(),
+    ai_original    jsonb NOT NULL DEFAULT '{}',  -- 마지막 AI 초안. 교사 수정 때 유지, 미수정 초안 재생성 때 갱신(v0.9)
+    CONSTRAINT daily_notes_id_org_key UNIQUE (id, org_id),
     FOREIGN KEY (input_id, org_id, note_date) REFERENCES daily_note_inputs(id, org_id, note_date),
     FOREIGN KEY (child_id, org_id) REFERENCES children(id, org_id),
     FOREIGN KEY (confirmed_by, org_id) REFERENCES users(id, org_id),
@@ -571,6 +576,9 @@ CREATE TABLE daily_notes (
     CHECK (status <> 'sent' OR jsonb_array_length(open_checks) = 0),
     CHECK (status NOT IN ('ready', 'sent') OR (confirmed_by IS NOT NULL AND confirmed_at IS NOT NULL))
 );
+
+ALTER TABLE events ADD CONSTRAINT events_daily_note_org_fkey
+    FOREIGN KEY (daily_note_id, org_id) REFERENCES daily_notes(id, org_id);
 
 -- ─────────────────────────────────────────────
 -- 9. 서비스 안 알림
