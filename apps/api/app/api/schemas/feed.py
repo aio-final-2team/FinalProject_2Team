@@ -4,11 +4,18 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from fastapi import UploadFile
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.schemas.common import Page
 
 PhotoScope = Literal["family", "class", "org"]
+
+
+class PostUpload(BaseModel):
+    body: str = Field(min_length=1, max_length=2000)
+    files: list[UploadFile] = []
+    child_ids: str = "[]"
 
 
 class PhotoView(BaseModel):

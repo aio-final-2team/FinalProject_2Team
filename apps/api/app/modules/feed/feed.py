@@ -37,39 +37,56 @@ def context(connection, user, lane, target_id):
     return children
 
 
-def checked(connection, user, post_id, *, lock=False, include_hidden=False):
+def checked(connection, user, post_id, *, lock=False, include_hidden=False, deleting=False):
     row = connection.execute(text("SELECT * FROM feed_posts WHERE id=:id AND org_id=:org" +
                                   (" FOR UPDATE" if lock else "")), {"id": post_id, "org": user.org_id}).mappings().one_or_none()
     if row is None:
         deny(user, post_id, 404)
     post = dict(row)
-    children = context(connection, user, post["lane"], post["classroom_id"] or post["org_id"])
+    children = {} if deleting and post["author_id"] == user.id else context(
+        connection, user, post["lane"], post["classroom_id"] or post["org_id"])
     if post["deleted_at"] or (post["status"] == "hidden" and not include_hidden):
         raise ApiError(404, "NOT_FOUND")
     return post, children
 
 
-def photos(connection, org_id, post_id):
+def photos(connection, org_id, post_ids):
     return [dict(p) for p in connection.execute(text("""
         SELECT p.*, ARRAY(SELECT t.child_id FROM feed_photo_children t
                          WHERE t.photo_id=p.id AND t.org_id=p.org_id ORDER BY t.child_id) AS child_ids
-        FROM feed_photos p WHERE p.org_id=:org AND p.post_id=:post ORDER BY p.created_at,p.id
-    """), {"org": org_id, "post": post_id}).mappings()]
+        FROM feed_photos p WHERE p.org_id=:org AND p.post_id = ANY(:ids) ORDER BY p.created_at,p.id
+    """), {"org": org_id, "ids": post_ids}).mappings()]
 
 
-def posts(connection, user, lane, target_id):
+def posts(connection, user, lane, target_id, *, page=None, size=None, sort="-created_at"):
+    order = "DESC" if sort.startswith("-") else "ASC"
+    # PostgreSQL OFFSET은 bigint예요. 그보다 큰 페이지도 기존처럼 빈 목록으로 답해요.
+    offset = min((page - 1) * size, 2**63 - 1) if page is not None else 0
     return [dict(p) for p in connection.execute(text("""
         SELECT * FROM feed_posts WHERE org_id=:org AND lane=:lane AND status='published' AND deleted_at IS NULL
           AND (:lane='org' OR classroom_id=:target)
-    """), {"org": user.org_id, "lane": lane, "target": target_id}).mappings()]
+    """ + f" ORDER BY created_at {order}, id {order}" + (" LIMIT :size OFFSET :offset" if page is not None else "")),
+        {"org": user.org_id, "lane": lane, "target": target_id, "size": size, "offset": offset}).mappings()]
+
+
+def check_access(user, lane, target_id):
+    with transaction() as connection:
+        context(connection, user, lane, target_id)
 
 
 def listing(user, lane, target_id, page, size, sort):
     with transaction() as connection:
         children = context(connection, user, lane, target_id)
-        items = [rules.post_view(user, p, photos(connection, user.org_id, p["id"]), children)
-                 for p in posts(connection, user, lane, target_id)]
-        return rules.page(items, page, size, sort)
+        total = connection.scalar(text("""
+            SELECT count(*) FROM feed_posts WHERE org_id=:org AND lane=:lane AND status='published'
+              AND deleted_at IS NULL AND (:lane='org' OR classroom_id=:target)
+        """), {"org": user.org_id, "lane": lane, "target": target_id})
+        rows = posts(connection, user, lane, target_id, page=page, size=size, sort=sort)
+        grouped = {p["id"]: [] for p in rows}
+        for photo in photos(connection, user.org_id, list(grouped)):
+            grouped[photo["post_id"]].append(photo)
+        return {"items": [rules.post_view(user, p, grouped[p["id"]], children) for p in rows],
+                "total": total, "page": page, "size": size}
 
 
 def create(user, lane, target_id, body, uploads):
@@ -97,7 +114,7 @@ def create(user, lane, target_id, body, uploads):
                         INSERT INTO feed_photo_children(photo_id,org_id,child_id) VALUES (:photo,:org,:child)
                     """), {"photo": photo_id, "org": user.org_id, "child": child_id})
             record(connection, user, "feed_post_created", post_id=str(post["id"]))
-            result = rules.post_view(user, post, photos(connection, user.org_id, post["id"]), children)
+            result = rules.post_view(user, post, photos(connection, user.org_id, [post["id"]]), children)
         return result
     except Exception:
         for name in saved:
@@ -108,7 +125,7 @@ def create(user, lane, target_id, body, uploads):
 def detail(user, post_id):
     with transaction() as connection:
         post, children = checked(connection, user, post_id)
-        return rules.post_view(user, post, photos(connection, user.org_id, post_id), children)
+        return rules.post_view(user, post, photos(connection, user.org_id, [post_id]), children)
 
 
 def album(user, lane, target_id, child_id, page, size, sort):
@@ -119,7 +136,7 @@ def album(user, lane, target_id, child_id, page, size, sort):
             deny(user, child_id)
         items = []
         for post in posts(connection, user, lane, target_id):
-            items.extend(rules.photo_view(p) for p in photos(connection, user.org_id, post["id"])
+            items.extend(rules.photo_view(p) for p in photos(connection, user.org_id, [post["id"]])
                          if (child_id is None or child_id in p["child_ids"]) and rules.visible(user, post, p, children))
         return rules.page(items, page, size, sort)
 
@@ -131,7 +148,7 @@ def file(user, photo_id):
         if row is None:
             deny(user, photo_id, 404)
         post, children = checked(connection, user, row["post_id"])
-        photo = next(p for p in photos(connection, user.org_id, post["id"]) if p["id"] == photo_id)
+        photo = next(p for p in photos(connection, user.org_id, [post["id"]]) if p["id"] == photo_id)
         if not rules.visible(user, post, photo, children):
             raise ApiError(404, "NOT_FOUND")
         return photo
@@ -139,14 +156,16 @@ def file(user, photo_id):
 
 def delete(user, post_id):
     with transaction() as connection:
-        post, _ = checked(connection, user, post_id, lock=True, include_hidden=True)
+        post, _ = checked(connection, user, post_id, lock=True, include_hidden=True, deleting=True)
         if post["author_id"] != user.id:
             deny(user, post_id)
-        for photo in photos(connection, user.org_id, post_id):
-            media.remove(photo["storage_path"])
+        paths = [p["storage_path"] for p in photos(connection, user.org_id, [post_id])]
         connection.execute(text("UPDATE feed_posts SET deleted_at=now() WHERE id=:id AND org_id=:org"),
                            {"id": post_id, "org": user.org_id})
         record(connection, user, "feed_post_deleted", post_id=str(post_id))
+    # DB 커밋 실패 때는 파일을 보존해요. 디스크 정리 실패는 고아 파일만 남겨요.
+    for name in paths:
+        media.remove(name)
 
 
 def hide(user, post_id):
@@ -159,12 +178,13 @@ def hide(user, post_id):
                                {"id": post_id, "org": user.org_id})
             post["status"] = "hidden"
             record(connection, user, "feed_post_hidden", post_id=str(post_id))
-        return rules.post_view(user, post, photos(connection, user.org_id, post_id), children)
+        return rules.post_view(user, post, photos(connection, user.org_id, [post_id]), children)
 
 
 def photo_scope(user, child_id, value=None):
     with transaction() as connection:
-        child = connection.execute(text("SELECT * FROM children WHERE id=:id AND org_id=:org FOR UPDATE"),
+        child = connection.execute(text("SELECT * FROM children WHERE id=:id AND org_id=:org" +
+                                        (" FOR NO KEY UPDATE" if value is not None else "")),
                                    {"id": child_id, "org": user.org_id}).mappings().one_or_none()
         if child is None:
             deny(user, child_id, 404)

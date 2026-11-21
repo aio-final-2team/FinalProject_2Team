@@ -27,11 +27,12 @@ def context(user, lane, target_id):
     return children
 
 
-def checked(user, post_id, *, include_hidden=False):
+def checked(user, post_id, *, include_hidden=False, deleting=False):
     post = store.state().feed_posts.get(post_id)
     if post is None or post["org_id"] != user.org_id:
         deny(user, post_id, 404)
-    children = context(user, post["lane"], post["classroom_id"] or post["org_id"])
+    children = {} if deleting and post["author_id"] == user.id else context(
+        user, post["lane"], post["classroom_id"] or post["org_id"])
     if post["deleted_at"] or (post["status"] == "hidden" and not include_hidden):
         raise ApiError(404, "NOT_FOUND")
     return post, children
@@ -39,6 +40,11 @@ def checked(user, post_id, *, include_hidden=False):
 
 def photos(post_id):
     return [p for p in store.state().feed_photos.values() if p["post_id"] == post_id]
+
+
+def check_access(user, lane, target_id):
+    with store._lock:
+        context(user, lane, target_id)
 
 
 def listing(user, lane, target_id, page, size, sort):
@@ -62,7 +68,7 @@ def create(user, lane, target_id, body, uploads):
         try:
             for data, metadata, tags in uploads:
                 added.append({"id": uuid4(), "post_id": post["id"], "org_id": user.org_id,
-                              **metadata, "storage_path": media.save(data, metadata), "child_ids": tags,
+                              **metadata, "storage_path": media.save(data, metadata, mock=True), "child_ids": tags,
                               "created_at": store.now()})
         except Exception:
             for photo in added:
@@ -109,13 +115,14 @@ def file(user, photo_id):
 
 def delete(user, post_id):
     with store._lock:
-        post, _ = checked(user, post_id, include_hidden=True)
+        post, _ = checked(user, post_id, include_hidden=True, deleting=True)
         if post["author_id"] != user.id:
             deny(user, post_id)
-        for photo in photos(post_id):
-            media.remove(photo["storage_path"])
-        post["deleted_at"] = store.now()
+        paths = [p["storage_path"] for p in photos(post_id)]
         record(user, "feed_post_deleted", post_id=str(post_id))
+        post["deleted_at"] = store.now()
+    for name in paths:
+        media.remove(name)
 
 
 def hide(user, post_id):

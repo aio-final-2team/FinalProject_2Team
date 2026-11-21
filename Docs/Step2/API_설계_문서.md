@@ -2,16 +2,16 @@
 
 **팀 확인 전 초안 — T46·T48와 [제안] v0.7 피드·앨범**
 
-문서 버전 v0.7 | 작성 상태: [제안] T54 피드·앨범을 모의·DB와 대조해요
+문서 버전 v0.7.1 | 작성 상태: [제안] T54 피드·앨범을 모의·DB와 대조해요
 
 | 항목 | 내용 |
 | --- | --- |
 | 작업 | T13 API 설계 문서(FastAPI·Function Calling 도구 계약)·모의 API (#170) |
 | 작성 | 태웅 · 검토 인혜 |
-| 기준 문서 | 기획서 1117판 3장 FR-01~FR-13 · T04 흐름·권한 명세(PR #234) · [입출력 계약표](입출력_계약표_초안.md) v0.17(T46 리뷰·T48 팀 확인 전 초안) · [DB 스키마 설계서](DB_스키마_설계서.md) v0.16(0010 피드·앨범 포함) |
+| 기준 문서 | 기획서 1117판 3장 FR-01~FR-13 · T04 흐름·권한 명세(PR #234) · [입출력 계약표](입출력_계약표_초안.md) v0.18(T46·T48·T54 팀 확인 전 초안) · [DB 스키마 설계서](DB_스키마_설계서.md) v0.16(0010 피드·앨범 포함) |
 | 따른 가이드 | 강사님 'API 설계 문서 작성법' 11/18 수정본. 1~6장이 가이드의 '문서에 들어가는 여섯 가지' 순서다 |
 
-이 문서는 T10 계약표에서 합의한 필드·권한·오류를 엔드포인트와 도구 단위로 펼친 것이다. 계약표와 이 문서가 다르면 계약표를 먼저 고치고 두 문서의 판을 같이 올린다. 구현이 시작되면 FastAPI의 `/docs`와 대조해 판을 올린다(계약표 1.1 규칙 1). 이 판(v0.7)은 API 49개 전부의 상세 명세, 화면이 쓰는 조회 응답 칸(3.7), 도구 전체의 실패 처리, 업무 흐름(5.7), 실행 규칙과 대표 사례 대조(6.7)를 담는다. 모의 API와 생성물 `contracts/openapi.yaml`을 붙였으며, 쓰는 법과 데모 계정은 [모의 API 안내](../../contracts/mock_api/README.md)에 있다.
+이 문서는 T10 계약표에서 합의한 필드·권한·오류를 엔드포인트와 도구 단위로 펼친 것이다. 계약표와 이 문서가 다르면 계약표를 먼저 고치고 두 문서의 판을 같이 올린다. 구현이 시작되면 FastAPI의 `/docs`와 대조해 판을 올린다(계약표 1.1 규칙 1). 이 판(v0.7.1)은 API 49개 전부의 상세 명세, 화면이 쓰는 조회 응답 칸(3.7), 도구 전체의 실패 처리, 업무 흐름(5.7), 실행 규칙과 대표 사례 대조(6.7)를 담는다. 모의 API와 생성물 `contracts/openapi.yaml`을 붙였으며, 쓰는 법과 데모 계정은 [모의 API 안내](../../contracts/mock_api/README.md)에 있다.
 
 **목차.** 1. 공통 정보와 인증 · 2. API 목록 · 3. 엔드포인트 상세 명세 · 4. 검증과 권한 규칙 · 5. Tool 정의와 호출 흐름 · 6. 실행 규칙 · 7. API 필드와 DB 컬럼 대응 · 8. 설정값 · 부록 A. 예시 ID · 변경 이력
 
@@ -146,18 +146,16 @@
 | 31 | GET | `/api/v1/memories` | 담임(본인) | 내 AI 기억 보기 | 200 | FR-06 | 3.25 |
 | 32 | DELETE | `/api/v1/memories/{memory_id}` | 담임(본인) | 내 AI 기억 지우기 | 204 | FR-06 | 3.25 |
 | 33 | POST | `/api/v1/daily-notes/drafts/{input_id}/regenerate` | 담임(우리 반) | 미확인 알림장 다시 만들기 | 202 | FR-10 | 3.26 |
-
 | 34 | GET | `/api/v1/children/{child_id}/pickup-guardians` | 자기 아이 보호자·담임·원장 | 등록 인계자 목록(팀 확인 전 초안) | 200 | FR-16 | 3.27 |
 | 35 | GET | `/api/v1/care-requests` | 담임·원장 | 투약·귀가 교직원 목록(팀 확인 전 초안) | 200 | FR-16 | 3.27 |
 | 36 | POST | `/api/v1/requests/{request_id}/care-decisions` | 담임·원장 | 투약·인계 실제 확인·완료(팀 확인 전 초안) | 200 | FR-16 | 3.27 |
 | 37 | POST | `/api/v1/consultations/{booking_id}/delay` | 그 반 예약 담임 | 상담 예상 종료 기록([제안] v0.6) | 200 | FR-17 | 3.28 |
-
 | 38 | GET | `/api/v1/classrooms/{classroom_id}/posts` | 그 반 아이 보호자 | 반 칸 글 목록([제안] v0.7) | 200 | FR-22·AC-06 | 3.29 |
 | 39 | POST | `/api/v1/classrooms/{classroom_id}/posts` | 그 반 아이 보호자 | 반 칸 글·사진 올리기([제안] v0.7) | 201 | FR-22·AC-06 | 3.29 |
 | 40 | GET | `/api/v1/organizations/{org_id}/posts` | 그 기관 보호자·교직원 | 원 칸 글 목록([제안] v0.7) | 200 | FR-22·AC-06 | 3.29 |
 | 41 | POST | `/api/v1/organizations/{org_id}/posts` | 그 기관 보호자·교직원 | 원 칸 글·사진 올리기([제안] v0.7) | 201 | FR-22·AC-06 | 3.29 |
 | 42 | GET | `/api/v1/posts/{post_id}` | 칸 권한 | 글 상세·보이는 사진([제안] v0.7) | 200 | FR-22·AC-06 | 3.29 |
-| 43 | DELETE | `/api/v1/posts/{post_id}` | 작성자·칸 권한 | 글·사진 파일 지우기([제안] v0.7) | 204 | FR-22·AC-06 | 3.29 |
+| 43 | DELETE | `/api/v1/posts/{post_id}` | 같은 기관 작성자(반 이동·퇴소 뒤에도) | 글·사진 파일 지우기([제안] v0.7) | 204 | FR-22·AC-06 | 3.29 |
 | 44 | PATCH | `/api/v1/posts/{post_id}` | 그 기관 원장·원 칸 | 원 칸 글 숨기기([제안] v0.7) | 200 | FR-22·AC-06 | 3.29 |
 | 45 | GET | `/api/v1/classrooms/{classroom_id}/albums` | 그 반 아이 보호자 | 반 칸 앨범([제안] v0.7) | 200 | FR-22·AC-06 | 3.29 |
 | 46 | GET | `/api/v1/organizations/{org_id}/albums` | 그 기관 보호자·교직원 | 원 칸 앨범([제안] v0.7) | 200 | FR-22·AC-06 | 3.29 |
@@ -1334,6 +1332,7 @@ confirm에 pickup_snapshot·version·care_decision, 추가 대화의 returned에
 
 팀 확인 전 제안이에요. API 38~49는 위 표의 경로를 쓰며 `/api/v1` 아래예요.
 T50이 붙기 전에는 올린 사람이 아이를 직접 표시해요.
+T50 전에는 올린 사람이 아이를 빠뜨리면 그 사진은 칸 규칙만 따라요. 화면에서 아이 표시를 안내해 주세요.
 
 | 칸 | 내용 |
 | --- | --- |
@@ -1342,8 +1341,8 @@ T50이 붙기 전에는 올린 사람이 아이를 직접 표시해요.
 | ③ 경로·쿼리 | 기관·반·글·사진·아이 ID는 UUID예요. 목록은 기존 page=1·size=20(최대 100)·sort=-created_at, 오름차순은 created_at이에요. 동률은 같은 방향의 id로 정렬해요. 앨범 child_id는 보호자 자기 아이만 고를 수 있어요 |
 | ④ 요청 본문 | 글 생성: body 1~2,000자(공백만은 안 돼요), files 0~10장, child_ids는 파일 순서별 아이 UUID 배열들의 JSON 문자열이에요. 예: [["아이 UUID"],[]]. 기본 []는 모든 사진의 태그 없음이에요. 숨김은 {"status":"hidden"}, 범위 변경은 {"photo_scope":"family"}(family·class·org 중 하나)예요 |
 | ⑤ 검증·권한 | 먼저 칸 권한, 그다음 사진 공개 범위를 검사해요. class 칸은 그 반 아이 보호자만 읽고 써요. 교직원·다른 반 보호자는 목록·상세·앨범·파일 모두 403 FORBIDDEN과 permission_denied 이력이에요. org 칸은 같은 기관 보호자·교직원 모두 읽고 써요. 다른 기관·없는 자원은 404예요. 다른 아이 범위 조회·변경, 남의 글 삭제·원장 외 숨김도 403이에요 |
-| ⑥ 정상 응답 | 글 생성 201·상세/숨김 200은 {post: Post}, 목록·앨범은 {items,total,page,size}예요. 범위 조회·변경 200은 {child_id,photo_scope}, 삭제는 204예요. 파일은 검사한 형식의 바이트와 Cache-Control: private, no-store를 줘요 |
-| ⑦ 오류 응답 | 공통 형식으로 401 UNAUTHENTICATED, 403 FORBIDDEN, 404 NOT_FOUND, 422 VALIDATION_FAILED예요. 태그가 다른 반/원 아이이거나 중복·배열 수 불일치여도 422예요 |
+| ⑥ 정상 응답 | 글 생성 201·상세/숨김 200은 {post: Post}, 목록·앨범은 {items,total,page,size}예요. 범위 조회·변경 200은 {child_id,photo_scope}, 삭제는 204예요. 파일은 검사한 형식의 바이트와 Cache-Control: private, no-store·X-Content-Type-Options: nosniff·Content-Disposition: inline을 줘요 |
+| ⑦ 오류 응답 | 공통 형식으로 401 UNAUTHENTICATED, 403 FORBIDDEN, 404 NOT_FOUND, 422 VALIDATION_FAILED예요. 태그가 다른 반/원 아이이거나 중복·배열 수 불일치여도 422예요. 업로드 몸통 51MiB 초과는 413 VALIDATION_FAILED예요 |
 | ⑧ 저장·이력 | feed_posts·feed_photos·feed_photo_children, children.photo_scope(0010)를 써요. 생성·삭제·숨김·범위 변경은 events의 feed_post_created·feed_post_deleted·feed_post_hidden·photo_scope_changed에 trace_id·대상 ID를 남겨요. 새 알림은 만들지 않아요 |
 
 Post는 id·lane(class/org)·classroom_id(org 칸은 null)·author_id·body·status(published/hidden)·created_at·photos를 줘요.
@@ -1358,9 +1357,12 @@ org는 반·원 칸까지 허용해요. 보호자가 여럿이면 마지막 변�
 매번 현재 관계·공개 범위를 읽으므로 바꾸면 지난 사진에도 바로 적용돼요.
 
 사진은 가상 자료만 써요. jpeg·png·webp를 확장자·전송 MIME 대신 첫 바이트로 검사하고, 장당 5MiB(5,242,880바이트)까지 받아요.
+칸 권한을 몸통 읽기 전에 검사해요. Content-Length와 읽는 중 누적 크기는 10장×5MiB + 1MiB(51MiB)까지예요. 파일 10개·일반 필드 2개를 넘기면 422예요.
 MEDIA_DIR의 UUID 파일로 저장하고 DB에는 경로·형식·크기·sha256만 둬요. 생성 실패 때 저장한 파일도 정리해요.
+mock은 MEDIA_DIR/mock 아래를 쓰고 초기화 때 그 폴더만 비워요. DB 파일은 그대로 둬요.
 원장은 원 칸 글만 hidden으로 숨겨요. 숨긴 글·사진은 모든 일반 조회·파일에서 404이고 목록에서도 빠져요.
-작성자는 숨긴 글도 삭제할 수 있어요. 삭제는 deleted_at을 남기고 사진 파일은 디스크에서 지워요.
+같은 기관 작성자는 반 이동·퇴소로 칸 권한을 잃어도 숨긴 글까지 삭제할 수 있어요.
+삭제는 deleted_at·이력을 커밋한 뒤 사진 파일을 디스크에서 지워요. 커밋 실패 때는 글·사진·파일을 보존해요.
 데모는 두 모드가 같은 UUID로 반 글 2개·원 글 2개·2×2 단색 PNG 5장을 써요.
 
 ## 4. 검증과 권한 규칙
@@ -1759,6 +1761,7 @@ DB 워커에서 주기 실행하고 mock은 HTTP 입력 직후 같은 점검을 
 | 넘긴 이유(`ai_timeout`·`ai_failed`·`card_missing`, 분류 결과의 `handoff_reason`) | `events.detail->>'handoff_reason'` | 칸을 따로 두지 않고 이력에 넣음 |
 | `notification.kind` · `read_at` | `notifications.kind` · `read_at` | 같음 |
 | `completed_unconfirmed` 등 원장 현황 숫자 | `director_overview` 뷰 | 뷰의 칸 이름 그대로 |
+| 피드 글·사진·아이 표시·공개 범위([제안]) | `feed_posts` · `feed_photos` · `feed_photo_children` · `children.photo_scope` | 3.29. 사진 바이트는 파일에 두고 file_url은 인증 API 주소로 계산해요 |
 | `trace_id` · `X-Request-ID` | `events.detail->>'trace_id'` | 칸을 따로 두지 않고 이력 `detail`에 넣음 |
 
 ## 8. 설정값
@@ -1777,6 +1780,7 @@ MVP 설정값은 서버 설정(`.env`)으로 관리한다. `.env.example`에는 
 | `HOLIDAYS` | `""`(빈 문자열, 공휴일 목록 없음) | YYYY-MM-DD를 쉼표로 나열. 기한·교직원 알림 시각에 적용 |
 | `WORK_HOURS` | `09:00-18:00` | 교직원 근무 시간. HH:MM-HH:MM, 시작 < 끝(같은 날). 시작 포함·끝 제외 |
 | `IMMEDIATE_RISK_CATEGORIES` | `child_safety` | 근무 밖에도 즉시 보내는 긴급 위험 종류. child_safety·staff_attack·legal_external·privacy_leak 중 쉼표 목록 |
+| `MEDIA_DIR` | `var/media` | [제안] 피드 파일 저장 폴더. mock은 mock/만 초기화하고 DB 파일은 보존해요 |
 | `MOCK_STREAM_DELAY_MS` | `300` | 모의 SSE 이벤트 사이 간격(밀리초). 음수는 0으로 처리 |
 | `LLM_MODEL_DEFAULT` | `gpt-6-luna` | 역할별 모델을 비워 두면 쓰는 모델(D27) |
 | `LLM_MODEL_SUPERVISOR` | (비움) | 감독 AI 모델 |
@@ -1812,6 +1816,8 @@ MVP 설정값은 서버 설정(`.env`)으로 관리한다. `.env.example`에는 
 | `R-DEMO-08` · `R-DEMO-10` | 하늘 문의 "기침해요" · 노을 귀가 "오늘 할머니가 데리러 가요"(가상) | `requests` | `…000000000708` · `…00000000070a` |
 | `K-DEMO-01` · `K-DEMO-02` | 상담 후보 카드 · 민원 회신 카드 | `cards` | `…000000000801` · `…000000000802` |
 
+피드 글 `e01`~`e04`(반 2·원 2)는 `feed_posts`의 `…000000000e01`~`…000000000e04`, 사진 `f01`~`f05`는 `feed_photos`의 `…000000000f01`~`…000000000f05`예요([제안] 가상 단색 PNG).
+
 별빛반(`…0101`, 만 4세, teacher01)은 기존 하늘·노을과 PR #262 `roster_c4.json` 명단 18명을 합쳐 20명이다. 명단의 `C4-NN`은 `demo_id("54NN")`으로 옮겼고, 추가한 아이에게는 보호자가 없다. 햇님반(`…0102`, 만 5세, teacher02)은 바다 1명이다. 반 이름·교사 표시 이름은 develop의 모의 시드와 같고, 이름·순서는 `apps/api/app/mock/seed.py`에서 볼 수 있다.
 
 알림장 연결용 두 요청은 모의 저장소 초기화 날짜에 접수 상태로 넣고, 문의·귀가 처리 카드는 아직 만들지 않는다.
@@ -1835,3 +1841,4 @@ MVP 설정값은 서버 설정(`.env`)으로 관리한다. `.env.example`에는 
 | v0.6 초안 | 2026-11-20 | 팀 확인 전 T46 투약·귀가 등록·인계자 조회·교직원 확인/완료(API 34~36), 알림장 request_status·접수/확인 알림을 더했어요. | 태웅 |
 | v0.6 [제안] | 2026-11-21 | T46 미등록 인계자 경고·투약 누락·보호자 추가 글 재확인과 version·즉시 귀가 알림·교직원 목록 sort를 맞췄어요. FR-16·AC-09를 따르며 head 0009는 같아요. | 태웅 |
 | v0.7 [제안] | 2026-11-21 | T54 반·원 피드·앨범·사진 범위 API 38~49와 0010·가상 시드를 더했어요. 반 칸 교직원 거부·읽을 때 사진 공개 범위·파일 삭제를 두 모드로 검사해요. | 태웅 |
+| v0.7.1 [제안] | 2026-11-21 | T54 업로드 413·권한 검사 순서·커밋 뒤 파일 삭제·작성자 삭제 권한·mock 파일 초기화를 맞추고 표·필드 대응·설정·예시 ID를 보완했어요. T10 v0.18을 가리켜요. | 태웅 |

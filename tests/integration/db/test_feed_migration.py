@@ -1,5 +1,7 @@
 """0010의 기존 아이 기본값·기관 FK·CHECK·바로 앞 판 왕복을 검사해요."""
 
+from dataclasses import replace
+
 import pytest
 from alembic import command
 from sqlalchemy import text
@@ -58,3 +60,47 @@ def test_feed_revision_backfill_constraints_and_previous_revision_roundtrip(db_e
     command.upgrade(alembic_config, "head")
     with db_engine.connect() as connection:
         assert dict(catalog(connection)) == HEAD_CATALOG
+
+
+def test_seed_upgrade_matches_fresh_db_and_mock_and_restores_missing_files(db_engine, alembic_config, monkeypatch, tmp_path):
+    from app.core import media, users
+    from app.mock import feed as mock_feed, store
+    from app.modules.feed import feed as db_feed
+
+    monkeypatch.setattr(media, "settings", replace(media.settings, media_dir=str(tmp_path)))
+    store.reset()
+    mock_scopes = {c: store.state().children[c].photo_scope for c in seed.PHOTO_SCOPES}
+    mock_total = mock_feed.album(store.get_user(seed.DIRECTOR), "org", seed.ORG, None, 1, 100, "-created_at")["total"]
+
+    def snapshot():
+        with db_engine.connect() as connection:
+            scopes = dict(connection.execute(text("SELECT id,photo_scope FROM children WHERE id=ANY(:ids)"),
+                                             {"ids": list(seed.PHOTO_SCOPES)}).all())
+        total = db_feed.album(users.get_user(seed.DIRECTOR), "org", seed.ORG, None, 1, 100, "-created_at")["total"]
+        return scopes, total
+
+    command.upgrade(alembic_config, "head")
+    with db_engine.begin() as connection:
+        connection.execute(text("TRUNCATE organizations CASCADE"))
+        seed_demo(connection)
+    assert snapshot() == (mock_scopes, mock_total)
+    command.downgrade(alembic_config, "0009")
+    with db_engine.begin() as connection:
+        seed_demo(connection)
+    command.upgrade(alembic_config, "head")
+    with db_engine.begin() as connection:
+        seed_demo(connection)
+    assert snapshot() == (mock_scopes, mock_total)
+    photo_path = media.path(f"{seed.FEED_PHOTOS[0][0]}.png")
+    photo_path.unlink()
+    with db_engine.begin() as connection:
+        seed_demo(connection)
+    assert photo_path.read_bytes() == seed.feed_png()
+    # 삭제 표시가 있는 글의 사진은 파일이 없어도 복원하지 않아요.
+    with db_engine.begin() as connection:
+        connection.execute(text("UPDATE feed_posts SET deleted_at=now() WHERE id=:id"),
+                           {"id": seed.FEED_PHOTOS[0][1]})
+    photo_path.unlink()
+    with db_engine.begin() as connection:
+        seed_demo(connection)
+    assert not photo_path.exists()

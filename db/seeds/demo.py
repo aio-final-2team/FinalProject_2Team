@@ -111,11 +111,18 @@ def seed_demo(connection, *, refresh_note_requests=False):
 def seed_feed(connection):
     from app.core import media
 
+    first_posts = False
     for post in seed.FEED_POSTS:
-        connection.execute(text("""
+        inserted = connection.scalar(text("""
             INSERT INTO feed_posts(id,org_id,lane,classroom_id,author_id,body,created_at)
-            VALUES (:id,:org,:lane,:classroom_id,:author_id,:body,:now) ON CONFLICT DO NOTHING
+            VALUES (:id,:org,:lane,:classroom_id,:author_id,:body,:now) ON CONFLICT DO NOTHING RETURNING id
         """), {**post, "org": seed.ORG, "now": seed.FEED_CREATED_AT})
+        first_posts = first_posts or inserted is not None
+    if first_posts:
+        # 0009 시드→0010에서도 새 DB와 같게, 이후 가족이 바꾼 값은 보존해요.
+        for child_id, scope in seed.PHOTO_SCOPES.items():
+            connection.execute(text("UPDATE children SET photo_scope=:scope WHERE id=:id AND org_id=:org"),
+                               {"id": child_id, "org": seed.ORG, "scope": scope})
     png = seed.feed_png()
     metadata = media.inspect(png)
     for photo_id, post_id, tags in seed.FEED_PHOTOS:
@@ -128,11 +135,16 @@ def seed_feed(connection):
         """), {**metadata, "id": photo_id, "org": seed.ORG, "post": post_id, "path": f"{photo_id}.png",
                "now": seed.FEED_CREATED_AT})
         if inserted:
-            media.save(png, metadata, file_id=photo_id)
             for child_id in tags:
                 connection.execute(text("""
                     INSERT INTO feed_photo_children(org_id,photo_id,child_id) VALUES (:org,:photo,:child)
                 """), {"org": seed.ORG, "photo": photo_id, "child": child_id})
+        active = connection.scalar(text("""
+            SELECT p.storage_path FROM feed_photos p JOIN feed_posts f ON (f.id,f.org_id)=(p.post_id,p.org_id)
+            WHERE p.id=:id AND p.org_id=:org AND f.deleted_at IS NULL AND p.sha256=:sha256
+        """), {"id": photo_id, "org": seed.ORG, "sha256": metadata["sha256"]})
+        if active and not media.path(active).is_file():
+            media.save(png, metadata, file_id=photo_id)
 
 
 if __name__ == "__main__":

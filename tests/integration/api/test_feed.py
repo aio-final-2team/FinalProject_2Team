@@ -1,7 +1,10 @@
 """[제안] T54·AC-06: 같은 HTTP 계약을 mock·임시 PostgreSQL에서 검사해요."""
 
 import json
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
+from pathlib import Path
+from threading import Barrier
 from uuid import UUID, uuid4
 
 import pytest
@@ -9,7 +12,7 @@ from sqlalchemy import text
 
 from app import backend
 from app.core import media
-from app.core.constants import MAX_PHOTO_BYTES
+from app.core.constants import MAX_PHOTO_BYTES, MAX_POST_BYTES
 from app.core.auth import issue_token
 from app.core.db import transaction
 from app.mock import feed, seed, store
@@ -93,6 +96,8 @@ def test_org_every_member_can_read_and_write_and_file_has_private_headers(client
         assert response.status_code == 200 and response.content == seed.feed_png()
         assert response.headers["cache-control"] == "private, no-store"
         assert response.headers["content-type"] == "image/png"
+        assert response.headers["x-content-type-options"] == "nosniff"
+        assert response.headers["content-disposition"] == "inline"
         assert "storage_path" not in json.dumps(own) and "sha256" not in json.dumps(own)
 
 
@@ -115,6 +120,7 @@ def test_foreign_organization_is_404_even_for_real_post_photo_child_and_class(cl
         err(client.get(path, headers=headers), 404, "NOT_FOUND")
     err(create(client, headers), 404, "NOT_FOUND")
     err(create(client, headers, root=ORG), 404, "NOT_FOUND")
+    err(create(client, headers, data=b"invalid"), 404, "NOT_FOUND")
     err(scope(client, headers, seed.CHILD, "org"), 404, "NOT_FOUND")
 
 
@@ -308,3 +314,150 @@ def test_partial_disk_write_failure_cleans_saved_files_and_rolls_back_post(clien
     err(create(client, parent, tags=[[], []]), 500, "INTERNAL_ERROR")
     assert set(tmp_path.iterdir()) == before
     assert client.get(CLASS + "/posts", headers=parent).json()["total"] == total
+
+
+def test_delete_and_file_reads_concurrently_twenty_rounds(client, parent):
+    with ThreadPoolExecutor(max_workers=5) as pool:
+        for _ in range(20):
+            own = post(client, parent, root=ORG)
+            barrier = Barrier(5)
+            def read():
+                barrier.wait(timeout=10)
+                result = client.get(own["photos"][0]["file_url"], headers=parent)
+                assert result.status_code in (200, 404), result.text
+                if result.status_code == 200:
+                    assert result.content == seed.feed_png()
+            def delete():
+                barrier.wait(timeout=10)
+                assert client.delete(f"{BASE}/posts/{own['id']}", headers=parent).status_code == 204
+            futures = [pool.submit(read) for _ in range(4)] + [pool.submit(delete)]
+            for future in futures:
+                future.result(timeout=30)
+
+
+@pytest.mark.parametrize("when", ["before-open", "after-open"])
+def test_file_removed_at_open_boundary_is_404_or_complete_response(client, parent, monkeypatch, when):
+    own = post(client, parent)
+    photo = backend.feed.file(backend.users.get_user(seed.PARENT), UUID(own["photos"][0]["id"]))
+    path = media.path(photo["storage_path"])
+    original = Path.open
+    def remove_at_open(self, *args, **kwargs):
+        if self == path and when == "before-open":
+            self.unlink()
+        handle = original(self, *args, **kwargs)
+        if self == path and when == "after-open":
+            self.unlink()
+        return handle
+    monkeypatch.setattr(Path, "open", remove_at_open)
+    response = client.get(own["photos"][0]["file_url"], headers=parent)
+    if when == "before-open":
+        err(response, 404, "NOT_FOUND")
+    else:
+        assert response.status_code == 200 and response.content == seed.feed_png()
+
+
+def test_failed_delete_audit_preserves_post_photo_and_file(client, parent, monkeypatch, feed_backend):
+    own = post(client, parent)
+    original = backend.feed.record
+    def fail_delete(*args, **kwargs):
+        if "feed_post_deleted" in args:
+            raise RuntimeError("[TEST] 이력 기록 실패")
+        return original(*args, **kwargs)
+    monkeypatch.setattr(backend.feed, "record", fail_delete)
+    err(client.delete(f"{BASE}/posts/{own['id']}", headers=parent), 500, "INTERNAL_ERROR")
+    assert client.get(f"{BASE}/posts/{own['id']}", headers=parent).json()["post"] == own
+    assert client.get(own["photos"][0]["file_url"], headers=parent).content == seed.feed_png()
+    assert not any(e["action"] == "feed_post_deleted" for e in audit(feed_backend))
+
+
+def test_disk_delete_failure_leaves_only_orphan_file_after_commit(client, parent, monkeypatch):
+    own = post(client, parent)
+    photo = backend.feed.file(backend.users.get_user(seed.PARENT), UUID(own["photos"][0]["id"]))
+    path = media.path(photo["storage_path"])
+    def fail_remove(name):
+        raise OSError("[TEST] 지우기 실패")
+    monkeypatch.setattr(media, "remove", fail_remove)
+    err(client.delete(f"{BASE}/posts/{own['id']}", headers=parent), 500, "INTERNAL_ERROR")
+    assert path.is_file()
+    err(client.get(f"{BASE}/posts/{own['id']}", headers=parent), 404, "NOT_FOUND")
+    err(client.get(own["photos"][0]["file_url"], headers=parent), 404, "NOT_FOUND")
+
+
+def test_author_can_delete_after_losing_class_access(client, parent, feed_backend):
+    own = post(client, parent)
+    photo = backend.feed.file(backend.users.get_user(seed.PARENT), UUID(own["photos"][0]["id"]))
+    path = media.path(photo["storage_path"])
+    unlink(feed_backend, seed.CHILD, seed.PARENT)
+    err(client.get(CLASS + "/posts", headers=parent), 403, "FORBIDDEN")
+    assert client.delete(f"{BASE}/posts/{own['id']}", headers=parent).status_code == 204
+    assert not path.exists()
+
+
+@pytest.mark.parametrize("actor", ["teacher", "parent_other"])
+def test_unauthorized_invalid_upload_does_not_read_body(client, actor, request, monkeypatch, feed_backend):
+    from starlette.requests import Request
+    headers = request.getfixturevalue(actor)
+    if actor == "parent_other":
+        unlink(feed_backend, seed.demo_id("503"), seed.PARENT_OTHER)
+    async def unread(self):
+        pytest.fail("[TEST] 권한 없는 업로드 몸통을 읽었어요")
+        yield b""
+    monkeypatch.setattr(Request, "stream", unread)
+    before = len(audit(feed_backend))
+    err(create(client, headers, data=b"invalid"), 403, "FORBIDDEN")
+    assert [e["action"] for e in audit(feed_backend)[before:]] == ["permission_denied"]
+
+
+@pytest.mark.parametrize("root", [CLASS, ORG])
+def test_large_content_length_is_413_without_reading_body(client, parent, monkeypatch, root):
+    from starlette.requests import Request
+    async def unread(self):
+        pytest.fail("[TEST] Content-Length가 큰 몸통을 읽었어요")
+        yield b""
+    monkeypatch.setattr(Request, "stream", unread)
+    err(client.post(root + "/posts", headers={**parent, "Content-Length": str(MAX_POST_BYTES + 1)},
+                    content=b"unused"), 413, "VALIDATION_FAILED")
+
+
+@pytest.mark.parametrize("length", [None, "1"])
+def test_streamed_body_limit_closes_temporary_files(client, parent, monkeypatch, length):
+    import asyncio
+    import httpx
+    import starlette.formparsers as parser
+    from app.main import app
+    opened = []
+    original = parser.SpooledTemporaryFile
+    def track(*args, **kwargs):
+        handle = original(*args, **kwargs)
+        opened.append(handle)
+        return handle
+    monkeypatch.setattr(parser, "SpooledTemporaryFile", track)
+    sent = 0
+    async def content():
+        nonlocal sent
+        yield (b'--test\r\nContent-Disposition: form-data; name="files"; filename="virtual.png"\r\n'
+               b'Content-Type: image/png\r\n\r\n' + seed.feed_png())
+        for _ in range(100):
+            sent += 1
+            yield b"x" * (1024 * 1024)
+        pytest.fail("[TEST] 상한 뒤 몸통도 전부 읽었어요")
+    async def send():
+        headers = {**parent, "Content-Type": "multipart/form-data; boundary=test"}
+        if length is not None:
+            headers["Content-Length"] = length
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as http:
+            return await http.post(CLASS + "/posts", headers=headers, content=content())
+    err(asyncio.run(send()), 413, "VALIDATION_FAILED")
+    assert sent == 51 and opened and all(handle.closed for handle in opened)
+
+
+def test_mock_reset_removes_only_mock_files(client, parent, feed_backend):
+    own = post(client, parent)
+    photo = backend.feed.file(backend.users.get_user(seed.PARENT), UUID(own["photos"][0]["id"]))
+    path = media.path(photo["storage_path"])
+    marker = media.save(seed.feed_png(), media.inspect(seed.feed_png()))
+    mock_orphan = media.save(seed.feed_png(), media.inspect(seed.feed_png()), mock=True)
+    store.reset()
+    assert media.path(marker).is_file() and not media.path(mock_orphan).exists()
+    assert path.exists() is (feed_backend == "db")
+    assert {p.name for p in media.path("mock").iterdir()} == {f"{p[0]}.png" for p in seed.FEED_PHOTOS}
