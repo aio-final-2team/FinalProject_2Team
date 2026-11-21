@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter
 
-from app.api.routes import auth, requests, cards, resources
+from app.api.routes import auth, requests, cards, resources, feed
 
 api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(auth.router)
@@ -10,3 +10,4 @@ api_router.include_router(requests.router)
 
 api_router.include_router(cards.router)
 api_router.include_router(resources.router)
+api_router.include_router(feed.router)

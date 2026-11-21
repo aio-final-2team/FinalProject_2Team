@@ -39,11 +39,15 @@ def seed_demo(connection, *, refresh_note_requests=False):
             INSERT INTO classroom_staff (classroom_id, org_id, user_id, valid_from, valid_to)
             VALUES (:classroom_id, :org_id, :user_id, :valid_from, :valid_to) ON CONFLICT DO NOTHING
         """), {**assignment, "org_id": seed.ORG})
+    has_feed = connection.scalar(text("SELECT to_regclass('public.feed_posts') IS NOT NULL"))
     for child in seed.CHILDREN:
-        connection.execute(text("""
-            INSERT INTO children (id, org_id, classroom_id, display_name, is_virtual)
-            VALUES (:id, :org_id, :classroom_id, :display_name, true) ON CONFLICT DO NOTHING
-        """), {**child, "org_id": seed.ORG})
+        # 옛 revision의 왕복 시험에서도 시드를 쓸 수 있게 새 칸은 0010부터 넣어요.
+        columns = ", photo_scope" if has_feed else ""
+        values = ", :photo_scope" if has_feed else ""
+        connection.execute(text(f"""
+            INSERT INTO children (id, org_id, classroom_id, display_name, is_virtual{columns})
+            VALUES (:id, :org_id, :classroom_id, :display_name, true{values}) ON CONFLICT DO NOTHING
+        """), {**child, "org_id": seed.ORG, "photo_scope": seed.PHOTO_SCOPES.get(child["id"], "family")})
         for guardian in child["guardian_ids"]:
             connection.execute(text("""
                 INSERT INTO child_guardians (child_id, org_id, user_id, relation)
@@ -99,6 +103,36 @@ def seed_demo(connection, *, refresh_note_requests=False):
             UPDATE requests SET created_at=:now
             WHERE org_id=:org AND id=:id
         """), refreshed)
+
+    if has_feed:
+        seed_feed(connection)
+
+
+def seed_feed(connection):
+    from app.core import media
+
+    for post in seed.FEED_POSTS:
+        connection.execute(text("""
+            INSERT INTO feed_posts(id,org_id,lane,classroom_id,author_id,body,created_at)
+            VALUES (:id,:org,:lane,:classroom_id,:author_id,:body,:now) ON CONFLICT DO NOTHING
+        """), {**post, "org": seed.ORG, "now": seed.FEED_CREATED_AT})
+    png = seed.feed_png()
+    metadata = media.inspect(png)
+    for photo_id, post_id, tags in seed.FEED_PHOTOS:
+        # 작성자가 지운 시드 글은 기동 때도 복원하지 않아요.
+        inserted = connection.scalar(text("""
+            INSERT INTO feed_photos(id,org_id,post_id,storage_path,media_type,size_bytes,sha256,created_at)
+            SELECT :id,:org,:post,:path,:media_type,:size_bytes,:sha256,:now
+            FROM feed_posts WHERE id=:post AND org_id=:org AND deleted_at IS NULL
+            ON CONFLICT DO NOTHING RETURNING id
+        """), {**metadata, "id": photo_id, "org": seed.ORG, "post": post_id, "path": f"{photo_id}.png",
+               "now": seed.FEED_CREATED_AT})
+        if inserted:
+            media.save(png, metadata, file_id=photo_id)
+            for child_id in tags:
+                connection.execute(text("""
+                    INSERT INTO feed_photo_children(org_id,photo_id,child_id) VALUES (:org,:photo,:child)
+                """), {"org": seed.ORG, "photo": photo_id, "child": child_id})
 
 
 if __name__ == "__main__":

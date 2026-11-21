@@ -16,6 +16,7 @@ log = logging.getLogger("yuchion.api")
 
 DEFAULT_MESSAGES = {
     "UNAUTHENTICATED": "다시 로그인해 주세요.",
+    "FORBIDDEN": "이 칸을 이용할 권한이 없어요.",
     "FORBIDDEN_ROLE": "이 일을 할 권한이 없어요.",
     "NOT_FOUND": "찾는 자료가 없어요.",
     "CARD_VERSION_CONFLICT": "다른 사람이 먼저 카드를 처리했어요. 새로고침해 주세요.",
