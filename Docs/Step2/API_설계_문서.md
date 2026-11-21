@@ -1,15 +1,15 @@
 # 유치온 API 설계 문서 (T13)
 
-문서 버전 v0.4 | 작성 상태: 알림장 아이별 메모·보호자 요청·확인 항목·반 아이 목록을 모의 API와 대조함
+문서 버전 v0.4.1 | 작성 상태: 알림장 아이별 메모·보호자 요청·확인 항목·반 아이 목록을 모의 API와 대조함
 
 | 항목 | 내용 |
 | --- | --- |
 | 작업 | T13 API 설계 문서(FastAPI·Function Calling 도구 계약)·모의 API (#170) |
 | 작성 | 태웅 · 검토 인혜 |
-| 기준 문서 | 기획서 1117판 3장 FR-01~FR-13 · T04 흐름·권한 명세(PR #234) · [입출력 계약표](입출력_계약표_초안.md) v0.9(T10 회의 11/18 합의 + 알림장 v0.4 반영) · [DB 스키마 설계서](DB_스키마_설계서.md) v0.8(0002 아이별 메모 저장 열 포함) |
+| 기준 문서 | 기획서 1117판 3장 FR-01~FR-13 · T04 흐름·권한 명세(PR #234) · [입출력 계약표](입출력_계약표_초안.md) v0.10(T10 회의 11/18 합의 + 알림장 v0.4.1 반영) · [DB 스키마 설계서](DB_스키마_설계서.md) v0.8(0002 아이별 메모 저장 열 포함) |
 | 따른 가이드 | 강사님 'API 설계 문서 작성법' 11/18 수정본. 1~6장이 가이드의 '문서에 들어가는 여섯 가지' 순서다 |
 
-이 문서는 T10 계약표에서 합의한 필드·권한·오류를 엔드포인트와 도구 단위로 펼친 것이다. 계약표와 이 문서가 다르면 계약표를 먼저 고치고 두 문서의 판을 같이 올린다. 구현이 시작되면 FastAPI의 `/docs`와 대조해 판을 올린다(계약표 1.1 규칙 1). 이 판(v0.4)은 API 30개 전부의 상세 명세, 화면이 쓰는 조회 응답 칸(3.7), 도구 전체의 실패 처리, 업무 흐름(5.7), 실행 규칙과 대표 사례 대조(6.7)를 담는다. 모의 API와 생성물 `contracts/openapi.yaml`을 붙였으며, 쓰는 법과 데모 계정은 [모의 API 안내](../../contracts/mock_api/README.md)에 있다.
+이 문서는 T10 계약표에서 합의한 필드·권한·오류를 엔드포인트와 도구 단위로 펼친 것이다. 계약표와 이 문서가 다르면 계약표를 먼저 고치고 두 문서의 판을 같이 올린다. 구현이 시작되면 FastAPI의 `/docs`와 대조해 판을 올린다(계약표 1.1 규칙 1). 이 판(v0.4.1)은 API 30개 전부의 상세 명세, 화면이 쓰는 조회 응답 칸(3.7), 도구 전체의 실패 처리, 업무 흐름(5.7), 실행 규칙과 대표 사례 대조(6.7)를 담는다. 모의 API와 생성물 `contracts/openapi.yaml`을 붙였으며, 쓰는 법과 데모 계정은 [모의 API 안내](../../contracts/mock_api/README.md)에 있다.
 
 **목차.** 1. 공통 정보와 인증 · 2. API 목록 · 3. 엔드포인트 상세 명세 · 4. 검증과 권한 규칙 · 5. Tool 정의와 호출 흐름 · 6. 실행 규칙 · 7. API 필드와 DB 컬럼 대응 · 8. 설정값 · 부록 A. 예시 ID · 변경 이력
 
@@ -519,7 +519,7 @@ T12 화면 지도(성주, PR #254)를 계약표 v0.7과 대조했을 때 화면�
 
 | 필드 | 값 | 설명 |
 | --- | --- | --- |
-| `items[].key` | `day`·`meal`·`medication`·`pickup`·`supplies`·`child` | 줄 종류. `child`는 아이별 메모를 풀어 쓴 줄이고 출처는 `teacher_input`이다. 메모가 없거나 공백뿐이면 이 줄이 없다. 문의는 기존 `day` 줄, 투약·귀가는 `medication`·`pickup` 줄로 잇고 출처는 `request`다. 투약·귀가 요청 등록·인계 확인은 T46에서 연다 |
+| `items[].key` | `day`·`meal`·`medication`·`pickup`·`supplies`·`child`·`inquiry` | 줄 종류. `child`는 아이별 메모를 풀어 쓴 줄이고 출처는 `teacher_input`이다. 메모가 없거나 공백뿐이면 이 줄이 없다. 보호자 문의는 반 공통 `day`와 다른 `inquiry` 줄, 투약·귀가는 `medication`·`pickup` 줄로 잇고 출처는 `request`다. 투약·귀가 요청 등록·인계 확인은 T46에서 연다 |
 | `items[].source.type` | `teacher_input`·`document`·`request` | 담임 입력(`daily_note_inputs`), 원 자료(식단·일정), 학부모 요청(문의·투약·귀가) |
 | `items[].source.document_id`·`document_title` | — | `document`일 때 |
 | `items[].source.request_id` | — | `request`일 때 |
@@ -1032,7 +1032,7 @@ HTTP/1.1 200 OK
 | --- | --- | --- | --- | --- | --- | --- |
 | `note_id` | 경로 | string(UUID) | 필수 | 불가 | 현재 담당 반 알림장 | 3.20 응답에서 받은 ID |
 | `content` | 본문 | object | 선택 | null 가능 | items[]의 key·label·value·source는 3.7; 빈 items도 허용 | 생략·null이면 내용 유지 |
-| `content.items[].key` | 본문 | string | 줄마다 필수 | 불가 | day·meal·medication·pickup·supplies·child | 줄 종류. child의 출처는 teacher_input만 허용 |
+| `content.items[].key` | 본문 | string | 줄마다 필수 | 불가 | day·meal·medication·pickup·supplies·child·inquiry | 줄 종류. child의 출처는 teacher_input, inquiry는 request만 허용 |
 | `content.items[].label`·`value` | 본문 | string | 줄마다 필수 | value만 빈 문자열 가능 | label은 1자 이상, value 길이 제한 없음 | 줄 이름과 내용 |
 | `content.items[].source` | 본문 | object | 줄마다 필수 | 불가 | document면 document_id·document_title, request면 request_id 필수 | 출처 종류는 teacher_input·document·request |
 | `resolved_checks[]` | 본문 | string[] | 선택 | 빈 목록 가능 | 기본 [], 현재 open_checks의 id만 | 해결한 확인 항목 |
@@ -1556,6 +1556,8 @@ MVP 설정값은 서버 설정(`.env`)으로 관리한다. `.env.example`에는 
 | `LLM_MODEL_MEMORY` | (비움) | 기억 AI 모델 |
 | `LLM_MODEL_CHECKER` | (비움) | 검사 AI 모델 |
 | `LLM_MODEL_CODE` | (비움) | 코드 AI 모델 |
+| `DAILY_NOTE_WRITER_TIMEOUT` | `300` | 초안 입구 함수의 대기 제한(초). 초과하면 failed이고 늦은 결과는 저장하지 않음 |
+| `NOTE_DRAFT_CONCURRENCY` | `5` | 그래프에 전달하는 아이별 초안 동시 실행 수. 지원하는 그래프에서 적용 |
 | `OPENAI_API_KEY` | (비움) | 모델 호출 키. 값은 팀 키 보관 위치에서 받음 |
 
 역할별 모델은 계약표 6장 ⑪을 따른다. 비워 두면 `LLM_MODEL_DEFAULT`를 쓰고, 역할별 교체는 다섯 에이전트 분리(T43) 뒤 앱 경유 평가에서 이득이 확인된 역할만 팀 결정으로 한다. 공휴일·근무 시간·즉시 알림 위험 종류는 `load_settings()`가 기동 때 읽는다. 날짜·시각 형식 오류, 시작 이하인 종료 시각, 빈 위험 종류 목록·허용 밖 위험 종류는 `ValueError`로 기동을 멈춘다. 기한과 알림은 6.5·6.6의 같은 설정을 사용한다.
@@ -1596,3 +1598,4 @@ MVP 설정값은 서버 설정(`.env`)으로 관리한다. `.env.example`에는 
 | v0.2 | 2026-11-18 | 나머지 API 상세 명세(3.8~3.23)를 모의 API·OpenAPI와 대조해 채움. 29개 상세 절 연결, 모의 API 안내·설정값·데모 ID 보완 | 태웅 |
 | v0.3 | 2026-11-20 | 영민 #256 리뷰 반영: `find_consult_slots` 실패 코드에 `TOOL_TIMEOUT` 추가(YC-F01), 에이전트 허용 목록은 T43부터 적용(5.3 ①), `create_card` 끝내 실패 시 학부모 안내('받았지만 늦어질 수 있음', 화면의 '접수됨'과 같게)와 서버의 미배정 재올림(5.4·6.3). 강사 11/18 피드백 2·3·4번: 세 업무 흐름·사람 인계·도구 이름 대조(5.7), 서버 설정 위치·WORK_HOURS·IMMEDIATE_RISK_CATEGORIES(6.5·6.6·8장), 공휴일·퇴근 뒤 실계산 예시(6.6.1), 화면·API·DB 대표 사례와 시험 기록(6.7), notify_failed 경고(3.7·5.4). T04에 맞춰 원에 남은 답 바로 답 예외(5.3 ④·5.7)와 민원 회신·완료는 원장이 하지 않음(4.2) 명시 | 태웅 |
 | v0.4 | 2026-11-20 | 알림장 아이별 child_memos, child 줄, 확인 항목 kind 8값·sentence·선택 request_id, API 30 반 아이 목록을 추가함. 모의 API·OpenAPI를 맞추고 반·교사 이름은 develop 기준으로 유지함. PR #262 별빛반 명단 18명은 C4-NN → 54NN으로 맞춤. 아이 입력에 그날 보호자 requests를 더하고 request_missed 누락 예시·요청 출처 줄·문의와 귀가 시드 두 개를 연결함. T10 v0.9·0002 저장 열·PATCH child 허용 값을 대조함 | 태웅 |
+| v0.4.1 | 2026-11-20 | 보호자 문의 줄 inquiry를 추가해 반 공통 day와 구분함. inquiry 출처는 request이며 수정·조회·모의 API·OpenAPI·T10 v0.10을 맞춤. 초안 제한 300초·동시성 설정을 반영함 | 태웅 |

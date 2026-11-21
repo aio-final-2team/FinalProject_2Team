@@ -71,16 +71,22 @@ def seed_demo(connection, *, refresh_note_requests=False):
         """), {**request, "org": seed.ORG, "class": seed.CLASS_STAR, "key": f"demo:{request['id']}",
                "now": request.get("created_at", datetime.now(KST))})
     if refresh_note_requests:
+        now = datetime.now(KST)
+        latest = max(r["created_at"].astimezone(KST).date() for r in seed.DEMO_NOTE_REQUESTS if "created_at" in r)
+        shift = now.date() - latest
+        # 고정 fixture 날짜 사이 간격·시각은 유지하고, 날짜 없는 두 예시는 현재 시각을 쓴다.
         connection.execute(text("""
             UPDATE requests SET created_at=:now
-            WHERE org_id=:org AND id=ANY(:ids)
-        """), {"org": seed.ORG, "ids": [r["id"] for r in seed.DEMO_NOTE_REQUESTS], "now": datetime.now(KST)})
+            WHERE org_id=:org AND id=:id
+        """), [{"org": seed.ORG, "id": r["id"],
+                "now": r["created_at"].astimezone(KST) + shift if "created_at" in r else now}
+               for r in seed.DEMO_NOTE_REQUESTS])
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="가상 원 데모 시드")
     parser.add_argument("--refresh-note-requests", action="store_true",
-                        help="가상 보호자 요청 22개의 접수 시각만 현재로 맞춰요")
+                        help="가상 요청의 날짜 간격을 유지하며 가장 늦은 fixture 날짜를 오늘로 옮겨요")
     args = parser.parse_args()
     with transaction() as connection:
         seed_demo(connection, refresh_note_requests=args.refresh_note_requests)

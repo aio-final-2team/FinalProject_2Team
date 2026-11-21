@@ -21,7 +21,7 @@ class Settings:
     immediate_risk_categories: tuple[str, ...] = ("child_safety",)
     data_backend: str = "mock"
     daily_note_writer: str = "app.modules.daily_notes.stub_writer:write"
-    daily_note_writer_timeout: float = 120.0
+    daily_note_writer_timeout: float = 300.0
 
 
 def load_settings() -> Settings:
@@ -42,7 +42,7 @@ def load_settings() -> Settings:
     categories = tuple(c.strip() for c in os.getenv("IMMEDIATE_RISK_CATEGORIES", "child_safety").split(","))
     if any(c not in ("child_safety", "staff_attack", "legal_external", "privacy_leak") for c in categories):
         raise ValueError("IMMEDIATE_RISK_CATEGORIES: 긴급 위험 종류 필요")
-    writer_timeout = float(os.getenv("DAILY_NOTE_WRITER_TIMEOUT", "120"))
+    writer_timeout = float(os.getenv("DAILY_NOTE_WRITER_TIMEOUT", "300"))
     if not isfinite(writer_timeout) or writer_timeout <= 0:
         raise ValueError("DAILY_NOTE_WRITER_TIMEOUT: 0보다 큰 초 필요")
     return Settings(

@@ -89,6 +89,7 @@ DB 초안은 입력을 `queued`로 저장하고 같은 프로세스의 Backgroun
 이 설정은 DB 초안 runner에 적용돼요. mock은 기존 대역 동작을 유지해요.
 그래프는 `OPENAI_API_KEY`와 `LLM_MODEL_DOCUMENT`·`LLM_MODEL_CHECKER`를 읽어요.
 역할별 모델 값이 비면 `LLM_MODEL_DEFAULT`를 써요. 값은 `.env.example`을 참고해요.
+`NOTE_DRAFT_CONCURRENCY`(기본 5)도 그래프에 전달해요. 동시 실행은 이 설정을 지원하는 그래프에서 적용돼요.
 입구는 T13 3.19의 입력을 받아 아이별 `child_id`·`content`·`open_checks` 목록을 돌려줘요.
 아이 결과가 빠지거나 형식이 잘못되면 그 아이만 `draft_failed`로 저장해요.
 입구 전체가 실패하면 아이별 저장 없이 작업을 `failed`로 남겨요.
@@ -100,7 +101,7 @@ DB 초안은 입력을 `queued`로 저장하고 같은 프로세스의 Backgroun
 지금은 **API 프로세스 하나**로 실행해요. 여러 worker나 API 복제본을 함께 띄우면 안 돼요.
 앱 시작 때 남은 `running`을 `queued`로 되돌리고 모든 `queued` 입력을 다시 실행해요.
 기동을 기다리는 동안 초안을 전부 만들지는 않아요. 복구 작업도 뒤에서 차례로 실행해요.
-writer는 `DAILY_NOTE_WRITER_TIMEOUT`초(기본 120초) 안에 답해야 해요.
+writer는 `DAILY_NOTE_WRITER_TIMEOUT`초(기본 300초) 안에 답해야 해요.
 시간이 지나면 기존 `failed`·`UPSTREAM_UNAVAILABLE` 경로로 끝내고 늦은 결과는 저장하지 않아요.
 writer 스레드를 강제 종료하지는 않으므로 외부 호출 자체의 시간 제한도 writer에서 설정해야 해요.
 
@@ -111,9 +112,11 @@ writer 스레드를 강제 종료하지는 않으므로 외부 호출 자체의 
 PYTHONPATH=apps/api python -m db.seeds.demo --refresh-note-requests
 ```
 
-이 옵션은 가상 요청 22개의 `created_at`만 현재 시각으로 맞춰요. 고정 날짜가 필요한 시험이나
-원본 날짜별 시연에서는 옵션 없이 시드해요. GR-11도 옵션을 쓰면 오늘 접수된 요청이 돼요.
-다른 요청·계정·본문은 바꾸지 않아요. 옵션 실행 뒤 오늘 날짜로 새 초안을 만들고 확인해요.
+이 옵션은 가상 요청 22개의 `created_at`만 바꿔요. 고정 fixture 20개는 가장 늦은 한국 날짜를
+오늘로 옮기고 요청 사이 날짜 간격·접수 시각을 유지해요. 예를 들어 원본 11/20은 오늘,
+11/19의 GR-11은 어제에 남아요. 고정 날짜가 없는 하늘·노을 예시 두 개는 현재 시각으로 맞춰요.
+원본 날짜별 시연에서는 옵션 없이 시드해요. 다른 요청·계정·본문은 바꾸지 않아요.
+옵션 실행 뒤 오늘 날짜로 새 초안을 만들고 확인해요.
 이미 만든 입력에는 다시 반영하지 않으니 기존 초안이 없는 날짜·데모 DB에서 시작해요.
 
 알림장 상태 이벤트는 연결 열이 생기는 0003에서 더해요. 지금 발송은 `note_sent` 알림을
@@ -121,5 +124,6 @@ PYTHONPATH=apps/api python -m db.seeds.demo --refresh-note-requests
 
 알려진 한계:
 
+- 시간 초과는 대기·결과 저장만 끝내요. 실행 중인 writer 스레드는 멈추지 않아서 모델 호출이 계속될 수 있어요. 호출별 제한·취소는 writer 쪽에서 처리해야 해요.
 - 알림장이 0개인 반을 보내면 `sent_count=0`이고 묶음 카드는 `pending`으로 남아요.
 - 같은 날 반을 옮긴 아이는 `(child_id, note_date)` 중복으로 묶음 전체가 실패할 수 있어요. 발송 차단의 `open_checks`에서 DB는 `request_id: null`을 포함하고 mock은 키를 생략할 수 있어요.

@@ -13,6 +13,8 @@ ROOT = Path(__file__).resolve().parents[3]
 
 def test_contract_matches_application():
     assert yaml.safe_load((ROOT / "contracts/openapi.yaml").read_text()) == app.openapi()
+    assert set(app.openapi()["components"]["schemas"]["NoteLine"]["properties"]["key"]["enum"]) == {
+        "day", "meal", "medication", "pickup", "supplies", "child", "inquiry"}
 
 
 def test_all_30_documented_endpoints_exist(client):

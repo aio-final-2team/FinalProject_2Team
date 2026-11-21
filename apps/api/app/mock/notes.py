@@ -67,7 +67,7 @@ def draft(user, body, background_tasks=None):
                     content["items"].append({"key": "child", "label": "아이 메모", "value": memo,
                                              "source": {"type": "teacher_input"}})
                 for req in requests_for_child(child, entry.note_date):
-                    key = req["type"] if req["type"] != "inquiry" else "day"
+                    key = req["type"]
                     # 누락 확인 시연은 이 고정 요청 하나만 빼요. 실제 귀가 요청 전체를 빼지 않아요.
                     if req["request_id"] == seed.REQUEST_PICKUP:
                         checks.append({"id": f"request-{req['request_id']}", "item_key": key,

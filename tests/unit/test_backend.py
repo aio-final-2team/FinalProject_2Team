@@ -46,7 +46,7 @@ def test_writer_timeout_requires_finite_positive_seconds(monkeypatch, value, val
     else:
         monkeypatch.setenv("DAILY_NOTE_WRITER_TIMEOUT", value)
     if valid:
-        assert load_settings().daily_note_writer_timeout == (120 if value is None else float(value))
+        assert load_settings().daily_note_writer_timeout == (300 if value is None else float(value))
     else:
         with pytest.raises(ValueError):
             load_settings()

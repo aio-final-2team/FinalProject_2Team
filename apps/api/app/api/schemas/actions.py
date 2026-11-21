@@ -142,7 +142,7 @@ class NoteSource(BaseModel):
 
 
 class NoteLine(BaseModel):
-    key: Literal["day", "meal", "medication", "pickup", "supplies", "child"]
+    key: Literal["day", "meal", "medication", "pickup", "supplies", "child", "inquiry"]
     label: str = Field(min_length=1)
     value: str
     source: NoteSource
@@ -151,6 +151,8 @@ class NoteLine(BaseModel):
     def child_source(self):
         if self.key == "child" and self.source.type != "teacher_input":
             raise ValueError("아이 메모의 출처는 teacher_input이에요")
+        if self.key == "inquiry" and self.source.type != "request":
+            raise ValueError("보호자 문의의 출처는 request예요")
         return self
 
 

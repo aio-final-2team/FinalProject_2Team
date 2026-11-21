@@ -2711,6 +2711,7 @@ components:
           - pickup
           - supplies
           - child
+          - inquiry
           title: Key
         label:
           type: string
