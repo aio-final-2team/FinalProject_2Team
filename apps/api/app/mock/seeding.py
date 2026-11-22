@@ -1,6 +1,7 @@
 """고정 데모 행을 저장소에 채운다."""
 
 from datetime import timedelta
+import logging
 from hashlib import sha256
 
 from app.core.schedule import due_at
@@ -67,15 +68,8 @@ def populate():
             state.classrooms[org["classroom_id"]] = store.Classroom(org["classroom_id"], org["id"], "가상반")
             state.children[org["child_id"]] = store.Child(org["child_id"], org["id"], org["classroom_id"],
                                                          "가상 아이", [org["parent_id"]])
-    if ((settings.feature_video_consult or settings.feature_voice_analysis)
-            and not any(b.status == "confirmed" for b in state.bookings.values())):
-        from app.mock.records import Booking
-        req = store.Request(seed.VIDEO_REQUEST, seed.ORG, seed.CLASS_STAR, seed.CHILD, seed.PARENT,
-                            "demo-video-consult", "consultation", "가상 화상상담", status="sent_or_booked")
-        state.requests[req.id] = req
-        state.bookings[seed.VIDEO_BOOKING] = Booking(seed.VIDEO_BOOKING, seed.ORG, req.id, None, seed.TEACHER,
-                                                   seed.ROOM, seed.video_period(), seed.TEACHER)
-        store.add_event(req, "booked", actor_type="user", actor_id=seed.TEACHER)
+    if settings.feature_video_consult or settings.feature_voice_analysis:
+        seed_video_consult()
 
     from app.core import media
     media.reset_mock()
@@ -92,3 +86,29 @@ def populate():
             media.save(png, metadata, file_id=photo_id, mock=True)
         state.feed_photos[photo_id] = {"id": photo_id, "post_id": post_id, "org_id": seed.ORG, **metadata,
                                        "storage_path": name, "child_ids": tags, "created_at": seed.FEED_CREATED_AT}
+
+
+def seed_video_consult():
+    from app.mock.records import Booking
+    state = store.state()
+    booking = state.bookings.get(seed.VIDEO_BOOKING)
+    if booking and booking.org_id == seed.ORG:
+        if (booking.status == "confirmed"
+                and (booking.expected_end_at or booking.period["end"]) + timedelta(minutes=30) < store.now()):
+            period = seed.video_period()
+            if any(b.id != booking.id and b.org_id == seed.ORG and b.status == "confirmed"
+                   and (b.teacher_id == booking.teacher_id or b.room_id == booking.room_id)
+                   and b.period["start"] < period["end"] and period["start"] < b.period["end"]
+                   for b in state.bookings.values()):
+                logging.getLogger(__name__).warning("가상 화상상담 예약 갱신 생략: 담임·상담실 시간 겹침")
+            else:
+                booking.period, booking.expected_end_at = period, None
+        return
+    if any(b.org_id == seed.ORG and b.status == "confirmed" for b in state.bookings.values()):
+        return
+    req = store.Request(seed.VIDEO_REQUEST, seed.ORG, seed.CLASS_STAR, seed.CHILD, seed.PARENT,
+                        "demo-video-consult", "consultation", "가상 화상상담", status="sent_or_booked")
+    state.requests[req.id] = req
+    state.bookings[seed.VIDEO_BOOKING] = Booking(seed.VIDEO_BOOKING, seed.ORG, req.id, None, seed.TEACHER,
+                                               seed.ROOM, seed.video_period(), seed.TEACHER)
+    store.add_event(req, "booked", actor_type="user", actor_id=seed.TEACHER)

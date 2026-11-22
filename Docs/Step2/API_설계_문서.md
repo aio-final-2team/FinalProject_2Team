@@ -1383,16 +1383,23 @@ mock은 MEDIA_DIR/mock 아래를 쓰고 초기화 때 그 폴더만 비워요. D
 | 참여자 | confirmed 예약의 teacher_id 한 명과 requests.requester_id 보호자 한 명 |
 | 시간 | 예약 시작 - 10분부터 coalesce(expected_end_at, 예약 종료) + 30분까지, 양끝 포함 |
 | 200 | `{booking_id, opens_at, closes_at, ice_servers, signal_path, ticket, ticket_expires_at}` |
-| 접속권 | 60초 JWT, aud=consult-signal, sub=사용자, booking=예약, role=역할. 일반 API Bearer로 쓸 수 없어요 |
+| 접속권 | 60초 JWT, aud=consult-signal, sub=사용자, booking=예약, role=역할, jti=일회용 식별자. 일반 API Bearer로 쓸 수 없어요 |
 | 실패 | 같은 기관의 다른 사람은 403 `FORBIDDEN` + permission_denied, 다른 기관·없는 예약은 404 |
 | 상태·시간 | 확정 외 상태는 409 `CONFLICT`. 시간 밖은 같은 코드와 details.reason=room_not_open 또는 room_closed, details.opens_at·closes_at |
 
 응답 시각은 오프셋을 담은 ISO 8601이에요. `Cache-Control: private, no-store`로 접속권 캐시를 막아요.
 `VIDEO_ICE_SERVERS`는 JSON 배열이고, 기본은 `[{"urls":"stun:stun.l.google.com:19302"}]`예요.
+기능이 켜졌을 때는 설정을 엄격히 검사하고, 꺼졌을 때 잘못된 값이면 경고 후 기본 STUN을 써요.
 TURN의 urls·username·credential을 넣으면 그대로 돌려줘요. 서버가 외부 회의 서비스에 접속하지 않아요.
 
 `WS /api/v1/consultations/{booking_id}/signal?ticket=…`은 접속 때 서명·만료·aud·예약·현재 사용자 활성/토큰 판·역할·참여자·시간을 다시 검사해요.
-실패하면 1008, 이유는 access_denied예요. 플래그가 꺼졌을 때는 HTTP handshake 404 공통 오류로 거절해요.
+켠 상태의 검사 실패는 연결을 수락한 뒤 1008 access_denied로 닫아요. 꺼졌을 때는 HTTP handshake 404 공통 오류로 거절해요.
+접속권은 한 번만 쓰고, 쓴 jti는 만료 시각까지만 메모리에 보관해요. 재접속은 room에서 새 접속권을 받아요.
+접속 뒤 메시지를 처리하기 전 마지막 검사에서 10초가 지났으면 계정 활성·토큰 판·예약 상태·참여자·시간을 다시 검사해요.
+실패한 연결만 1008 access_denied(마감이면 room_closed)로 닫고 상대에게 peer_left를 알려요.
+조용한 연결도 closes_at에 1008 room_closed로 닫아요. 서버가 닫으면 화면은 RTCPeerConnection을 닫아요.
+uvicorn 접속 로그의 ticket 값은 가려요. 방별 잠금은 방 상태만 바꾸고, 보내기·이력 저장은 잠금 밖에서 해요.
+보내기가 2초를 넘으면 그 수신자를 1008 slow_peer로 닫아요.
 역할마다 한 연결만 두고, 같은 사람이 다시 접속하면 옛 연결을 1008 replaced로 닫아요.
 상대가 들어오면 두 사람에게 `{type: peer_joined}`, 나가면 남은 사람에게 `{type: peer_left}`를 보내요.
 메시지는 JSON `{type: offer|answer|ice|bye, data}` 두 칸만 받고 상대에게 그대로 전달해요.
@@ -1402,7 +1409,9 @@ TURN의 urls·username·credential을 넣으면 그대로 돌려줘요. 서버�
 `video_joined`·`video_left`는 booking_id와 예약 request_id만 이력에 연결해요(0011).
 방 목록은 현재 API 프로세스 하나의 메모리예요. 여러 API 프로세스로 늘릴 때는 신호 공유 방식을 먼저 바꿔야 해요.
 
-플래그를 켠 시드에 확정 예약이 없으면 오늘 14:00~14:30 가상 예약을 채워요.
+플래그를 켠 시드에서 데모 기관에 확정 예약이 없으면 가상 예약을 채워요.
+예약 …0901이 이미 있고 closes_at이 지났으면 5분 단위로 내린 현재 시각의 -5분~+30분으로 옮겨요.
+새 가상 예약도 같은 시간 범위를 써요. 담임·상담실 시간이 겹치면 갱신을 건너뛰고 경고해요. 다른 예약은 바꾸지 않아요.
 mock·DB가 같은 예약 `…0901`·요청 `…0790`, teacher01·parent01을 써요. 기존 확정 예약은 그대로 둬요.
 
 #### 가상 음성 분석(API 51~53)
