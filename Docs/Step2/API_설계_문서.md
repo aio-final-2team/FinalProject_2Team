@@ -1414,7 +1414,8 @@ mock·DB가 같은 예약 `…0901`·요청 `…0790`, teacher01·parent01을 �
 #### 가상 음성 분석(API 51~53)
 
 실제 사람의 녹음은 쓰지 않아요. `FEATURE_VOICE_ANALYSIS`는 기본 false이고, 꺼지면 세 경로 모두 공통 404예요.
-상담방 플래그·상태·접속 시간과 독립적이라 끝난 상담도 분석할 수 있어요.
+상담방 플래그·접속 시간과 독립적이에요. 접수는 confirmed·done 예약만 가능하고 cancelled는 409 CONFLICT예요.
+이미 있는 분석 조회는 예약 상태와 상관없어요.
 
 | 칸 | 계약 |
 | --- | --- |
@@ -1425,21 +1426,26 @@ mock·DB가 같은 예약 `…0901`·요청 `…0790`, teacher01·parent01을 �
 | 읽기 권한 | 그 예약 담임과 같은 기관 원장만 가능해요. 보호자·다른 교사는 403과 이력, 다른 기관·없는 자원은 404예요 |
 | 분석 공통 칸 | `{id, booking_id, status, transcript, result, duration_seconds, sha256, created_at, started_at, completed_at}` |
 | 요약 result | `{summary: 문자열(3줄 이하), parent_requests: 문자열 배열, follow_ups: 문자열 배열}` |
-| 202·상태 | 접수 응답은 queued, 이후 running → succeeded 또는 failed예요. 미완료·실패의 transcript는 빈 글, result는 빈 요약·배열이에요 |
+| 202·상태 | 접수 응답은 queued, 이후 running → succeeded 또는 failed예요. 중단된 queued도 정리 때 failed가 돼요. 미완료·실패의 transcript는 빈 글, result는 빈 요약·배열이에요 |
 | 실패 | synthetic 누락·false·잘못된 파일·복수 파일은 422 `VALIDATION_FAILED`, 10MiB 초과는 413 같은 코드예요 |
 
-길이 duration_seconds는 WAV 헤더 또는 분석기 결과로 채우며 알 수 없는 압축 음성은 null이에요.
+WAV 파싱 오류는 422예요. MP4는 M4A ·M4B ·mp42·mp41·isom·iso2·dash 브랜드만 받고 사진·QuickTime 브랜드는 거절해요.
+EBML은 DocType=webm만 받아요. ID3는 10바이트 헤더·태그 크기와 태그 뒤 MPEG 프레임 동기를 확인해요.
+길이 duration_seconds는 WAV의 선언 프레임 수와 실제 data 프레임 수 중 작은 값 또는 분석기 결과로 채워요. 알 수 없는 압축 음성은 null이에요.
+녹취·요약·요청·후속 조치 글의 NUL 글자는 지우고 저장해요.
 시각은 오프셋이 있는 ISO 8601이고 시작·완료 전 시각은 null이에요. 세 응답에 private, no-store를 붙여요.
 `CONSULT_VOICE_ANALYZER` 기본은 `app.modules.consultations.voice_stub:analyze`예요. 입구는 Path → `{transcript,result,duration_seconds?}`예요.
 `openai`를 고르면 `OPENAI_STT_MODEL`(기본 gpt-4o-mini-transcribe)로 녹취하고 agents/llm.py의 DOCUMENT 모델로 요약해요.
-API는 BackgroundTasks, RUN_IN=worker는 Celery default 큐에 분석 ID만 넘겨요. 상태 검사가 한 실행만 가져가요.
+DB의 RUN_IN=api는 BackgroundTasks, RUN_IN=worker는 Celery default 큐에 분석 ID만 넘겨요. mock은 RUN_IN과 상관없이 같은 프로세스에서 실행해요.
+상태 검사가 한 실행만 가져가요.
 분석 제한은 300초예요. 초과·잘못된 결과·분석기 예외는 failed이고 늦은 결과는 저장하지 않아요.
-기존 yuchion.sweep도 5분마다 300초 넘은 running을 failed로 끝내며 재실행하지 않아요.
+5분 점검은 worker 모드에서만 돌아요. yuchion.sweep은 300초 넘은 queued·running을 failed로 끝내며 재실행하지 않아요.
+api 모드는 시작할 때 미완료 queued·running을 모두 failed로 끝내고 파일을 지워요. 정리는 기능 플래그가 꺼져도 해요.
 파일은 MEDIA_DIR 아래 UUID 이름으로 잠시 두고, 성공·실패·시간 초과 모두 상태 커밋 뒤 지워요. 삭제 실패는 경고만 남겨요.
 DB에는 음성 바이트를 넣지 않으며 끝나면 임시 경로도 비워요. 다시 듣기·파일 다운로드 API는 없어요.
 0012는 consultation_voice_analyses와 요청 연결 voice_analysis_requested·voice_analysis_completed를 더해요.
 이력에는 녹취·요약·원본 이름·분석기 예외 원문을 남기지 않아요.
-`tools/make_virtual_voice.py <저장소 밖 경로.wav>`는 가상 대본 두 목소리로 WAV를 만들어요. 키가 없으면 안내만 해요.
+`tools/make_virtual_voice.py <저장소 밖 경로.wav>`는 가상 대본 두 목소리로 WAV를 만들어요. 저장소 안 출력은 거절하고 키가 없으면 안내만 해요.
 음성 파일은 저장소에 넣지 않아요. 시험은 코드로 만든 무음 WAV·가짜 분석기·가짜 OpenAI 호출만 써요.
 
 ## 4. 검증과 권한 규칙

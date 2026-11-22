@@ -150,4 +150,9 @@ signal_path + ?ticket=… WebSocket은 접속 때 권한·시간을 다시 검�
 켜면 예약 담임만 synthetic=true·파일 한 개로 접수하고 담임·원장이 결과를 읽어요.
 기본 대역은 가상 녹취·3줄 이하 요약을 돌려줘요. OpenAI는 CONSULT_VOICE_ANALYZER=openai로 고를 때만 써요.
 두 모드 모두 queued→running→succeeded/failed이며 원본은 끝나면 지워요. 실제 녹음은 쓰지 않아요.
+접수는 confirmed·done만 가능하고 cancelled는 409예요. 기존 결과 조회는 예약 상태와 상관없어요.
+mock은 RUN_IN과 상관없이 같은 프로세스에서 실행해요. api 모드는 시작할 때 미완료 queued·running을 실패 처리하고 파일을 지워요.
+5분 점검은 DB worker 모드에서만 돌아요. 300초 넘은 queued·running은 재전달 없이 failed로 끝내고 파일을 지워요.
+정리는 기능 플래그가 꺼져도 해요. WAV는 실제 data로 길이를 제한하고 잘못된 헤더·음성 외 브랜드·DocType·ID3는 422예요.
+녹취·요약 글의 NUL은 지워요. 가상 음성 도구는 저장소 안 출력을 거절해요.
 설정·파일 제한·권한·응답 칸은 T13 3.30을 봐 주세요. 화면은 후속이에요.

@@ -15,15 +15,26 @@ class VoiceSummary(BaseModel):
     @field_validator("summary")
     @classmethod
     def three_lines(cls, value):
+        value = value.replace("\x00", "")
         if len(value.splitlines()) > 3:
             raise ValueError("요약은 3줄 이하여야 해요.")
         return value
+
+    @field_validator("parent_requests", "follow_ups")
+    @classmethod
+    def clean_lists(cls, value):
+        return [item.replace("\x00", "") for item in value]
 
 
 class AnalysisResult(BaseModel):
     transcript: str
     result: VoiceSummary
     duration_seconds: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+
+    @field_validator("transcript")
+    @classmethod
+    def clean_transcript(cls, value):
+        return value.replace("\x00", "")
 
 
 class VoiceAnalysis(AnalysisResult):

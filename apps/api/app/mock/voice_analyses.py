@@ -67,12 +67,14 @@ def finish(analysis_id, result):
             _event(row, "voice_analysis_completed", status=row["status"])
 
 
-def sweep():
+def sweep(*, all_pending=False):
     with store._lock:
-        rows = [dict(r) for r in store.state().voice_analyses.values() if r["status"] == "running"
-                and r["started_at"] < store.now() - timedelta(seconds=rules.VOICE_TIMEOUT)]
+        rows = [dict(r) for r in store.state().voice_analyses.values() if r["status"] in {"queued", "running"}
+                and (all_pending or (r["started_at"] if r["status"] == "running" else r["created_at"])
+                     < store.now() - timedelta(seconds=rules.VOICE_TIMEOUT))]
         for row in rows:
-            finish(row["id"], None)
+            store.state().voice_analyses[row["id"]].update(status="failed", storage_path=None, completed_at=store.now())
+            _event(row, "voice_analysis_completed", status="failed")
     for row in rows:
         rules.remove(row["storage_path"])
     return len(rows)

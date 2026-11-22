@@ -1229,12 +1229,14 @@ FEATURE_VIDEO_CONSULT=true 시드만 확정 예약이 없을 때 오늘 14:00 �
 | id·org_id·booking_id·request_id | UUID, 예약·요청과 기관 짝 FK예요. 예약의 (id,org_id) UNIQUE도 더해요 |
 | storage_path | nullable text. 처리 중 임시 UUID 파일 경로이며 완료 뒤 null이에요. 바이트·원본 이름은 저장하지 않아요 |
 | sha256·duration_seconds | 64자리 해시, 알 수 있을 때만 0 이상 유한한 음성 길이(초)예요 |
-| status | queued → running → succeeded 또는 failed, CHECK예요 |
+| status | queued → running → succeeded 또는 failed, CHECK예요. 중단된 queued도 정리 때 failed로 끝내요 |
 | transcript·result | text, jsonb. 요약은 T13 3.30의 summary·parent_requests·follow_ups를 API에서 검사해요 |
 | created_at·started_at·completed_at | timestamptz, 시작·완료 시각은 해당 전이 전 null이에요 |
 
 예약별 생성 시각·ID 내림차순 인덱스를 써요. 조회할 때 현재 예약 담임·같은 기관 원장인지 다시 검사해요.
 `events.action`에 voice_analysis_requested·voice_analysis_completed를 더하고 예약의 request_id에 연결해요.
 이력에는 분석 ID·완료 상태만 더하며 음성·녹취·요약은 넣지 않아요.
+api 모드는 시작할 때 미완료를, worker 모드의 5분 점검은 300초 넘은 queued·running을 failed로 끝내요.
+failed·storage_path=NULL을 함께 커밋한 뒤 파일을 지워요. 기능 플래그가 꺼져도 정리하며 재실행하지 않아요.
 0011로 내리면 새 표·예약 UNIQUE·두 이력만 지우고 기존 요청·예약·다른 이력은 보존해요.
 변경 이력 v0.18 · 2026-11-22 — [제안][선택] 가상 음성 분석과 0012를 더했어요. 최종 DDL과 head 왕복을 대조해요.

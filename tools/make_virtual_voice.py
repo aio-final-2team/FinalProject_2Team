@@ -8,6 +8,9 @@ import wave
 
 
 def make(output):
+    output = Path(output).resolve()
+    if output.is_relative_to(Path(__file__).resolve().parents[1]):
+        raise ValueError("가상 음성 출력은 저장소 밖 경로여야 해요.")
     if not os.getenv("OPENAI_API_KEY"):
         print("OPENAI_API_KEY를 설정하면 OpenAI TTS로 가상 상담 WAV를 만들어요. 실제 녹음은 쓰지 않아요.")
         return
@@ -24,7 +27,6 @@ def make(output):
                     raise ValueError("두 가상 음성의 WAV 형식이 달라요.")
                 params = current
                 frames.append(audio.readframes(audio.getnframes()))
-    output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
     with wave.open(str(output), "wb") as audio:
         audio.setnchannels(params[0])
