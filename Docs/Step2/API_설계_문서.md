@@ -2,16 +2,16 @@
 
 **팀 확인 전 초안 — T46·T48·T54와 [제안][선택] T56·T60**
 
-문서 버전 v0.9 | 작성 상태: [제안][선택] T60 동네 피드를 모의·DB와 대조해요
+문서 버전 v0.9 | 작성 상태: [제안][선택] T60 동네 피드·성장 영상을 모의·DB와 대조해요
 
 | 항목 | 내용 |
 | --- | --- |
 | 작업 | T13 API 설계 문서(FastAPI·Function Calling 도구 계약)·모의 API (#170) |
 | 작성 | 태웅 · 검토 인혜 |
-| 기준 문서 | 기획서 1117판 3장 FR-01~FR-13 · T04 흐름·권한 명세(PR #234) · [입출력 계약표](입출력_계약표_초안.md) v0.21(T46·T48·T54·T56·T60 팀 확인 전 초안) · [DB 스키마 설계서](DB_스키마_설계서.md) v0.19(0013 동네 피드 포함) |
+| 기준 문서 | 기획서 1117판 3장 FR-01~FR-13 · T04 흐름·권한 명세(PR #234) · [입출력 계약표](입출력_계약표_초안.md) v0.22(T46·T48·T54·T56·T60 팀 확인 전 초안) · [DB 스키마 설계서](DB_스키마_설계서.md) v0.20(0014 성장 영상 포함) |
 | 따른 가이드 | 강사님 'API 설계 문서 작성법' 11/18 수정본. 1~6장이 가이드의 '문서에 들어가는 여섯 가지' 순서다 |
 
-이 문서는 T10 계약표에서 합의한 필드·권한·오류를 엔드포인트와 도구 단위로 펼친 것이다. 계약표와 이 문서가 다르면 계약표를 먼저 고치고 두 문서의 판을 같이 올린다. 구현이 시작되면 FastAPI의 `/docs`와 대조해 판을 올린다(계약표 1.1 규칙 1). 이 판(v0.9)은 HTTP API 56개와 신호 WebSocket 전부의 상세 명세, 화면이 쓰는 조회 응답 칸(3.7), 도구 전체의 실패 처리, 업무 흐름(5.7), 실행 규칙과 대표 사례 대조(6.7)를 담는다. 모의 API와 생성물 `contracts/openapi.yaml`을 붙였으며, 쓰는 법과 데모 계정은 [모의 API 안내](../../contracts/mock_api/README.md)에 있다.
+이 문서는 T10 계약표에서 합의한 필드·권한·오류를 엔드포인트와 도구 단위로 펼친 것이다. 계약표와 이 문서가 다르면 계약표를 먼저 고치고 두 문서의 판을 같이 올린다. 구현이 시작되면 FastAPI의 `/docs`와 대조해 판을 올린다(계약표 1.1 규칙 1). 이 판(v0.9)은 HTTP API 60개와 신호 WebSocket 전부의 상세 명세, 화면이 쓰는 조회 응답 칸(3.7), 도구 전체의 실패 처리, 업무 흐름(5.7), 실행 규칙과 대표 사례 대조(6.7)를 담는다. 모의 API와 생성물 `contracts/openapi.yaml`을 붙였으며, 쓰는 법과 데모 계정은 [모의 API 안내](../../contracts/mock_api/README.md)에 있다.
 
 **목차.** 1. 공통 정보와 인증 · 2. API 목록 · 3. 엔드포인트 상세 명세 · 4. 검증과 권한 규칙 · 5. Tool 정의와 호출 흐름 · 6. 실행 규칙 · 7. API 필드와 DB 컬럼 대응 · 8. 설정값 · 부록 A. 예시 ID · 변경 이력
 
@@ -169,6 +169,10 @@
 | 54 | GET | `/api/v1/neighborhood/posts` | 같은 동네 보호자 | 동네 글 목록([제안][선택]) | 200 | FR-28 | 3.31 |
 | 55 | POST | `/api/v1/neighborhood/posts` | 같은 동네 보호자 | 동네 글 공개([제안][선택]) | 201 | FR-28 | 3.31 |
 | 56 | GET | `/api/v1/neighborhood/albums` | 같은 동네 보호자 | 동네 앨범([제안][선택]) | 200 | FR-28 | 3.31 |
+| 57 | POST | `/api/v1/children/{child_id}/growth-videos` | 그 아이 보호자 | 성장 영상 접수([제안][선택]) | 202 | FR-29 | 3.32 |
+| 58 | GET | `/api/v1/children/{child_id}/growth-videos` | 그 아이 보호자 | 영상 상태 목록([제안][선택]) | 200 | FR-29 | 3.32 |
+| 59 | GET | `/api/v1/growth-videos/{video_id}/file` | 그 아이 보호자·현재 원본 권한 | MP4 파일·Range([제안][선택]) | 200/206 | FR-29 | 3.32 |
+| 60 | DELETE | `/api/v1/growth-videos/{video_id}` | 그 아이 보호자 | 영상 지우기([제안][선택]) | 204 | FR-29 | 3.32 |
 
 SSE 두 개(6·14)는 실시간 진행 화면(NFR-10)이 쓰므로 넣었어요. 투약·귀가 SSE는 AI 단계 없이 현재 상태 done으로 끝나요(3.27).
 
@@ -1456,7 +1460,7 @@ DB에는 음성 바이트를 넣지 않으며 끝나면 임시 경로도 비워�
 
 ### 3.31 [제안][선택] v0.9 동네 피드·성장 영상
 
-이번 판은 동네 피드만 더해요. 성장 영상은 다음 항목이에요. `FEATURE_NEIGHBORHOOD_FEED`는 기본 false예요.
+동네 피드 계약이에요. 성장 영상은 3.32를 봐요. `FEATURE_NEIGHBORHOOD_FEED`는 기본 false예요.
 꺼져 있으면 새 경로는 인증 전 공통 404 `NOT_FOUND`예요. 동네 글의 기존 상세·삭제·숨김·사진 파일도 404예요.
 꺼짐 상태에서 photo_scope=neighborhood 변경은 아이 조회·기관·보호자 권한 검사 전에 누구든 기록 없이 422 `VALIDATION_FAILED`(field=photo_scope)예요.
 **동네 칸에 쓰는 행위 = 본인이 공개를 켠 것**이에요. 같은 region의 다른 원 보호자에게도 보여요.
@@ -1485,6 +1489,29 @@ T50이 붙기 전에는 올린 사람이 아이를 직접 표시해요. 얼굴 �
 플래그를 켜서 시드하면 햇살유치원은 가상동, 가상 달빛어린이집(parent-n01)은 같은 가상동,
 가상 별빛어린이집(parent-x01)은 가상 별동이에요. 새 기관마다 반·아이·보호자 하나이며 비밀번호는 demo1234예요.
 모의·DB UUID는 같고 다시 시드해도 기존 region·공개 범위·글 상태는 보존해요.
+
+### 3.32 [제안][선택] v0.9 성장 영상(T60, API 57~60)
+
+`FEATURE_GROWTH_VIDEO=false`가 기본이에요. 꺼짐이면 네 경로 모두 인증·입력 검사 전에 공통 404 NOT_FOUND예요.
+같은 기관에서 현재 아이 보호자만 접수·목록·파일·삭제를 할 수 있어요. 교직원·남의 아이는 403 FORBIDDEN과 permission_denied 이력을 남기고, 다른 기관·없는 자원은 404예요.
+
+| API | 입력·출력 |
+| --- | --- |
+| POST children/{child_id}/growth-videos | JSON `{photo_limit?: 3~20}`(기본 12), 202로 아래 상태 객체를 돌려줘요 |
+| GET children/{child_id}/growth-videos | `{items: [상태 객체]}`, created_at·id 내림차순. 삭제한 영상은 빠져요 |
+| GET growth-videos/{video_id}/file | 성공한 영상만 video/mp4. 한 구간 Range(bytes=시작-끝·시작-·-길이)는 206, 범위 밖·여러 구간·잘못된 범위는 416 VALIDATION_FAILED예요 |
+| DELETE growth-videos/{video_id} | 204. 상태·이력을 먼저 커밋하고 파일을 지워요. 삭제 실패는 경고만 남겨요 |
+
+상태 객체는 `{id, child_id, status, photo_count, duration_seconds, size_bytes, sha256, created_at, started_at, completed_at, file_url}`예요.
+상태는 queued → running → succeeded 또는 failed예요. 처음에는 길이·크기·해시·시작·완료 시각과 file_url이 null이고, 성공하면 인증 파일 경로를 줘요. 내부 저장 경로·사진 ID는 응답하지 않아요.
+그 아이가 표시된 사진 중 요청한 보호자가 지금 볼 수 있고 실제 파일이 있는 사진만 오래된 created_at·id 순서로 최대 photo_limit장 골라요. 3장 미만이면 422 VALIDATION_FAILED예요. 가상 사진만 사용해요.
+MP4는 H.264·720×720 안에 맞춤·여백·장당 2초이며 최대 60초예요. imageio-ffmpeg 휠의 ffmpeg를 로컬 subprocess로 실행하고 120초가 지나면 실패해요. 외부 영상 서비스는 호출하지 않아요.
+파일은 MEDIA_DIR/videos 아래 UUID 이름이에요(mock은 MEDIA_DIR/mock/videos). PG에는 메타데이터·사진 연결·순서만 저장해요. 원본 사진을 복사하거나 바이트를 PG에 넣지 않아요.
+다운로드마다 현재 아이 보호자 관계와 모든 원본 사진의 칸·공개 범위·삭제·숨김·실제 파일을 다시 검사해요. 원본 하나라도 없어지거나 볼 수 없으면 Range도 404예요. photo FK의 ON DELETE CASCADE로 연결이 사라져도 저장한 photo_count와 비교해 차단해요.
+응답은 Cache-Control: private, no-store와 X-Content-Type-Options: nosniff를 붙여요. 열린 파일을 스트리밍해서 삭제 경쟁은 전체 응답 또는 404로 끝나요.
+RUN_IN=api는 BackgroundTasks, db·RUN_IN=worker는 Celery default 큐예요. mock은 RUN_IN과 관계없이 같은 프로세스에서 실행해요. 원자적으로 한 번만 실행하고 삭제·시간 초과 뒤 늦은 결과는 버려요.
+5분 점검은 worker 모드에서만 실행해요. 300초 넘은 queued·running은 failed로 끝내고 부분 파일을 지우며 재실행하지 않아요. api 모드는 시작할 때 남은 작업을 같은 방식으로 정리해요. 기능을 꺼도 남은 작업 정리는 해요.
+0014는 growth_videos·growth_video_photos와 growth_video_requested·growth_video_completed·growth_video_deleted 이력을 더해요.
 
 ## 4. 검증과 권한 규칙
 
@@ -1970,3 +1997,5 @@ MVP 설정값은 서버 설정(`.env`)으로 관리한다. `.env.example`에는 
 변경 이력 v0.9 · 2026-11-22 [제안][선택] — 동네 피드 API 54~56·기관 단위 작성자 표시·사진 neighborhood 범위·0013을 더했어요.
 
 변경 이력 v0.9 · 2026-11-22 [제안][선택] — 빈 동네 값·교직원 조회/숨김·플래그 꺼짐 권한 순서와 기존 반·원 응답 스키마를 맞췄어요.
+
+변경 이력 v0.9 · 2026-11-23 [제안][선택] — 성장 영상 API 57~60·0014·비동기 상태·원본 재검사·Range를 더했어요.

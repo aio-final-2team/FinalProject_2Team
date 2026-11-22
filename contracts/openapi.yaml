@@ -3261,6 +3261,203 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
           description: Unprocessable Entity
+  /api/v1/children/{child_id}/growth-videos:
+    post:
+      tags:
+      - '[제안][선택] 성장 영상'
+      summary: Create
+      operationId: create_api_v1_children__child_id__growth_videos_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: child_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Child Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GrowthVideoCreate'
+      responses:
+        '202':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GrowthVideo'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+    get:
+      tags:
+      - '[제안][선택] 성장 영상'
+      summary: Listing
+      operationId: listing_api_v1_children__child_id__growth_videos_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: child_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Child Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GrowthVideoList'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+  /api/v1/growth-videos/{video_id}/file:
+    get:
+      tags:
+      - '[제안][선택] 성장 영상'
+      summary: File
+      operationId: file_api_v1_growth_videos__video_id__file_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: video_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Video Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            video/mp4: {}
+        '206':
+          content:
+            video/mp4: {}
+          description: Partial Content
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '416':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Requested Range Not Satisfiable
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+  /api/v1/growth-videos/{video_id}:
+    delete:
+      tags:
+      - '[제안][선택] 성장 영상'
+      summary: Delete
+      operationId: delete_api_v1_growth_videos__video_id__delete
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: video_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Video Id
+      responses:
+        '204':
+          description: Successful Response
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
   /health:
     get:
       tags:
@@ -4417,6 +4614,98 @@ components:
       - quote
       - is_current
       title: EvidenceView
+    GrowthVideo:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        child_id:
+          type: string
+          format: uuid
+          title: Child Id
+        status:
+          type: string
+          enum:
+          - queued
+          - running
+          - succeeded
+          - failed
+          title: Status
+        photo_count:
+          type: integer
+          title: Photo Count
+        duration_seconds:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Duration Seconds
+        size_bytes:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Size Bytes
+        sha256:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Sha256
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        started_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Started At
+        completed_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Completed At
+        file_url:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: File Url
+      type: object
+      required:
+      - id
+      - child_id
+      - status
+      - photo_count
+      - duration_seconds
+      - size_bytes
+      - sha256
+      - created_at
+      - started_at
+      - completed_at
+      - file_url
+      title: GrowthVideo
+    GrowthVideoCreate:
+      properties:
+        photo_limit:
+          type: integer
+          maximum: 20.0
+          minimum: 3.0
+          title: Photo Limit
+          default: 12
+      type: object
+      title: GrowthVideoCreate
+    GrowthVideoList:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/GrowthVideo'
+          type: array
+          title: Items
+      type: object
+      required:
+      - items
+      title: GrowthVideoList
     HidePost:
       properties:
         status:

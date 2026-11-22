@@ -20,7 +20,9 @@ def check_broker():
 
 def publish(job, object_id):
     from app.worker import daily_note_drafts, request_agent, voice_analysis
-    task = {"daily_note": daily_note_drafts, "request": request_agent, "voice_analysis": voice_analysis}[job]
+    from app.worker import growth_video
+    task = {"daily_note": daily_note_drafts, "request": request_agent, "voice_analysis": voice_analysis,
+            "growth_video": growth_video}[job]
     try:
         task.apply_async(args=[str(object_id)], retry=False)
     except Exception as error:
@@ -29,11 +31,12 @@ def publish(job, object_id):
 
 
 def dispatch(job, object_id, background_tasks):
-    if settings.run_in == "worker" and not (job == "voice_analysis" and settings.data_backend == "mock"):
+    if settings.run_in == "worker" and not (job in {"voice_analysis", "growth_video"} and settings.data_backend == "mock"):
         background_tasks.add_task(publish, job, object_id)
     else:
         from app.modules.daily_notes.runner import run_daily_note_drafts
         from app.modules.requests.runner import run_request
         from app.modules.consultations.voice_runner import run_voice_analysis
+        from app.modules.feed.growth_runner import run_growth_video
         background_tasks.add_task({"daily_note": run_daily_note_drafts, "request": run_request,
-                                   "voice_analysis": run_voice_analysis}[job], object_id)
+                                   "voice_analysis": run_voice_analysis, "growth_video": run_growth_video}[job], object_id)

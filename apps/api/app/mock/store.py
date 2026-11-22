@@ -171,6 +171,7 @@ class _State:
         self.approvals: list[Approval] = []
         self.bookings: dict[UUID, Booking] = {}
         self.voice_analyses: dict[UUID, dict] = {}
+        self.growth_videos: dict[UUID, dict] = {}
         self.notifications: dict[int, Notification] = {}
         self.documents: dict[UUID, Document] = {}
         self.document_classrooms: dict[UUID, list[UUID]] = {}
