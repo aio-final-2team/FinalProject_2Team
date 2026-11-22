@@ -1502,18 +1502,19 @@ T50이 붙기 전에는 올린 사람이 아이를 직접 표시해요. 얼굴 �
 | GET growth-videos/{video_id}/file | 성공한 영상만 video/mp4. 한 구간 Range(bytes=시작-끝·시작-·-길이)는 206이에요. 단위 대소문자는 무시해요. 못 읽는 값·여러 구간은 200 전체, 시작이 크기 이상이면 416 VALIDATION_FAILED와 Content-Range: bytes */크기예요 |
 | DELETE growth-videos/{video_id} | 204. 상태·이력을 먼저 커밋하고 파일을 지워요. 삭제 실패는 경고만 남겨요 |
 
-상태 객체는 `{id, child_id, status, photo_count, duration_seconds, size_bytes, sha256, created_at, started_at, completed_at, file_url}`예요.
+상태 객체는 `{id, child_id, status, failure_reason, photo_count, duration_seconds, size_bytes, sha256, created_at, started_at, completed_at, file_url}`예요.
 상태는 queued → running → succeeded 또는 failed예요. 처음에는 길이·크기·해시·시작·완료 시각과 file_url이 null이고, 성공하면 인증 파일 경로를 줘요. 내부 저장 경로·사진 ID는 응답하지 않아요.
-그 아이가 표시된 사진 중 요청한 보호자가 지금 볼 수 있고 실제 파일이 있는 사진만 오래된 created_at·id 순서로 최대 photo_limit장 골라요. 3장 미만이면 422 VALIDATION_FAILED예요. 가상 사진만 사용해요.
+첫 트랜잭션에서 권한·상한을 보고 queued 행으로 자리를 잡아요. 요청은 그 아이가 표시된 사진의 현재 보임·실제 파일·머리 픽셀 40MP 이하만 검사해요. 오래된 created_at·id 순서이며 후보가 3장 미만이면 행을 없애고 422 VALIDATION_FAILED예요. 요청에서는 디코딩하지 않고 가상 사진만 사용해요.
+전처리·건너뛰기·인코딩은 모두 작업에서 해요. 깨진 사진은 빼고 다음 후보로 최대 photo_limit장 채우며, 남은 사진이 3장 미만이면 failed와 failure_reason=not_enough_photos예요. 화면 안내는 “영상을 만들 수 있는 사진이 3장 이상 필요해요.”예요. 다른 실패·진행·성공의 failure_reason은 null이에요. queued의 photo_count는 후보 상한이고 성공 시 실제 사용 개수·원본 연결로 바꿔요.
 MP4는 H.264·720×720 안에 맞춤·여백·장당 2초이며 최대 60초예요. imageio-ffmpeg 휠의 ffmpeg를 로컬 subprocess로 실행하고 120초가 지나면 실패해요. 외부 영상 서비스는 호출하지 않아요.
 파일은 MEDIA_DIR/videos 아래 UUID 이름이에요(mock은 MEDIA_DIR/mock/videos). PG에는 메타데이터·사진 연결·순서만 저장해요. 원본 사진을 복사하거나 바이트를 PG에 넣지 않아요.
 다운로드마다 현재 아이 보호자 관계와 모든 원본 사진의 칸·공개 범위·삭제·숨김·실제 파일을 다시 검사해요. 원본 하나라도 없어지거나 볼 수 없으면 Range도 404예요. photo FK의 ON DELETE CASCADE로 연결이 사라져도 저장한 photo_count와 비교해 차단해요.
 응답은 Cache-Control: private, no-store와 X-Content-Type-Options: nosniff를 붙여요. 열린 파일을 스트리밍해서 삭제 경쟁은 전체 응답 또는 404로 끝나요.
-RUN_IN=api와 mock은 스레드 1개짜리 전용 실행기를 쓰고, db·worker는 media 큐와 media-worker(--concurrency=1)를 써요. worker의 5분 점검은 queued 30분·running 150초 초과를 failed로 끝내요. api는 시작할 때 남은 작업을 정리하며 재실행하지 않아요. 원자적으로 한 번만 실행하고 삭제·시간 초과 뒤 늦은 결과는 버려요.
-5분 점검은 worker 모드에서만 실행해요. queued 30분·running 150초 초과는 failed로 끝내고 부분 파일을 지우며 재실행하지 않아요. api 모드는 시작할 때 남은 작업을 같은 방식으로 정리해요. 기능을 꺼도 남은 작업 정리는 해요.
-0014는 growth_videos·growth_video_photos와 growth_video_requested·growth_video_completed·growth_video_deleted 이력을 더해요. 0015는 진행 중인 child_id 부분 유니크 인덱스예요.
-아이마다 진행 중 1개·보관 5개까지이며 초과는 409 CONFLICT예요. 내부 사진 검사는 permission_denied를 남기지 않아요.
-사진마다 머리에서 크기·움직임을 검사해 40MP 초과·움직이는 그림을 빼요. 한 장 디코드·축소는 10초 제한이고 깨진 사진도 건너뛰어요. 유효한 사진 3장이 필요해요. 720×720 검은 배경에 투명을 합성하고 최소 변 길이는 2px이에요. 임시 PNG는 성공·실패 모두 지워요. 최종 입력은 장당 1/2fps·2초예요.
+RUN_IN=api와 mock은 스레드 1개짜리 전용 실행기를 쓰고, db·worker는 media 큐와 media-worker(--concurrency=1)를 써요. worker의 5분 점검은 queued 30분·running 360초 초과를 failed로 끝내요. api는 시작할 때 남은 작업을 정리하며 재실행하지 않아요. 원자적으로 한 번만 실행하고 삭제·시간 초과 뒤 늦은 결과는 버려요.
+5분 점검은 worker 모드에서만 실행해요. queued 30분·running 360초 초과는 failed로 끝내고 부분 파일을 지우며 재실행하지 않아요. api 모드는 시작할 때 남은 작업을 같은 방식으로 정리해요. 기능을 꺼도 남은 작업 정리는 해요.
+0014는 growth_videos·growth_video_photos와 growth_video_requested·growth_video_completed·growth_video_deleted 이력을 더해요. 0015는 진행 중인 child_id 부분 유니크 인덱스예요. 올리기 전에 아이마다 가장 최근 진행 행만 남기고 나머지는 failed로 끝내요. 0016은 failure_reason을 더해요.
+아이마다 진행 중 1개·성공 영상 보관 5개까지이며 초과는 409 CONFLICT예요. 실패 행은 보관 수에 세지 않아요. 내부 사진 검사는 permission_denied를 남기지 않아요.
+사진마다 머리에서 크기·움직임을 검사해 40MP 초과·움직이는 그림을 빼요. 한 장 디코드·축소는 10초 제한이고 깨진 사진도 건너뛰어요. 유효한 사진 3장이 필요해요. 720×720 검은 배경에 투명을 합성하고 최소 변 길이는 2px이에요. 임시 PNG는 성공·실패 모두 지워요. 최종 입력은 장당 1/2fps·2초예요. 디코더에도 -max_pixels 40000000을 적용해요. 임시 그림은 MEDIA_DIR/tmp/growth-frames-*에 만들고 점검·api 시작 때 1시간 지난 폴더를 정리해요. setpriv가 있으면 부모 종료 시 ffmpeg도 종료하고, 없으면 직접 실행하며 시간 제한은 같아요.
 imageio-ffmpeg 번들 ffmpeg는 GPLv3 정적 빌드(이미지 +80MB)라 이미지를 밖에 배포하면 고지가 필요해요.
 
 ## 4. 검증과 권한 규칙
@@ -2004,3 +2005,5 @@ MVP 설정값은 서버 설정(`.env`)으로 관리한다. `.env.example`에는 
 변경 이력 v0.9 · 2026-11-23 [제안][선택] — 성장 영상 API 57~60·0014·비동기 상태·원본 재검사·Range를 더했어요.
 
 변경 이력 v0.9 · 2026-11-23 [제안][선택] — 성장 영상의 사진 전처리·아이별 상한·media 큐·Range·본문 생략과 0015를 반영했어요.
+
+변경 이력 v0.9 · 2026-11-23 [제안][선택] — 성장 영상 접수를 메타데이터 검사로 바꾸고 작업 중 사진 부족 사유·성공 보관 상한·360초 점검·임시 그림 정리와 0016을 반영했어요.

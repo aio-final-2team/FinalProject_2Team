@@ -7,7 +7,7 @@ from app.core.config import settings
 from app.core.errors import ApiError
 
 QUEUED_TIMEOUT = 1800
-JOB_TIMEOUT = 150
+JOB_TIMEOUT = 360
 ENCODE_TIMEOUT = 120
 SECONDS_PER_PHOTO = 2
 
@@ -55,25 +55,34 @@ def visible_sources(user, photos, posts, children, classrooms, organizations):
 def check_capacity(rows):
     if any(r["status"] in {"queued", "running"} for r in rows):
         raise ApiError(409, "CONFLICT", "이 아이의 성장 영상을 만들고 있어요. 끝난 뒤 다시 요청해 주세요.")
-    if len(rows) >= 5:
+    if sum(r["status"] == "succeeded" for r in rows) >= 5:
         raise ApiError(409, "CONFLICT", "성장 영상은 아이마다 5개까지 보관해요. 기존 영상을 지워 주세요.")
 
 
-def select(user, candidates, limit):
-    from tempfile import TemporaryDirectory
-    from pathlib import Path
-    from app.modules.feed.growth_runner import prepare
+def select(candidates, limit):
+    from app.modules.feed.growth_runner import eligible
     selected = []
-    with TemporaryDirectory(prefix="growth-check-") as folder:
-        for row in sorted(candidates, key=lambda r: (r["created_at"], r["id"])):
-            if not prepare(media.path(row["storage_path"]), Path(folder) / "frame.png"):
-                continue
+    for row in sorted(candidates, key=lambda r: (r["created_at"], r["id"])):
+        if eligible(media.path(row["storage_path"])):
             selected.append(row["id"])
-            if len(selected) == limit:
-                break
+        if len(selected) == limit:
+            break
     if len(selected) < 3:
         raise ApiError(422, "VALIDATION_FAILED", problem="지금 볼 수 있는 아이 사진이 3장 이상 필요해요.")
     return selected
+
+
+def clean_temp():
+    """점검·시작 정리에서 죽은 작업의 임시 그림만 치워요."""
+    import shutil
+    import time
+    cutoff = time.time() - 3600
+    for folder in media.path("tmp").glob("growth-frames-*"):
+        try:
+            if folder.is_dir() and folder.stat().st_mtime < cutoff:
+                shutil.rmtree(folder)
+        except OSError:
+            logging.getLogger(__name__).warning("growth_video_temp_cleanup_failed")
 
 
 def remove(name):

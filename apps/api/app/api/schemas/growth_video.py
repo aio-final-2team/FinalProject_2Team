@@ -15,6 +15,7 @@ class GrowthVideo(BaseModel):
     id: UUID
     child_id: UUID
     status: Literal["queued", "running", "succeeded", "failed"]
+    failure_reason: str | None = None
     photo_count: int
     duration_seconds: float | None
     size_bytes: int | None

@@ -47,6 +47,39 @@ def test_growth_revision_roundtrip_and_photo_cascade(seeded_db, alembic_config):
     command.downgrade(alembic_config, '0014')
     with seeded_db.connect() as c:
         assert c.scalar(text("SELECT to_regclass('growth_videos_pending_child_idx')")) is None
-        assert dict(catalog(c)) == HEAD_CATALOG
+        assert dict(catalog(c)) == {**HEAD_CATALOG, 'columns': HEAD_CATALOG['columns']-1}
     command.upgrade(alembic_config, 'head')
     assert schema_dump() == snapshot
+
+
+def test_limits_upgrade_resolves_legacy_duplicate_pending_rows(seeded_db, alembic_config):
+    from uuid import UUID
+    command.downgrade(alembic_config, '0014')
+    with seeded_db.begin() as c:
+        for suffix, status, age, deleted in [(1, 'queued', 2, False), (2, 'running', 1, False),
+                                             (3, 'queued', 1, False), (4, 'queued', 0, True),
+                                             (5, 'succeeded', 3, False)]:
+            c.execute(text("""
+                INSERT INTO growth_videos(id,org_id,child_id,requested_by,storage_path,photo_count,
+                    status,created_at,deleted_at)
+                VALUES (:id,:org,:child,:user,'videos/legacy.mp4',3,:status,
+                    now()-make_interval(secs=>:age),CASE WHEN :deleted THEN now() END)
+            """), dict(id=UUID(int=suffix), org=seed.ORG, child=seed.CHILD, user=seed.PARENT,
+                       status=status, age=age, deleted=deleted))
+    command.upgrade(alembic_config, '0015')
+    with seeded_db.begin() as c:
+        rows = {r['id'].int: r for r in c.execute(text('SELECT * FROM growth_videos')).mappings()}
+        assert [rows[i]['status'] for i in range(1, 6)] == ['failed', 'failed', 'queued', 'queued', 'succeeded']
+        assert all(rows[i]['completed_at'] is not None for i in (1, 2))
+        with pytest.raises(IntegrityError), c.begin_nested():
+            c.execute(text("INSERT INTO growth_videos(org_id,child_id,requested_by,storage_path,photo_count) "
+                           "VALUES (:org,:child,:user,'videos/extra.mp4',3)"),
+                      dict(org=seed.ORG, child=seed.CHILD, user=seed.PARENT))
+    command.upgrade(alembic_config, 'head')
+    with seeded_db.begin() as c:
+        assert c.scalar(text('SELECT failure_reason FROM growth_videos LIMIT 1')) is None
+        c.execute(text("UPDATE growth_videos SET failure_reason='not_enough_photos' WHERE status='failed'"))
+    command.downgrade(alembic_config, '0015')
+    command.upgrade(alembic_config, 'head')
+    with seeded_db.connect() as c:
+        assert dict(catalog(c)) == HEAD_CATALOG

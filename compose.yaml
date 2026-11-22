@@ -94,9 +94,7 @@ services:
     pull_policy: never
     restart: unless-stopped
     profiles: [worker]
-    environment:
-      <<: *api-environment
-      DATA_BACKEND: ${DATA_BACKEND:-db}
+    environment: *api-environment
     volumes:
       - media_data:${MEDIA_DIR:-/media}
     entrypoint: ["celery"]

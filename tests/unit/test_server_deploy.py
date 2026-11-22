@@ -94,7 +94,7 @@ def test_server_compose_replaces_ports_and_preserves_database_volume(backend, ov
         assert services[service]["ports"][0]["host_ip"] == "127.0.0.1"
         assert services[service]["ports"][0]["published"] == port
     for name in (["api", "worker", "beat", "media-worker"] if worker_profile else ["api"]):
-        assert services[name]["environment"]["DATA_BACKEND"] == (backend or "db")
+        assert services[name]["environment"]["DATA_BACKEND"] == (backend or ("mock" if name == "media-worker" else "db"))
         assert services[name]["image"] == image
         assert {key: services[name]["environment"][key] for key in expected} == expected
     assert services["web"]["depends_on"]["api"]["condition"] == "service_healthy"

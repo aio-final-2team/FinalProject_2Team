@@ -3,11 +3,9 @@
 from hashlib import sha256
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
-import ctypes
 import logging
-import os
 from pathlib import Path
-import signal
+import shutil
 import struct
 import subprocess
 from tempfile import TemporaryDirectory
@@ -19,7 +17,6 @@ from app import backend
 from app.core import growth_video as rules, media
 from app.core.auth import CurrentUser
 
-_libc = ctypes.CDLL(None, use_errno=True)
 _executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="growth-video")
 
 
@@ -27,17 +24,11 @@ async def run_in_api(video_id):
     await asyncio.get_running_loop().run_in_executor(_executor, run_growth_video, video_id)
 
 
-def die_with_parent(parent):
-    # Linux: 부모가 fork와 prctl 사이에 죽은 경우도 놓치지 않아요.
-    if _libc.prctl(1, signal.SIGKILL, 0, 0, 0) != 0 or os.getppid() != parent:
-        os.kill(os.getpid(), signal.SIGKILL)
-
-
 def ffmpeg(args, timeout):
-    from functools import partial
-    subprocess.run([imageio_ffmpeg.get_ffmpeg_exe(), "-nostdin", "-y", "-v", "error",
+    wrapper = shutil.which("setpriv")
+    command = [wrapper, "--pdeathsig", "KILL", "--"] if wrapper else []
+    subprocess.run([*command, imageio_ffmpeg.get_ffmpeg_exe(), "-nostdin", "-y", "-v", "error",
                     "-xerror", "-filter_complex_threads", "1", *args], check=True, timeout=timeout,
-                   preexec_fn=partial(die_with_parent, os.getpid()),
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
@@ -92,14 +83,21 @@ def dimensions(data):
     raise ValueError("unknown image dimensions")
 
 
-def prepare(source, output):
+def eligible(source):
     try:
         width, height = dimensions(source.read_bytes())
-        if min(width, height) < 1 or width * height > 40_000_000:
-            return False
+        return min(width, height) >= 1 and width * height <= 40_000_000
+    except (ValueError, IndexError, struct.error, OSError):
+        return False
+
+
+def prepare(source, output):
+    if not eligible(source):
+        return False
+    try:
         scale = "scale=w='max(2,trunc(iw*min(720/iw,720/ih)/2)*2)':" \
                 "h='max(2,trunc(ih*min(720/iw,720/ih)/2)*2)'"
-        ffmpeg(["-threads", "1", "-i", str(source.resolve()), "-filter_complex",
+        ffmpeg(["-threads", "1", "-max_pixels", "40000000", "-i", str(source.resolve()), "-filter_complex",
                 f"[0:v]{scale},format=rgba[fg];color=black:s=720x720:r=1[bg];"
                 "[bg][fg]overlay=(W-w)/2:(H-h)/2:format=auto,format=rgb24[out]",
                 "-map", "[out]", "-frames:v", "1", "-threads", "1", str(output)], 10)
@@ -108,16 +106,27 @@ def prepare(source, output):
         return False
 
 
-def encode(photos, output):
+class NotEnoughPhotos(ValueError):
+    pass
+
+
+def encode(photos, output, *, limit=20):
     output.parent.mkdir(parents=True, exist_ok=True)
-    with TemporaryDirectory(prefix="growth-frames-", dir=output.parent) as folder:
-        frames = []
+    temp_root = media.path("tmp")
+    temp_root.mkdir(parents=True, exist_ok=True)
+    with TemporaryDirectory(prefix="growth-frames-", dir=temp_root) as folder:
+        frames, ids = [], []
         for i, photo in enumerate(photos):
             frame = Path(folder) / f"{i}.png"
             if not prepare(media.path(photo["storage_path"]), frame):
-                raise ValueError("source image changed after selection")
+                continue
             frames.append(frame)
-        return encode_frames(frames, output)
+            ids.append(photo["id"])
+            if len(frames) == limit:
+                break
+        if len(frames) < 3:
+            raise NotEnoughPhotos("not_enough_photos")
+        return {**encode_frames(frames, output), "photo_count": len(ids), "photo_ids": ids}
 
 
 def encode_frames(frames, output):
@@ -148,12 +157,15 @@ def run_growth_video(video_id):
         backend.growth_videos.access(user, row["child_id"])
         if len(row["photo_ids"]) != row["photo_count"]:
             raise ValueError("missing source photo")
-        photos = rules.source_photos(user, row["photo_ids"])
-        result = encode(photos, media.path(row["storage_path"]))
+        rules.source_photos(user, row["photo_ids"])
+        photos = sorted(backend.growth_videos.candidates(user, row["child_id"]),
+                        key=lambda p: (p["created_at"], p["id"]))
+        result = encode(photos, media.path(row["storage_path"]), limit=row["photo_count"])
         accepted = backend.growth_videos.finish(video_id, result)
     except Exception as error:
         logging.getLogger(__name__).error("성장 영상 실패 id=%s error_type=%s", video_id, type(error).__name__)
-        backend.growth_videos.finish(video_id, None)
+        backend.growth_videos.finish(video_id, None, failure_reason=(
+            "not_enough_photos" if isinstance(error, NotEnoughPhotos) else None))
     finally:
         if not accepted:
             rules.remove(row["storage_path"])

@@ -4637,6 +4637,11 @@ components:
           - succeeded
           - failed
           title: Status
+        failure_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Failure Reason
         photo_count:
           type: integer
           title: Photo Count
