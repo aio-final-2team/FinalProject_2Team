@@ -1,6 +1,7 @@
 """[TEST] 0012 왕복과 기관 짝 FK·상태 CHECK를 검사해요."""
 
 from alembic import command
+from datetime import datetime
 import pytest
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
@@ -13,7 +14,7 @@ from tests.integration.db.test_migrations import HEAD_CATALOG, catalog, schema_d
 def test_voice_revision_roundtrip_and_constraints(seeded_db, alembic_config):
     command.downgrade(alembic_config, "0011")
     with seeded_db.begin() as c:
-        seed_video_consult(c)
+        seed_video_consult(c, now=datetime.fromisoformat("2026-11-22T12:00:00+09:00"))
         booking = dict(c.execute(text("SELECT * FROM consultation_bookings WHERE id=:id"),
                                  {"id": seed.VIDEO_BOOKING}).mappings().one())
     previous = schema_dump()

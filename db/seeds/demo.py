@@ -113,14 +113,15 @@ def seed_demo(connection, *, refresh_note_requests=False):
         seed_video_consult(connection)
 
 
-def seed_video_consult(connection):
+def seed_video_consult(connection, now=None):
+    now = now if now is not None else seed.video_now()
     booking = connection.execute(text("""
         SELECT *, upper(period) AS end FROM consultation_bookings WHERE id=:id AND org_id=:org FOR UPDATE
     """), {"id": seed.VIDEO_BOOKING, "org": seed.ORG}).mappings().one_or_none()
     if booking:
         if (booking["status"] == "confirmed"
-                and (booking["expected_end_at"] or booking["end"]) + timedelta(minutes=30) < seed.video_now()):
-            period = seed.video_period()
+                and (booking["expected_end_at"] or booking["end"]) + timedelta(minutes=30) < now):
+            period = seed.video_period(now=now)
             if period is None:
                 return
             try:
@@ -139,7 +140,7 @@ def seed_video_consult(connection):
     if connection.scalar(text("SELECT EXISTS (SELECT 1 FROM consultation_bookings WHERE org_id=:org AND status='confirmed')"),
                          {"org": seed.ORG}):
         return
-    period = seed.video_period()
+    period = seed.video_period(now=now)
     if period is None:
         return
     from app.modules.requests.events import record

@@ -26,13 +26,16 @@ def live_server(tmp_path):
            "PYTHONPATH": str(root / "apps/api"), "MEDIA_DIR": str(tmp_path / "media")}
     launch = """
 from datetime import datetime
+from functools import partial
 from app.mock import seed
+fixed_now = datetime.fromisoformat('2026-11-22T12:00:00+09:00')
+seed.video_now = lambda: fixed_now
 from app.core import video_consult
-seed.video_now = lambda: datetime.fromisoformat('2026-11-22T12:00:00+09:00')
 video_consult.now = seed.video_now
 from dataclasses import replace
 from app.main import app
-from app.mock import store
+from app.mock import store, seeding
+seeding.seed_video_consult = partial(seeding.seed_video_consult, now=fixed_now)
 store.reset()
 state = store.state()
 request = replace(state.requests[seed.VIDEO_REQUEST], id=seed.demo_id('903'), requester_id=seed.PARENT_OTHER)
@@ -197,10 +200,11 @@ def test_uvicorn_nonreading_peer_leaves_within_three_seconds(live_server):
 
 def test_slow_receiver_does_not_block_another_room(monkeypatch):
     from dataclasses import replace
-    from datetime import timedelta
+    from datetime import datetime, timedelta
     from app import backend
     from app.api.routes import video_consult as route
     from app.core import video_consult as rules
+    monkeypatch.setattr(rules, "now", lambda: datetime.fromisoformat("2026-11-22T12:00:00+09:00"))
 
     async def scenario():
         class Socket:
