@@ -186,11 +186,12 @@ FEED_CREATED_AT = datetime.fromisoformat("2026-11-21T09:00:00+09:00")
 
 
 def video_period():
-    """선택 기능 시연용 오늘 14:00~14:30 가상 예약이에요."""
+    """선택 기능 가상 예약: 5분 단위 현재 시각의 -5분~+30분이에요."""
     from datetime import timedelta
     from app.core.schedule import KST
-    start = datetime.now(KST).replace(hour=14, minute=0, second=0, microsecond=0)
-    return {"start": start, "end": start + timedelta(minutes=30)}
+    current = datetime.now(KST)
+    current = current.replace(minute=current.minute // 5 * 5, second=0, microsecond=0)
+    return {"start": current - timedelta(minutes=5), "end": current + timedelta(minutes=30)}
 
 
 def feed_png():

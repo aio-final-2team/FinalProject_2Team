@@ -132,11 +132,17 @@ T50이 붙기 전에는 올린 사람이 아이를 직접 표시해요. 자세�
 
 FEATURE_VIDEO_CONSULT는 기본 false이며 room·signal handshake는 공통 404예요.
 true면 예약 담임·신청 보호자만 GET /consultations/{booking_id}/room으로 60초 ticket을 받아요.
-signal_path + ?ticket=… WebSocket은 접속 때 권한·시간을 다시 검사해요.
+signal_path + ?ticket=… WebSocket은 접속 때 권한·시간을 다시 검사해요. ticket은 한 번만 쓰므로 재접속 때 새로 받아요.
+켠 상태의 거부는 accept 뒤 1008 access_denied, 꺼짐은 handshake 404예요. 접속 로그의 ticket 값은 가려요.
+메시지 처리 전 마지막 검사에서 10초가 지났으면 계정·토큰 판·예약·참여자·시간을 다시 보고 실패한 연결만 닫아요.
+조용한 연결도 closes_at에 1008 room_closed로 닫아요. 서버가 닫으면 화면은 RTCPeerConnection을 닫아요.
+방별 잠금 밖에서 보내고 기록해요. 보내기가 2초를 넘으면 수신자를 1008 slow_peer로 닫아요.
 {type: offer|answer|ice|bye, data}만 상대에게 전달하고, 입퇴장은 peer_joined·peer_left예요.
 64KiB·초당 20개 제한, 역할별 재접속은 이전 연결을 닫아요. 신호·영상·음성은 저장하지 않아요.
 방은 현재 API 프로세스 하나의 메모리예요. VIDEO_ICE_SERVERS의 TURN 설정은 그대로 전달해요.
-플래그를 켜면 확정 예약이 없는 시드에 오늘 14:00 가상 예약 …0901(teacher01·parent01)을 더해요.
+플래그를 켜면 데모 기관에 확정 예약이 없을 때 가상 예약 …0901(teacher01·parent01)을 더해요.
+이미 있는 …0901의 closes_at이 지났으면 5분 단위 현재 시각의 -5분~+30분으로 옮겨요(신규 예약도 같은 범위).
+담임·상담실 겹침이면 경고 후 건너뛰고 다른 예약은 보존해요. ICE 설정 오류는 기능이 꺼졌으면 경고 후 기본 STUN을 써요.
 상세 권한·오류·시간 경계는 T13 3.30과 OpenAPI를 봐요. 실제 사람 음성·사진은 쓰지 않아요.
 
 

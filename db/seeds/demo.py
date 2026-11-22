@@ -7,10 +7,12 @@
 """
 
 import argparse
-from datetime import datetime
+from datetime import datetime, timedelta
+import logging
 
 from argon2 import PasswordHasher
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
 from app.core.db import transaction
 from app.core.schedule import KST
@@ -112,6 +114,25 @@ def seed_demo(connection, *, refresh_note_requests=False):
 
 
 def seed_video_consult(connection):
+    booking = connection.execute(text("""
+        SELECT *, upper(period) AS end FROM consultation_bookings WHERE id=:id AND org_id=:org FOR UPDATE
+    """), {"id": seed.VIDEO_BOOKING, "org": seed.ORG}).mappings().one_or_none()
+    if booking:
+        if (booking["status"] == "confirmed"
+                and (booking["expected_end_at"] or booking["end"]) + timedelta(minutes=30) < datetime.now(KST)):
+            try:
+                # EXCLUDE가 마지막 충돌 판정을 맡고, 실패해도 바깥 시드는 계속해요.
+                with connection.begin_nested():
+                    connection.execute(text("""
+                        UPDATE consultation_bookings SET period=tstzrange(:start,:end,'[)'), expected_end_at=NULL
+                        WHERE id=:id
+                    """), {"id": seed.VIDEO_BOOKING, **seed.video_period()})
+            except IntegrityError as error:
+                if error.orig.sqlstate != "23P01":
+                    raise
+                logging.getLogger(__name__).warning("가상 화상상담 예약 갱신 생략: 담임·상담실 시간 겹침")
+        return
+
     if connection.scalar(text("SELECT EXISTS (SELECT 1 FROM consultation_bookings WHERE org_id=:org AND status='confirmed')"),
                          {"org": seed.ORG}):
         return

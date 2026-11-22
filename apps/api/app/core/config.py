@@ -3,6 +3,7 @@
 import os
 import re
 import json
+import logging
 from math import isfinite
 from dataclasses import dataclass, field
 from datetime import date, time
@@ -60,14 +61,22 @@ def load_settings() -> Settings:
     writer_timeout = float(os.getenv("DAILY_NOTE_WRITER_TIMEOUT", "300"))
     if not isfinite(writer_timeout) or writer_timeout <= 0:
         raise ValueError("DAILY_NOTE_WRITER_TIMEOUT: 0보다 큰 초 필요")
-    ice_servers = json.loads(os.getenv("VIDEO_ICE_SERVERS") or '[{"urls":"stun:stun.l.google.com:19302"}]')
-    if not isinstance(ice_servers, list) or any(
-        not isinstance(server, dict) or not server.get("urls")
-        or not isinstance(server["urls"], (str, list))
-        or (isinstance(server["urls"], list) and any(not isinstance(url, str) or not url for url in server["urls"]))
-        for server in ice_servers
-    ):
-        raise ValueError("VIDEO_ICE_SERVERS: urls가 있는 JSON 배열 필요")
+    video_enabled = os.getenv("FEATURE_VIDEO_CONSULT", "false").lower() == "true"
+    default_ice = [{"urls": "stun:stun.l.google.com:19302"}]
+    try:
+        ice_servers = json.loads(os.getenv("VIDEO_ICE_SERVERS") or json.dumps(default_ice))
+        if not isinstance(ice_servers, list) or any(
+            not isinstance(server, dict) or not server.get("urls")
+            or not isinstance(server["urls"], (str, list))
+            or (isinstance(server["urls"], list) and any(not isinstance(url, str) or not url for url in server["urls"]))
+            for server in ice_servers
+        ):
+            raise ValueError("VIDEO_ICE_SERVERS: urls가 있는 JSON 배열 필요")
+    except ValueError:
+        if video_enabled:
+            raise
+        logging.getLogger(__name__).warning("VIDEO_ICE_SERVERS: 기능이 꺼져 기본 STUN을 사용해요")
+        ice_servers = default_ice
     return Settings(
         jwt_secret=jwt_secret,
         jwt_access_ttl_hours=int(os.getenv("JWT_ACCESS_TTL_HOURS", "12")),
@@ -82,7 +91,7 @@ def load_settings() -> Settings:
         request_agent=os.getenv("REQUEST_AGENT", "app.modules.requests.agent_stub:run_request"),
         run_in=run_in,
         celery_broker_url=os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0"),
-        feature_video_consult=os.getenv("FEATURE_VIDEO_CONSULT", "false").lower() == "true",
+        feature_video_consult=video_enabled,
         feature_voice_analysis=os.getenv("FEATURE_VOICE_ANALYSIS", "false").lower() == "true",
         consult_voice_analyzer=os.getenv("CONSULT_VOICE_ANALYZER", "app.modules.consultations.voice_stub:analyze"),
         openai_stt_model=os.getenv("OPENAI_STT_MODEL", "gpt-4o-mini-transcribe"),

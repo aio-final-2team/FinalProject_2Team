@@ -2828,7 +2828,8 @@ paths:
       summary: Room
       description: '[제안][선택] FEATURE_VIDEO_CONSULT=true일 때 예약 담임·신청 보호자만 접속해요. signal_path에
         ?ticket=…로 WebSocket을 열어요. {type: offer|answer|ice|bye, data}만 상대에게 전달해요(64KiB·초당
-        20개). 실패는 1008, 입퇴장은 peer_joined·peer_left예요.'
+        20개). ticket은 일회용이고, 켠 상태의 거부는 수락 뒤 1008이에요. 10초 간격으로 메시지 전 권한을 다시 보고 closes_at에
+        조용한 연결도 닫아요. 서버가 닫으면 화면은 RTCPeerConnection을 닫아요. 입퇴장은 peer_joined·peer_left예요.'
       operationId: room_api_v1_consultations__booking_id__room_get
       security:
       - HTTPBearer: []
