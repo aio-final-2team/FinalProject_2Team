@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+from functools import partial
 
 import anyio
 from fastapi import BackgroundTasks, FastAPI
@@ -12,10 +13,12 @@ from app.core.request_id import request_id_middleware
 
 @asynccontextmanager
 async def lifespan(app):
+    if settings.data_backend == "mock" or settings.run_in == "api":
+        from app import backend
+        await anyio.to_thread.run_sync(partial(backend.voice_analyses.sweep, all_pending=True))
     if settings.data_backend == "mock":
         yield
         return
-    from functools import partial
     from app.core.jobs import check_broker, dispatch
     from app.modules.daily_notes.runner import requeue_daily_note_drafts
     if settings.run_in == "worker":

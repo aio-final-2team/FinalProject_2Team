@@ -24,12 +24,12 @@ def publish(job, object_id):
     try:
         task.apply_async(args=[str(object_id)], retry=False)
     except Exception as error:
-        # 접수한 DB 행은 유지해요. 주기 점검이 한 번 재전달하고, 계속 실패한 요청만 인계해요.
+        # 접수 행은 유지해요. 음성은 점검에서 실패로 끝내고, 기존 요청·초안은 복구 규칙을 따라요.
         log.error("작업 전달 실패 job=%s id=%s error_type=%s", job, object_id, type(error).__name__)
 
 
 def dispatch(job, object_id, background_tasks):
-    if settings.run_in == "worker":
+    if settings.run_in == "worker" and not (job == "voice_analysis" and settings.data_backend == "mock"):
         background_tasks.add_task(publish, job, object_id)
     else:
         from app.modules.daily_notes.runner import run_daily_note_drafts

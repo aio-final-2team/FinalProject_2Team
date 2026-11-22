@@ -40,3 +40,4 @@ postgres_data/
 .DS_Store
 
 /var/media/
+*.wav

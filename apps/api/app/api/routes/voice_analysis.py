@@ -22,7 +22,7 @@ UPLOAD = {"requestBody": {"required": True, "content": {"multipart/form-data": {
 
 
 @router.post("/consultations/{booking_id}/voice-analyses", status_code=202, response_model=VoiceAnalysis,
-             responses=errors(401, 403, 404, 413, 422), openapi_extra=UPLOAD)
+             responses=errors(401, 403, 404, 409, 413, 422), openapi_extra=UPLOAD)
 async def create(booking_id: UUID, request: Request, response: Response, background_tasks: BackgroundTasks,
                  user: CurrentUser = Depends(current_user)):
     await run_in_threadpool(backend.voice_analyses.access, user, booking_id, write=True)

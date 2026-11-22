@@ -62,9 +62,9 @@ def sweep():
         from app.modules.daily_notes.runner import requeue_daily_note_drafts
         from app.modules.requests.runner import sweep_missing_cards
         count = sweep_missing_cards(datetime.now(KST))
-        if settings.feature_voice_analysis:
-            from app.modules.consultations.voice import sweep as sweep_voice
-            sweep_voice()
+        # 플래그를 끈 뒤에도 남은 음성·상태는 정리해요. 분석은 다시 실행하지 않아요.
+        from app.modules.consultations.voice import sweep as sweep_voice
+        sweep_voice()
         for input_id in requeue_daily_note_drafts(stale_only=True):
             publish("daily_note", input_id)
         return count

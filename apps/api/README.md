@@ -349,15 +349,20 @@ VIDEO_ICE_SERVERS는 urls·선택 username/credential이 있는 JSON 배열이�
 
 `FEATURE_VOICE_ANALYSIS=true`일 때만 T13 3.30의 접수·목록·상세 API 51~53을 써요. 기본은 공통 404예요.
 예약 담임만 multipart file 한 개·synthetic=true로 10MiB 이하 wav·mpeg·webm·mp4를 올려요.
-담임·같은 기관 원장만 결과를 읽어요. 상담방 접속 시간·상태와 별도로 검사해요.
+담임·같은 기관 원장만 결과를 읽어요. 접수는 confirmed·done만, cancelled는 409예요. 기존 분석 조회는 예약 상태와 상관없어요.
 기본 `CONSULT_VOICE_ANALYZER=app.modules.consultations.voice_stub:analyze`는 고정 가상 녹취·요약을 돌려줘요.
 openai를 고르면 OPENAI_STT_MODEL(기본 gpt-4o-mini-transcribe)과 DOCUMENT 역할 모델·팀 키를 써요.
-RUN_IN=api는 BackgroundTasks, worker는 Celery default 큐에서 같은 입구를 실행해요. 처리 제한은 300초예요.
+DB의 RUN_IN=api는 BackgroundTasks, worker는 Celery default 큐에서 같은 입구를 실행해요. 처리 제한은 300초예요.
+mock은 RUN_IN과 상관없이 같은 프로세스에서 실행해요.
 worker 프로필은 API와 같은 media_data 볼륨을 써서 임시 음성을 읽고 지워요.
-중복 전달은 한 번만 실행하고 실패·시간 초과는 재실행하지 않아요. yuchion.sweep도 오래된 running을 끝내요.
+중복 전달은 한 번만 실행하고 실패·시간 초과는 재실행하지 않아요.
+5분 점검은 worker 모드에서만 돌아요. yuchion.sweep은 300초 넘은 queued·running을 failed로 끝내고 파일을 지워요.
+api 모드는 시작할 때 미완료 queued·running을 모두 failed로 끝내고 파일을 지워요. 정리는 플래그가 꺼져도 해요.
 성공·실패 모두 상태 커밋 뒤 원본 파일을 지워요. 결과 조회에는 원본 경로·다시 듣기가 없어요.
 0012와 DDL v0.18을 적용해요. 파일 바이트는 DB에 넣지 않아요. 네 기능 플래그는 계속 기본 false예요.
-가상 WAV는 `python tools/make_virtual_voice.py <저장소 밖 경로.wav>`로 만들어요. 키가 없으면 안내만 해요.
+WAV 길이는 실제 data로 제한하고, 망가진 헤더·사진/QuickTime 브랜드·WebM 아닌 EBML·MPEG 동기 없는 ID3는 422예요.
+녹취·요약 글의 NUL은 저장 전에 지워요.
+가상 WAV는 `python tools/make_virtual_voice.py <저장소 밖 경로.wav>`로 만들어요. 저장소 안 출력은 거절하고 키가 없으면 안내만 해요.
 
 
 ## [제안][선택] 동네 피드(T60)

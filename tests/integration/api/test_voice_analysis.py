@@ -9,25 +9,26 @@ from uuid import UUID, uuid4
 import wave
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import text
 
-from app import backend, worker
+from app import backend, main, worker
 from app.core import config, jobs, media, voice_analysis as rules
 from app.core.auth import CurrentUser, current_user
 from app.main import app
 from app.mock import seed, store, voice_analyses
 from app.modules.consultations import voice_runner as runner, voice_stub
-from tests.integration.api.test_video_consult import events
+from tests.integration.api.test_video_consult import change, events
 
 BASE = f"/api/v1/consultations/{seed.VIDEO_BOOKING}/voice-analyses"
 
 
 @pytest.fixture(autouse=True, params=["mock", "db"])
 def voice_backend(request, monkeypatch, tmp_path, _reset_store):
-    settings = replace(config.settings, feature_video_consult=False, feature_voice_analysis=True,
+    settings = replace(config.settings, data_backend=request.param, feature_video_consult=False, feature_voice_analysis=True,
                        consult_voice_analyzer="app.modules.consultations.voice_stub:analyze", run_in="api",
                        media_dir=str(tmp_path))
-    for module in (config, rules, runner, media, jobs, worker):
+    for module in (config, rules, runner, media, jobs, worker, main):
         monkeypatch.setattr(module, "settings", settings)
     if request.param == "db":
         engine = request.getfixturevalue("seeded_db")
@@ -168,19 +169,31 @@ def test_duplicate_run_is_claimed_once(voice_backend, client, teacher, monkeypat
     assert not thread.is_alive() and len(events(voice_backend, "voice_analysis_completed")) == 1
 
 
-def test_sweep_fails_stale_running_and_ignores_late_results(voice_backend, client, teacher, monkeypatch):
+@pytest.mark.parametrize("status", ["queued", "running"])
+def test_sweep_fails_stale_and_ignores_late_results(voice_backend, client, teacher, monkeypatch, status):
     analysis_id = pending(client, teacher, monkeypatch)
-    backend.voice_analyses.claim(analysis_id)
+    if status == "running":
+        backend.voice_analyses.claim(analysis_id)
+    fresh = pending(client, teacher, monkeypatch)
     if voice_backend.engine:
         with voice_backend.engine.begin() as c:
-            c.execute(text("UPDATE consultation_voice_analyses SET started_at=now()-interval '6 minutes' WHERE id=:id"),
+            c.execute(text("UPDATE consultation_voice_analyses SET created_at=now()-interval '6 minutes', "
+                           "started_at=started_at-interval '6 minutes' WHERE id=:id"),
                       {"id": analysis_id})
     else:
-        store.state().voice_analyses[analysis_id]["started_at"] -= timedelta(minutes=6)
+        row = store.state().voice_analyses[analysis_id]
+        row["created_at"] -= timedelta(minutes=6)
+        if row["started_at"]:
+            row["started_at"] -= timedelta(minutes=6)
     assert backend.voice_analyses.sweep() == 1
     backend.voice_analyses.finish(analysis_id, {**voice_stub.analyze(None), "duration_seconds": 1})
     assert backend.voice_analyses.get(CurrentUser(id=seed.TEACHER, org_id=seed.ORG, role="teacher"), analysis_id)["status"] == "failed"
-    assert not files(voice_backend) and backend.voice_analyses.sweep() == 0
+    assert len(files(voice_backend)) == 1 and backend.voice_analyses.sweep() == 0
+    assert backend.voice_analyses.claim(fresh) is not None
+    runner.run_voice_analysis(analysis_id)
+    assert len(events(voice_backend, "voice_analysis_completed")) == 1
+    backend.voice_analyses.sweep(all_pending=True)
+    assert not files(voice_backend)
 
 
 def test_worker_dispatch_default_queue_and_shared_runner(voice_backend, client, teacher, monkeypatch):
@@ -188,10 +201,14 @@ def test_worker_dispatch_default_queue_and_shared_runner(voice_backend, client, 
     calls = []
     monkeypatch.setattr(worker.voice_analysis, "apply_async", lambda **kw: calls.append(kw))
     row = post(client, teacher).json()
-    assert row["status"] == "queued" and calls == [{"args": [row["id"]], "retry": False}]
+    assert row["status"] == "queued"
     assert worker.celery_app.amqp.router.route({}, "yuchion.voice_analysis")["queue"].name == "default"
-    monkeypatch.setattr(worker, "settings", replace(worker.settings, data_backend="db", run_in="worker"))
-    worker.voice_analysis.run(row["id"])
+    if voice_backend.engine:
+        assert calls == [{"args": [row["id"]], "retry": False}]
+        monkeypatch.setattr(worker, "settings", replace(worker.settings, run_in="worker"))
+        worker.voice_analysis.run(row["id"])
+    else:
+        assert calls == []  # mock은 RUN_IN과 상관없이 같은 프로세스로 끝나요.
     assert client.get(BASE, headers=teacher).json()["items"][0]["status"] == "succeeded" and not files(voice_backend)
 
 
@@ -262,3 +279,138 @@ def test_tts_joins_two_generated_voices(voice_backend, monkeypatch):
         assert audio.getnframes() == 1600
     assert [c["voice"] for c in calls] == ["coral", "onyx"]
     assert all(c["response_format"] == "wav" and "가상" in c["input"] for c in calls)
+
+
+def test_malformed_wav_fmt_is_422(voice_backend, client, teacher):
+    data = wav()
+    response = post(client, teacher, data=data[:16] + b"\xff" * 4 + data[20:])
+    assert response.status_code == 422 and response.json()["error"]["code"] == "VALIDATION_FAILED"
+    assert not files(voice_backend)
+
+
+def test_wav_duration_uses_actual_data(voice_backend, client, teacher):
+    data = wav()
+    response = post(client, teacher, data=data[:40] + b"\xff" * 4 + data[44:])
+    assert response.status_code == 202 and response.json()["duration_seconds"] == pytest.approx(0.1)
+
+
+def test_non_audio_and_malformed_containers_are_422(voice_backend, client, teacher):
+    def ftyp(brand):
+        return b"\0\0\0\x10ftyp" + brand + b"\0" * 4
+    invalid = [ftyp(brand) for brand in (b"heic", b"heix", b"mif1", b"msf1", b"avif", b"avis", b"qt  ")]
+    invalid += [b"\x1aE\xdf\xa3\x8b\x42\x82\x88matroska", b"ID3", b"ID3\x04\0\0\0\0\0\0",
+                b"ID3\x04\0\0\x80\0\0\0\xff\xfb", b"ID3\x04\0\0\0\0\0\x7f\xff\xfb",
+                b"\x1aE\xdf\xa3\x8b\xec\x89\x42\x82\x84webm\0\0",  # DocType 안의 가짜 문자열
+                b"\0\0\0\x14ftypisom\0\0\0\0heic"]
+    for data in invalid:
+        response = post(client, teacher, data=data)
+        assert response.status_code == 422, (data, response.text)
+        assert response.json()["error"]["code"] == "VALIDATION_FAILED"
+    assert not files(voice_backend)
+
+
+@pytest.mark.parametrize("kind", ["mp4", "webm", "mpeg"])
+def test_allowed_container_headers(voice_backend, client, teacher, kind):
+    if kind == "mp4":
+        samples = [b"\0\0\0\x14ftyp" + brand + b"\0" * 4 + b"isom"
+                   for brand in (b"M4A ", b"M4B ", b"mp42", b"mp41", b"isom", b"iso2", b"dash")]
+    elif kind == "webm":
+        samples = [b"\x1aE\xdf\xa3\x87\x42\x82\x84webm"]
+    else:
+        samples = [b"\xff\xfb\x90\0", b"ID3\x04\0\0\0\0\0\x02\0\0\xff\xfb\x90\0"]
+    for data in samples:
+        assert post(client, teacher, data=data).status_code == 202
+    assert not files(voice_backend)
+
+
+@pytest.mark.parametrize("disabled", [False, True])
+def test_api_startup_fails_all_pending(voice_backend, client, teacher, monkeypatch, disabled):
+    ids = [pending(client, teacher, monkeypatch) for _ in range(2)]
+    backend.voice_analyses.claim(ids[1])
+    monkeypatch.setattr(main, "settings", replace(main.settings, feature_voice_analysis=not disabled))
+    with TestClient(app):
+        pass  # lifespan: 아직 300초가 안 지났어도 끝내요.
+    for analysis_id in ids:
+        assert backend.voice_analyses.claim(analysis_id) is None
+        backend.voice_analyses.finish(analysis_id, {**voice_stub.analyze(None), "duration_seconds": 1})
+        row = client.get(f"/api/v1/voice-analyses/{analysis_id}", headers=teacher).json()
+        assert row["status"] == "failed" and row["completed_at"]
+    assert not files(voice_backend) and backend.voice_analyses.sweep(all_pending=True) == 0
+    assert len(events(voice_backend, "voice_analysis_completed")) == 2
+
+
+def test_worker_api_startup_preserves_db_jobs(voice_backend, client, teacher, monkeypatch):
+    ids = [pending(client, teacher, monkeypatch) for _ in range(2)]
+    backend.voice_analyses.claim(ids[1])
+    monkeypatch.setattr(main, "settings", replace(main.settings, run_in="worker"))
+    monkeypatch.setattr(jobs, "check_broker", lambda: None)
+    with TestClient(app):
+        pass
+    rows = client.get(BASE, headers=teacher).json()["items"]
+    assert {r["status"] for r in rows} == ({"queued", "running"} if voice_backend.engine else {"failed"})
+    assert len(files(voice_backend)) == (2 if voice_backend.engine else 0)
+    backend.voice_analyses.sweep(all_pending=True)
+
+
+@pytest.mark.parametrize("failure", ["broker", "disabled_worker"])
+def test_worker_sweep_cleans_undispatched_jobs(voice_backend, client, teacher, monkeypatch, failure):
+    if not voice_backend.engine:
+        pytest.skip("mock은 worker 전달 대신 같은 프로세스에서 실행해요.")
+    monkeypatch.setattr(jobs, "settings", replace(jobs.settings, run_in="worker"))
+    monkeypatch.setattr(worker, "settings", replace(worker.settings, run_in="worker"))
+    def deliver(**kwargs):
+        if failure == "broker":
+            raise ConnectionError("[TEST] broker unavailable")
+        worker.voice_analysis.run(*kwargs["args"])
+    monkeypatch.setattr(worker.voice_analysis, "apply_async", deliver)
+    if failure == "disabled_worker":
+        monkeypatch.setattr(worker, "settings", replace(worker.settings, feature_voice_analysis=False))
+    row = post(client, teacher).json()
+    assert client.get(BASE, headers=teacher).json()["items"][0]["status"] == "queued"
+    with voice_backend.engine.begin() as c:
+        c.execute(text("UPDATE consultation_voice_analyses SET created_at=now()-interval '6 minutes' WHERE id=:id"),
+                  {"id": row["id"]})
+    worker.sweep.run()
+    worker.voice_analysis.run(row["id"])
+    assert client.get(BASE, headers=teacher).json()["items"][0]["status"] == "failed"
+    assert not files(voice_backend) and len(events(voice_backend, "voice_analysis_completed")) == 1
+
+
+def test_result_strips_nul_before_storage(voice_backend, client, teacher, monkeypatch):
+    monkeypatch.setattr(runner, "analyze", lambda path: {"transcript": "가\x00상", "result": {
+        "summary": "요\x00약", "parent_requests": ["부\x00탁"], "follow_ups": ["확\x00인"]}})
+    post(client, teacher)
+    row = client.get(BASE, headers=teacher).json()["items"][0]
+    assert row["status"] == "succeeded" and row["transcript"] == "가상"
+    assert row["result"] == {"summary": "요약", "parent_requests": ["부탁"], "follow_ups": ["확인"]}
+    assert not files(voice_backend)
+
+
+def test_cancelled_booking_rejects_upload_but_keeps_reads(voice_backend, client, teacher, parent):
+    row = post(client, teacher).json()
+    change(voice_backend, status="cancelled")
+    response = post(client, teacher)
+    assert response.status_code == 409 and response.json()["error"]["code"] == "CONFLICT"
+    assert post(client, parent).status_code == 403  # 기존 권한 검사를 먼저 해요.
+    assert client.get(BASE, headers=teacher).status_code == 200
+    assert client.get(f"/api/v1/voice-analyses/{row['id']}", headers=teacher).status_code == 200
+    change(voice_backend, status="done")
+    assert post(client, teacher).status_code == 202 and not files(voice_backend)
+
+
+@pytest.mark.parametrize("symlink", [False, True])
+def test_tts_rejects_repo_output_before_external_call(voice_backend, monkeypatch, symlink):
+    import openai
+    from pathlib import Path
+    from tools.make_virtual_voice import make
+    root = Path(__file__).resolve().parents[3]
+    if symlink:
+        target = voice_backend.root / "repo"
+        target.symlink_to(root, target_is_directory=True)
+    else:
+        target = root
+    monkeypatch.setenv("OPENAI_API_KEY", "[TEST] fake")
+    monkeypatch.setattr(openai, "OpenAI", lambda **kwargs: pytest.fail("경로 거절 전에 외부 호출하면 안 돼요."))
+    with pytest.raises(ValueError, match="저장소 밖"):
+        make(target / "forbidden.wav")
+    assert not (root / "forbidden.wav").exists()

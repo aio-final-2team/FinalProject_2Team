@@ -80,11 +80,12 @@ def finish(analysis_id, result):
             _event(c, row, "voice_analysis_completed", status=row["status"])
 
 
-def sweep():
+def sweep(*, all_pending=False):
     with transaction() as c:
-        rows = c.execute(text("SELECT * FROM consultation_voice_analyses WHERE status='running' "
-                              "AND started_at < now()-make_interval(secs=>:timeout) FOR UPDATE"),
-                         {"timeout": rules.VOICE_TIMEOUT}).mappings().all()
+        rows = c.execute(text("SELECT * FROM consultation_voice_analyses WHERE status IN ('queued','running') "
+                              "AND (:all_pending OR CASE WHEN status='running' THEN started_at ELSE created_at END "
+                              "< now()-make_interval(secs=>:timeout)) FOR UPDATE"),
+                         {"timeout": rules.VOICE_TIMEOUT, "all_pending": all_pending}).mappings().all()
         for row in rows:
             c.execute(text("UPDATE consultation_voice_analyses SET status='failed',completed_at=now(),storage_path=NULL "
                            "WHERE id=:id"), {"id": row["id"]})
