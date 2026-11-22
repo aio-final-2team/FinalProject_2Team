@@ -88,14 +88,15 @@ def populate():
                                        "storage_path": name, "child_ids": tags, "created_at": seed.FEED_CREATED_AT}
 
 
-def seed_video_consult():
+def seed_video_consult(now=None):
     from app.mock.records import Booking
+    now = now if now is not None else seed.video_now()
     state = store.state()
     booking = state.bookings.get(seed.VIDEO_BOOKING)
     if booking and booking.org_id == seed.ORG:
         if (booking.status == "confirmed"
-                and (booking.expected_end_at or booking.period["end"]) + timedelta(minutes=30) < seed.video_now()):
-            period = seed.video_period()
+                and (booking.expected_end_at or booking.period["end"]) + timedelta(minutes=30) < now):
+            period = seed.video_period(now=now)
             if period is None:
                 return
             if any(b.id != booking.id and b.org_id == seed.ORG and b.status == "confirmed"
@@ -108,7 +109,7 @@ def seed_video_consult():
         return
     if any(b.org_id == seed.ORG and b.status == "confirmed" for b in state.bookings.values()):
         return
-    period = seed.video_period()
+    period = seed.video_period(now=now)
     if period is None:
         return
     req = store.Request(seed.VIDEO_REQUEST, seed.ORG, seed.CLASS_STAR, seed.CHILD, seed.PARENT,

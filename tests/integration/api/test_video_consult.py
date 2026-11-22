@@ -1,7 +1,8 @@
 """[제안][선택] T56: 실제 WebSocket과 mock·전용 DB 예약을 함께 검사해요."""
 
 from dataclasses import replace
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
+from functools import partial
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -19,13 +20,22 @@ BASE = f"/api/v1/consultations/{seed.VIDEO_BOOKING}"
 VIDEO_NOW = datetime.fromisoformat("2026-11-22T12:00:00+09:00")
 
 
+def fixed_video_seed(monkeypatch):
+    """공유 reset·seeded_db가 부르는 T56 시드에도 고정 시각을 넘겨요."""
+    from app.mock import seeding
+    from db.seeds import demo
+    for module in (seeding, demo):
+        monkeypatch.setattr(module, "seed_video_consult", partial(module.seed_video_consult, now=VIDEO_NOW))
+    monkeypatch.setattr(seed, "video_now", lambda: pytest.fail("[TEST] T56 시드에 고정 now를 넘겨 주세요."))
+
+
 @pytest.fixture(autouse=True, params=["mock", "db"])
 def video_backend(request, monkeypatch, _reset_store):
-    monkeypatch.setattr(seed, "video_now", lambda: VIDEO_NOW)
+    fixed_video_seed(monkeypatch)
     enabled = replace(config.settings, feature_video_consult=True)
     monkeypatch.setattr(config, "settings", enabled)
     monkeypatch.setattr(rules, "settings", enabled)
-    monkeypatch.setattr(rules, "now", lambda: seed.video_period()["start"])
+    monkeypatch.setattr(rules, "now", lambda: seed.video_period(now=VIDEO_NOW)["start"])
     if request.param == "db":
         engine = request.getfixturevalue("seeded_db")
         from app.core import users
@@ -122,7 +132,7 @@ def test_other_org_and_missing_booking_are_404(video_backend, client, teacher):
 @pytest.mark.parametrize("minutes,status,reason", [(-11, 409, "room_not_open"), (-10, 200, None),
                                                    (65, 200, None), (66, 409, "room_closed")])
 def test_opening_boundaries(client, teacher, monkeypatch, minutes, status, reason):
-    monkeypatch.setattr(rules, "now", lambda: seed.video_period()["start"] + timedelta(minutes=minutes))
+    monkeypatch.setattr(rules, "now", lambda: seed.video_period(now=VIDEO_NOW)["start"] + timedelta(minutes=minutes))
     response = client.get(BASE + "/room", headers=teacher)
     assert response.status_code == status, response.text
     if reason:
@@ -132,9 +142,9 @@ def test_opening_boundaries(client, teacher, monkeypatch, minutes, status, reaso
 
 
 def test_expected_end_extends_room(video_backend, client, teacher, monkeypatch):
-    change(video_backend, expected_end_at=seed.video_period()["end"] + timedelta(minutes=40))
-    monkeypatch.setattr(rules, "now", lambda: seed.video_period()["start"] + timedelta(minutes=90))
-    assert datetime.fromisoformat(room(client, teacher)["closes_at"]) == seed.video_period()["end"] + timedelta(minutes=70)
+    change(video_backend, expected_end_at=seed.video_period(now=VIDEO_NOW)["end"] + timedelta(minutes=40))
+    monkeypatch.setattr(rules, "now", lambda: seed.video_period(now=VIDEO_NOW)["start"] + timedelta(minutes=90))
+    assert datetime.fromisoformat(room(client, teacher)["closes_at"]) == seed.video_period(now=VIDEO_NOW)["end"] + timedelta(minutes=70)
 
 
 def test_cancelled_booking_conflict_and_connect_recheck(video_backend, client, teacher):
@@ -150,7 +160,7 @@ def test_invalid_tickets_rejected(client, teacher, invalid):
     t = room(client, teacher)
     claims = jwt.decode(t["ticket"], rules.settings.jwt_secret, algorithms=["HS256"], audience="consult-signal")
     if invalid == "expired":
-        claims["exp"] = int(datetime.now(timezone.utc).timestamp()) - 1
+        claims["exp"] = claims["iat"] - 1
     elif invalid == "booking":
         claims["booking"] = str(uuid4())
     elif invalid == "role":
@@ -165,9 +175,9 @@ def test_invalid_tickets_rejected(client, teacher, invalid):
 
 def test_connect_rechecks_time_and_participant(video_backend, client, teacher, monkeypatch):
     t = room(client, teacher)
-    monkeypatch.setattr(rules, "now", lambda: seed.video_period()["end"] + timedelta(hours=1))
+    monkeypatch.setattr(rules, "now", lambda: seed.video_period(now=VIDEO_NOW)["end"] + timedelta(hours=1))
     rejected(client, t)
-    monkeypatch.setattr(rules, "now", lambda: seed.video_period()["start"])
+    monkeypatch.setattr(rules, "now", lambda: seed.video_period(now=VIDEO_NOW)["start"])
     t = room(client, teacher)
     if video_backend.engine:
         with video_backend.engine.begin() as c:
@@ -225,7 +235,7 @@ def test_ice_configuration_and_seed_idempotency(video_backend, client, teacher, 
     if video_backend.engine:
         from db.seeds.demo import seed_video_consult
         with video_backend.engine.begin() as c:
-            seed_video_consult(c)
+            seed_video_consult(c, now=VIDEO_NOW)
             assert c.scalar(text("SELECT count(*) FROM consultation_bookings")) == 1
     else:
         assert list(store.state().bookings) == [seed.VIDEO_BOOKING]
@@ -239,7 +249,7 @@ def test_connected_access_rechecked(video_backend, client, teacher, parent, monk
     with client, connect(client, room(client, parent)) as p, connect(client, room(client, teacher)) as t:
         assert p.receive_json() == t.receive_json() == {"type": "peer_joined"}
         if invalid == "clock":
-            monkeypatch.setattr(rules, "now", lambda: seed.video_period()["end"] + timedelta(hours=1))
+            monkeypatch.setattr(rules, "now", lambda: seed.video_period(now=VIDEO_NOW)["end"] + timedelta(hours=1))
         elif video_backend.engine:
             sql, values = {
                 "cancelled": ("UPDATE consultation_bookings SET status='cancelled' WHERE id=:id", {"id": seed.VIDEO_BOOKING}),
@@ -269,7 +279,7 @@ def test_connected_access_rechecked(video_backend, client, teacher, parent, monk
 
 def test_quiet_connection_closes_at_deadline(client, teacher, monkeypatch):
     from time import monotonic
-    deadline = seed.video_period()["end"] + timedelta(minutes=30)
+    deadline = seed.video_period(now=VIDEO_NOW)["end"] + timedelta(minutes=30)
     started = monotonic()
     monkeypatch.setattr(rules, "now", lambda: deadline + timedelta(seconds=monotonic() - started - 0.2))
     with connect(client, room(client, teacher)) as ws:
@@ -279,14 +289,14 @@ def test_quiet_connection_closes_at_deadline(client, teacher, monkeypatch):
 
 def test_quiet_connection_waits_for_extended_deadline(video_backend, client, teacher, parent, monkeypatch):
     from time import monotonic
-    deadline = seed.video_period()["end"] + timedelta(minutes=30)
+    deadline = seed.video_period(now=VIDEO_NOW)["end"] + timedelta(minutes=30)
     started = monotonic()
     def clock():
         return deadline + timedelta(seconds=monotonic() - started - 0.5)
     monkeypatch.setattr(rules, "now", clock)
     with client, connect(client, room(client, parent)) as p, connect(client, room(client, teacher)) as t:
         assert p.receive_json() == t.receive_json() == {"type": "peer_joined"}
-        change(video_backend, expected_end_at=seed.video_period()["end"] + timedelta(seconds=1))
+        change(video_backend, expected_end_at=seed.video_period(now=VIDEO_NOW)["end"] + timedelta(seconds=1))
         frame = p.receive()
         if frame["type"] == "websocket.send":
             assert frame["text"] == '{"type":"peer_left"}'
@@ -297,35 +307,47 @@ def test_quiet_connection_waits_for_extended_deadline(video_backend, client, tea
 
 @pytest.mark.parametrize("current,expected", [
     ("2026-11-22T23:59:59+09:00", None),
-    ("2026-11-23T00:00:01+09:00", ("23:20", "23:50")),
+    ("2026-11-23T00:00:01+09:00", ("00:00", "00:30")),
+    ("2026-11-23T00:02:00+09:00", ("00:00", "00:30")),
+    ("2026-11-23T00:05:00+09:00", ("00:00", "00:35")),
     ("2026-11-22T23:20:00+09:00", ("23:20", "23:50")),
+    ("2026-11-22T23:51:00+09:00", None),
+    ("2026-11-22T23:55:00+09:00", None),
     ("2026-11-22T20:30:00+09:00", ("23:20", "23:50")),
 ])
-def test_seed_refresh_stays_on_kst_day(video_backend, monkeypatch, caplog, current, expected):
+@pytest.mark.parametrize("existing", [False, True])
+def test_seed_refresh_stays_on_kst_day(video_backend, caplog, current, expected, existing):
     from app.mock import seeding
     from db.seeds.demo import seed_video_consult
-    old = {key: value - timedelta(days=2) for key, value in seed.video_period().items()}
-    monkeypatch.setattr(seed, "video_now", lambda: datetime.fromisoformat(current))
+    old = {key: value - timedelta(days=2) for key, value in seed.video_period(now=VIDEO_NOW).items()}
+    current = datetime.fromisoformat(current)
     if video_backend.engine:
         with video_backend.engine.begin() as c:
             c.execute(text("UPDATE consultation_bookings SET period=tstzrange(:start,:end,'[)') WHERE id=:id"),
                       {"id": seed.VIDEO_BOOKING, **old})
-            seed_video_consult(c)
+            if not existing:
+                c.execute(text("DELETE FROM consultation_bookings WHERE id=:id"), {"id": seed.VIDEO_BOOKING})
+            seed_video_consult(c, now=current)
             row = c.execute(text("SELECT lower(period), upper(period) FROM consultation_bookings WHERE id=:id"),
-                            {"id": seed.VIDEO_BOOKING}).one()
-            result = dict(zip(("start", "end"), row))
+                            {"id": seed.VIDEO_BOOKING}).one_or_none()
+            result = dict(zip(("start", "end"), row)) if row else None
     else:
         store.state().bookings[seed.VIDEO_BOOKING].period = old
-        seeding.seed_video_consult()
-        result = store.state().bookings[seed.VIDEO_BOOKING].period
+        if not existing:
+            del store.state().bookings[seed.VIDEO_BOOKING]
+        seeding.seed_video_consult(now=current)
+        booking = store.state().bookings.get(seed.VIDEO_BOOKING)
+        result = booking.period if booking else None
     if expected is None:
-        assert result == old
+        assert result == (old if existing else None)
         assert "당일 가상 예약 시간 지남" in caplog.text
     else:
         from app.core.schedule import KST
         values = [value.astimezone(KST) for value in result.values()]
         assert tuple(value.strftime("%H:%M") for value in values) == expected
-        assert all(value.date() == datetime.fromisoformat(current).date() for value in values)
+        assert all(value.date() == current.astimezone(KST).date() for value in values)
+        if expected[0] == "00:00":
+            assert result["start"] <= current < result["end"]
         assert "갱신 생략" not in caplog.text
 
 
@@ -337,8 +359,7 @@ def test_binary_frame_has_invalid_signal_reason(client, teacher):
 
 
 def test_ticket_single_use_and_expired_entries_pruned(client, teacher):
-    import time
-    rules._used_tickets["[TEST] expired"] = time.time() - 1
+    rules._used_tickets["[TEST] expired"] = 0
     t = room(client, teacher)
     with connect(client, t) as original:
         rejected(client, t)
@@ -352,7 +373,7 @@ def test_ticket_single_use_and_expired_entries_pruned(client, teacher):
 def test_expired_demo_refresh_and_resource_conflicts(video_backend, monkeypatch, caplog, conflict):
     from app.mock import seeding
     from db.seeds.demo import seed_video_consult
-    target = seed.video_period()
+    target = seed.video_period(now=VIDEO_NOW)
     old = {key: value - timedelta(days=2) for key, value in target.items()}
     other = seed.demo_id("902")
     other_room = seed.demo_id("602")
@@ -370,8 +391,8 @@ def test_expired_demo_refresh_and_resource_conflicts(video_backend, monkeypatch,
                     VALUES (:id,:org,:req,:teacher,:room,tstzrange(:start,:end,'[)'),:teacher)
                 """), {"id": other, "org": seed.ORG, "req": seed.REQUEST_COUGH,
                        "teacher": teacher_id, "room": room_id, **target})
-            seed_video_consult(c)
-            seed_video_consult(c)
+            seed_video_consult(c, now=VIDEO_NOW)
+            seed_video_consult(c, now=VIDEO_NOW)
             period = c.scalar(text("SELECT period FROM consultation_bookings WHERE id=:id"), {"id": seed.VIDEO_BOOKING})
             result = {"start": period.lower, "end": period.upper}
             if conflict:
@@ -382,8 +403,8 @@ def test_expired_demo_refresh_and_resource_conflicts(video_backend, monkeypatch,
         if conflict:
             store.state().bookings[other] = Booking(other, seed.ORG, seed.REQUEST_COUGH, None, teacher_id,
                                                    room_id, target, teacher_id)
-        seeding.seed_video_consult()
-        seeding.seed_video_consult()
+        seeding.seed_video_consult(now=VIDEO_NOW)
+        seeding.seed_video_consult(now=VIDEO_NOW)
         result = store.state().bookings[seed.VIDEO_BOOKING].period
         if conflict:
             assert store.state().bookings[other].period == target

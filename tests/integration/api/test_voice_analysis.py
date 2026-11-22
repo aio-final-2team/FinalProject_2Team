@@ -18,14 +18,14 @@ from app.core.auth import CurrentUser, current_user
 from app.main import app
 from app.mock import seed, store, voice_analyses
 from app.modules.consultations import voice_runner as runner, voice_stub
-from tests.integration.api.test_video_consult import VIDEO_NOW, change, events
+from tests.integration.api.test_video_consult import change, events, fixed_video_seed
 
 BASE = f"/api/v1/consultations/{seed.VIDEO_BOOKING}/voice-analyses"
 
 
 @pytest.fixture(autouse=True, params=["mock", "db"])
 def voice_backend(request, monkeypatch, tmp_path, _reset_store):
-    monkeypatch.setattr(seed, "video_now", lambda: VIDEO_NOW)
+    fixed_video_seed(monkeypatch)
     settings = replace(config.settings, data_backend=request.param, feature_video_consult=False, feature_voice_analysis=True,
                        consult_voice_analyzer="app.modules.consultations.voice_stub:analyze", run_in="api",
                        media_dir=str(tmp_path))
