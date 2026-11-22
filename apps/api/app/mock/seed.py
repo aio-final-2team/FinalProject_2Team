@@ -184,6 +184,14 @@ FEED_PHOTOS = [
 ]
 FEED_CREATED_AT = datetime.fromisoformat("2026-11-21T09:00:00+09:00")
 
+# [제안][선택] T60. 플래그를 켠 데모에서만 두 가상 기관을 더해요.
+NEIGHBORHOOD_ORGS = [
+    {"id": demo_id("2"), "name": "가상 달빛어린이집", "region": "가상동", "classroom_id": demo_id("103"),
+     "child_id": demo_id("504"), "parent_id": demo_id("403"), "login_id": "parent-n01"},
+    {"id": demo_id("3"), "name": "가상 별빛어린이집", "region": "가상 별동", "classroom_id": demo_id("104"),
+     "child_id": demo_id("505"), "parent_id": demo_id("404"), "login_id": "parent-x01"},
+]
+
 
 def video_now():
     from app.core.schedule import KST

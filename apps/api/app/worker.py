@@ -13,7 +13,7 @@ celery_app = Celery("yuchion", broker=settings.celery_broker_url)
 celery_app.conf.update(
     task_serializer="json", accept_content=["json"], result_serializer="json",
     task_ignore_result=True, task_default_queue="default",
-    task_routes={"yuchion.daily_note_drafts": {"queue": "notes"}},
+    task_routes={"yuchion.daily_note_drafts": {"queue": "notes"}, "yuchion.growth_video": {"queue": "media"}},
     worker_prefetch_multiplier=1, task_acks_late=True, task_reject_on_worker_lost=True,
     broker_connection_retry_on_startup=True,
     broker_transport_options={"socket_connect_timeout": 2, "socket_timeout": 2},
@@ -65,6 +65,8 @@ def sweep():
         # 플래그를 끈 뒤에도 남은 음성·상태는 정리해요. 분석은 다시 실행하지 않아요.
         from app.modules.consultations.voice import sweep as sweep_voice
         sweep_voice()
+        from app.modules.feed.growth_videos import sweep as sweep_growth
+        sweep_growth()
         for input_id in requeue_daily_note_drafts(stale_only=True):
             publish("daily_note", input_id)
         return count
@@ -76,6 +78,13 @@ def voice_analysis(analysis_id):
     if enabled() and settings.feature_voice_analysis:
         from app.modules.consultations.voice_runner import run_voice_analysis
         run_voice_analysis(analysis_id)
+
+
+@celery_app.task(name="yuchion.growth_video")
+def growth_video(video_id):
+    if enabled() and settings.feature_growth_video:
+        from app.modules.feed.growth_runner import run_growth_video
+        run_growth_video(video_id)
 
 
 @celery_app.task(name="yuchion.deliver_notifications")

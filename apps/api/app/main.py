@@ -13,9 +13,12 @@ from app.core.request_id import request_id_middleware
 
 @asynccontextmanager
 async def lifespan(app):
+    from app.core.growth_video import clean_temp
+    await anyio.to_thread.run_sync(clean_temp)
     if settings.data_backend == "mock" or settings.run_in == "api":
         from app import backend
         await anyio.to_thread.run_sync(partial(backend.voice_analyses.sweep, all_pending=True))
+        await anyio.to_thread.run_sync(partial(backend.growth_videos.sweep, all_pending=True))
     if settings.data_backend == "mock":
         yield
         return

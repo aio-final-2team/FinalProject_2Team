@@ -112,8 +112,8 @@ def test_worker_compose_shares_api_configuration_and_initializes_database_once()
                              "config", "--format", "json"], cwd=ROOT, capture_output=True, text=True,
                             env={**os.environ, "DATA_BACKEND": "db", "RUN_IN": "worker"}, check=True)
     services = json.loads(result.stdout)["services"]
-    assert set(services) == {"api", "db", "web", "redis", "worker", "beat"}
-    for name in ("worker", "beat"):
+    assert set(services) == {"api", "db", "web", "redis", "worker", "beat", "media-worker"}
+    for name in ("worker", "beat", "media-worker"):
         assert services[name]["environment"] == services["api"]["environment"]
         assert services[name]["entrypoint"] == ["celery"]
         assert services[name]["depends_on"]["api"]["condition"] == "service_healthy"
@@ -128,3 +128,7 @@ def test_worker_compose_shares_api_configuration_and_initializes_database_once()
     assert command[command.index("-Q")+1] == "default,notes"
     assert "--concurrency=" + os.getenv("WORKER_CONCURRENCY", "4") in command
     assert "inspect ping" in services["worker"]["healthcheck"]["test"][1]
+    assert services["media-worker"]["volumes"] == services["api"]["volumes"]
+    command = services["media-worker"]["command"]
+    assert command[command.index("-Q")+1] == "media"
+    assert "--concurrency=1" in command and "--pool=threads" in command

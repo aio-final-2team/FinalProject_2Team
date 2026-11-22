@@ -1,6 +1,6 @@
--- 유치온 DB 스키마 초안 (T09) · 문서 버전 v0.18 ([제안][선택] T56 화상상담 11/22 반영)
+-- 유치온 DB 스키마 초안 (T09) · 문서 버전 v0.22 ([제안][선택] T60 성장 영상 11/23 반영)
 -- 설계서: Docs/Step2/DB_스키마_설계서.md
--- 이 파일은 최종 설계 모양이다. 실제 적용은 apps/api/migrations의 0001 → 0002 → 0003 → 0004 → 0005 → 0006 → 0007 → 0008 → 0009 → 0010 → 0011 → 0012로 한다.
+-- 이 파일은 최종 설계 모양이다. 실제 적용은 apps/api/migrations의 0001 → 0002 → 0003 → 0004 → 0005 → 0006 → 0007 → 0008 → 0009 → 0010 → 0011 → 0012 → 0013 → 0014 → 0015 → 0016으로 한다.
 -- 대상: PostgreSQL 16 + pgvector 0.8 (compose.yaml의 pgvector/pgvector:pg16). Supabase는 쓰지 않는다(설계서 5.1)
 -- 기관 경계: 기관에 속한 표끼리는 (id, org_id) 짝으로 참조해서 다른 원 행을 섞어 넣으면 DB가 거부한다
 
@@ -70,7 +70,7 @@ CREATE TABLE children (
     is_virtual    boolean NOT NULL DEFAULT true,
     created_at    timestamptz NOT NULL DEFAULT now(),
     photo_scope   text NOT NULL DEFAULT 'family'
-                  CONSTRAINT children_photo_scope_check CHECK (photo_scope IN ('family', 'class', 'org')),
+                  CONSTRAINT children_photo_scope_check CHECK (photo_scope IN ('family', 'class', 'org', 'neighborhood')),
     FOREIGN KEY (classroom_id, org_id) REFERENCES classrooms(id, org_id),
     UNIQUE (id, org_id)
 );
@@ -345,7 +345,7 @@ CREATE TABLE events (
                                    'daily_note_drafted', 'daily_note_edited', 'daily_note_confirmed', 'daily_note_sent', 'agent_requeued',
                                    'consultation_delay_reported', 'consultation_reminded',
                                    'feed_post_created', 'feed_post_deleted', 'feed_post_hidden', 'photo_scope_changed',
-                                   'video_joined', 'video_left', 'voice_analysis_requested', 'voice_analysis_completed')),
+                                   'video_joined', 'video_left', 'voice_analysis_requested', 'voice_analysis_completed', 'growth_video_requested', 'growth_video_completed', 'growth_video_deleted')),
     -- 시스템이 한 일(보류 예정일 자동 재개, 상담 시간 잡아 두기 풀림)은 actor_type = 'system', actor_id = NULL
     from_status  text,
     to_status    text,
@@ -727,13 +727,13 @@ CREATE TABLE feed_posts (
     id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     org_id        uuid NOT NULL REFERENCES organizations(id),
     classroom_id  uuid,
-    lane          text NOT NULL CHECK (lane IN ('class', 'org')),
+    lane          text NOT NULL CHECK (lane IN ('class', 'org', 'neighborhood')),
     author_id     uuid NOT NULL,
     body          text NOT NULL CHECK (char_length(body) BETWEEN 1 AND 2000 AND btrim(body) <> ''),
     status        text NOT NULL DEFAULT 'published' CHECK (status IN ('published', 'hidden')),
     created_at    timestamptz NOT NULL DEFAULT now(),
     deleted_at    timestamptz,
-    CHECK ((lane='class' AND classroom_id IS NOT NULL) OR (lane='org' AND classroom_id IS NULL)),
+    CHECK ((lane='class' AND classroom_id IS NOT NULL) OR (lane IN ('org', 'neighborhood') AND classroom_id IS NULL)),
     FOREIGN KEY (classroom_id, org_id) REFERENCES classrooms(id, org_id),
     FOREIGN KEY (author_id, org_id) REFERENCES users(id, org_id),
     UNIQUE (id, org_id)
@@ -782,3 +782,38 @@ CREATE TABLE consultation_voice_analyses (
     FOREIGN KEY (request_id, org_id) REFERENCES requests(id, org_id)
 );
 CREATE INDEX consultation_voice_analyses_booking_idx ON consultation_voice_analyses (booking_id, created_at DESC, id DESC);
+
+-- [제안][선택] T60 성장 영상: 파일 바이트는 MEDIA_DIR에만 저장해요.
+
+CREATE TABLE growth_videos (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    org_id uuid NOT NULL,
+    child_id uuid NOT NULL,
+    requested_by uuid NOT NULL,
+    status text NOT NULL DEFAULT 'queued' CHECK (status IN ('queued','running','succeeded','failed')),
+    storage_path text NOT NULL,
+    photo_count integer NOT NULL CHECK (photo_count BETWEEN 3 AND 20),
+    duration_seconds double precision CHECK (duration_seconds > 0 AND duration_seconds <= 60),
+    size_bytes bigint CHECK (size_bytes > 0),
+    sha256 text CHECK (sha256 ~ '^[0-9a-f]{64}$'),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    started_at timestamptz,
+    completed_at timestamptz,
+    deleted_at timestamptz,
+    failure_reason text,
+    UNIQUE (id, org_id),
+    FOREIGN KEY (child_id, org_id) REFERENCES children(id, org_id),
+    FOREIGN KEY (requested_by, org_id) REFERENCES users(id, org_id)
+);
+CREATE INDEX growth_videos_child_idx ON growth_videos (child_id, created_at DESC, id DESC);
+CREATE UNIQUE INDEX growth_videos_pending_child_idx ON growth_videos(child_id) WHERE status IN ('queued','running') AND deleted_at IS NULL;
+CREATE TABLE growth_video_photos (
+    video_id uuid NOT NULL,
+    org_id uuid NOT NULL,
+    photo_id uuid NOT NULL,
+    position integer NOT NULL CHECK (position BETWEEN 0 AND 19),
+    PRIMARY KEY (video_id, position),
+    UNIQUE (video_id, photo_id),
+    FOREIGN KEY (video_id, org_id) REFERENCES growth_videos(id, org_id) ON DELETE CASCADE,
+    FOREIGN KEY (photo_id, org_id) REFERENCES feed_photos(id, org_id) ON DELETE CASCADE
+);

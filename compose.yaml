@@ -89,6 +89,22 @@ services:
       redis:
         condition: service_healthy
 
+  media-worker:
+    image: ${API_IMAGE:-yuchion-api:local}
+    pull_policy: never
+    restart: unless-stopped
+    profiles: [worker]
+    environment: *api-environment
+    volumes:
+      - media_data:${MEDIA_DIR:-/media}
+    entrypoint: ["celery"]
+    command: ["-A", "app.worker:celery_app", "worker", "-Q", "media", "--pool=threads", "--concurrency=1", "--loglevel=INFO"]
+    depends_on:
+      api:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
   beat:
     image: ${API_IMAGE:-yuchion-api:local}
     pull_policy: never

@@ -59,6 +59,15 @@ def populate():
     store.add_event(None, "created", card=card)
 
     from app.core.config import settings
+    if settings.feature_neighborhood_feed:
+        state.organizations[seed.ORG]["region"] = "가상동"
+        for org in seed.NEIGHBORHOOD_ORGS:
+            state.organizations[org["id"]] = {k: org[k] for k in ("id", "name", "region")}
+            state.users[org["parent_id"]] = store.User(org["parent_id"], org["id"], "parent", org["login_id"],
+                                                      seed.DEMO_PASSWORD, "가상 보호자")
+            state.classrooms[org["classroom_id"]] = store.Classroom(org["classroom_id"], org["id"], "가상반")
+            state.children[org["child_id"]] = store.Child(org["child_id"], org["id"], org["classroom_id"],
+                                                         "가상 아이", [org["parent_id"]])
     if settings.feature_video_consult or settings.feature_voice_analysis:
         seed_video_consult()
 

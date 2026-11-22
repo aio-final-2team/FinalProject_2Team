@@ -86,15 +86,15 @@ def test_server_compose_replaces_ports_and_preserves_database_volume(backend, ov
     result = subprocess.run([*command, "config", "--format", "json"],
                             cwd=ROOT, env=env, capture_output=True, text=True, check=True)
     services = json.loads(result.stdout)["services"]
-    assert set(services) == {"api", "web", "db"} | ({"worker", "beat", "redis"} if worker_profile else set())
+    assert set(services) == {"api", "web", "db"} | ({"worker", "beat", "redis", "media-worker"} if worker_profile else set())
     assert not services["db"].get("ports")
     assert services["db"]["volumes"][0]["source"] == "postgres_data"
     for service, port in [("api", "18000"), ("web", "15173")]:
         assert len(services[service]["ports"]) == 1
         assert services[service]["ports"][0]["host_ip"] == "127.0.0.1"
         assert services[service]["ports"][0]["published"] == port
-    for name in (["api", "worker", "beat"] if worker_profile else ["api"]):
-        assert services[name]["environment"]["DATA_BACKEND"] == (backend or "db")
+    for name in (["api", "worker", "beat", "media-worker"] if worker_profile else ["api"]):
+        assert services[name]["environment"]["DATA_BACKEND"] == (backend or ("mock" if name == "media-worker" else "db"))
         assert services[name]["image"] == image
         assert {key: services[name]["environment"][key] for key in expected} == expected
     assert services["web"]["depends_on"]["api"]["condition"] == "service_healthy"
