@@ -237,7 +237,8 @@ def test_failed_encoder_cleans_partial_file(client, parent, monkeypatch, tmp_pat
         raise subprocess.TimeoutExpired('[TEST] ffmpeg', 120)
     monkeypatch.setattr(runner, 'encode', fail)
     create(client, parent)
-    assert listed(client, parent)[0]['status'] == 'failed'
+    row = listed(client, parent)[0]
+    assert row['status'] == 'failed' and row['failure_reason'] == 'processing_failed'
     assert not list(tmp_path.rglob('*.mp4'))
 
 
@@ -249,6 +250,13 @@ def test_single_claim_and_late_finish_cannot_revive_deleted_job(client, parent, 
     assert backend.growth_videos.claim(vid)['status'] == 'running'
     assert backend.growth_videos.claim(vid) is None
     client.delete(f'{BASE}/growth-videos/{vid}', headers=parent)
+    if backend.growth_videos is growth_videos:
+        deleted = store.state().growth_videos[vid]
+    else:
+        from app.core.db import transaction
+        with transaction() as c:
+            deleted = c.execute(text('SELECT * FROM growth_videos WHERE id=:id'), {'id': vid}).mappings().one()
+    assert deleted['status'] == 'failed' and deleted['failure_reason'] == 'deleted'
     assert backend.growth_videos.finish(vid, dict(duration_seconds=6, size_bytes=10, sha256='a'*64)) is False
     runner.run_growth_video(vid)
     assert not list(tmp_path.rglob('*.mp4'))
@@ -268,7 +276,7 @@ def test_worker_media_queue_and_broker_failure_sweep(client, parent, monkeypatch
         with transaction() as c:
             c.execute(text("UPDATE growth_videos SET created_at=now()-interval '31 minutes'"))
         assert backend.growth_videos.sweep() == 1
-        assert listed(client, parent)[0]['status'] == 'failed'
+        assert listed(client, parent)[0]['failure_reason'] == 'stale'
     else:
         assert listed(client, parent)[0]['status'] == 'succeeded'
     assert backend.growth_videos.claim(UUID(row['id'])) is None
@@ -298,7 +306,7 @@ def test_sweep_running_and_startup_cleanup(client, parent, monkeypatch, tmp_path
     monkeypatch.setattr(main, 'settings', replace(jobs.settings, feature_growth_video=False, data_backend='mock'))
     with TestClient(main.app):
         pass
-    assert all(r['status'] == 'failed' for r in listed(client, parent))
+    assert all(r['status'] == 'failed' and r['failure_reason'] == 'interrupted' for r in listed(client, parent))
     assert backend.growth_videos.finish(UUID(row['id']), dict(duration_seconds=6, size_bytes=10, sha256='a'*64)) is False
     assert not list(tmp_path.rglob('*.mp4'))
 
@@ -318,6 +326,7 @@ def test_stale_running_sweep_discards_late_output(client, parent, monkeypatch, g
             c.execute(text("UPDATE growth_videos SET started_at=now()-interval '7 minutes'"))
     assert backend.growth_videos.sweep() == 1 and backend.growth_videos.sweep() == 0
     assert not list(tmp_path.rglob('*.mp4')) and listed(client, parent)[0]['status'] == 'failed'
+    assert listed(client, parent)[0]['failure_reason'] == 'stale'
     assert backend.growth_videos.finish(vid, dict(duration_seconds=6, size_bytes=10, sha256='a'*64)) is False
 
 
@@ -634,7 +643,8 @@ def test_failed_videos_do_not_consume_success_capacity(client, parent, monkeypat
     monkeypatch.setattr(runner, 'encode', fail)
     for _ in range(6):
         create(client, parent)
-    assert all(row['status'] == 'failed' for row in listed(client, parent))
+    assert all(row['status'] == 'failed' and row['failure_reason'] == 'processing_failed'
+               for row in listed(client, parent))
     monkeypatch.setattr(runner, 'encode', fake_encode)
     codes = [client.post(ROOT, headers=parent, json={}).status_code for _ in range(6)]
     assert codes == [202]*5 + [409]
@@ -729,3 +739,111 @@ def test_request_metadata_rejection_releases_reserved_job(client, parent, monkey
     # 422 뒤 진행 중 자리가 남아 있지 않아야 해요.
     photos(client, parent)
     create(client, parent)
+
+
+@pytest.mark.parametrize('status,age,expired', [('queued', 599, False), ('queued', 601, True),
+                                             ('running', 359, False), ('running', 361, True)])
+def test_new_request_releases_only_stale_pending_slot(client, parent, monkeypatch, growth_backend,
+                                                     status, age, expired):
+    from app.core.db import transaction
+    photos(client, parent)
+    monkeypatch.setattr(jobs, 'dispatch', lambda *args: None)
+    old = UUID(create(client, parent)['id'])
+    if status == 'running':
+        claimed = backend.growth_videos.claim(old)
+        fake_encode([1, 2, 3], media.path(claimed['storage_path']))
+    else:
+        # claim 이전의 일시 오류는 queued를 남겨도 다음 요청으로 회복해요.
+        with monkeypatch.context() as patch:
+            def failed_claim(_):
+                raise ConnectionError('[TEST] claim unavailable')
+            patch.setattr(backend.growth_videos, 'claim', failed_claim)
+            with pytest.raises(ConnectionError):
+                runner.run_growth_video(old)
+    field = 'created_at' if status == 'queued' else 'started_at'
+    if growth_backend == 'mock':
+        store.state().growth_videos[old][field] = store.now()-timedelta(seconds=age)
+    else:
+        with transaction() as c:
+            c.execute(text(f'UPDATE growth_videos SET {field}=now()-make_interval(secs=>:age) WHERE id=:id'),
+                      {'age': age, 'id': old})
+    if status == 'queued':
+        assert backend.growth_videos.sweep() == 0  # 주기 점검 30분과 새 요청 10분은 달라요.
+    response = client.post(ROOT, headers=parent, json={})
+    rows = {r['id']: r for r in listed(client, parent)}
+    if expired:
+        assert response.status_code == 202, response.text
+        assert response.json()['id'] != str(old) and len(rows) == 2
+        assert rows[str(old)]['status'] == 'failed' and rows[str(old)]['failure_reason'] == 'stale'
+        assert rows[str(old)]['completed_at'] is not None
+        assert backend.growth_videos.claim(old) is None
+        assert not backend.growth_videos.finish(old, {'duration_seconds': 6, 'size_bytes': 10, 'sha256': 'a'*64})
+        assert sum(e['action'] == 'growth_video_completed' for e in events(growth_backend)) == 1
+        if status == 'running':
+            assert not media.path(claimed['storage_path']).exists()
+    else:
+        err(response, 409, 'CONFLICT')
+        assert response.json()['error']['message'] == '만드는 중인 영상이 있어요. 끝나거나 지우면 다시 만들 수 있어요.'
+        assert len(rows) == 1 and rows[str(old)]['status'] == status
+
+
+@pytest.mark.parametrize('change', ['post_deleted', 'file_deleted', 'scope_revoked', 'insufficient'])
+def test_job_reselects_current_photos_instead_of_request_snapshot(client, parent, parent_other, teacher,
+                                                               monkeypatch, change):
+    monkeypatch.setattr(jobs, 'dispatch', lambda *args: None)
+    client.patch(f'{BASE}/children/{seed.demo_id("503")}/photo-scope', headers=parent_other,
+                 json={'photo_scope': 'org'})
+    first = photos(client, teacher, [[seed.CHILD, seed.demo_id('503')]]*3)
+    remaining = photos(client, parent, [[seed.CHILD]]*(2 if change == 'insufficient' else 3))
+    vid = UUID(create(client, parent, photo_limit=3)['id'])
+    if change == 'scope_revoked':
+        client.patch(f'{BASE}/children/{seed.demo_id("503")}/photo-scope', headers=parent_other,
+                     json={'photo_scope': 'family'})
+    elif change == 'file_deleted':
+        source = backend.feed.file(backend.users.get_user(seed.TEACHER), UUID(first['photos'][0]['id']))
+        media.remove(source['storage_path'])
+    else:
+        assert client.delete(f"{BASE}/posts/{first['id']}", headers=teacher).status_code == 204
+    monkeypatch.setattr(runner, 'encode', REAL_ENCODE)
+    runner.run_growth_video(vid)
+    row = listed(client, parent)[0]
+    if change == 'insufficient':
+        assert row['status'] == 'failed' and row['failure_reason'] == 'not_enough_photos'
+    else:
+        assert row['status'] == 'succeeded' and row['failure_reason'] is None and row['photo_count'] == 3
+        assert client.get(row['file_url'], headers=parent).content[4:8] == b'ftyp'
+        user = backend.users.get_user(seed.PARENT)
+        current = backend.growth_videos.file(user, vid)
+        if 'photo_ids' in current:
+            used = current['photo_ids']
+        else:
+            from app.core.db import transaction
+            with transaction() as c:
+                used = backend.growth_videos.photo_ids(c, vid)
+        assert set(used) <= {UUID(p['id']) for p in first['photos']+remaining['photos']}
+        assert UUID(first['photos'][0]['id']) not in used
+        assert set(used) & {UUID(p['id']) for p in remaining['photos']}
+
+
+def test_eligible_reads_only_first_64_kib(tmp_path, monkeypatch):
+    from unittest.mock import mock_open
+    source = tmp_path/'large.png'
+    opened = mock_open(read_data=seed.feed_png()+b'\0'*(5*1024*1024))
+    monkeypatch.setattr(type(source), 'open', opened)
+    assert runner.eligible(source)
+    opened.assert_called_once_with('rb')
+    opened().read.assert_called_once_with(64*1024)
+
+
+def test_listing_and_file_do_not_wait_for_child_row_lock(client, parent, growth_backend):
+    if growth_backend != 'db':
+        pytest.skip('[TEST] PG 행 잠금은 DB 모드에서만 검사해요.')
+    from app.core.db import transaction
+    photos(client, parent)
+    create(client, parent)
+    url = listed(client, parent)[0]['file_url']
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        with transaction() as c:
+            c.execute(text('SELECT id FROM children WHERE id=:id FOR UPDATE'), {'id': seed.CHILD})
+            calls = [pool.submit(client.get, path, headers=parent) for path in (ROOT, url)]
+            assert all(call.result(timeout=2).status_code == 200 for call in calls)

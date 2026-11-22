@@ -7,9 +7,11 @@ from app.core.config import settings
 from app.core.errors import ApiError
 
 QUEUED_TIMEOUT = 1800
+CLAIM_TIMEOUT = 600
 JOB_TIMEOUT = 360
 ENCODE_TIMEOUT = 120
 SECONDS_PER_PHOTO = 2
+PENDING_MESSAGE = "만드는 중인 영상이 있어요. 끝나거나 지우면 다시 만들 수 있어요."
 
 
 def enabled():
@@ -54,7 +56,7 @@ def visible_sources(user, photos, posts, children, classrooms, organizations):
 
 def check_capacity(rows):
     if any(r["status"] in {"queued", "running"} for r in rows):
-        raise ApiError(409, "CONFLICT", "이 아이의 성장 영상을 만들고 있어요. 끝난 뒤 다시 요청해 주세요.")
+        raise ApiError(409, "CONFLICT", PENDING_MESSAGE)
     if sum(r["status"] == "succeeded" for r in rows) >= 5:
         raise ApiError(409, "CONFLICT", "성장 영상은 아이마다 5개까지 보관해요. 기존 영상을 지워 주세요.")
 

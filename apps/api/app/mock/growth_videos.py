@@ -15,8 +15,11 @@ def access(user, child_id):
 def create(user, child_id, limit):
     with store._lock:
         access(user, child_id)
-        rules.check_capacity([r for r in store.state().growth_videos.values()
-                              if r["child_id"] == child_id and not r["deleted_at"]])
+        rows = [r for r in store.state().growth_videos.values() if r["child_id"] == child_id and not r["deleted_at"]]
+        stale = [r for r in rows if r["status"] in {"queued", "running"}
+                 and (r["started_at"] or r["created_at"]) < store.now() - timedelta(
+                     seconds=rules.CLAIM_TIMEOUT if r["status"] == "queued" else rules.JOB_TIMEOUT)]
+        rules.check_capacity([r for r in rows if r not in stale])
         video_id = uuid4()
         row = dict(id=video_id, org_id=user.org_id, child_id=child_id, requested_by=user.id, status="queued",
                    storage_path=f"mock/videos/{video_id}.mp4", photo_count=limit, photo_ids=[], failure_reason=None,
@@ -29,6 +32,11 @@ def create(user, child_id, limit):
             del store.state().growth_videos[video_id]
             raise
         row.update(photo_count=len(ids), photo_ids=ids)
+        for expired in stale:
+            expired.update(status="failed", failure_reason="stale", completed_at=store.now())
+            feed.record(store.state().users[expired["requested_by"]], "growth_video_completed",
+                        video_id=str(expired["id"]), status="failed")
+            rules.remove(expired["storage_path"])
         feed.record(user, "growth_video_requested", video_id=str(video_id))
         return rules.view(row)
 
@@ -76,7 +84,7 @@ def delete(user, video_id):
         row = checked(user, video_id)
         row["deleted_at"] = store.now()
         if row["status"] in {"queued", "running"}:
-            row.update(status="failed", completed_at=store.now())
+            row.update(status="failed", failure_reason="deleted", completed_at=store.now())
         feed.record(user, "growth_video_deleted", video_id=str(video_id))
     rules.remove(row["storage_path"])
 
@@ -96,7 +104,7 @@ def finish(video_id, result, *, failure_reason=None):
         if row["status"] != "running" or row["deleted_at"]:
             return False
         row.update(status="succeeded" if result else "failed", completed_at=store.now(),
-                   failure_reason=failure_reason, **(result or {}))
+                   failure_reason=None if result else (failure_reason or "processing_failed"), **(result or {}))
         feed.record(store.state().users[row["requested_by"]], "growth_video_completed",
                     video_id=str(video_id), status=row["status"])
         return True
@@ -110,7 +118,7 @@ def sweep(*, all_pending=False):
                                           else rules.JOB_TIMEOUT))]
         for row in rows:
             store.state().growth_videos[row["id"]]["status"] = "running"
-            finish(row["id"], None)
+            finish(row["id"], None, failure_reason="interrupted" if all_pending else "stale")
     for row in rows:
         rules.remove(row["storage_path"])
     rules.clean_temp()

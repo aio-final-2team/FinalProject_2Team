@@ -85,7 +85,8 @@ def dimensions(data):
 
 def eligible(source):
     try:
-        width, height = dimensions(source.read_bytes())
+        with source.open("rb") as handle:
+            width, height = dimensions(handle.read(64 * 1024))
         return min(width, height) >= 1 and width * height <= 40_000_000
     except (ValueError, IndexError, struct.error, OSError):
         return False
@@ -155,17 +156,16 @@ def run_growth_video(video_id):
             raise ValueError("inactive requester")
         user = CurrentUser(id=user.id, org_id=user.org_id, role=user.role)
         backend.growth_videos.access(user, row["child_id"])
-        if len(row["photo_ids"]) != row["photo_count"]:
-            raise ValueError("missing source photo")
-        rules.source_photos(user, row["photo_ids"])
         photos = sorted(backend.growth_videos.candidates(user, row["child_id"]),
                         key=lambda p: (p["created_at"], p["id"]))
+        if len(photos) < 3:
+            raise NotEnoughPhotos("not_enough_photos")
         result = encode(photos, media.path(row["storage_path"]), limit=row["photo_count"])
         accepted = backend.growth_videos.finish(video_id, result)
     except Exception as error:
         logging.getLogger(__name__).error("성장 영상 실패 id=%s error_type=%s", video_id, type(error).__name__)
         backend.growth_videos.finish(video_id, None, failure_reason=(
-            "not_enough_photos" if isinstance(error, NotEnoughPhotos) else None))
+            "not_enough_photos" if isinstance(error, NotEnoughPhotos) else "processing_failed"))
     finally:
         if not accepted:
             rules.remove(row["storage_path"])

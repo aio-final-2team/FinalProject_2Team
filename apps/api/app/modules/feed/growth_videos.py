@@ -19,8 +19,8 @@ def access(user, child_id):
         feed.deny(user, child_id, error.status)
 
 
-def check_access(c, user, child_id):
-    child = c.scalar(text("SELECT id FROM children WHERE id=:id AND org_id=:org FOR UPDATE"),
+def check_access(c, user, child_id, *, lock=False):
+    child = c.scalar(text("SELECT id FROM children WHERE id=:id AND org_id=:org" + (" FOR UPDATE" if lock else "")),
                      {"id": child_id, "org": user.org_id})
     if child is None:
         raise ApiError(404, "NOT_FOUND")
@@ -32,9 +32,19 @@ def check_access(c, user, child_id):
 
 
 def create(user, child_id, limit):
+    stale = []
     try:
         with transaction() as c:
-            check_access(c, user, child_id)
+            check_access(c, user, child_id, lock=True)
+            stale = c.execute(text("""
+                UPDATE growth_videos SET status='failed',failure_reason='stale',completed_at=now()
+                WHERE child_id=:child AND deleted_at IS NULL
+                    AND ((status='queued' AND created_at<now()-make_interval(secs=>:queued))
+                      OR (status='running' AND started_at<now()-make_interval(secs=>:running))) RETURNING *
+            """), {"child": child_id, "queued": rules.CLAIM_TIMEOUT,
+                   "running": rules.JOB_TIMEOUT}).mappings().all()
+            for expired in stale:
+                complete(c, expired)
             rules.check_capacity(c.execute(text("SELECT status FROM growth_videos WHERE child_id=:child "
                                                 "AND deleted_at IS NULL"), {"child": child_id}).mappings().all())
             video_id = uuid4()
@@ -57,8 +67,10 @@ def create(user, child_id, limit):
         raise
     except IntegrityError as error:
         if getattr(error.orig.diag, "constraint_name", None) == "growth_videos_pending_child_idx":
-            raise ApiError(409, "CONFLICT", "이 아이의 성장 영상을 만들고 있어요.") from None
+            raise ApiError(409, "CONFLICT", rules.PENDING_MESSAGE) from None
         raise
+    for expired in stale:
+        rules.remove(expired["storage_path"])
     return rules.view(row)
 
 
@@ -135,6 +147,7 @@ def delete(user, video_id):
         c.execute(text("""
             UPDATE growth_videos SET deleted_at=now(),
                 status=CASE WHEN status IN ('queued','running') THEN 'failed' ELSE status END,
+                failure_reason=CASE WHEN status IN ('queued','running') THEN 'deleted' ELSE failure_reason END,
                 completed_at=CASE WHEN status IN ('queued','running') THEN now() ELSE completed_at END WHERE id=:id
         """), {"id": video_id})
         feed.record(c, user, "growth_video_deleted", video_id=str(video_id))
@@ -146,7 +159,7 @@ def claim(video_id):
         row = c.execute(text("UPDATE growth_videos SET status='running',started_at=now() "
                               "WHERE id=:id AND status='queued' AND deleted_at IS NULL RETURNING *"),
                          {"id": video_id}).mappings().one_or_none()
-        return {**row, "photo_ids": photo_ids(c, video_id)} if row else None
+        return dict(row) if row else None
 
 
 def complete(c, row):
@@ -163,7 +176,8 @@ def finish(video_id, result, *, failure_reason=None):
                 completed_at=now() WHERE id=:id AND status='running' AND deleted_at IS NULL RETURNING *
         """), {"id": video_id, "status": "succeeded" if result else "failed",
                "duration": result["duration_seconds"] if result else None, "size": result["size_bytes"] if result else None,
-               "sha": result["sha256"] if result else None, "reason": failure_reason,
+               "sha": result["sha256"] if result else None,
+               "reason": None if result else (failure_reason or "processing_failed"),
                "count": result.get("photo_count") if result else None}).mappings().one_or_none()
         if row:
             if result and "photo_ids" in result:
@@ -179,11 +193,12 @@ def finish(video_id, result, *, failure_reason=None):
 def sweep(*, all_pending=False):
     with transaction() as c:
         rows = c.execute(text("""
-            UPDATE growth_videos SET status='failed',completed_at=now()
+            UPDATE growth_videos SET status='failed',completed_at=now(),failure_reason=:reason
             WHERE status IN ('queued','running') AND deleted_at IS NULL
                 AND (:all OR (status='queued' AND created_at<now()-make_interval(secs=>:queued))
                      OR (status='running' AND started_at<now()-make_interval(secs=>:running))) RETURNING *
-        """), {"all": all_pending, "queued": rules.QUEUED_TIMEOUT, "running": rules.JOB_TIMEOUT}).mappings().all()
+        """), {"all": all_pending, "queued": rules.QUEUED_TIMEOUT, "running": rules.JOB_TIMEOUT,
+               "reason": "interrupted" if all_pending else "stale"}).mappings().all()
         for row in rows:
             complete(c, row)
     for row in rows:
