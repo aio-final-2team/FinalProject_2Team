@@ -2,11 +2,12 @@
 
 import logging
 
-from app.core import media
+from app.core import feed, media
 from app.core.config import settings
 from app.core.errors import ApiError
 
-JOB_TIMEOUT = 300
+QUEUED_TIMEOUT = 1800
+JOB_TIMEOUT = 150
 ENCODE_TIMEOUT = 120
 SECONDS_PER_PHOTO = 2
 
@@ -24,25 +25,52 @@ def view(row):
 
 def source_photos(user, ids):
     from app import backend
-    try:
-        result = [backend.feed.file(user, photo_id) for photo_id in ids]
-    except ApiError:
-        raise ApiError(404, "NOT_FOUND") from None
-    if any(not media.path(p["storage_path"]).is_file() for p in result):
+    result = backend.growth_videos.sources(user, ids)
+    if len(result) != len(ids):
         raise ApiError(404, "NOT_FOUND")
     return result
 
 
-def select(user, candidates, limit):
-    selected = []
-    for row in sorted(candidates, key=lambda r: (r["created_at"], r["id"])):
+def visible_sources(user, photos, posts, children, classrooms, organizations):
+    """영상 내부의 사진 검사는 감사 기록을 남기지 않아요."""
+    def deny(status):
+        raise ApiError(status, "NOT_FOUND")
+    result = []
+    for photo in photos:
+        post = posts.get(photo["post_id"])
+        if not post or post["deleted_at"] or post["status"] != "published":
+            continue
+        if post["lane"] != "neighborhood" and post["org_id"] != user.org_id:
+            continue
         try:
-            source_photos(user, [row["id"]])
+            feed.lane_access(user, post["lane"], post["classroom_id"] or post["org_id"],
+                             classrooms, children, deny, organizations)
         except ApiError:
             continue
-        selected.append(row["id"])
-        if len(selected) == limit:
-            break
+        if feed.visible(user, post, photo, children) and media.path(photo["storage_path"]).is_file():
+            result.append(photo)
+    return result
+
+
+def check_capacity(rows):
+    if any(r["status"] in {"queued", "running"} for r in rows):
+        raise ApiError(409, "CONFLICT", "이 아이의 성장 영상을 만들고 있어요. 끝난 뒤 다시 요청해 주세요.")
+    if len(rows) >= 5:
+        raise ApiError(409, "CONFLICT", "성장 영상은 아이마다 5개까지 보관해요. 기존 영상을 지워 주세요.")
+
+
+def select(user, candidates, limit):
+    from tempfile import TemporaryDirectory
+    from pathlib import Path
+    from app.modules.feed.growth_runner import prepare
+    selected = []
+    with TemporaryDirectory(prefix="growth-check-") as folder:
+        for row in sorted(candidates, key=lambda r: (r["created_at"], r["id"])):
+            if not prepare(media.path(row["storage_path"]), Path(folder) / "frame.png"):
+                continue
+            selected.append(row["id"])
+            if len(selected) == limit:
+                break
     if len(selected) < 3:
         raise ApiError(422, "VALIDATION_FAILED", problem="지금 볼 수 있는 아이 사진이 3장 이상 필요해요.")
     return selected

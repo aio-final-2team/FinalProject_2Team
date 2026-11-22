@@ -8,7 +8,7 @@
 | --- | --- |
 | 작업 | T13 API 설계 문서(FastAPI·Function Calling 도구 계약)·모의 API (#170) |
 | 작성 | 태웅 · 검토 인혜 |
-| 기준 문서 | 기획서 1117판 3장 FR-01~FR-13 · T04 흐름·권한 명세(PR #234) · [입출력 계약표](입출력_계약표_초안.md) v0.22(T46·T48·T54·T56·T60 팀 확인 전 초안) · [DB 스키마 설계서](DB_스키마_설계서.md) v0.20(0014 성장 영상 포함) |
+| 기준 문서 | 기획서 1117판 3장 FR-01~FR-13 · T04 흐름·권한 명세(PR #234) · [입출력 계약표](입출력_계약표_초안.md) v0.22(T46·T48·T54·T56·T60 팀 확인 전 초안) · [DB 스키마 설계서](DB_스키마_설계서.md) v0.21(0015 성장 영상 제한 포함) |
 | 따른 가이드 | 강사님 'API 설계 문서 작성법' 11/18 수정본. 1~6장이 가이드의 '문서에 들어가는 여섯 가지' 순서다 |
 
 이 문서는 T10 계약표에서 합의한 필드·권한·오류를 엔드포인트와 도구 단위로 펼친 것이다. 계약표와 이 문서가 다르면 계약표를 먼저 고치고 두 문서의 판을 같이 올린다. 구현이 시작되면 FastAPI의 `/docs`와 대조해 판을 올린다(계약표 1.1 규칙 1). 이 판(v0.9)은 HTTP API 60개와 신호 WebSocket 전부의 상세 명세, 화면이 쓰는 조회 응답 칸(3.7), 도구 전체의 실패 처리, 업무 흐름(5.7), 실행 규칙과 대표 사례 대조(6.7)를 담는다. 모의 API와 생성물 `contracts/openapi.yaml`을 붙였으며, 쓰는 법과 데모 계정은 [모의 API 안내](../../contracts/mock_api/README.md)에 있다.
@@ -1497,9 +1497,9 @@ T50이 붙기 전에는 올린 사람이 아이를 직접 표시해요. 얼굴 �
 
 | API | 입력·출력 |
 | --- | --- |
-| POST children/{child_id}/growth-videos | JSON `{photo_limit?: 3~20}`(기본 12), 202로 아래 상태 객체를 돌려줘요 |
+| POST children/{child_id}/growth-videos | 생략 가능한 JSON `{photo_limit?: 3~20}`(기본 12), 202로 아래 상태 객체를 돌려줘요 |
 | GET children/{child_id}/growth-videos | `{items: [상태 객체]}`, created_at·id 내림차순. 삭제한 영상은 빠져요 |
-| GET growth-videos/{video_id}/file | 성공한 영상만 video/mp4. 한 구간 Range(bytes=시작-끝·시작-·-길이)는 206, 범위 밖·여러 구간·잘못된 범위는 416 VALIDATION_FAILED예요 |
+| GET growth-videos/{video_id}/file | 성공한 영상만 video/mp4. 한 구간 Range(bytes=시작-끝·시작-·-길이)는 206이에요. 단위 대소문자는 무시해요. 못 읽는 값·여러 구간은 200 전체, 시작이 크기 이상이면 416 VALIDATION_FAILED와 Content-Range: bytes */크기예요 |
 | DELETE growth-videos/{video_id} | 204. 상태·이력을 먼저 커밋하고 파일을 지워요. 삭제 실패는 경고만 남겨요 |
 
 상태 객체는 `{id, child_id, status, photo_count, duration_seconds, size_bytes, sha256, created_at, started_at, completed_at, file_url}`예요.
@@ -1509,9 +1509,12 @@ MP4는 H.264·720×720 안에 맞춤·여백·장당 2초이며 최대 60초예�
 파일은 MEDIA_DIR/videos 아래 UUID 이름이에요(mock은 MEDIA_DIR/mock/videos). PG에는 메타데이터·사진 연결·순서만 저장해요. 원본 사진을 복사하거나 바이트를 PG에 넣지 않아요.
 다운로드마다 현재 아이 보호자 관계와 모든 원본 사진의 칸·공개 범위·삭제·숨김·실제 파일을 다시 검사해요. 원본 하나라도 없어지거나 볼 수 없으면 Range도 404예요. photo FK의 ON DELETE CASCADE로 연결이 사라져도 저장한 photo_count와 비교해 차단해요.
 응답은 Cache-Control: private, no-store와 X-Content-Type-Options: nosniff를 붙여요. 열린 파일을 스트리밍해서 삭제 경쟁은 전체 응답 또는 404로 끝나요.
-RUN_IN=api는 BackgroundTasks, db·RUN_IN=worker는 Celery default 큐예요. mock은 RUN_IN과 관계없이 같은 프로세스에서 실행해요. 원자적으로 한 번만 실행하고 삭제·시간 초과 뒤 늦은 결과는 버려요.
-5분 점검은 worker 모드에서만 실행해요. 300초 넘은 queued·running은 failed로 끝내고 부분 파일을 지우며 재실행하지 않아요. api 모드는 시작할 때 남은 작업을 같은 방식으로 정리해요. 기능을 꺼도 남은 작업 정리는 해요.
-0014는 growth_videos·growth_video_photos와 growth_video_requested·growth_video_completed·growth_video_deleted 이력을 더해요.
+RUN_IN=api와 mock은 스레드 1개짜리 전용 실행기를 쓰고, db·worker는 media 큐와 media-worker(--concurrency=1)를 써요. worker의 5분 점검은 queued 30분·running 150초 초과를 failed로 끝내요. api는 시작할 때 남은 작업을 정리하며 재실행하지 않아요. 원자적으로 한 번만 실행하고 삭제·시간 초과 뒤 늦은 결과는 버려요.
+5분 점검은 worker 모드에서만 실행해요. queued 30분·running 150초 초과는 failed로 끝내고 부분 파일을 지우며 재실행하지 않아요. api 모드는 시작할 때 남은 작업을 같은 방식으로 정리해요. 기능을 꺼도 남은 작업 정리는 해요.
+0014는 growth_videos·growth_video_photos와 growth_video_requested·growth_video_completed·growth_video_deleted 이력을 더해요. 0015는 진행 중인 child_id 부분 유니크 인덱스예요.
+아이마다 진행 중 1개·보관 5개까지이며 초과는 409 CONFLICT예요. 내부 사진 검사는 permission_denied를 남기지 않아요.
+사진마다 머리에서 크기·움직임을 검사해 40MP 초과·움직이는 그림을 빼요. 한 장 디코드·축소는 10초 제한이고 깨진 사진도 건너뛰어요. 유효한 사진 3장이 필요해요. 720×720 검은 배경에 투명을 합성하고 최소 변 길이는 2px이에요. 임시 PNG는 성공·실패 모두 지워요. 최종 입력은 장당 1/2fps·2초예요.
+imageio-ffmpeg 번들 ffmpeg는 GPLv3 정적 빌드(이미지 +80MB)라 이미지를 밖에 배포하면 고지가 필요해요.
 
 ## 4. 검증과 권한 규칙
 
@@ -1999,3 +2002,5 @@ MVP 설정값은 서버 설정(`.env`)으로 관리한다. `.env.example`에는 
 변경 이력 v0.9 · 2026-11-22 [제안][선택] — 빈 동네 값·교직원 조회/숨김·플래그 꺼짐 권한 순서와 기존 반·원 응답 스키마를 맞췄어요.
 
 변경 이력 v0.9 · 2026-11-23 [제안][선택] — 성장 영상 API 57~60·0014·비동기 상태·원본 재검사·Range를 더했어요.
+
+변경 이력 v0.9 · 2026-11-23 [제안][선택] — 성장 영상의 사진 전처리·아이별 상한·media 큐·Range·본문 생략과 0015를 반영했어요.

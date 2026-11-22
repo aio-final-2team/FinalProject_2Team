@@ -3,6 +3,7 @@
 from uuid import uuid4
 
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
 from app.core import growth_video as rules
 from app.core.db import transaction
@@ -17,21 +18,57 @@ def access(user, child_id):
 def create(user, child_id, limit):
     access(user, child_id)
     with transaction() as c:
+        # 같은 아이의 보관 상한도 같은 행 잠금으로 직렬화해요.
+        c.execute(text("SELECT id FROM children WHERE id=:id FOR UPDATE"), {"id": child_id})
+        rules.check_capacity(c.execute(text("SELECT status FROM growth_videos WHERE child_id=:child "
+                                            "AND deleted_at IS NULL"), {"child": child_id}).mappings().all())
         candidates = c.execute(text("""
             SELECT p.id,p.created_at FROM feed_photos p JOIN feed_photo_children t ON t.photo_id=p.id
             WHERE t.child_id=:child AND t.org_id=:org
-        """), {"child": child_id, "org": user.org_id}).mappings()
-        ids = rules.select(user, candidates, limit)
+        """), {"child": child_id, "org": user.org_id}).mappings().all()
+        candidates = sources(user, [r["id"] for r in candidates], connection=c)
+    # 디코딩 중에는 DB 연결이나 아이 잠금을 잡지 않아요.
+    ids = rules.select(user, candidates, limit)
+    with transaction() as c:
+        c.execute(text("SELECT id FROM children WHERE id=:id FOR UPDATE"), {"id": child_id})
+        rules.check_capacity(c.execute(text("SELECT status FROM growth_videos WHERE child_id=:child "
+                                            "AND deleted_at IS NULL"), {"child": child_id}).mappings().all())
         video_id = uuid4()
-        row = c.execute(text("""
-            INSERT INTO growth_videos(id,org_id,child_id,requested_by,storage_path,photo_count)
-            VALUES (:id,:org,:child,:user,:path,:count) RETURNING *
-        """), {"id": video_id, "org": user.org_id, "child": child_id, "user": user.id,
-               "path": f"videos/{video_id}.mp4", "count": len(ids)}).mappings().one()
+        try:
+            row = c.execute(text("""
+                INSERT INTO growth_videos(id,org_id,child_id,requested_by,storage_path,photo_count)
+                VALUES (:id,:org,:child,:user,:path,:count) RETURNING *
+            """), {"id": video_id, "org": user.org_id, "child": child_id, "user": user.id,
+                   "path": f"videos/{video_id}.mp4", "count": len(ids)}).mappings().one()
+        except IntegrityError as error:
+            if getattr(error.orig.diag, "constraint_name", None) == "growth_videos_pending_child_idx":
+                raise ApiError(409, "CONFLICT", "이 아이의 성장 영상을 만들고 있어요.") from None
+            raise
         c.execute(text("INSERT INTO growth_video_photos(video_id,org_id,photo_id,position) VALUES (:id,:org,:photo,:pos)"),
                   [{"id": video_id, "org": user.org_id, "photo": pid, "pos": pos} for pos, pid in enumerate(ids)])
         feed.record(c, user, "growth_video_requested", video_id=str(video_id))
     return rules.view(row)
+
+
+def sources(user, ids, *, connection=None):
+    if connection is None:
+        with transaction() as c:
+            return sources(user, ids, connection=c)
+    c = connection
+    rows = list(c.execute(text("SELECT DISTINCT post_id FROM feed_photos WHERE id=ANY(:ids)"),
+                          {"ids": ids}).scalars())
+    posts = {r["id"]: dict(r) for r in c.execute(text("SELECT * FROM feed_posts WHERE id=ANY(:ids)"),
+                                                {"ids": rows}).mappings()}
+    photos = {p["id"]: p for p in feed.photos(c, rows)}
+    orgs = list({user.org_id, *(p["org_id"] for p in posts.values())})
+    children = {r["id"]: dict(r) for r in c.execute(text("""
+        SELECT c.*,ARRAY(SELECT user_id FROM child_guardians g WHERE g.child_id=c.id) AS guardian_ids
+        FROM children c WHERE org_id=ANY(:orgs)
+    """), {"orgs": orgs}).mappings()}
+    classrooms = set(c.scalars(text("SELECT id FROM classrooms WHERE org_id=:org"), {"org": user.org_id}))
+    organizations = {r["id"]: dict(r) for r in c.execute(text("SELECT id,region FROM organizations")).mappings()}
+    return rules.visible_sources(user, [photos[i] for i in ids if i in photos], posts, children,
+                                 classrooms, organizations)
 
 
 def checked(c, user, video_id, *, lock=False):
@@ -111,8 +148,9 @@ def sweep(*, all_pending=False):
         rows = c.execute(text("""
             UPDATE growth_videos SET status='failed',completed_at=now()
             WHERE status IN ('queued','running') AND deleted_at IS NULL
-                AND (:all OR coalesce(started_at,created_at)<now()-make_interval(secs=>:timeout)) RETURNING *
-        """), {"all": all_pending, "timeout": rules.JOB_TIMEOUT}).mappings().all()
+                AND (:all OR (status='queued' AND created_at<now()-make_interval(secs=>:queued))
+                     OR (status='running' AND started_at<now()-make_interval(secs=>:running))) RETURNING *
+        """), {"all": all_pending, "queued": rules.QUEUED_TIMEOUT, "running": rules.JOB_TIMEOUT}).mappings().all()
         for row in rows:
             complete(c, row)
     for row in rows:

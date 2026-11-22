@@ -15,7 +15,13 @@ def access(user, child_id):
 def create(user, child_id, limit):
     with store._lock:
         access(user, child_id)
-        ids = rules.select(user, [p for p in store.state().feed_photos.values() if child_id in p["child_ids"]], limit)
+        rules.check_capacity([r for r in store.state().growth_videos.values()
+                              if r["child_id"] == child_id and not r["deleted_at"]])
+        candidates = sources(user, [p["id"] for p in store.state().feed_photos.values() if child_id in p["child_ids"]])
+    ids = rules.select(user, candidates, limit)
+    with store._lock:
+        rules.check_capacity([r for r in store.state().growth_videos.values()
+                              if r["child_id"] == child_id and not r["deleted_at"]])
         video_id = uuid4()
         row = dict(id=video_id, org_id=user.org_id, child_id=child_id, requested_by=user.id, status="queued",
                    storage_path=f"mock/videos/{video_id}.mp4", photo_count=len(ids), photo_ids=ids,
@@ -24,6 +30,15 @@ def create(user, child_id, limit):
         store.state().growth_videos[video_id] = row
         feed.record(user, "growth_video_requested", video_id=str(video_id))
         return rules.view(row)
+
+
+def sources(user, ids):
+    with store._lock:
+        state = store.state()
+        return rules.visible_sources(user, [state.feed_photos[i] for i in ids if i in state.feed_photos],
+                                     state.feed_posts, {i: c.__dict__ for i, c in state.children.items()},
+                                     {i for i, c in state.classrooms.items() if c.org_id == user.org_id},
+                                     state.organizations)
 
 
 def checked(user, video_id):
@@ -84,7 +99,8 @@ def sweep(*, all_pending=False):
     with store._lock:
         rows = [dict(r) for r in store.state().growth_videos.values() if r["status"] in {"queued", "running"}
                 and not r["deleted_at"] and (all_pending or (r["started_at"] or r["created_at"])
-                < store.now() - timedelta(seconds=rules.JOB_TIMEOUT))]
+                < store.now() - timedelta(seconds=rules.QUEUED_TIMEOUT if r["status"] == "queued"
+                                          else rules.JOB_TIMEOUT))]
         for row in rows:
             store.state().growth_videos[row["id"]]["status"] = "running"
             finish(row["id"], None)

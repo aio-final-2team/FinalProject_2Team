@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from hashlib import sha256
 import json
 import subprocess
+import time
 from uuid import UUID, uuid4
 
 import imageio_ffmpeg
@@ -204,11 +205,13 @@ def test_range_bytes(client, parent, value, expected):
     assert response.headers['content-range'].endswith('/'+str(len(whole)))
 
 
-@pytest.mark.parametrize('value', ['bytes=999999-', 'bytes=8-2', 'bytes=-0', 'bytes=0-1,3-4', 'bad'])
+@pytest.mark.parametrize('value', ['bytes=999999-'])
 def test_unsatisfiable_or_multiple_range(client, parent, value):
     photos(client, parent)
     create(client, parent)
-    err(client.get(listed(client, parent)[0]['file_url'], headers={**parent, 'Range': value}), 416, 'VALIDATION_FAILED')
+    response = client.get(listed(client, parent)[0]['file_url'], headers={**parent, 'Range': value})
+    err(response, 416, 'VALIDATION_FAILED')
+    assert response.headers['content-range'].startswith('bytes */')
 
 
 def test_delete_removes_file_and_listing(client, parent):
@@ -246,7 +249,7 @@ def test_single_claim_and_late_finish_cannot_revive_deleted_job(client, parent, 
     assert not list(tmp_path.rglob('*.mp4'))
 
 
-def test_worker_default_queue_and_broker_failure_sweep(client, parent, monkeypatch, growth_backend, tmp_path):
+def test_worker_media_queue_and_broker_failure_sweep(client, parent, monkeypatch, growth_backend, tmp_path):
     from app.core.db import transaction
     photos(client, parent)
     monkeypatch.setattr(jobs, 'settings', replace(jobs.settings, run_in='worker'))
@@ -254,11 +257,11 @@ def test_worker_default_queue_and_broker_failure_sweep(client, parent, monkeypat
         raise ConnectionError('[TEST] broker')
     monkeypatch.setattr(worker.growth_video, 'apply_async', fail)
     row = create(client, parent)
-    assert worker.celery_app.amqp.router.route({}, 'yuchion.growth_video')['queue'].name == 'default'
+    assert worker.celery_app.amqp.router.route({}, 'yuchion.growth_video')['queue'].name == 'media'
     if growth_backend == 'db':
         assert listed(client, parent)[0]['status'] == 'queued'
         with transaction() as c:
-            c.execute(text("UPDATE growth_videos SET created_at=now()-interval '6 minutes'"))
+            c.execute(text("UPDATE growth_videos SET created_at=now()-interval '31 minutes'"))
         assert backend.growth_videos.sweep() == 1
         assert listed(client, parent)[0]['status'] == 'failed'
     else:
@@ -283,8 +286,7 @@ def test_sweep_running_and_startup_cleanup(client, parent, monkeypatch, tmp_path
     from fastapi.testclient import TestClient
     photos(client, parent)
     monkeypatch.setattr(jobs, 'dispatch', lambda *args: None)
-    for _ in range(2):
-        create(client, parent)
+    create(client, parent)
     row = listed(client, parent)[0]
     claimed = backend.growth_videos.claim(UUID(row['id']))
     fake_encode([1, 2, 3], media.path(claimed['storage_path']))
@@ -321,3 +323,240 @@ def test_disabled_every_route_before_auth_and_unchanged_existing_contract(client
                              ('delete', f'{BASE}/growth-videos/{uuid4()}')]:
             err(getattr(client, method)(path, headers=actor), 404, 'NOT_FOUND')
     assert client.get(ORG.replace('/posts', '/albums'), headers=parent).status_code == 200
+
+
+@pytest.mark.parametrize('value,status', [('Bytes=0-1', 206), ('bytes= 0-1', 200),
+    ('bytes=0-1,3-4', 200), ('items=0-1', 200), ('bytes=5-3', 200), ('bytes=-0', 200)])
+def test_range_ignores_unreadable_values(client, parent, value, status):
+    photos(client, parent)
+    create(client, parent)
+    url = listed(client, parent)[0]['file_url']
+    whole = client.get(url, headers=parent).content
+    response = client.get(url, headers={**parent, 'Range': value})
+    assert response.status_code == status
+    assert response.content == (whole[:2] if status == 206 else whole)
+
+
+def test_body_can_be_omitted(client, parent):
+    photos(client, parent)
+    assert client.post(ROOT, headers=parent).status_code == 202
+
+
+def test_twenty_simultaneous_requests_have_one_pending_job(client, parent, monkeypatch):
+    photos(client, parent)
+    monkeypatch.setattr(jobs, 'dispatch', lambda *args: None)
+    # 연결·잠금 경합을 보며 인코더 부하는 별도 실제 시험에서 확인해요.
+    monkeypatch.setattr(runner, 'prepare', lambda *args: True)
+    from threading import Barrier
+    barrier = Barrier(20)
+    def post(_):
+        barrier.wait(timeout=10)
+        return client.post(ROOT, headers=parent, json={}).status_code
+    with ThreadPoolExecutor(max_workers=20) as pool:
+        codes = list(pool.map(post, range(20)))
+    assert codes.count(202) == 1 and codes.count(409) == 19
+    assert len(listed(client, parent)) == 1
+
+
+def test_thirty_requests_stop_at_five_retained_videos(client, parent, monkeypatch):
+    photos(client, parent)
+    monkeypatch.setattr(runner, 'prepare', lambda *args: True)
+    codes = [client.post(ROOT, headers=parent, json={}).status_code for _ in range(30)]
+    assert codes == [202]*5 + [409]*25
+    assert len(listed(client, parent)) == 5
+    assert client.delete(f"{BASE}/growth-videos/{listed(client, parent)[0]['id']}", headers=parent).status_code == 204
+    assert client.post(ROOT, headers=parent, json={}).status_code == 202
+
+
+def test_photo_rechecks_do_not_create_permission_audits(client, parent, growth_backend):
+    from app.core.db import transaction
+    post = client.post(f'{BASE}/classrooms/{seed.CLASS_STAR}/posts', headers=parent,
+                      data={'body': '[TEST] 옛 반 사진', 'child_ids': json.dumps([[str(seed.CHILD)]]*5)},
+                      files=[('files', ('virtual.png', seed.feed_png(), 'image/png'))]*5)
+    assert post.status_code == 201
+    create(client, parent)
+    url = listed(client, parent)[0]['file_url']
+    if growth_backend == 'mock':
+        store.state().children[seed.CHILD].classroom_id = seed.CLASS_SUN
+    else:
+        with transaction() as c:
+            c.execute(text('UPDATE children SET classroom_id=:room WHERE id=:id'),
+                      {'room': seed.CLASS_SUN, 'id': seed.CHILD})
+    before = sum(e['action'] == 'permission_denied' for e in events(growth_backend))
+    err(client.post(ROOT, headers=parent, json={}), 422, 'VALIDATION_FAILED')
+    err(client.get(url, headers=parent), 404, 'NOT_FOUND')
+    assert sum(e['action'] == 'permission_denied' for e in events(growth_backend)) == before
+
+
+@pytest.mark.parametrize('shape', ['4000x3000', '3000x1', '1x3000', 'transparent'])
+def test_real_preprocessing_large_extreme_and_transparent(client, parent, monkeypatch, tmp_path, shape):
+    source = tmp_path / 'synthetic.png'
+    runner.ffmpeg(['-f', 'lavfi', '-i', 'testsrc=size='+('32x32' if shape == 'transparent' else shape),
+                   '-frames:v', '1', '-threads', '1', str(source)], 10)
+    if shape == 'transparent':
+        # 코드로 만든 RGBA PNG: 투명 빨강이 검은 배경 위에 합성돼야 해요.
+        import struct
+        import zlib
+        def chunk(kind, data):
+            return struct.pack('>I', len(data))+kind+data+struct.pack('>I', zlib.crc32(kind+data))
+        source.write_bytes(b'\x89PNG\r\n\x1a\n'+chunk(b'IHDR', struct.pack('>IIBBBBB', 2, 2, 8, 6, 0, 0, 0))
+                           +chunk(b'IDAT', zlib.compress((b'\0'+b'\xff\0\0\0'*2)*2))+chunk(b'IEND', b''))
+    monkeypatch.setattr(runner, 'encode', REAL_ENCODE)
+    response = client.post(ORG, headers=parent,
+        data={'body': '[TEST] 합성 사진', 'child_ids': json.dumps([[str(seed.CHILD)]]*3)},
+        files=[('files', ('synthetic.png', source.read_bytes(), 'image/png'))]*3)
+    assert response.status_code == 201
+    started = time.monotonic()
+    create(client, parent)
+    assert time.monotonic()-started < 30
+    row = listed(client, parent)[0]
+    assert row['status'] == 'succeeded' and row['duration_seconds'] == 6
+    internal = backend.growth_videos.file(backend.users.get_user(seed.PARENT), UUID(row['id']))
+    reader = imageio_ffmpeg.read_frames(str(media.path(internal['storage_path'])))
+    try:
+        next(reader)
+        frame = next(reader)
+        if shape == 'transparent':
+            assert max(frame) < 8
+        else:
+            assert max(frame) > 100  # 극단 비율도 전부 검은 화면이 아니에요.
+    finally:
+        reader.close()
+    assert not list(tmp_path.rglob('growth-frames-*'))
+
+
+def test_bad_and_animated_photos_from_other_parent_are_skipped(client, parent, parent_other, tmp_path):
+    animated_path = tmp_path/'moving.webp'
+    runner.ffmpeg(['-f', 'lavfi', '-i', 'testsrc=size=16x16:rate=2', '-frames:v', '2',
+                   '-c:v', 'libwebp_anim', '-loop', '0', str(animated_path)], 10)
+    animated = animated_path.read_bytes()
+    assert b'ANIM' in animated
+    response = client.post(f'{BASE}/classrooms/{seed.CLASS_STAR}/posts', headers=parent_other,
+        data={'body': '[TEST] 깨진 사진', 'child_ids': json.dumps([[str(seed.CHILD)]]*2)},
+        files=[('files', ('bad.png', seed.feed_png()[:33], 'image/png')),
+               ('files', ('animated.webp', animated, 'image/webp'))])
+    assert response.status_code == 201
+    photos(client, parent)
+    for _ in range(2):
+        create(client, parent)
+        assert listed(client, parent)[0]['status'] == 'succeeded'
+
+
+def test_invalid_sources_leave_less_than_three(client, parent):
+    photos(client, parent, [[seed.CHILD]]*2)
+    client.post(ORG, headers=parent, data={'body': '[TEST] 깨진 사진', 'child_ids': json.dumps([[str(seed.CHILD)]])},
+                files=[('files', ('bad.png', seed.feed_png()[:33], 'image/png'))])
+    err(client.post(ROOT, headers=parent, json={}), 422, 'VALIDATION_FAILED')
+
+
+@pytest.mark.parametrize('status,age,expected', [('queued', 1799, 0), ('queued', 1801, 1),
+                                              ('running', 149, 0), ('running', 151, 1)])
+def test_sweep_uses_distinct_queue_and_running_limits(client, parent, monkeypatch, growth_backend, status, age, expected):
+    from app.core.db import transaction
+    photos(client, parent)
+    monkeypatch.setattr(jobs, 'dispatch', lambda *args: None)
+    row = create(client, parent)
+    vid = UUID(row['id'])
+    if status == 'running':
+        backend.growth_videos.claim(vid)
+    field = 'created_at' if status == 'queued' else 'started_at'
+    if growth_backend == 'mock':
+        store.state().growth_videos[vid][field] = store.now()-timedelta(seconds=age)
+    else:
+        with transaction() as c:
+            c.execute(text(f'UPDATE growth_videos SET {field}=now()-make_interval(secs=>:age)'), {'age': age})
+    assert backend.growth_videos.sweep() == expected
+
+
+def test_api_executor_is_serial_and_does_not_use_starlette_pool(monkeypatch):
+    import asyncio
+    import threading
+    started, release = threading.Event(), threading.Event()
+    threads = []
+    def work(_):
+        threads.append(threading.current_thread().name)
+        started.set()
+        assert release.wait(5)
+    monkeypatch.setattr(runner, 'run_growth_video', work)
+    async def run():
+        tasks = [asyncio.create_task(runner.run_in_api(i)) for i in range(3)]
+        try:
+            for _ in range(100):
+                if started.is_set():
+                    break
+                await asyncio.sleep(0.01)
+            assert len(threads) == 1
+            import anyio
+            assert await anyio.to_thread.run_sync(lambda: '[TEST] free shared pool') == '[TEST] free shared pool'
+        finally:
+            release.set()
+            await asyncio.gather(*tasks)
+    asyncio.run(run())
+    assert len(threads) == 3 and len(set(threads)) == 1 and threads[0].startswith('growth-video')
+
+
+def test_dimension_headers_and_preflight_rejections(monkeypatch, tmp_path):
+    import struct
+    png = b'\x89PNG\r\n\x1a\n'+struct.pack('>I', 13)+b'IHDR'+struct.pack('>II', 800, 600)+b'\0'*9
+    jpeg = b'\xff\xd8\xff\xc2'+struct.pack('>HBHH', 8, 8, 600, 800)+b'\0'
+    def webp(kind, body):
+        return b'RIFF'+(len(body)+12).to_bytes(4, 'little')+b'WEBP'+kind+len(body).to_bytes(4, 'little')+body
+    vp8 = webp(b'VP8 ', b'\0'*3+b'\x9d\x01\x2a'+struct.pack('<HH', 800, 600))
+    vp8l = webp(b'VP8L', b'\x2f'+(799+(599 << 14)).to_bytes(4, 'little'))
+    vp8x = webp(b'VP8X', b'\0'*4+(799).to_bytes(3, 'little')+(599).to_bytes(3, 'little'))
+    assert all(runner.dimensions(data) == (800, 600) for data in (png, jpeg, vp8, vp8l, vp8x))
+    def unexpected(*args):
+        pytest.fail('거절한 머리는 ffmpeg를 실행하지 않아야 해요.')
+    monkeypatch.setattr(runner, 'ffmpeg', unexpected)
+    huge = png[:16]+struct.pack('>II', 10000, 10000)+png[24:]
+    animated = png+struct.pack('>I', 8)+b'acTL'+b'\0'*12
+    for data in (huge, animated, webp(b'VP8X', b'\x02'+b'\0'*9)):
+        source = tmp_path/'rejected.png'
+        source.write_bytes(data)
+        assert runner.prepare(source, tmp_path/'frame.png') is False
+
+
+def test_preprocessing_timeout_and_encoding_failure_clean_temp(monkeypatch, tmp_path):
+    source = tmp_path/'valid.png'
+    source.write_bytes(seed.feed_png())
+    def timeout(*args):
+        raise subprocess.TimeoutExpired('[TEST] preflight', 10)
+    monkeypatch.setattr(runner, 'ffmpeg', timeout)
+    assert runner.prepare(source, tmp_path/'frame.png') is False
+    monkeypatch.setattr(runner, 'prepare', lambda source, out: (out.write_bytes(seed.feed_png()) or True))
+    with pytest.raises(subprocess.TimeoutExpired):
+        REAL_ENCODE([dict(storage_path='valid.png')]*3, tmp_path/'failed.mp4')
+    assert not list(tmp_path.glob('growth-frames-*'))
+
+
+def test_ffmpeg_is_killed_when_parent_dies():
+    # 별도 감독 프로세스가 고아 자식까지 회수해 시험 뒤 좀비도 남기지 않아요.
+    import os
+    import sys
+    script = '''
+import ctypes, os, signal, subprocess, sys
+from functools import partial
+from app.modules.feed.growth_runner import die_with_parent
+import imageio_ffmpeg
+assert ctypes.CDLL(None).prctl(36, 1, 0, 0, 0) == 0
+read_fd, write_fd = os.pipe()
+parent = os.fork()
+if parent == 0:
+    os.close(read_fd)
+    child = subprocess.Popen([imageio_ffmpeg.get_ffmpeg_exe(), '-nostdin', '-v', 'error',
+        '-re', '-f', 'lavfi', '-i', 'testsrc=size=16x16', '-f', 'null', '-'],
+        preexec_fn=partial(die_with_parent, os.getpid()), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    os.write(write_fd, str(child.pid).encode())
+    signal.pause()
+os.close(write_fd)
+child = int(os.read(read_fd, 64))
+os.kill(parent, signal.SIGKILL)
+os.waitpid(parent, 0)
+pid, status = os.waitpid(child, 0)
+assert pid == child and os.WIFSIGNALED(status) and os.WTERMSIG(status) == signal.SIGKILL
+print('[TEST] ffmpeg child killed and reaped')
+'''
+    result = subprocess.run([sys.executable, '-c', script], env={**os.environ, 'PYTHONPATH': 'apps/api'},
+                            capture_output=True, text=True, timeout=10)
+    assert result.returncode == 0, result.stderr
+    assert '[TEST] ffmpeg child killed and reaped' in result.stdout

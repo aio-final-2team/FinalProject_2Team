@@ -18,6 +18,11 @@ def test_growth_revision_roundtrip_and_photo_cascade(seeded_db, alembic_config):
         vid = c.scalar(text("INSERT INTO growth_videos(org_id,child_id,requested_by,storage_path,photo_count) "
                             "VALUES (:org,:child,:user,'videos/test.mp4',3) RETURNING id"),
                        dict(org=seed.ORG, child=seed.CHILD, user=seed.PARENT))
+        with pytest.raises(IntegrityError), c.begin_nested():
+            c.execute(text("INSERT INTO growth_videos(org_id,child_id,requested_by,storage_path,photo_count) "
+                           "VALUES (:org,:child,:user,'videos/duplicate.mp4',3)"),
+                      dict(org=seed.ORG, child=seed.CHILD, user=seed.PARENT))
+        c.execute(text("UPDATE growth_videos SET status='succeeded' WHERE id=:id"), {'id': vid})
         photo_id = seed.FEED_PHOTOS[0][0]
         c.execute(text('INSERT INTO growth_video_photos VALUES (:id,:org,:photo,0)'),
                   dict(id=vid, org=seed.ORG, photo=photo_id))
@@ -37,3 +42,11 @@ def test_growth_revision_roundtrip_and_photo_cascade(seeded_db, alembic_config):
         assert c.scalar(text('SELECT count(*) FROM feed_posts')) == count
         assert c.scalar(text("SELECT count(*) FROM events WHERE action LIKE 'growth_video_%'")) == 0
     command.upgrade(alembic_config, 'head')
+
+    snapshot = schema_dump()
+    command.downgrade(alembic_config, '0014')
+    with seeded_db.connect() as c:
+        assert c.scalar(text("SELECT to_regclass('growth_videos_pending_child_idx')")) is None
+        assert dict(catalog(c)) == HEAD_CATALOG
+    command.upgrade(alembic_config, 'head')
+    assert schema_dump() == snapshot

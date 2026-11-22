@@ -3278,7 +3278,6 @@ paths:
           format: uuid
           title: Child Id
       requestBody:
-        required: true
         content:
           application/json:
             schema:
@@ -3308,6 +3307,12 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
           description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
         '422':
           content:
             application/json:

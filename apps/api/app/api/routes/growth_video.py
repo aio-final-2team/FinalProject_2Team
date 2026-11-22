@@ -4,7 +4,7 @@ import os
 import re
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, Request, Response
 from starlette.responses import FileResponse
 from starlette.concurrency import iterate_in_threadpool
 
@@ -14,14 +14,14 @@ from app.api.schemas.common import errors
 from app.api.schemas.growth_video import GrowthVideo, GrowthVideoCreate, GrowthVideoList
 from app.core import growth_video as rules, jobs, media
 from app.core.auth import CurrentUser, current_user
-from app.core.errors import ApiError
+from app.core.errors import ApiError, error_response
 
 router = APIRouter(tags=["[제안][선택] 성장 영상"], dependencies=[Depends(rules.enabled)])
 
 
 @router.post("/children/{child_id}/growth-videos", status_code=202, response_model=GrowthVideo,
-             responses=errors(401, 403, 404, 422))
-def create(child_id: UUID, body: GrowthVideoCreate, background_tasks: BackgroundTasks,
+             responses=errors(401, 403, 404, 409, 422))
+def create(child_id: UUID, background_tasks: BackgroundTasks, body: GrowthVideoCreate = Body(default_factory=GrowthVideoCreate),
            user: CurrentUser = Depends(current_user)):
     row = backend.growth_videos.create(user, child_id, body.photo_limit)
     jobs.dispatch("growth_video", row["id"], background_tasks)
@@ -47,16 +47,19 @@ def file(video_id: UUID, request: Request, user: CurrentUser = Depends(current_u
     start, end, status = 0, size - 1, 200
     value = request.headers.get("range")
     if value:
-        match = re.fullmatch(r"bytes=(\d{0,20})-(\d{0,20})", value)
-        if not match or not any(match.groups()):
-            handle.close()
-            raise ApiError(416, "VALIDATION_FAILED", size_bytes=size)
-        first, last = match.groups()
-        start, end = (int(first), min(int(last), end) if last else end) if first else (max(0, size-int(last)), end)
-        if start > end or start >= size:
-            handle.close()
-            raise ApiError(416, "VALIDATION_FAILED", size_bytes=size)
-        status = 206
+        match = re.fullmatch(r"bytes=(\d{0,20})-(\d{0,20})", value, re.IGNORECASE)
+        if match and any(match.groups()):
+            first, last = match.groups()
+            # 못 읽는 값·역순·여러 구간은 무시하고 전체를 보내요.
+            if (first and (not last or int(first) <= int(last))) or (not first and int(last) > 0):
+                start, end = ((int(first), min(int(last), end) if last else end) if first
+                              else (max(0, size-int(last)), end))
+                if start >= size:
+                    handle.close()
+                    response = error_response(request, 416, "VALIDATION_FAILED", details={"size_bytes": size})
+                    response.headers["Content-Range"] = f"bytes */{size}"
+                    return response
+                status = 206
     handle.seek(start)
     response = OpenPhotoResponse(handle, {"media_type": "video/mp4"})
     def chunks():

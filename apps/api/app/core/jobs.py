@@ -33,10 +33,12 @@ def publish(job, object_id):
 def dispatch(job, object_id, background_tasks):
     if settings.run_in == "worker" and not (job in {"voice_analysis", "growth_video"} and settings.data_backend == "mock"):
         background_tasks.add_task(publish, job, object_id)
+    elif job == "growth_video":
+        from app.modules.feed.growth_runner import run_in_api
+        background_tasks.add_task(run_in_api, object_id)
     else:
         from app.modules.daily_notes.runner import run_daily_note_drafts
         from app.modules.requests.runner import run_request
         from app.modules.consultations.voice_runner import run_voice_analysis
-        from app.modules.feed.growth_runner import run_growth_video
         background_tasks.add_task({"daily_note": run_daily_note_drafts, "request": run_request,
-                                   "voice_analysis": run_voice_analysis, "growth_video": run_growth_video}[job], object_id)
+                                   "voice_analysis": run_voice_analysis}[job], object_id)

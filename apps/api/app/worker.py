@@ -13,7 +13,7 @@ celery_app = Celery("yuchion", broker=settings.celery_broker_url)
 celery_app.conf.update(
     task_serializer="json", accept_content=["json"], result_serializer="json",
     task_ignore_result=True, task_default_queue="default",
-    task_routes={"yuchion.daily_note_drafts": {"queue": "notes"}},
+    task_routes={"yuchion.daily_note_drafts": {"queue": "notes"}, "yuchion.growth_video": {"queue": "media"}},
     worker_prefetch_multiplier=1, task_acks_late=True, task_reject_on_worker_lost=True,
     broker_connection_retry_on_startup=True,
     broker_transport_options={"socket_connect_timeout": 2, "socket_timeout": 2},
