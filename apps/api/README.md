@@ -71,9 +71,10 @@ DB 모드는 `JWT_SECRET`에 32바이트 이상의 별도 키가 필요해요. �
 | 워커·서비스 안 알림(T26) | API 안 대역 유지 | Celery·Beat·중복 발송 잠금·최대 3회 시도/백오프 구현 |
 | 피드·앨범·사진 공개 범위(T54, API 38~49 [제안] v0.7) | 구현 | 칸별 권한·파일 검사/삭제·즉시 사진 범위 적용 구현 |
 | [제안][선택] 화상상담 room(API 50)·signal | 구현(플래그 필요) | 구현(플래그 필요) |
+| [제안][선택] 가상 음성 분석(API 51~53) | 구현(플래그 필요) | 구현(플래그 필요) |
 | 자료 올리기/상세(API 27·29) | 구현 | 미구현, 인증·역할 검사 뒤 501 |
 
-2026-11-22 선택 기능 준비 기준 HTTP API 50개 중 DB 구현은 48개예요. 신호 WebSocket도 두 모드를 지원해요.
+2026-11-22 선택 기능 준비 기준 HTTP API 53개 중 DB 구현은 51개예요. 신호 WebSocket도 두 모드를 지원해요.
 남은 두 개는 `POST /documents`와 `GET /documents/{document_id}`예요(`/api/v1` 아래).
 `GET /health`는 별도예요. 투약·귀가와 상담 지연 입력은 **팀 확인 전 초안**을 유지해요.
 기본 요청 에이전트는 낱말 대역이고, 알림장만 `DAILY_NOTE_WRITER=graph`로 실제 그래프를 고를 수 있어요.
@@ -317,7 +318,7 @@ version은 최초 1·보호자 추가 글마다 +1이에요. 확인 뒤 정정·
 원문·구조화 입력은 보존하고 자동 취소하지 않아요. 새 글·결정은 요청 잠금 안에서 이력·알림과 함께 저장해요.
 귀가 알림은 근무 밖·주말에도 즉시이며 실패 재시도도 미루지 않아요. 투약 교직원 알림은 기존 근무 시간을 따라요.
 알림장 medication·pickup 줄의 읽기 전용 request_status는 현재 상태예요. 원문·AI 원본은 바꾸지 않아요.
-목록은 한 연결에서 출처 요청 상태를 한 번에 읽어요. T46은 새 DDL을 더하지 않아요. 현재 head 0011이며, 새 표·칸은 0010의 T54, 0011은 화상상담 이력이에요.
+목록은 한 연결에서 출처 요청 상태를 한 번에 읽어요. T46은 새 DDL을 더하지 않아요. 현재 head 0012이며, 새 표·칸은 0010의 T54, 0011은 화상상담 이력, 0012는 가상 음성 분석이에요.
 팀 확인 전 초안의 상세 필드·오류·결정은 T13 3.27·T10 v0.17을 따라요.
 
 ## [제안] v0.7 피드·앨범
@@ -340,4 +341,19 @@ FEATURE_VIDEO_CONSULT 기본 false에서 공통 404이며, true일 때 예약 �
 방은 API 프로세스 하나의 메모리에 있어요. 영상·음성은 브라우저 WebRTC로 직접 주고받아요.
 VIDEO_ICE_SERVERS는 urls·선택 username/credential이 있는 JSON 배열이며 비우면 기본 STUN을 써요.
 0011은 events의 video_joined·video_left CHECK만 넓혀요. 상세 계약은 T13 3.30이에요.
-음성 분석·동네 피드·성장 영상의 플래그도 기본 false이며 후속 항목에서 구현해요.
+음성 분석은 아래 절을 봐요. 동네 피드·성장 영상은 플래그 기본 false이며 후속 항목에서 구현해요.
+
+
+### [제안][선택] T56 가상 음성 분석
+
+`FEATURE_VOICE_ANALYSIS=true`일 때만 T13 3.30의 접수·목록·상세 API 51~53을 써요. 기본은 공통 404예요.
+예약 담임만 multipart file 한 개·synthetic=true로 10MiB 이하 wav·mpeg·webm·mp4를 올려요.
+담임·같은 기관 원장만 결과를 읽어요. 상담방 접속 시간·상태와 별도로 검사해요.
+기본 `CONSULT_VOICE_ANALYZER=app.modules.consultations.voice_stub:analyze`는 고정 가상 녹취·요약을 돌려줘요.
+openai를 고르면 OPENAI_STT_MODEL(기본 gpt-4o-mini-transcribe)과 DOCUMENT 역할 모델·팀 키를 써요.
+RUN_IN=api는 BackgroundTasks, worker는 Celery default 큐에서 같은 입구를 실행해요. 처리 제한은 300초예요.
+worker 프로필은 API와 같은 media_data 볼륨을 써서 임시 음성을 읽고 지워요.
+중복 전달은 한 번만 실행하고 실패·시간 초과는 재실행하지 않아요. yuchion.sweep도 오래된 running을 끝내요.
+성공·실패 모두 상태 커밋 뒤 원본 파일을 지워요. 결과 조회에는 원본 경로·다시 듣기가 없어요.
+0012와 DDL v0.18을 적용해요. 파일 바이트는 DB에 넣지 않아요. 네 기능 플래그는 계속 기본 false예요.
+가상 WAV는 `python tools/make_virtual_voice.py <저장소 밖 경로.wav>`로 만들어요. 키가 없으면 안내만 해요.

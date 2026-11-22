@@ -8,6 +8,8 @@ services:
     environment: &api-environment
       FEATURE_VIDEO_CONSULT: ${FEATURE_VIDEO_CONSULT:-false}
       FEATURE_VOICE_ANALYSIS: ${FEATURE_VOICE_ANALYSIS:-false}
+      CONSULT_VOICE_ANALYZER: ${CONSULT_VOICE_ANALYZER:-app.modules.consultations.voice_stub:analyze}
+      OPENAI_STT_MODEL: ${OPENAI_STT_MODEL:-gpt-4o-mini-transcribe}
       FEATURE_NEIGHBORHOOD_FEED: ${FEATURE_NEIGHBORHOOD_FEED:-false}
       FEATURE_GROWTH_VIDEO: ${FEATURE_GROWTH_VIDEO:-false}
       VIDEO_ICE_SERVERS: ${VIDEO_ICE_SERVERS:-}
@@ -70,6 +72,8 @@ services:
     restart: unless-stopped
     profiles: [worker]
     environment: *api-environment
+    volumes:
+      - media_data:${MEDIA_DIR:-/media}
     # 마이그레이션·시드는 API 하나만 해요. threads는 DB 엔진의 fork 공유를 피해요.
     entrypoint: ["celery"]
     command: ["-A", "app.worker:celery_app", "worker", "-Q", "default,notes", "--pool=threads", "--concurrency=${WORKER_CONCURRENCY:-4}", "--loglevel=INFO"]

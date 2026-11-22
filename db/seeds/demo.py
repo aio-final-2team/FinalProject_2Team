@@ -107,7 +107,7 @@ def seed_demo(connection, *, refresh_note_requests=False):
     if has_feed:
         seed_feed(connection)
     from app.core.config import settings
-    if settings.feature_video_consult:
+    if settings.feature_video_consult or settings.feature_voice_analysis:
         seed_video_consult(connection)
 
 

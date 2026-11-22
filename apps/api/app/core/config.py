@@ -29,6 +29,8 @@ class Settings:
     celery_broker_url: str = "redis://redis:6379/0"
     feature_video_consult: bool = False
     feature_voice_analysis: bool = False
+    consult_voice_analyzer: str = "app.modules.consultations.voice_stub:analyze"
+    openai_stt_model: str = "gpt-4o-mini-transcribe"
     feature_neighborhood_feed: bool = False
     feature_growth_video: bool = False
     video_ice_servers: list[dict] = field(default_factory=lambda: [{"urls": "stun:stun.l.google.com:19302"}])
@@ -82,6 +84,8 @@ def load_settings() -> Settings:
         celery_broker_url=os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0"),
         feature_video_consult=os.getenv("FEATURE_VIDEO_CONSULT", "false").lower() == "true",
         feature_voice_analysis=os.getenv("FEATURE_VOICE_ANALYSIS", "false").lower() == "true",
+        consult_voice_analyzer=os.getenv("CONSULT_VOICE_ANALYZER", "app.modules.consultations.voice_stub:analyze"),
+        openai_stt_model=os.getenv("OPENAI_STT_MODEL", "gpt-4o-mini-transcribe"),
         feature_neighborhood_feed=os.getenv("FEATURE_NEIGHBORHOOD_FEED", "false").lower() == "true",
         feature_growth_video=os.getenv("FEATURE_GROWTH_VIDEO", "false").lower() == "true",
         video_ice_servers=ice_servers,
