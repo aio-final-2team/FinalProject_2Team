@@ -2605,7 +2605,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PostResponse'
+                $ref: '#/components/schemas/NeighborhoodPostResponse'
         '401':
           content:
             application/json:
@@ -2761,7 +2761,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PostResponse'
+                $ref: '#/components/schemas/PostDetailResponse'
         '401':
           content:
             application/json:
@@ -4656,6 +4656,14 @@ components:
       - size
       - items
       title: NeighborhoodPostList
+    NeighborhoodPostResponse:
+      properties:
+        post:
+          $ref: '#/components/schemas/NeighborhoodPostView'
+      type: object
+      required:
+      - post
+      title: NeighborhoodPostResponse
     NeighborhoodPostView:
       properties:
         id:
@@ -5281,6 +5289,17 @@ components:
       required:
       - items
       title: PickupGuardiansOut
+    PostDetailResponse:
+      properties:
+        post:
+          anyOf:
+          - $ref: '#/components/schemas/PostView'
+          - $ref: '#/components/schemas/NeighborhoodPostView'
+          title: Post
+      type: object
+      required:
+      - post
+      title: PostDetailResponse
     PostList:
       properties:
         total:
@@ -5307,10 +5326,7 @@ components:
     PostResponse:
       properties:
         post:
-          anyOf:
-          - $ref: '#/components/schemas/PostView'
-          - $ref: '#/components/schemas/NeighborhoodPostView'
-          title: Post
+          $ref: '#/components/schemas/PostView'
       type: object
       required:
       - post

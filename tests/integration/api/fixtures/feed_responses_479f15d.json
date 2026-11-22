@@ -1,0 +1,606 @@
+{
+  "source": "479f15d:contracts/openapi.yaml",
+  "responses": {
+    "/api/v1/classrooms/{classroom_id}/posts": {
+      "get": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PostList"
+              }
+            }
+          }
+        },
+        "401": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          },
+          "description": "Unauthorized"
+        },
+        "403": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          },
+          "description": "Forbidden"
+        },
+        "404": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          },
+          "description": "Not Found"
+        },
+        "422": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          },
+          "description": "Unprocessable Entity"
+        }
+      },
+      "post": {
+        "201": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PostResponse"
+              }
+            }
+          }
+        },
+        "401": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          },
+          "description": "Unauthorized"
+        },
+        "403": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          },
+          "description": "Forbidden"
+        },
+        "404": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          },
+          "description": "Not Found"
+        },
+        "413": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          },
+          "description": "Request Entity Too Large"
+        },
+        "422": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          },
+          "description": "Unprocessable Entity"
+        }
+      }
+    },
+    "/api/v1/classrooms/{classroom_id}/albums": {
+      "get": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Album"
+              }
+            }
+          }
+        },
+        "401": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          },
+          "description": "Unauthorized"
+        },
+        "403": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          },
+          "description": "Forbidden"
+        },
+        "404": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          },
+          "description": "Not Found"
+        },
+        "422": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          },
+          "description": "Unprocessable Entity"
+        }
+      }
+    },
+    "/api/v1/organizations/{org_id}/posts": {
+      "get": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PostList"
+              }
+            }
+          }
+        },
+        "401": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          },
+          "description": "Unauthorized"
+        },
+        "403": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          },
+          "description": "Forbidden"
+        },
+        "404": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          },
+          "description": "Not Found"
+        },
+        "422": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          },
+          "description": "Unprocessable Entity"
+        }
+      },
+      "post": {
+        "201": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PostResponse"
+              }
+            }
+          }
+        },
+        "401": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          },
+          "description": "Unauthorized"
+        },
+        "403": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          },
+          "description": "Forbidden"
+        },
+        "404": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          },
+          "description": "Not Found"
+        },
+        "413": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          },
+          "description": "Request Entity Too Large"
+        },
+        "422": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          },
+          "description": "Unprocessable Entity"
+        }
+      }
+    },
+    "/api/v1/organizations/{org_id}/albums": {
+      "get": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Album"
+              }
+            }
+          }
+        },
+        "401": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          },
+          "description": "Unauthorized"
+        },
+        "403": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          },
+          "description": "Forbidden"
+        },
+        "404": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          },
+          "description": "Not Found"
+        },
+        "422": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          },
+          "description": "Unprocessable Entity"
+        }
+      }
+    },
+    "/api/v1/posts/{post_id}": {
+      "patch": {
+        "200": {
+          "description": "Successful Response",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PostResponse"
+              }
+            }
+          }
+        },
+        "401": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          },
+          "description": "Unauthorized"
+        },
+        "403": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          },
+          "description": "Forbidden"
+        },
+        "404": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          },
+          "description": "Not Found"
+        },
+        "422": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErrorResponse"
+              }
+            }
+          },
+          "description": "Unprocessable Entity"
+        }
+      }
+    }
+  },
+  "schemas": {
+    "PostResponse": {
+      "properties": {
+        "post": {
+          "$ref": "#/components/schemas/PostView"
+        }
+      },
+      "type": "object",
+      "required": [
+        "post"
+      ],
+      "title": "PostResponse"
+    },
+    "PostList": {
+      "properties": {
+        "total": {
+          "type": "integer",
+          "title": "Total"
+        },
+        "page": {
+          "type": "integer",
+          "title": "Page"
+        },
+        "size": {
+          "type": "integer",
+          "title": "Size"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/PostView"
+          },
+          "type": "array",
+          "title": "Items"
+        }
+      },
+      "type": "object",
+      "required": [
+        "total",
+        "page",
+        "size",
+        "items"
+      ],
+      "title": "PostList"
+    },
+    "PostView": {
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid",
+          "title": "Id"
+        },
+        "lane": {
+          "type": "string",
+          "enum": [
+            "class",
+            "org"
+          ],
+          "title": "Lane"
+        },
+        "classroom_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Classroom Id"
+        },
+        "author_id": {
+          "type": "string",
+          "format": "uuid",
+          "title": "Author Id"
+        },
+        "body": {
+          "type": "string",
+          "title": "Body"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "published",
+            "hidden"
+          ],
+          "title": "Status"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "title": "Created At"
+        },
+        "photos": {
+          "items": {
+            "$ref": "#/components/schemas/PhotoView"
+          },
+          "type": "array",
+          "title": "Photos"
+        }
+      },
+      "type": "object",
+      "required": [
+        "id",
+        "lane",
+        "classroom_id",
+        "author_id",
+        "body",
+        "status",
+        "created_at",
+        "photos"
+      ],
+      "title": "PostView"
+    },
+    "PhotoView": {
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid",
+          "title": "Id"
+        },
+        "post_id": {
+          "type": "string",
+          "format": "uuid",
+          "title": "Post Id"
+        },
+        "media_type": {
+          "type": "string",
+          "enum": [
+            "image/jpeg",
+            "image/png",
+            "image/webp"
+          ],
+          "title": "Media Type"
+        },
+        "size_bytes": {
+          "type": "integer",
+          "title": "Size Bytes"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "title": "Created At"
+        },
+        "file_url": {
+          "type": "string",
+          "title": "File Url"
+        }
+      },
+      "type": "object",
+      "required": [
+        "id",
+        "post_id",
+        "media_type",
+        "size_bytes",
+        "created_at",
+        "file_url"
+      ],
+      "title": "PhotoView"
+    },
+    "Album": {
+      "properties": {
+        "total": {
+          "type": "integer",
+          "title": "Total"
+        },
+        "page": {
+          "type": "integer",
+          "title": "Page"
+        },
+        "size": {
+          "type": "integer",
+          "title": "Size"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/components/schemas/PhotoView"
+          },
+          "type": "array",
+          "title": "Items"
+        }
+      },
+      "type": "object",
+      "required": [
+        "total",
+        "page",
+        "size",
+        "items"
+      ],
+      "title": "Album"
+    },
+    "HidePost": {
+      "properties": {
+        "status": {
+          "type": "string",
+          "const": "hidden",
+          "title": "Status"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "title": "HidePost"
+    }
+  }
+}

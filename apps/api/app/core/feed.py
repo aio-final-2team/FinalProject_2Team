@@ -9,14 +9,23 @@ def neighborhood_enabled():
         raise ApiError(404, "NOT_FOUND")
 
 
+def neighborhood_region(organization):
+    region = organization.get("region")
+    # PostgreSQL nullif(btrim(region),'')와 같게, 값이 있는 문자열은 그대로 비교해요.
+    return region if region is not None and region.strip(" ") else None
+
+
 def lane_access(user, lane, target_id, classrooms, children, deny, organizations=None):
     if lane == "neighborhood":
         neighborhood_enabled()
         own = organizations.get(user.org_id, {})
         target = organizations.get(target_id, {})
-        if target_id != user.org_id and (own.get("region") is None or target.get("region") != own["region"]):
+        region = neighborhood_region(own)
+        if target_id != user.org_id and (
+            user.role != "parent" or region is None or neighborhood_region(target) != region
+        ):
             deny(404)
-        if (user.role != "parent" or own.get("region") is None or not any(
+        if (user.role != "parent" or region is None or not any(
             c["org_id"] == user.org_id and user.id in c["guardian_ids"] for c in children.values()
         )):
             deny(403)

@@ -33,12 +33,12 @@ def context(user, lane, target_id):
 
 def org_ids(user, lane):
     organizations = store.state().organizations
-    region = organizations.get(user.org_id, {}).get("region")
+    region = rules.neighborhood_region(organizations.get(user.org_id, {}))
     return {oid for oid, org in organizations.items() if region is not None and org["region"] == region} if (
         lane == "neighborhood") else {user.org_id}
 
 
-def checked(user, post_id, *, include_hidden=False, deleting=False, moderating=False):
+def checked(user, post_id, *, include_hidden=False, deleting=False):
     post = store.state().feed_posts.get(post_id)
     if post is None:
         deny(user, post_id, 404)
@@ -46,9 +46,8 @@ def checked(user, post_id, *, include_hidden=False, deleting=False, moderating=F
         rules.neighborhood_enabled()
     elif post["org_id"] != user.org_id:
         deny(user, post_id, 404)
-    own_director = moderating and user.role == "director" and post["org_id"] == user.org_id
     children = {c.id: c.__dict__ for c in store.state().children.values() if c.org_id == user.org_id} if (
-        own_director or deleting and post["author_id"] == user.id) else context(
+        deleting and post["author_id"] == user.id) else context(
         user, post["lane"], post["classroom_id"] or post["org_id"])
     if post["deleted_at"] or (post["status"] == "hidden" and not include_hidden):
         raise ApiError(404, "NOT_FOUND")
@@ -148,8 +147,8 @@ def delete(user, post_id):
 
 def hide(user, post_id):
     with store._lock:
-        post, children = checked(user, post_id, include_hidden=True, moderating=True)
-        if post["lane"] not in ("org", "neighborhood") or user.role != "director" or post["org_id"] != user.org_id:
+        post, children = checked(user, post_id, include_hidden=True)
+        if post["lane"] != "org" or user.role != "director" or post["org_id"] != user.org_id:
             deny(user, post_id)
         if post["status"] != "hidden":
             post["status"] = "hidden"
@@ -159,14 +158,14 @@ def hide(user, post_id):
 
 
 def photo_scope(user, child_id, value=None):
-    if value == "neighborhood":
-        rules.neighborhood_enabled()
     with store._lock:
         child = store.state().children.get(child_id)
         if child is None or child.org_id != user.org_id:
             deny(user, child_id, 404)
         if user.role != "parent" or user.id not in child.guardian_ids:
             deny(user, child_id)
+        if value == "neighborhood" and not rules.settings.feature_neighborhood_feed:
+            raise ApiError(422, "VALIDATION_FAILED", field="photo_scope")
         if value is not None and value != child.photo_scope:
             before, child.photo_scope = child.photo_scope, value
             record(user, "photo_scope_changed", child_id=str(child_id), before=before, after=value)

@@ -50,6 +50,14 @@ class NeighborhoodPostList(Page):
 
 
 class PostResponse(BaseModel):
+    post: PostView
+
+
+class NeighborhoodPostResponse(BaseModel):
+    post: NeighborhoodPostView
+
+
+class PostDetailResponse(BaseModel):
     post: PostView | NeighborhoodPostView
 
 

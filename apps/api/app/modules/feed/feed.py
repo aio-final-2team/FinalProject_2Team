@@ -47,11 +47,12 @@ def org_ids(connection, user, lane):
     if lane != "neighborhood":
         return [user.org_id]
     return list(connection.scalars(text("""
-        SELECT id FROM organizations WHERE region=(SELECT region FROM organizations WHERE id=:org)
+        SELECT id FROM organizations WHERE nullif(btrim(region),'') IS NOT NULL
+          AND region=(SELECT region FROM organizations WHERE id=:org)
     """), {"org": user.org_id}))
 
 
-def checked(connection, user, post_id, *, lock=False, include_hidden=False, deleting=False, moderating=False):
+def checked(connection, user, post_id, *, lock=False, include_hidden=False, deleting=False):
     row = connection.execute(text("SELECT p.*,o.name AS org_name FROM feed_posts p JOIN organizations o ON o.id=p.org_id "
                                   "WHERE p.id=:id" + (" FOR UPDATE OF p" if lock else "")),
                              {"id": post_id}).mappings().one_or_none()
@@ -62,9 +63,8 @@ def checked(connection, user, post_id, *, lock=False, include_hidden=False, dele
         rules.neighborhood_enabled()
     elif post["org_id"] != user.org_id:
         deny(user, post_id, 404)
-    own_director = moderating and user.role == "director" and post["org_id"] == user.org_id
     children = context(connection, user, "org", user.org_id) if (
-        own_director or deleting and post["author_id"] == user.id) else context(
+        deleting and post["author_id"] == user.id) else context(
         connection, user, post["lane"], post["classroom_id"] or post["org_id"])
     if post["deleted_at"] or (post["status"] == "hidden" and not include_hidden):
         raise ApiError(404, "NOT_FOUND")
@@ -196,8 +196,8 @@ def delete(user, post_id):
 
 def hide(user, post_id):
     with transaction() as connection:
-        post, children = checked(connection, user, post_id, lock=True, include_hidden=True, moderating=True)
-        if post["lane"] not in ("org", "neighborhood") or user.role != "director" or post["org_id"] != user.org_id:
+        post, children = checked(connection, user, post_id, lock=True, include_hidden=True)
+        if post["lane"] != "org" or user.role != "director" or post["org_id"] != user.org_id:
             deny(user, post_id)
         if post["status"] != "hidden":
             connection.execute(text("UPDATE feed_posts SET status='hidden' WHERE id=:id AND org_id=:org"),
@@ -208,8 +208,6 @@ def hide(user, post_id):
 
 
 def photo_scope(user, child_id, value=None):
-    if value == "neighborhood":
-        rules.neighborhood_enabled()
     with transaction() as connection:
         child = connection.execute(text("SELECT * FROM children WHERE id=:id AND org_id=:org" +
                                         (" FOR NO KEY UPDATE" if value is not None else "")),
@@ -221,6 +219,8 @@ def photo_scope(user, child_id, value=None):
         """), {"child": child_id, "org": user.org_id, "user": user.id})
         if user.role != "parent" or not guardian:
             deny(user, child_id)
+        if value == "neighborhood" and not rules.settings.feature_neighborhood_feed:
+            raise ApiError(422, "VALIDATION_FAILED", field="photo_scope")
         scope = child["photo_scope"]
         if value is not None and value != scope:
             connection.execute(text("UPDATE children SET photo_scope=:scope WHERE id=:id AND org_id=:org"),

@@ -14,7 +14,10 @@ from starlette.formparsers import MultiPartException
 
 from app import backend
 from app.api.schemas.common import errors
-from app.api.schemas.feed import Album, HidePost, PostList, PostResponse, PostUpload, ScopePatch, ScopeResponse, NeighborhoodPostList
+from app.api.schemas.feed import (
+    Album, HidePost, NeighborhoodPostList, NeighborhoodPostResponse, PostDetailResponse,
+    PostList, PostResponse, PostUpload, ScopePatch, ScopeResponse,
+)
 from app.core import feed as rules, media
 from app.core.constants import MAX_PHOTO_BYTES, MAX_PHOTOS, MAX_POST_BYTES
 from app.core.auth import CurrentUser, current_user
@@ -124,7 +127,7 @@ def neighborhood_listing(page: int = Query(1, ge=1), size: int = Query(20, ge=1,
     return backend.feed.listing(user, "neighborhood", user.org_id, page, size, sort)
 
 
-@router.post("/neighborhood/posts", status_code=201, response_model=PostResponse,
+@router.post("/neighborhood/posts", status_code=201, response_model=NeighborhoodPostResponse,
              dependencies=[Depends(rules.neighborhood_enabled)], responses=errors(401, 403, 404, 413, 422),
              openapi_extra=UPLOAD_DOC)
 async def neighborhood_create(request: Request, user: CurrentUser = Depends(current_user)):
@@ -139,7 +142,7 @@ def neighborhood_album(child_id: UUID | None = None, page: int = Query(1, ge=1),
     return backend.feed.album(user, "neighborhood", user.org_id, child_id, page, size, sort)
 
 
-@router.get("/posts/{post_id}", response_model=PostResponse, responses=errors(401, 403, 404, 422))
+@router.get("/posts/{post_id}", response_model=PostDetailResponse, responses=errors(401, 403, 404, 422))
 def detail(post_id: UUID, user: CurrentUser = Depends(current_user)):
     return {"post": backend.feed.detail(user, post_id)}
 

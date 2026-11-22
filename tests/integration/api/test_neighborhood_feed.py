@@ -1,6 +1,8 @@
 """[TEST] 선택 동네 칸의 기관 간 공개·익명 표시·현재 사진 권한을 두 모드로 검사해요."""
 
+import json
 from dataclasses import replace
+from pathlib import Path
 from uuid import UUID
 
 import pytest
@@ -99,20 +101,49 @@ def test_staff_denied_all_read_surfaces_and_upload_with_events(client, parent, a
     for path in paths(own):
         err(client.get(path, headers=headers), 403, "FORBIDDEN")
     err(create(client, headers, root=NEIGHBORHOOD), 403, "FORBIDDEN")
+    err(client.patch(f"{BASE}/posts/{own['id']}", headers=headers, json={"status": "hidden"}), 403, "FORBIDDEN")
     denied = audit(neighborhood_backend)[before:]
-    assert len(denied) == 5 and all(e["action"] == "permission_denied" for e in denied)
+    assert len(denied) == 6 and all(e["action"] == "permission_denied" for e in denied)
     assert all(e["detail"]["trace_id"] == "t60-denied" for e in denied)
+    assert client.get(f"{BASE}/posts/{own['id']}", headers=parent).json()["post"]["status"] == "published"
 
 
-def test_null_region_denied_and_empty_region_is_an_exact_string(client, parent, neighborhood_backend):
-    set_region(neighborhood_backend, seed.ORG, None)
+@pytest.mark.parametrize("region", [None, "", "   "])
+def test_missing_regions_never_share_posts_or_photos(client, parent, neighbor, region, neighborhood_backend):
+    own = post(client, parent, root=NEIGHBORHOOD)
+    for org_id in (seed.ORG, NEIGHBOR["id"]):
+        set_region(neighborhood_backend, org_id, region)
     before = len(audit(neighborhood_backend))
-    for suffix in ("/posts", "/albums"):
-        err(client.get(NEIGHBORHOOD + suffix, headers=parent), 403, "FORBIDDEN")
+    for actor in (parent, neighbor):
+        for suffix in ("/posts", "/albums"):
+            err(client.get(NEIGHBORHOOD + suffix, headers=actor), 403, "FORBIDDEN")
     err(create(client, parent, root=NEIGHBORHOOD), 403, "FORBIDDEN")
-    assert len(audit(neighborhood_backend)) == before + 3
-    set_region(neighborhood_backend, seed.ORG, "")
-    assert client.get(NEIGHBORHOOD + "/posts", headers=parent).status_code == 200
+    for path in (f"{BASE}/posts/{own['id']}", own["photos"][0]["file_url"]):
+        err(client.get(path, headers=parent), 403, "FORBIDDEN")
+        err(client.get(path, headers=neighbor), 404, "NOT_FOUND")
+    assert len(audit(neighborhood_backend)) == before + 9
+
+
+@pytest.mark.parametrize("role", ["teacher", "director"])
+@pytest.mark.parametrize("organization", [NEIGHBOR, FOREIGN], ids=["same-region", "other-region"])
+def test_other_org_staff_cannot_discover_or_hide_posts(client, parent, role, organization, neighborhood_backend):
+    own = post(client, parent, root=NEIGHBORHOOD)
+    staff_id = seed.demo_id("399")
+    if neighborhood_backend == "mock":
+        store.state().users[staff_id] = store.User(staff_id, organization["id"], role, "staff-n01",
+                                                  "unused", "[TEST] 다른 원 교직원")
+    else:
+        with transaction() as connection:
+            connection.execute(text("""
+                INSERT INTO users(id,org_id,role,login_id,display_name,password_hash)
+                VALUES (:id,:org,:role,'staff-n01','[TEST] 다른 원 교직원','unused')
+            """), {"id": staff_id, "org": organization["id"], "role": role})
+    headers = {"Authorization": "Bearer " + issue_token(backend.users.get_user(staff_id))}
+    for path in (f"{BASE}/posts/{own['id']}", own["photos"][0]["file_url"]):
+        err(client.get(path, headers=headers), 404, "NOT_FOUND")
+    err(client.patch(f"{BASE}/posts/{own['id']}", headers=headers, json={"status": "hidden"}), 404, "NOT_FOUND")
+    err(client.delete(f"{BASE}/posts/{own['id']}", headers=headers), 404, "NOT_FOUND")
+    assert client.get(f"{BASE}/posts/{own['id']}", headers=parent).json()["post"] == own
 
 
 def test_parent_without_current_child_denied(client, parent, neighborhood_backend):
@@ -165,31 +196,18 @@ def test_neighborhood_scope_covers_existing_lanes_without_changing_payload(clien
     assert client.get(own["photos"][0]["file_url"], headers=parent_other).status_code == 200
 
 
-def test_delete_only_author_and_hiding_only_author_org_director(client, parent, neighbor, director, neighborhood_backend):
+def test_delete_only_author_and_neighborhood_has_no_director_moderation(client, parent, neighbor, director, neighborhood_backend):
     own = post(client, parent, root=NEIGHBORHOOD)
     photo = backend.feed.file(backend.users.get_user(seed.PARENT), UUID(own["photos"][0]["id"]))
     path = media.path(photo["storage_path"])
     err(client.delete(f"{BASE}/posts/{own['id']}", headers=neighbor), 403, "FORBIDDEN")
     err(client.patch(f"{BASE}/posts/{own['id']}", headers=parent, json={"status": "hidden"}), 403, "FORBIDDEN")
-    # 같은 동네 다른 기관 원장에게는 숨김 권한이 없어요.
-    director_id = seed.demo_id("399")
-    if neighborhood_backend == "mock":
-        store.state().users[director_id] = store.User(director_id, NEIGHBOR["id"], "director", "director-n01",
-                                                      "unused", "[TEST] 다른 원장")
-    else:
-        with transaction() as connection:
-            connection.execute(text("""
-                INSERT INTO users(id,org_id,role,login_id,display_name,password_hash)
-                VALUES (:id,:org,'director','director-n01','[TEST] 다른 원장','unused')
-            """), {"id": director_id, "org": NEIGHBOR["id"]})
-    headers = {"Authorization": "Bearer " + issue_token(backend.users.get_user(director_id))}
-    err(client.patch(f"{BASE}/posts/{own['id']}", headers=headers, json={"status": "hidden"}), 403, "FORBIDDEN")
-    response = client.patch(f"{BASE}/posts/{own['id']}", headers=director, json={"status": "hidden"})
-    assert response.status_code == 200 and response.json()["post"]["status"] == "hidden"
-    err(client.get(own["photos"][0]["file_url"], headers=neighbor), 404, "NOT_FOUND")
+    err(client.patch(f"{BASE}/posts/{own['id']}", headers=director, json={"status": "hidden"}), 403, "FORBIDDEN")
+    assert client.get(own["photos"][0]["file_url"], headers=neighbor).status_code == 200
     assert client.delete(f"{BASE}/posts/{own['id']}", headers=parent).status_code == 204
     assert not path.exists()
-    assert {e["action"] for e in audit(neighborhood_backend)} >= {"feed_post_hidden", "feed_post_deleted"}
+    actions = {e["action"] for e in audit(neighborhood_backend)}
+    assert "feed_post_deleted" in actions and "feed_post_hidden" not in actions
 
 
 def test_existing_pagination_and_sort_and_anonymous_auth(client, parent):
@@ -215,3 +233,39 @@ def test_flag_off_hides_new_and_shared_routes_but_keeps_existing_feed(client, pa
     err(client.delete(f"{BASE}/posts/{own['id']}", headers=parent), 404, "NOT_FOUND")
     err(client.patch(f"{BASE}/posts/{own['id']}", headers=parent, json={"status": "hidden"}), 404, "NOT_FOUND")
     assert client.get(CLASS + "/posts", headers=parent).status_code == 200
+
+
+@pytest.mark.parametrize("actor,code", [("parent", 422), ("teacher", 403), ("director", 403),
+                                      ("parent_other", 403), ("foreign", 404)])
+def test_flag_off_rejects_neighborhood_scope_after_existing_permissions(
+        client, parent, actor, code, request, monkeypatch, neighborhood_backend):
+    monkeypatch.setattr(rules, "settings", replace(rules.settings, feature_neighborhood_feed=False))
+    before = len(audit(neighborhood_backend))
+    response = scope(client, request.getfixturevalue(actor), seed.CHILD, "neighborhood")
+    err(response, code, {422: "VALIDATION_FAILED", 403: "FORBIDDEN", 404: "NOT_FOUND"}[code])
+    if code == 422:
+        assert response.json()["error"]["details"] == {"field": "photo_scope"}
+    events = audit(neighborhood_backend)[before:]
+    assert [e["action"] for e in events] == ([] if code == 422 else ["permission_denied"])
+    assert client.get(f"{BASE}/children/{seed.CHILD}/photo-scope", headers=parent).json()["photo_scope"] == "family"
+
+
+def test_existing_feed_openapi_responses_match_pre_neighborhood_contract(client):
+    # 479f15d에서 추출한 응답 계약이에요. CI에 과거 git 이력이 없어도 검사해요.
+    baseline = json.loads((Path(__file__).parent / "fixtures/feed_responses_479f15d.json").read_text())
+    document = client.get("/openapi.json").json()
+    for path, methods in baseline["responses"].items():
+        for method, response in methods.items():
+            assert document["paths"][path][method]["responses"] == response
+    for name, schema in baseline["schemas"].items():
+        assert document["components"]["schemas"][name] == schema
+    schemas = document["components"]["schemas"]
+    assert schemas["NeighborhoodPostResponse"]["properties"]["post"] == {
+        "$ref": "#/components/schemas/NeighborhoodPostView"}
+    assert schemas["PostDetailResponse"]["properties"]["post"]["anyOf"] == [
+        {"$ref": "#/components/schemas/PostView"}, {"$ref": "#/components/schemas/NeighborhoodPostView"}]
+    paths = document["paths"]
+    assert paths[BASE + "/neighborhood/posts"]["post"]["responses"]["201"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/NeighborhoodPostResponse"}
+    assert paths[BASE + "/posts/{post_id}"]["get"]["responses"]["200"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/PostDetailResponse"}
