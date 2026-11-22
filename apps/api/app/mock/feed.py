@@ -24,21 +24,35 @@ def deny(user, resource_id, status=403):
 
 def context(user, lane, target_id):
     state = store.state()
-    children = {c.id: c.__dict__ for c in state.children.values() if c.org_id == user.org_id}
+    children = {c.id: c.__dict__ for c in state.children.values() if c.org_id in org_ids(user, lane)}
     classrooms = {c.id for c in state.classrooms.values() if c.org_id == user.org_id}
-    rules.lane_access(user, lane, target_id, classrooms, children, lambda status: deny(user, target_id, status))
+    rules.lane_access(user, lane, target_id, classrooms, children,
+                      lambda status: deny(user, target_id, status), state.organizations)
     return children
 
 
-def checked(user, post_id, *, include_hidden=False, deleting=False):
+def org_ids(user, lane):
+    organizations = store.state().organizations
+    region = organizations.get(user.org_id, {}).get("region")
+    return {oid for oid, org in organizations.items() if region is not None and org["region"] == region} if (
+        lane == "neighborhood") else {user.org_id}
+
+
+def checked(user, post_id, *, include_hidden=False, deleting=False, moderating=False):
     post = store.state().feed_posts.get(post_id)
-    if post is None or post["org_id"] != user.org_id:
+    if post is None:
         deny(user, post_id, 404)
-    children = {} if deleting and post["author_id"] == user.id else context(
+    if post["lane"] == "neighborhood":
+        rules.neighborhood_enabled()
+    elif post["org_id"] != user.org_id:
+        deny(user, post_id, 404)
+    own_director = moderating and user.role == "director" and post["org_id"] == user.org_id
+    children = {c.id: c.__dict__ for c in store.state().children.values() if c.org_id == user.org_id} if (
+        own_director or deleting and post["author_id"] == user.id) else context(
         user, post["lane"], post["classroom_id"] or post["org_id"])
     if post["deleted_at"] or (post["status"] == "hidden" and not include_hidden):
         raise ApiError(404, "NOT_FOUND")
-    return post, children
+    return {**post, "org_name": store.state().organizations.get(post["org_id"], {}).get("name")}, children
 
 
 def photos(post_id):
@@ -53,9 +67,10 @@ def check_access(user, lane, target_id):
 def listing(user, lane, target_id, page, size, sort):
     with store._lock:
         children = context(user, lane, target_id)
-        items = [rules.post_view(user, p, photos(p["id"]), children) for p in store.state().feed_posts.values()
-                 if p["org_id"] == user.org_id and p["lane"] == lane and not p["deleted_at"]
-                 and p["status"] == "published" and (lane == "org" or p["classroom_id"] == target_id)]
+        items = [rules.post_view(user, {**p, "org_name": store.state().organizations[p["org_id"]]["name"]},
+                                 photos(p["id"]), children) for p in store.state().feed_posts.values()
+                 if p["org_id"] in org_ids(user, lane) and p["lane"] == lane and not p["deleted_at"]
+                 and p["status"] == "published" and (lane != "class" or p["classroom_id"] == target_id)]
         return rules.page(items, page, size, sort)
 
 
@@ -63,7 +78,7 @@ def create(user, lane, target_id, body, uploads):
     with store._lock:
         children = context(user, lane, target_id)
         for _, _, tags in uploads:
-            rules.tags_in_scope(lane, target_id, tags, children)
+            rules.tags_in_scope(lane, target_id, tags, children, user)
         post = {"id": uuid4(), "org_id": user.org_id, "lane": lane,
                 "classroom_id": target_id if lane == "class" else None, "author_id": user.id, "body": body,
                 "status": "published", "created_at": store.now(), "deleted_at": None}
@@ -80,7 +95,7 @@ def create(user, lane, target_id, body, uploads):
         store.state().feed_posts[post["id"]] = post
         store.state().feed_photos.update((p["id"], p) for p in added)
         record(user, "feed_post_created", post_id=str(post["id"]))
-        return rules.post_view(user, post, added, children)
+        return rules.post_view(user, {**post, "org_name": store.state().organizations[user.org_id]["name"]}, added, children)
 
 
 def detail(user, post_id):
@@ -97,7 +112,7 @@ def album(user, lane, target_id, child_id, page, size, sort):
             deny(user, child_id)
         items = []
         for p in store.state().feed_posts.values():
-            if (p["org_id"] != user.org_id or p["lane"] != lane or p["deleted_at"] or p["status"] != "published"
+            if (p["org_id"] not in org_ids(user, lane) or p["lane"] != lane or p["deleted_at"] or p["status"] != "published"
                     or (lane == "class" and p["classroom_id"] != target_id)):
                 continue
             items.extend(rules.photo_view(photo) for photo in photos(p["id"])
@@ -108,7 +123,7 @@ def album(user, lane, target_id, child_id, page, size, sort):
 def file(user, photo_id):
     with store._lock:
         photo = store.state().feed_photos.get(photo_id)
-        if photo is None or photo["org_id"] != user.org_id:
+        if photo is None:
             deny(user, photo_id, 404)
         post, children = checked(user, photo["post_id"])
         if not rules.visible(user, post, photo, children):
@@ -123,7 +138,7 @@ def delete(user, post_id):
             deny(user, post_id)
         post_photos = photos(post_id)
         record(user, "feed_post_deleted", post_id=str(post_id))
-        post["deleted_at"] = store.now()
+        store.state().feed_posts[post_id]["deleted_at"] = store.now()
     for photo in post_photos:
         try:
             media.remove(photo["storage_path"])
@@ -133,16 +148,19 @@ def delete(user, post_id):
 
 def hide(user, post_id):
     with store._lock:
-        post, children = checked(user, post_id, include_hidden=True)
-        if post["lane"] != "org" or user.role != "director":
+        post, children = checked(user, post_id, include_hidden=True, moderating=True)
+        if post["lane"] not in ("org", "neighborhood") or user.role != "director" or post["org_id"] != user.org_id:
             deny(user, post_id)
         if post["status"] != "hidden":
             post["status"] = "hidden"
+            store.state().feed_posts[post_id]["status"] = "hidden"
             record(user, "feed_post_hidden", post_id=str(post_id))
         return rules.post_view(user, post, photos(post_id), children)
 
 
 def photo_scope(user, child_id, value=None):
+    if value == "neighborhood":
+        rules.neighborhood_enabled()
     with store._lock:
         child = store.state().children.get(child_id)
         if child is None or child.org_id != user.org_id:

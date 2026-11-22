@@ -157,6 +157,7 @@ class Event:
 class _State:
     def __init__(self) -> None:
         org = seed.ORG
+        self.organizations = {org: {"id": org, "name": "가상 햇살유치원", "region": None}}
         self.users = {u["id"]: User(org_id=org, password=seed.DEMO_PASSWORD, **u) for u in seed.USERS}
         self.classrooms = {c["id"]: Classroom(org_id=org, **c) for c in seed.CLASSROOMS}
         self.classroom_staff = [ClassroomStaff(**s) for s in seed.CLASSROOM_STAFF]

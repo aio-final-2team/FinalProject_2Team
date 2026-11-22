@@ -107,8 +107,40 @@ def seed_demo(connection, *, refresh_note_requests=False):
     if has_feed:
         seed_feed(connection)
     from app.core.config import settings
+    if settings.feature_neighborhood_feed and has_feed and connection.scalar(text("""
+        SELECT position('neighborhood' in pg_get_constraintdef(oid))>0
+        FROM pg_constraint WHERE conname='children_photo_scope_check'
+    """)):
+        seed_neighborhood(connection, password_hash)
     if settings.feature_video_consult or settings.feature_voice_analysis:
         seed_video_consult(connection)
+
+
+def seed_neighborhood(connection, password_hash):
+    for org in seed.NEIGHBORHOOD_ORGS:
+        inserted = connection.scalar(text("""
+            INSERT INTO organizations(id,name,region,is_virtual) VALUES (:id,:name,:region,true)
+            ON CONFLICT DO NOTHING RETURNING id
+        """), org)
+        if inserted:
+            connection.execute(text("UPDATE organizations SET region='가상동' WHERE id=:id AND region IS NULL"),
+                               {"id": seed.ORG})
+        connection.execute(text("""
+            INSERT INTO classrooms(id,org_id,name,school_year) VALUES (:classroom_id,:id,'가상반',2026)
+            ON CONFLICT DO NOTHING
+        """), org)
+        connection.execute(text("""
+            INSERT INTO users(id,org_id,role,login_id,display_name,password_hash)
+            VALUES (:parent_id,:id,'parent',:login_id,'가상 보호자',:password_hash) ON CONFLICT DO NOTHING
+        """), {**org, "password_hash": password_hash})
+        connection.execute(text("""
+            INSERT INTO children(id,org_id,classroom_id,display_name,is_virtual)
+            VALUES (:child_id,:id,:classroom_id,'가상 아이',true) ON CONFLICT DO NOTHING
+        """), org)
+        connection.execute(text("""
+            INSERT INTO child_guardians(child_id,org_id,user_id,relation)
+            VALUES (:child_id,:id,:parent_id,'other') ON CONFLICT DO NOTHING
+        """), org)
 
 
 def seed_video_consult(connection):

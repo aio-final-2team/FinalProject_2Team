@@ -1,10 +1,26 @@
 """[제안] T54: 칸 권한을 먼저 검사하고, 사진마다 현재 공개 범위를 계산해요."""
 
 from app.core.errors import ApiError
+from app.core.config import settings
 
 
-def lane_access(user, lane, target_id, classrooms, children, deny):
-    if lane == "org":
+def neighborhood_enabled():
+    if not settings.feature_neighborhood_feed:
+        raise ApiError(404, "NOT_FOUND")
+
+
+def lane_access(user, lane, target_id, classrooms, children, deny, organizations=None):
+    if lane == "neighborhood":
+        neighborhood_enabled()
+        own = organizations.get(user.org_id, {})
+        target = organizations.get(target_id, {})
+        if target_id != user.org_id and (own.get("region") is None or target.get("region") != own["region"]):
+            deny(404)
+        if (user.role != "parent" or own.get("region") is None or not any(
+            c["org_id"] == user.org_id and user.id in c["guardian_ids"] for c in children.values()
+        )):
+            deny(403)
+    elif lane == "org":
         if target_id != user.org_id:
             deny(404)
     else:
@@ -16,10 +32,11 @@ def lane_access(user, lane, target_id, classrooms, children, deny):
             deny(403)
 
 
-def tags_in_scope(lane, target_id, tags, children):
+def tags_in_scope(lane, target_id, tags, children, user=None):
     for child_id in tags:
         child = children.get(child_id)
-        if child is None or (lane == "class" and child["classroom_id"] != target_id):
+        if (child is None or (lane == "class" and child["classroom_id"] != target_id)
+                or (lane == "neighborhood" and user.id not in child["guardian_ids"])):
             raise ApiError(422, "VALIDATION_FAILED", child_id=str(child_id))
 
 
@@ -28,7 +45,8 @@ def visible(user, post, photo, children):
         return True
     return all(child_id in children and (
         user.id in children[child_id]["guardian_ids"]
-        or children[child_id]["photo_scope"] == "org"
+        or children[child_id]["photo_scope"] == "neighborhood"
+        or (children[child_id]["photo_scope"] == "org" and post["lane"] in ("class", "org"))
         or (children[child_id]["photo_scope"] == "class" and post["lane"] == "class")
     ) for child_id in photo["child_ids"])
 
@@ -40,8 +58,11 @@ def photo_view(photo):
 
 
 def post_view(user, post, photos, children):
-    return {key: post[key] for key in ("id", "lane", "classroom_id", "author_id", "body", "status", "created_at")} | {
+    result = {key: post[key] for key in ("id", "lane", "classroom_id", "author_id", "body", "status", "created_at")} | {
         "photos": [photo_view(p) for p in photos if visible(user, post, p, children)]}
+    if post["lane"] == "neighborhood":
+        result.update(author_id=None, author_label=f"{post['org_name']} 보호자")
+    return result
 
 
 def page(items, page, size, sort):

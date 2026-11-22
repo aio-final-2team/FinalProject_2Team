@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.api.schemas.common import Page
 from app.core.constants import MAX_PHOTOS
 
-PhotoScope = Literal["family", "class", "org"]
+PhotoScope = Literal["family", "class", "org", "neighborhood"]
 
 
 class PostUpload(BaseModel):
@@ -39,8 +39,18 @@ class PostView(BaseModel):
     photos: list[PhotoView]
 
 
+class NeighborhoodPostView(PostView):
+    lane: Literal["neighborhood"]
+    author_id: None
+    author_label: str
+
+
+class NeighborhoodPostList(Page):
+    items: list[NeighborhoodPostView]
+
+
 class PostResponse(BaseModel):
-    post: PostView
+    post: PostView | NeighborhoodPostView
 
 
 class PostList(Page):

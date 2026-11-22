@@ -2525,6 +2525,220 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
           description: Unprocessable Entity
+  /api/v1/neighborhood/posts:
+    get:
+      tags:
+      - '[제안] 피드·앨범'
+      summary: Neighborhood Listing
+      operationId: neighborhood_listing_api_v1_neighborhood_posts_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+          title: Page
+      - name: size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 20
+          title: Size
+      - name: sort
+        in: query
+        required: false
+        schema:
+          enum:
+          - -created_at
+          - created_at
+          type: string
+          default: -created_at
+          title: Sort
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NeighborhoodPostList'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+    post:
+      tags:
+      - '[제안] 피드·앨범'
+      summary: Neighborhood Create
+      operationId: neighborhood_create_api_v1_neighborhood_posts_post
+      security:
+      - HTTPBearer: []
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostResponse'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '413':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Request Entity Too Large
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              properties:
+                body:
+                  maxLength: 2000
+                  minLength: 1
+                  title: Body
+                  type: string
+                files:
+                  default: []
+                  items:
+                    contentMediaType: application/octet-stream
+                    type: string
+                  maxItems: 10
+                  title: Files
+                  type: array
+                child_ids:
+                  default: '[]'
+                  title: Child Ids
+                  type: string
+              required:
+              - body
+              title: PostUpload
+              type: object
+  /api/v1/neighborhood/albums:
+    get:
+      tags:
+      - '[제안] 피드·앨범'
+      summary: Neighborhood Album
+      operationId: neighborhood_album_api_v1_neighborhood_albums_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: child_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Child Id
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+          title: Page
+      - name: size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 20
+          title: Size
+      - name: sort
+        in: query
+        required: false
+        schema:
+          enum:
+          - -created_at
+          - created_at
+          type: string
+          default: -created_at
+          title: Sort
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Album'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
   /api/v1/posts/{post_id}:
     get:
       tags:
@@ -4412,6 +4626,81 @@ components:
       required:
       - message
       title: MessageResponse
+    NeighborhoodPostList:
+      properties:
+        total:
+          type: integer
+          title: Total
+        page:
+          type: integer
+          title: Page
+        size:
+          type: integer
+          title: Size
+        items:
+          items:
+            $ref: '#/components/schemas/NeighborhoodPostView'
+          type: array
+          title: Items
+      type: object
+      required:
+      - total
+      - page
+      - size
+      - items
+      title: NeighborhoodPostList
+    NeighborhoodPostView:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        lane:
+          type: string
+          const: neighborhood
+          title: Lane
+        classroom_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Classroom Id
+        author_id:
+          type: 'null'
+          title: Author Id
+        body:
+          type: string
+          title: Body
+        status:
+          type: string
+          enum:
+          - published
+          - hidden
+          title: Status
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        photos:
+          items:
+            $ref: '#/components/schemas/PhotoView'
+          type: array
+          title: Photos
+        author_label:
+          type: string
+          title: Author Label
+      type: object
+      required:
+      - id
+      - lane
+      - classroom_id
+      - author_id
+      - body
+      - status
+      - created_at
+      - photos
+      - author_label
+      title: NeighborhoodPostView
     NoteBatchIn:
       properties:
         classroom_id:
@@ -5011,7 +5300,10 @@ components:
     PostResponse:
       properties:
         post:
-          $ref: '#/components/schemas/PostView'
+          anyOf:
+          - $ref: '#/components/schemas/PostView'
+          - $ref: '#/components/schemas/NeighborhoodPostView'
+          title: Post
       type: object
       required:
       - post
@@ -5616,6 +5908,7 @@ components:
           - family
           - class
           - org
+          - neighborhood
           title: Photo Scope
       additionalProperties: false
       type: object
@@ -5630,6 +5923,7 @@ components:
           - family
           - class
           - org
+          - neighborhood
           title: Photo Scope
         child_id:
           type: string
