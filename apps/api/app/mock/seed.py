@@ -191,21 +191,13 @@ def video_now():
 
 
 def video_period(now=None):
-    """같은 날 안의 가상 예약을 만들고, 새벽 시작은 00:00으로 잘라요."""
-    import logging
+    """지금 입장할 수 있는 가상 예약을 KST 당일 안으로 잘라요."""
     from datetime import timedelta
     from app.core.schedule import KST
     current = (now if now is not None else video_now()).astimezone(KST)
-    actual = current
     current = current.replace(minute=current.minute // 5 * 5, second=0, microsecond=0)
     start = max(current - timedelta(minutes=5), current.replace(hour=0, minute=0))
-    end = current + timedelta(minutes=30)
-    if (end + timedelta(hours=3)).date() != current.date():
-        start = current.replace(hour=23, minute=20)
-        end = current.replace(hour=23, minute=50)
-        if actual >= end:
-            logging.getLogger(__name__).warning("가상 화상상담 예약 갱신 생략: 당일 가상 예약 시간 지남")
-            return None
+    end = min(start + timedelta(minutes=30), current.replace(hour=23, minute=59))
     return {"start": start, "end": end}
 
 

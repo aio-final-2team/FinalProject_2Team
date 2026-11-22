@@ -130,7 +130,7 @@ def test_other_org_and_missing_booking_are_404(video_backend, client, teacher):
 
 
 @pytest.mark.parametrize("minutes,status,reason", [(-11, 409, "room_not_open"), (-10, 200, None),
-                                                   (65, 200, None), (66, 409, "room_closed")])
+                                                   (60, 200, None), (61, 409, "room_closed")])
 def test_opening_boundaries(client, teacher, monkeypatch, minutes, status, reason):
     monkeypatch.setattr(rules, "now", lambda: seed.video_period(now=VIDEO_NOW)["start"] + timedelta(minutes=minutes))
     response = client.get(BASE + "/room", headers=teacher)
@@ -306,49 +306,73 @@ def test_quiet_connection_waits_for_extended_deadline(video_backend, client, tea
 
 
 @pytest.mark.parametrize("current,expected", [
-    ("2026-11-22T23:59:59+09:00", None),
+    ("2026-11-22T23:59:59+09:00", ("23:50", "23:59")),
     ("2026-11-23T00:00:01+09:00", ("00:00", "00:30")),
     ("2026-11-23T00:02:00+09:00", ("00:00", "00:30")),
-    ("2026-11-23T00:05:00+09:00", ("00:00", "00:35")),
-    ("2026-11-22T23:20:00+09:00", ("23:20", "23:50")),
-    ("2026-11-22T23:51:00+09:00", None),
-    ("2026-11-22T23:55:00+09:00", None),
-    ("2026-11-22T20:30:00+09:00", ("23:20", "23:50")),
+    ("2026-11-23T00:05:00+09:00", ("00:00", "00:30")),
+    ("2026-11-22T12:00:00+09:00", ("11:55", "12:25")),
+    ("2026-11-22T23:51:00+09:00", ("23:45", "23:59")),
+    ("2026-11-22T23:55:00+09:00", ("23:50", "23:59")),
+    ("2026-11-22T20:30:00+09:00", ("20:25", "20:55")),
+    ("2026-11-22T14:55:00+00:00", ("23:50", "23:59")),
 ])
-@pytest.mark.parametrize("existing", [False, True])
-def test_seed_refresh_stays_on_kst_day(video_backend, caplog, current, expected, existing):
+@pytest.mark.parametrize("existing", [None, "expired", "future"])
+def test_seed_refresh_stays_on_kst_day(video_backend, client, teacher, parent, monkeypatch, caplog,
+                                     current, expected, existing):
     from app.mock import seeding
     from db.seeds.demo import seed_video_consult
-    old = {key: value - timedelta(days=2) for key, value in seed.video_period(now=VIDEO_NOW).items()}
     current = datetime.fromisoformat(current)
+    shift = timedelta(days=2 if existing == "future" else -2)
+    old = {key: value + shift for key, value in seed.video_period(now=VIDEO_NOW).items()}
+    delayed = old["end"] + timedelta(minutes=10)
     if video_backend.engine:
         with video_backend.engine.begin() as c:
-            c.execute(text("UPDATE consultation_bookings SET period=tstzrange(:start,:end,'[)') WHERE id=:id"),
-                      {"id": seed.VIDEO_BOOKING, **old})
+            c.execute(text("""
+                UPDATE consultation_bookings SET period=tstzrange(:start,:end,'[)'), expected_end_at=:delayed
+                WHERE id=:id
+            """), {"id": seed.VIDEO_BOOKING, **old, "delayed": delayed})
             if not existing:
                 c.execute(text("DELETE FROM consultation_bookings WHERE id=:id"), {"id": seed.VIDEO_BOOKING})
             seed_video_consult(c, now=current)
-            row = c.execute(text("SELECT lower(period), upper(period) FROM consultation_bookings WHERE id=:id"),
-                            {"id": seed.VIDEO_BOOKING}).one_or_none()
-            result = dict(zip(("start", "end"), row)) if row else None
+            row = c.execute(text("SELECT lower(period), upper(period), expected_end_at FROM consultation_bookings WHERE id=:id"),
+                            {"id": seed.VIDEO_BOOKING}).one()
+            result = dict(zip(("start", "end"), row[:2]))
+            assert row.expected_end_at is None
     else:
-        store.state().bookings[seed.VIDEO_BOOKING].period = old
+        booking = store.state().bookings[seed.VIDEO_BOOKING]
+        booking.period, booking.expected_end_at = old, delayed
         if not existing:
             del store.state().bookings[seed.VIDEO_BOOKING]
         seeding.seed_video_consult(now=current)
-        booking = store.state().bookings.get(seed.VIDEO_BOOKING)
-        result = booking.period if booking else None
-    if expected is None:
-        assert result == (old if existing else None)
-        assert "당일 가상 예약 시간 지남" in caplog.text
+        booking = store.state().bookings[seed.VIDEO_BOOKING]
+        result = booking.period
+        assert booking.expected_end_at is None
+    from app.core.schedule import KST
+    values = [value.astimezone(KST) for value in result.values()]
+    assert tuple(value.strftime("%H:%M") for value in values) == expected
+    assert all(value.date() == current.astimezone(KST).date() for value in values)
+    assert "갱신 생략" not in caplog.text
+    monkeypatch.setattr(rules, "now", lambda: current)
+    for actor in (teacher, parent):
+        result = room(client, actor)
+        assert datetime.fromisoformat(result["opens_at"]) <= current <= datetime.fromisoformat(result["closes_at"])
+
+
+def test_seed_refreshes_open_demo_without_retaining_delay(video_backend, monkeypatch):
+    from app.mock import seeding
+    from db.seeds.demo import seed_video_consult
+    current = VIDEO_NOW + timedelta(minutes=5)
+    change(video_backend, expected_end_at=VIDEO_NOW + timedelta(hours=1))
+    if video_backend.engine:
+        with video_backend.engine.begin() as c:
+            seed_video_consult(c, now=current)
     else:
-        from app.core.schedule import KST
-        values = [value.astimezone(KST) for value in result.values()]
-        assert tuple(value.strftime("%H:%M") for value in values) == expected
-        assert all(value.date() == current.astimezone(KST).date() for value in values)
-        if expected[0] == "00:00":
-            assert result["start"] <= current < result["end"]
-        assert "갱신 생략" not in caplog.text
+        seeding.seed_video_consult(now=current)
+    monkeypatch.setattr(rules, "now", lambda: current)
+    row = backend.video_consult.access(CurrentUser(id=seed.TEACHER, org_id=seed.ORG, role="teacher"), seed.VIDEO_BOOKING)
+    assert {key: row[key] for key in ("start", "end")} == seed.video_period(now=current)
+    assert row["expected_end_at"] is None
+    assert len(events(video_backend, "booked")) == 1
 
 
 def test_binary_frame_has_invalid_signal_reason(client, teacher):
