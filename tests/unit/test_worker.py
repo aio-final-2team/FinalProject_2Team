@@ -122,6 +122,7 @@ def test_worker_compose_shares_api_configuration_and_initializes_database_once()
         assert services[name]["image"] == services["api"]["image"] == "yuchion-api:local"
         assert "build" not in services[name]
     assert not services["redis"].get("ports")
+    assert services["worker"]["volumes"] == services["api"]["volumes"]
     command = services["worker"]["command"]
     assert "--pool=threads" in command
     assert command[command.index("-Q")+1] == "default,notes"

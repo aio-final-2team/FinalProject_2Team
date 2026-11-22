@@ -6,12 +6,14 @@ DB 업무는 영역별로 연결한다. 아직 연결하지 않은 API는 workfl
 from app.core.config import settings
 
 if settings.data_backend == "mock":
+    from app.mock import voice_analyses
     from app.mock import video_consult
     from app.mock import cards, card_views, documents, memories, notes, notifications, request_actions, store
     from app.mock import consultation_reminders
     from app.mock import feed
     users = store
 else:
+    from app.modules.consultations import voice as voice_analyses
     from app.modules.consultations import video as video_consult
     from app.modules.feed import feed
     from app.modules.consultations import reminders as consultation_reminders

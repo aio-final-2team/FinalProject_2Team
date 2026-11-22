@@ -19,8 +19,8 @@ def check_broker():
 
 
 def publish(job, object_id):
-    from app.worker import daily_note_drafts, request_agent
-    task = {"daily_note": daily_note_drafts, "request": request_agent}[job]
+    from app.worker import daily_note_drafts, request_agent, voice_analysis
+    task = {"daily_note": daily_note_drafts, "request": request_agent, "voice_analysis": voice_analysis}[job]
     try:
         task.apply_async(args=[str(object_id)], retry=False)
     except Exception as error:
@@ -34,4 +34,6 @@ def dispatch(job, object_id, background_tasks):
     else:
         from app.modules.daily_notes.runner import run_daily_note_drafts
         from app.modules.requests.runner import run_request
-        background_tasks.add_task({"daily_note": run_daily_note_drafts, "request": run_request}[job], object_id)
+        from app.modules.consultations.voice_runner import run_voice_analysis
+        background_tasks.add_task({"daily_note": run_daily_note_drafts, "request": run_request,
+                                   "voice_analysis": run_voice_analysis}[job], object_id)

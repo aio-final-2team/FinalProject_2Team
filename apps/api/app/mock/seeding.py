@@ -58,7 +58,8 @@ def populate():
     store.add_event(None, "created", card=card)
 
     from app.core.config import settings
-    if settings.feature_video_consult and not any(b.status == "confirmed" for b in state.bookings.values()):
+    if ((settings.feature_video_consult or settings.feature_voice_analysis)
+            and not any(b.status == "confirmed" for b in state.bookings.values())):
         from app.mock.records import Booking
         req = store.Request(seed.VIDEO_REQUEST, seed.ORG, seed.CLASS_STAR, seed.CHILD, seed.PARENT,
                             "demo-video-consult", "consultation", "가상 화상상담", status="sent_or_booked")

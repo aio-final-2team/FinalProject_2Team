@@ -62,10 +62,20 @@ def sweep():
         from app.modules.daily_notes.runner import requeue_daily_note_drafts
         from app.modules.requests.runner import sweep_missing_cards
         count = sweep_missing_cards(datetime.now(KST))
+        if settings.feature_voice_analysis:
+            from app.modules.consultations.voice import sweep as sweep_voice
+            sweep_voice()
         for input_id in requeue_daily_note_drafts(stale_only=True):
             publish("daily_note", input_id)
         return count
     return 0
+
+
+@celery_app.task(name="yuchion.voice_analysis")
+def voice_analysis(analysis_id):
+    if enabled() and settings.feature_voice_analysis:
+        from app.modules.consultations.voice_runner import run_voice_analysis
+        run_voice_analysis(analysis_id)
 
 
 @celery_app.task(name="yuchion.deliver_notifications")

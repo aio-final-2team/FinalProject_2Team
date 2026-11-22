@@ -2877,6 +2877,168 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
           description: Unprocessable Entity
+  /api/v1/consultations/{booking_id}/voice-analyses:
+    post:
+      tags:
+      - '[선택] 가상 음성 분석'
+      summary: Create
+      operationId: create_api_v1_consultations__booking_id__voice_analyses_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: booking_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Booking Id
+      responses:
+        '202':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VoiceAnalysis'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '413':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Request Entity Too Large
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+              - file
+              - synthetic
+              properties:
+                file:
+                  type: string
+                  format: binary
+                synthetic:
+                  type: boolean
+                  const: true
+    get:
+      tags:
+      - '[선택] 가상 음성 분석'
+      summary: Listing
+      operationId: listing_api_v1_consultations__booking_id__voice_analyses_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: booking_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Booking Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VoiceAnalysisList'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+  /api/v1/voice-analyses/{analysis_id}:
+    get:
+      tags:
+      - '[선택] 가상 음성 분석'
+      summary: Detail
+      operationId: detail_api_v1_voice_analyses__analysis_id__get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: analysis_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Analysis Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VoiceAnalysis'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
   /health:
     get:
       tags:
@@ -5759,6 +5921,98 @@ components:
       - ticket
       - ticket_expires_at
       title: VideoRoom
+    VoiceAnalysis:
+      properties:
+        transcript:
+          type: string
+          title: Transcript
+        result:
+          $ref: '#/components/schemas/VoiceSummary'
+        duration_seconds:
+          anyOf:
+          - type: number
+            minimum: 0.0
+          - type: 'null'
+          title: Duration Seconds
+        id:
+          type: string
+          format: uuid
+          title: Id
+        booking_id:
+          type: string
+          format: uuid
+          title: Booking Id
+        status:
+          type: string
+          enum:
+          - queued
+          - running
+          - succeeded
+          - failed
+          title: Status
+        sha256:
+          type: string
+          title: Sha256
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        started_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Started At
+        completed_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Completed At
+      type: object
+      required:
+      - transcript
+      - result
+      - id
+      - booking_id
+      - status
+      - sha256
+      - created_at
+      - started_at
+      - completed_at
+      title: VoiceAnalysis
+    VoiceAnalysisList:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/VoiceAnalysis'
+          type: array
+          title: Items
+      type: object
+      required:
+      - items
+      title: VoiceAnalysisList
+    VoiceSummary:
+      properties:
+        summary:
+          type: string
+          title: Summary
+        parent_requests:
+          items:
+            type: string
+          type: array
+          title: Parent Requests
+        follow_ups:
+          items:
+            type: string
+          type: array
+          title: Follow Ups
+      type: object
+      required:
+      - summary
+      - parent_requests
+      - follow_ups
+      title: VoiceSummary
   securitySchemes:
     HTTPBearer:
       type: http

@@ -3,6 +3,7 @@
 from fastapi import APIRouter
 
 from app.api.routes import auth, requests, cards, resources, feed, video_consult
+from app.api.routes import voice_analysis
 
 api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(auth.router)
@@ -12,3 +13,4 @@ api_router.include_router(cards.router)
 api_router.include_router(resources.router)
 api_router.include_router(feed.router)
 api_router.include_router(video_consult.router)
+api_router.include_router(voice_analysis.router)
