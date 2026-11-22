@@ -85,8 +85,10 @@ def seed_video_consult():
     booking = state.bookings.get(seed.VIDEO_BOOKING)
     if booking and booking.org_id == seed.ORG:
         if (booking.status == "confirmed"
-                and (booking.expected_end_at or booking.period["end"]) + timedelta(minutes=30) < store.now()):
+                and (booking.expected_end_at or booking.period["end"]) + timedelta(minutes=30) < seed.video_now()):
             period = seed.video_period()
+            if period is None:
+                return
             if any(b.id != booking.id and b.org_id == seed.ORG and b.status == "confirmed"
                    and (b.teacher_id == booking.teacher_id or b.room_id == booking.room_id)
                    and b.period["start"] < period["end"] and period["start"] < b.period["end"]
@@ -97,9 +99,12 @@ def seed_video_consult():
         return
     if any(b.org_id == seed.ORG and b.status == "confirmed" for b in state.bookings.values()):
         return
+    period = seed.video_period()
+    if period is None:
+        return
     req = store.Request(seed.VIDEO_REQUEST, seed.ORG, seed.CLASS_STAR, seed.CHILD, seed.PARENT,
                         "demo-video-consult", "consultation", "가상 화상상담", status="sent_or_booked")
     state.requests[req.id] = req
     state.bookings[seed.VIDEO_BOOKING] = Booking(seed.VIDEO_BOOKING, seed.ORG, req.id, None, seed.TEACHER,
-                                               seed.ROOM, seed.video_period(), seed.TEACHER)
+                                               seed.ROOM, period, seed.TEACHER)
     store.add_event(req, "booked", actor_type="user", actor_id=seed.TEACHER)

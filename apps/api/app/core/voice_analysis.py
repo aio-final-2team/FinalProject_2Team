@@ -3,7 +3,6 @@
 from hashlib import sha256
 from io import BytesIO
 import logging
-import re
 import struct
 import wave
 
@@ -29,7 +28,7 @@ def authorize(user, booking, deny, *, write=False):
         deny()
         raise ApiError(403, "FORBIDDEN")
     if write and booking["status"] not in {"confirmed", "done"}:
-        raise ApiError(409, "CONFLICT")
+        raise ApiError(409, "CONFLICT", "취소된 예약에는 음성 분석을 올릴 수 없어요.")
     return booking
 
 
@@ -43,7 +42,7 @@ def _mpeg(data):
     for value in data[6:10]:
         size = (size << 7) | value
     start = 10 + size + (10 if data[3] == 4 and data[5] & 0x10 else 0)
-    return re.search(b"\xff[\xe0-\xff]", data[start:]) is not None
+    return len(data) >= start + 4 and data[start] == 255 and data[start + 1] & 0xE0 == 0xE0
 
 
 def _ebml_integer(data, offset, *, identifier=False):
