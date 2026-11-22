@@ -1456,7 +1456,7 @@ DB에는 음성 바이트를 넣지 않으며 끝나면 임시 경로도 비워�
 
 이번 판은 동네 피드만 더해요. 성장 영상은 다음 항목이에요. `FEATURE_NEIGHBORHOOD_FEED`는 기본 false예요.
 꺼져 있으면 새 경로는 인증 전 공통 404 `NOT_FOUND`예요. 동네 글의 기존 상세·삭제·숨김·사진 파일도 404예요.
-꺼짐 상태에서 photo_scope=neighborhood 변경은 기존 기관·보호자 권한 검사 뒤 422 `VALIDATION_FAILED`(field=photo_scope)예요.
+꺼짐 상태에서 photo_scope=neighborhood 변경은 아이 조회·기관·보호자 권한 검사 전에 누구든 기록 없이 422 `VALIDATION_FAILED`(field=photo_scope)예요.
 **동네 칸에 쓰는 행위 = 본인이 공개를 켠 것**이에요. 같은 region의 다른 원 보호자에게도 보여요.
 
 | 항목 | 계약 |
@@ -1464,7 +1464,7 @@ DB에는 음성 바이트를 넣지 않으며 끝나면 임시 경로도 비워�
 | API 54·55 | GET/POST `/api/v1/neighborhood/posts`. 쓰기는 기존 multipart body·files·child_ids를 그대로 써요(3.29) |
 | API 56 | GET `/api/v1/neighborhood/albums`. 선택 child_id는 자기 아이만 가능해요 |
 | 공통 경로 | GET/DELETE/PATCH `/api/v1/posts/{post_id}`, GET `/api/v1/photos/{photo_id}/file`을 함께 써요 |
-| 동네 | organizations.region의 문자열이 정확히 같아야 해요. NULL·빈 문자열·공백뿐인 값은 동네 칸이 없어 403 `FORBIDDEN`이에요 |
+| 동네 | organizations.region의 문자열이 정확히 같아야 해요. NULL·빈 문자열·공백류(탭·줄바꿈 포함)뿐인 값은 동네 칸이 없어 403 `FORBIDDEN`이에요 |
 | 참여 | 현재 자기 기관 아이의 보호자만 읽고 써요. 같은 기관 교직원·보호자 관계 없음은 403과 permission_denied예요. 다른 기관 교직원과 다른 동네의 글·파일은 404예요 |
 | 목록 | 기존 page·size·sort와 {items,total,page,size}예요. cursor는 추가하지 않아요. 다른 동네·숨김·삭제 글은 빼요 |
 | 글 응답 | 기존 Post 칸 + lane=neighborhood, classroom_id=null, author_id=null, author_label="{기관 이름} 보호자"예요. 같은 기관에도 같은 표시이며 사람·아이 이름은 작성자 표시에 없어요 |

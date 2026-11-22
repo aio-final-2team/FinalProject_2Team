@@ -108,20 +108,21 @@ def test_staff_denied_all_read_surfaces_and_upload_with_events(client, parent, a
     assert client.get(f"{BASE}/posts/{own['id']}", headers=parent).json()["post"]["status"] == "published"
 
 
-@pytest.mark.parametrize("region", [None, "", "   "])
+@pytest.mark.parametrize("region", [None, "", "   ", "\t", "\n", " \t\r\n"])
 def test_missing_regions_never_share_posts_or_photos(client, parent, neighbor, region, neighborhood_backend):
     own = post(client, parent, root=NEIGHBORHOOD)
+    other = post(client, neighbor, root=NEIGHBORHOOD)
     for org_id in (seed.ORG, NEIGHBOR["id"]):
         set_region(neighborhood_backend, org_id, region)
     before = len(audit(neighborhood_backend))
-    for actor in (parent, neighbor):
+    for actor, local, remote in ((parent, own, other), (neighbor, other, own)):
         for suffix in ("/posts", "/albums"):
             err(client.get(NEIGHBORHOOD + suffix, headers=actor), 403, "FORBIDDEN")
-    err(create(client, parent, root=NEIGHBORHOOD), 403, "FORBIDDEN")
-    for path in (f"{BASE}/posts/{own['id']}", own["photos"][0]["file_url"]):
-        err(client.get(path, headers=parent), 403, "FORBIDDEN")
-        err(client.get(path, headers=neighbor), 404, "NOT_FOUND")
-    assert len(audit(neighborhood_backend)) == before + 9
+        err(create(client, actor, root=NEIGHBORHOOD), 403, "FORBIDDEN")
+        for item, code in ((local, 403), (remote, 404)):
+            for path in (f"{BASE}/posts/{item['id']}", item["photos"][0]["file_url"]):
+                err(client.get(path, headers=actor), code, "FORBIDDEN" if code == 403 else "NOT_FOUND")
+    assert len(audit(neighborhood_backend)) == before + 14
 
 
 @pytest.mark.parametrize("role", ["teacher", "director"])
@@ -235,18 +236,17 @@ def test_flag_off_hides_new_and_shared_routes_but_keeps_existing_feed(client, pa
     assert client.get(CLASS + "/posts", headers=parent).status_code == 200
 
 
-@pytest.mark.parametrize("actor,code", [("parent", 422), ("teacher", 403), ("director", 403),
-                                      ("parent_other", 403), ("foreign", 404)])
-def test_flag_off_rejects_neighborhood_scope_after_existing_permissions(
-        client, parent, actor, code, request, monkeypatch, neighborhood_backend):
+@pytest.mark.parametrize("actor,child_id", [("parent", seed.CHILD), ("parent_other", seed.CHILD),
+                                          ("teacher", seed.CHILD), ("director", seed.CHILD),
+                                          ("parent", seed.demo_id("99999")), ("foreign", seed.CHILD)])
+def test_flag_off_rejects_neighborhood_scope_before_child_lookup_and_permissions(
+        client, parent, actor, child_id, request, monkeypatch, neighborhood_backend):
     monkeypatch.setattr(rules, "settings", replace(rules.settings, feature_neighborhood_feed=False))
     before = len(audit(neighborhood_backend))
-    response = scope(client, request.getfixturevalue(actor), seed.CHILD, "neighborhood")
-    err(response, code, {422: "VALIDATION_FAILED", 403: "FORBIDDEN", 404: "NOT_FOUND"}[code])
-    if code == 422:
-        assert response.json()["error"]["details"] == {"field": "photo_scope"}
-    events = audit(neighborhood_backend)[before:]
-    assert [e["action"] for e in events] == ([] if code == 422 else ["permission_denied"])
+    response = scope(client, request.getfixturevalue(actor), child_id, "neighborhood")
+    err(response, 422, "VALIDATION_FAILED")
+    assert response.json()["error"]["details"] == {"field": "photo_scope"}
+    assert audit(neighborhood_backend)[before:] == []
     assert client.get(f"{BASE}/children/{seed.CHILD}/photo-scope", headers=parent).json()["photo_scope"] == "family"
 
 

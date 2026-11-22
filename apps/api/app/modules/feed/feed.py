@@ -46,8 +46,8 @@ def context(connection, user, lane, target_id):
 def org_ids(connection, user, lane):
     if lane != "neighborhood":
         return [user.org_id]
-    return list(connection.scalars(text("""
-        SELECT id FROM organizations WHERE nullif(btrim(region),'') IS NOT NULL
+    return list(connection.scalars(text(r"""
+        SELECT id FROM organizations WHERE nullif(regexp_replace(region, '\s', '', 'g'), '') IS NOT NULL
           AND region=(SELECT region FROM organizations WHERE id=:org)
     """), {"org": user.org_id}))
 
@@ -208,6 +208,8 @@ def hide(user, post_id):
 
 
 def photo_scope(user, child_id, value=None):
+    if value == "neighborhood" and not rules.settings.feature_neighborhood_feed:
+        raise ApiError(422, "VALIDATION_FAILED", field="photo_scope")
     with transaction() as connection:
         child = connection.execute(text("SELECT * FROM children WHERE id=:id AND org_id=:org" +
                                         (" FOR NO KEY UPDATE" if value is not None else "")),
@@ -219,8 +221,6 @@ def photo_scope(user, child_id, value=None):
         """), {"child": child_id, "org": user.org_id, "user": user.id})
         if user.role != "parent" or not guardian:
             deny(user, child_id)
-        if value == "neighborhood" and not rules.settings.feature_neighborhood_feed:
-            raise ApiError(422, "VALIDATION_FAILED", field="photo_scope")
         scope = child["photo_scope"]
         if value is not None and value != scope:
             connection.execute(text("UPDATE children SET photo_scope=:scope WHERE id=:id AND org_id=:org"),

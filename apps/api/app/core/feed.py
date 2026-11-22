@@ -11,8 +11,8 @@ def neighborhood_enabled():
 
 def neighborhood_region(organization):
     region = organization.get("region")
-    # PostgreSQL nullif(btrim(region),'')와 같게, 값이 있는 문자열은 그대로 비교해요.
-    return region if region is not None and region.strip(" ") else None
+    # 탭·줄바꿈 등 공백류뿐이면 동네가 없고, 값이 있는 문자열은 그대로 비교해요.
+    return region if region is not None and region.strip() else None
 
 
 def lane_access(user, lane, target_id, classrooms, children, deny, organizations=None):

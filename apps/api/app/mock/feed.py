@@ -158,14 +158,14 @@ def hide(user, post_id):
 
 
 def photo_scope(user, child_id, value=None):
+    if value == "neighborhood" and not rules.settings.feature_neighborhood_feed:
+        raise ApiError(422, "VALIDATION_FAILED", field="photo_scope")
     with store._lock:
         child = store.state().children.get(child_id)
         if child is None or child.org_id != user.org_id:
             deny(user, child_id, 404)
         if user.role != "parent" or user.id not in child.guardian_ids:
             deny(user, child_id)
-        if value == "neighborhood" and not rules.settings.feature_neighborhood_feed:
-            raise ApiError(422, "VALIDATION_FAILED", field="photo_scope")
         if value is not None and value != child.photo_scope:
             before, child.photo_scope = child.photo_scope, value
             record(user, "photo_scope_changed", child_id=str(child_id), before=before, after=value)

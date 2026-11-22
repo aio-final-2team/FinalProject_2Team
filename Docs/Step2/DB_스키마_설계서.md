@@ -1246,7 +1246,7 @@ failed·storage_path=NULL을 함께 커밋한 뒤 파일을 지워요. 기능 �
 0013은 feed_posts.lane에 neighborhood, children.photo_scope에 neighborhood를 더해요.
 반은 class 칸에만 필수이고 나머지 칸은 NULL이에요. 표·컬럼·FK·이력 종류는 늘리지 않아요.
 head는 표 31·뷰 2·트리거 2·FK 66·컬럼 305개예요. 권한·작성자 표시는 T13 3.31을 따라요.
-organizations.region은 기존 text 칸을 쓰고 NULL·빈 문자열·공백뿐인 값은 동네 없음이에요. 새 동네 식별자·연결 표는 없어요.
+organizations.region은 기존 text 칸을 쓰고 NULL·빈 문자열·공백류(탭·줄바꿈 포함)뿐인 값은 동네 없음이에요. 새 동네 식별자·연결 표는 없어요.
 DB에는 실제 author_id·org_id를 유지하고, 동네 응답만 author_id=null·기관명 보호자로 계산해요.
 사진·아이 FK는 올린 기관에 묶인 채로 보존해요. 동네 칸 아이 표시는 올린 사람 자기 아이만 API에서 검사해요.
 기능을 켜고 0013을 적용한 데모 시드만 가상 기관 두 개와 반·아이·보호자를 넣어요. 모의와 UUID가 같아요.
