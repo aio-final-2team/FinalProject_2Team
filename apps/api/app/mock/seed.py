@@ -193,13 +193,26 @@ NEIGHBORHOOD_ORGS = [
 ]
 
 
-def video_period():
-    """선택 기능 가상 예약: 5분 단위 현재 시각의 -5분~+30분이에요."""
-    from datetime import timedelta
+def video_now():
     from app.core.schedule import KST
-    current = datetime.now(KST)
+    return datetime.now(KST)
+
+
+def video_period():
+    """같은 날 안의 가상 예약만 만들고, 자정 경계는 23:20~23:50을 써요."""
+    import logging
+    from datetime import timedelta
+    current = video_now()
+    actual = current
     current = current.replace(minute=current.minute // 5 * 5, second=0, microsecond=0)
-    return {"start": current - timedelta(minutes=5), "end": current + timedelta(minutes=30)}
+    start, end = current - timedelta(minutes=5), current + timedelta(minutes=30)
+    if start.date() != current.date() or (end + timedelta(hours=3)).date() != current.date():
+        start = current.replace(hour=23, minute=20)
+        end = current.replace(hour=23, minute=50)
+        if actual >= end:
+            logging.getLogger(__name__).warning("가상 화상상담 예약 갱신 생략: 당일 가상 예약 시간 지남")
+            return None
+    return {"start": start, "end": end}
 
 
 def feed_png():

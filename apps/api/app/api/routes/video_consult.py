@@ -25,6 +25,7 @@ _rooms = {}  # API 프로세스 하나에서만 공유해요.
 class Room:
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     peers: dict = field(default_factory=dict)
+    tasks: dict = field(default_factory=dict)
     users: int = 0
 
 
@@ -39,7 +40,7 @@ MAX_SIGNALS_PER_SECOND = 20
             description="[제안][선택] FEATURE_VIDEO_CONSULT=true일 때 예약 담임·신청 보호자만 접속해요. "
                         "signal_path에 ?ticket=…로 WebSocket을 열어요. {type: offer|answer|ice|bye, data}만 "
                         "상대에게 전달해요(64KiB·초당 20개). ticket은 일회용이고, 켠 상태의 거부는 수락 뒤 1008이에요. "
-                        "10초 간격으로 메시지 전 권한을 다시 보고 closes_at에 조용한 연결도 닫아요. "
+                        "10초 간격으로 메시지 전 권한을 다시 보고, 조용한 연결도 closes_at에 재검사해 연장됐으면 새 마감까지 기다려요. "
                         "서버가 닫으면 화면은 RTCPeerConnection을 닫아요. 입퇴장은 peer_joined·peer_left예요.")
 def room(booking_id: UUID, response: Response, user: CurrentUser = Depends(current_user)):
     response.headers["Cache-Control"] = "private, no-store"
@@ -53,12 +54,29 @@ async def close(peer, reason, code=1008):
         pass
 
 
-async def send(peer, message):
+async def detach(state, peer):
+    async with state.lock:
+        for role, current in list(state.peers.items()):
+            if current is peer:
+                del state.peers[role]
+                return list(state.peers.values())
+    return []
+
+
+async def send(state, peer, message):
     try:
         operation = peer.send_text(message) if isinstance(message, str) else peer.send_json(message)
         await asyncio.wait_for(operation, SEND_TIMEOUT)
     except TimeoutError:
-        await close(peer, "slow_peer")
+        # 닫기 프레임도 같은 쓰기 버퍼에 막혀요. 먼저 방에서 빼고 상대에게 알려요.
+        peers = await detach(state, peer)
+        try:
+            for other in peers:
+                await send(state, other, {"type": "peer_left"})
+        finally:
+            task = state.tasks.get(peer)
+            if task:
+                task.cancel()  # receive 작업을 끝내면 ASGI 서버가 transport를 닫아요.
     except (WebSocketDisconnect, RuntimeError, OSError):
         pass  # 상대의 정리는 상대 receive 루프가 맡아요.
 
@@ -85,14 +103,15 @@ async def signal(websocket: WebSocket, booking_id: str):
         async with state.lock:
             old = state.peers.get(user.role)
             state.peers[user.role] = websocket
+            state.tasks[websocket] = asyncio.current_task()
             peers = [peer for role, peer in state.peers.items() if role != user.role]
             joined = True
         if old:
             await close(old, "replaced")
         await anyio.to_thread.run_sync(backend.video_consult.record, user, booking_id, "video_joined")
         for peer in peers:
-            await send(peer, {"type": "peer_joined"})
-            await send(websocket, {"type": "peer_joined"})
+            await send(state, peer, {"type": "peer_joined"})
+            await send(state, websocket, {"type": "peer_joined"})
         checked_at = monotonic()
         received = deque()
         while True:
@@ -100,8 +119,16 @@ async def signal(websocket: WebSocket, booking_id: str):
             try:
                 frame = await asyncio.wait_for(websocket.receive(), max(0, remaining))
             except TimeoutError:
-                await close(websocket, "room_closed")
-                break
+                # 지연 신고로 마감이 늘었을 수 있어요. 새 시간·권한을 확인해 계속 기다려요.
+                try:
+                    await anyio.to_thread.run_sync(rules.recheck_user, claims)
+                    row = await anyio.to_thread.run_sync(backend.video_consult.access, user, booking_id)
+                except ApiError as error:
+                    reason = "room_closed" if error.details.get("reason") == "room_closed" else "access_denied"
+                    await close(websocket, reason)
+                    break
+                checked_at = monotonic()
+                continue
             if frame["type"] == "websocket.disconnect":
                 break
             tick = monotonic()
@@ -139,21 +166,22 @@ async def signal(websocket: WebSocket, booking_id: str):
                     break
                 peers = [peer for role, peer in state.peers.items() if role != user.role]
             for peer in peers:
-                await send(peer, raw)
+                await send(state, peer, raw)
             if message["type"] == "bye":
                 await websocket.close(code=1000)
                 break
+    except asyncio.CancelledError:
+        # 느린 연결만 취소해요. 서버 종료 등 다른 취소는 원래대로 전달해요.
+        if state.peers.get(user.role) is websocket:
+            raise
     except (WebSocketDisconnect, RuntimeError, OSError):
         pass
     finally:
         if joined:
-            async with state.lock:
-                peers = []
-                if state.peers.get(user.role) is websocket:
-                    del state.peers[user.role]
-                    peers = list(state.peers.values())
+            peers = await detach(state, websocket)
+            state.tasks.pop(websocket, None)
             for peer in peers:
-                await send(peer, {"type": "peer_left"})
+                await send(state, peer, {"type": "peer_left"})
         state.users -= 1
         if not state.users:
             _rooms.pop(booking_id, None)

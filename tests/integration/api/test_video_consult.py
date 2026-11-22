@@ -16,10 +16,12 @@ from app.core.auth import CurrentUser
 from app.mock import seed, store, video_consult
 
 BASE = f"/api/v1/consultations/{seed.VIDEO_BOOKING}"
+VIDEO_NOW = datetime.fromisoformat("2026-11-22T12:00:00+09:00")
 
 
 @pytest.fixture(autouse=True, params=["mock", "db"])
 def video_backend(request, monkeypatch, _reset_store):
+    monkeypatch.setattr(seed, "video_now", lambda: VIDEO_NOW)
     enabled = replace(config.settings, feature_video_consult=True)
     monkeypatch.setattr(config, "settings", enabled)
     monkeypatch.setattr(rules, "settings", enabled)
@@ -266,11 +268,65 @@ def test_connected_access_rechecked(video_backend, client, teacher, parent, monk
 
 
 def test_quiet_connection_closes_at_deadline(client, teacher, monkeypatch):
+    from time import monotonic
     deadline = seed.video_period()["end"] + timedelta(minutes=30)
-    monkeypatch.setattr(rules, "now", lambda: deadline - timedelta(seconds=0.2))
+    started = monotonic()
+    monkeypatch.setattr(rules, "now", lambda: deadline + timedelta(seconds=monotonic() - started - 0.2))
     with connect(client, room(client, teacher)) as ws:
         frame = ws.receive()
         assert frame["code"] == 1008 and frame["reason"] == "room_closed"
+
+
+def test_quiet_connection_waits_for_extended_deadline(video_backend, client, teacher, parent, monkeypatch):
+    from time import monotonic
+    deadline = seed.video_period()["end"] + timedelta(minutes=30)
+    started = monotonic()
+    def clock():
+        return deadline + timedelta(seconds=monotonic() - started - 0.5)
+    monkeypatch.setattr(rules, "now", clock)
+    with client, connect(client, room(client, parent)) as p, connect(client, room(client, teacher)) as t:
+        assert p.receive_json() == t.receive_json() == {"type": "peer_joined"}
+        change(video_backend, expected_end_at=seed.video_period()["end"] + timedelta(seconds=1))
+        frame = p.receive()
+        if frame["type"] == "websocket.send":
+            assert frame["text"] == '{"type":"peer_left"}'
+            frame = p.receive()
+        assert frame["code"] == 1008 and frame["reason"] == "room_closed"
+        assert monotonic() - started >= 1.5  # 원래 0.5초 마감에는 닫히지 않아요.
+
+
+@pytest.mark.parametrize("current,expected", [
+    ("2026-11-22T23:59:59+09:00", None),
+    ("2026-11-23T00:00:01+09:00", ("23:20", "23:50")),
+    ("2026-11-22T23:20:00+09:00", ("23:20", "23:50")),
+    ("2026-11-22T20:30:00+09:00", ("23:20", "23:50")),
+])
+def test_seed_refresh_stays_on_kst_day(video_backend, monkeypatch, caplog, current, expected):
+    from app.mock import seeding
+    from db.seeds.demo import seed_video_consult
+    old = {key: value - timedelta(days=2) for key, value in seed.video_period().items()}
+    monkeypatch.setattr(seed, "video_now", lambda: datetime.fromisoformat(current))
+    if video_backend.engine:
+        with video_backend.engine.begin() as c:
+            c.execute(text("UPDATE consultation_bookings SET period=tstzrange(:start,:end,'[)') WHERE id=:id"),
+                      {"id": seed.VIDEO_BOOKING, **old})
+            seed_video_consult(c)
+            row = c.execute(text("SELECT lower(period), upper(period) FROM consultation_bookings WHERE id=:id"),
+                            {"id": seed.VIDEO_BOOKING}).one()
+            result = dict(zip(("start", "end"), row))
+    else:
+        store.state().bookings[seed.VIDEO_BOOKING].period = old
+        seeding.seed_video_consult()
+        result = store.state().bookings[seed.VIDEO_BOOKING].period
+    if expected is None:
+        assert result == old
+        assert "당일 가상 예약 시간 지남" in caplog.text
+    else:
+        from app.core.schedule import KST
+        values = [value.astimezone(KST) for value in result.values()]
+        assert tuple(value.strftime("%H:%M") for value in values) == expected
+        assert all(value.date() == datetime.fromisoformat(current).date() for value in values)
+        assert "갱신 생략" not in caplog.text
 
 
 def test_binary_frame_has_invalid_signal_reason(client, teacher):

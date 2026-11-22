@@ -18,13 +18,14 @@ from app.core.auth import CurrentUser, current_user
 from app.main import app
 from app.mock import seed, store, voice_analyses
 from app.modules.consultations import voice_runner as runner, voice_stub
-from tests.integration.api.test_video_consult import change, events
+from tests.integration.api.test_video_consult import VIDEO_NOW, change, events
 
 BASE = f"/api/v1/consultations/{seed.VIDEO_BOOKING}/voice-analyses"
 
 
 @pytest.fixture(autouse=True, params=["mock", "db"])
 def voice_backend(request, monkeypatch, tmp_path, _reset_store):
+    monkeypatch.setattr(seed, "video_now", lambda: VIDEO_NOW)
     settings = replace(config.settings, data_backend=request.param, feature_video_consult=False, feature_voice_analysis=True,
                        consult_voice_analyzer="app.modules.consultations.voice_stub:analyze", run_in="api",
                        media_dir=str(tmp_path))
@@ -323,6 +324,17 @@ def test_allowed_container_headers(voice_backend, client, teacher, kind):
     assert not files(voice_backend)
 
 
+@pytest.mark.parametrize("payload,status", [
+    (b"\xff\xd8\xff\xe0JPEG", 422),
+    (b"padding\xff\xfb\x90\0", 422),
+    (b"\xff\xfb\x90\0", 202),
+])
+def test_id3_frame_must_follow_tag_immediately(voice_backend, client, teacher, payload, status):
+    data = b"ID3\x04\0\0\0\0\0\x02\0\0" + payload
+    assert post(client, teacher, data=data).status_code == status
+    assert not files(voice_backend)
+
+
 @pytest.mark.parametrize("disabled", [False, True])
 def test_api_startup_fails_all_pending(voice_backend, client, teacher, monkeypatch, disabled):
     ids = [pending(client, teacher, monkeypatch) for _ in range(2)]
@@ -391,6 +403,7 @@ def test_cancelled_booking_rejects_upload_but_keeps_reads(voice_backend, client,
     change(voice_backend, status="cancelled")
     response = post(client, teacher)
     assert response.status_code == 409 and response.json()["error"]["code"] == "CONFLICT"
+    assert response.json()["error"]["message"] == "취소된 예약에는 음성 분석을 올릴 수 없어요."
     assert post(client, parent).status_code == 403  # 기존 권한 검사를 먼저 해요.
     assert client.get(BASE, headers=teacher).status_code == 200
     assert client.get(f"/api/v1/voice-analyses/{row['id']}", headers=teacher).status_code == 200
