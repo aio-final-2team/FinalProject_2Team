@@ -7,7 +7,7 @@
 """
 
 import argparse
-from datetime import datetime, timedelta
+from datetime import datetime
 import logging
 
 from argon2 import PasswordHasher
@@ -148,14 +148,11 @@ def seed_neighborhood(connection, password_hash):
 def seed_video_consult(connection, now=None):
     now = now if now is not None else seed.video_now()
     booking = connection.execute(text("""
-        SELECT *, upper(period) AS end FROM consultation_bookings WHERE id=:id AND org_id=:org FOR UPDATE
+        SELECT * FROM consultation_bookings WHERE id=:id AND org_id=:org FOR UPDATE
     """), {"id": seed.VIDEO_BOOKING, "org": seed.ORG}).mappings().one_or_none()
     if booking:
-        if (booking["status"] == "confirmed"
-                and (booking["expected_end_at"] or booking["end"]) + timedelta(minutes=30) < now):
+        if booking["status"] == "confirmed":
             period = seed.video_period(now=now)
-            if period is None:
-                return
             try:
                 # EXCLUDE가 마지막 충돌 판정을 맡고, 실패해도 바깥 시드는 계속해요.
                 with connection.begin_nested():
@@ -173,8 +170,6 @@ def seed_video_consult(connection, now=None):
                          {"org": seed.ORG}):
         return
     period = seed.video_period(now=now)
-    if period is None:
-        return
     from app.modules.requests.events import record
     connection.execute(text("""
         INSERT INTO requests(id,org_id,classroom_id,child_id,requester_id,client_request_id,type,body,status)
