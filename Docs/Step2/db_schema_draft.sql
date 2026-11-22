@@ -1,6 +1,6 @@
--- 유치온 DB 스키마 초안 (T09) · 문서 버전 v0.15 (T48 지연 상한 11/21 반영)
+-- 유치온 DB 스키마 초안 (T09) · 문서 버전 v0.16 ([제안] T54 피드·앨범 11/21 반영)
 -- 설계서: Docs/Step2/DB_스키마_설계서.md
--- 이 파일은 최종 설계 모양이다. 실제 적용은 apps/api/migrations의 0001 → 0002 → 0003 → 0004 → 0005 → 0006 → 0007 → 0008 → 0009로 한다.
+-- 이 파일은 최종 설계 모양이다. 실제 적용은 apps/api/migrations의 0001 → 0002 → 0003 → 0004 → 0005 → 0006 → 0007 → 0008 → 0009 → 0010으로 한다.
 -- 대상: PostgreSQL 16 + pgvector 0.8 (compose.yaml의 pgvector/pgvector:pg16). Supabase는 쓰지 않는다(설계서 5.1)
 -- 기관 경계: 기관에 속한 표끼리는 (id, org_id) 짝으로 참조해서 다른 원 행을 섞어 넣으면 DB가 거부한다
 
@@ -69,6 +69,8 @@ CREATE TABLE children (
     display_name  text NOT NULL,           -- 가상 이름만
     is_virtual    boolean NOT NULL DEFAULT true,
     created_at    timestamptz NOT NULL DEFAULT now(),
+    photo_scope   text NOT NULL DEFAULT 'family'
+                  CONSTRAINT children_photo_scope_check CHECK (photo_scope IN ('family', 'class', 'org')),
     FOREIGN KEY (classroom_id, org_id) REFERENCES classrooms(id, org_id),
     UNIQUE (id, org_id)
 );
@@ -341,7 +343,8 @@ CREATE TABLE events (
                                    'parent_confirmed', 'risk_reclassified', 'dismissed',
                                    'answered_from_saved', 'slot_hold_expired',
                                    'daily_note_drafted', 'daily_note_edited', 'daily_note_confirmed', 'daily_note_sent', 'agent_requeued',
-                                   'consultation_delay_reported', 'consultation_reminded')),
+                                   'consultation_delay_reported', 'consultation_reminded',
+                                   'feed_post_created', 'feed_post_deleted', 'feed_post_hidden', 'photo_scope_changed')),
     -- 시스템이 한 일(보류 예정일 자동 재개, 상담 시간 잡아 두기 풀림)은 actor_type = 'system', actor_id = NULL
     from_status  text,
     to_status    text,
@@ -716,3 +719,44 @@ SELECT
                        AND i.closed_at >= now() - interval '30 days')                 AS completed_unconfirmed
 FROM staff_inbox i
 GROUP BY i.org_id;
+
+-- [제안] T54: 피드·앨범. 사진 바이트는 MEDIA_DIR 파일에만 보관해요.
+CREATE TABLE feed_posts (
+    id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    org_id        uuid NOT NULL REFERENCES organizations(id),
+    classroom_id  uuid,
+    lane          text NOT NULL CHECK (lane IN ('class', 'org')),
+    author_id     uuid NOT NULL,
+    body          text NOT NULL CHECK (char_length(body) BETWEEN 1 AND 2000 AND btrim(body) <> ''),
+    status        text NOT NULL DEFAULT 'published' CHECK (status IN ('published', 'hidden')),
+    created_at    timestamptz NOT NULL DEFAULT now(),
+    deleted_at    timestamptz,
+    CHECK ((lane='class' AND classroom_id IS NOT NULL) OR (lane='org' AND classroom_id IS NULL)),
+    FOREIGN KEY (classroom_id, org_id) REFERENCES classrooms(id, org_id),
+    FOREIGN KEY (author_id, org_id) REFERENCES users(id, org_id),
+    UNIQUE (id, org_id)
+);
+CREATE INDEX feed_posts_lane_time_idx ON feed_posts (org_id, lane, classroom_id, created_at DESC, id DESC)
+    WHERE deleted_at IS NULL AND status='published';
+CREATE TABLE feed_photos (
+    id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    org_id        uuid NOT NULL,
+    post_id       uuid NOT NULL,
+    storage_path  text NOT NULL UNIQUE,
+    media_type    text NOT NULL CHECK (media_type IN ('image/jpeg', 'image/png', 'image/webp')),
+    size_bytes    integer NOT NULL CHECK (size_bytes BETWEEN 1 AND 5242880),
+    sha256        text NOT NULL CHECK (sha256 ~ '^[0-9a-f]{64}$'),
+    created_at    timestamptz NOT NULL DEFAULT now(),
+    FOREIGN KEY (post_id, org_id) REFERENCES feed_posts(id, org_id),
+    UNIQUE (id, org_id)
+);
+CREATE INDEX feed_photos_post_idx ON feed_photos (post_id, created_at, id);
+CREATE TABLE feed_photo_children (
+    org_id    uuid NOT NULL,
+    photo_id  uuid NOT NULL,
+    child_id  uuid NOT NULL,
+    PRIMARY KEY (photo_id, child_id),
+    FOREIGN KEY (photo_id, org_id) REFERENCES feed_photos(id, org_id),
+    FOREIGN KEY (child_id, org_id) REFERENCES children(id, org_id)
+);
+CREATE INDEX feed_photo_children_child_idx ON feed_photo_children (child_id, photo_id);

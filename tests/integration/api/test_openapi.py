@@ -1,4 +1,4 @@
-"""계약 생성물과 명세 v0.6의 37개 경로를 대조한다."""
+"""계약 생성물과 명세 v0.7의 49개 경로를 대조한다."""
 
 import json
 from pathlib import Path
@@ -18,12 +18,16 @@ def test_contract_matches_application():
     # 투약·귀가는 별도 교직원 목록이에요. 기존 받은함 응답의 유형 계약은 그대로예요.
     assert app.openapi()["components"]["schemas"]["CardItem"]["properties"]["request_type"]["anyOf"][0]["enum"] == [
         "inquiry", "consultation", "complaint"]
+    for target in ("classrooms/{classroom_id}", "organizations/{org_id}"):
+        schema = app.openapi()["paths"][f"/api/v1/{target}/posts"]["post"]["requestBody"]["content"][
+            "multipart/form-data"]["schema"]
+        assert schema["properties"]["files"]["maxItems"] == 10
 
 
-def test_all_37_documented_endpoints_exist(client):
+def test_all_49_documented_endpoints_exist(client):
     doc = (ROOT / "Docs/Step2/API_설계_문서.md").read_text().split("## 2. API 목록")[1].split("## 3.")[0]
     endpoints = re.findall(r"\|\s*\d+\s*\|\s*(GET|POST|PATCH|DELETE)\s*\|\s*`([^`]+)`", doc)
-    assert len(endpoints) == 37
+    assert len(endpoints) == 49
     contract = client.get("/openapi.json").json()
     assert contract == json.loads(json.dumps(app.openapi()))
     for method, path in endpoints:

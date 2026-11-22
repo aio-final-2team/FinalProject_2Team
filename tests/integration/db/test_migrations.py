@@ -21,7 +21,7 @@ from app.mock import seed
 from db.seeds.demo import seed_demo
 
 ROOT = Path(__file__).resolve().parents[3]
-HEAD_CATALOG = {"tables": 27, "views": 2, "triggers": 2, "foreign_keys": 58, "columns": 271}
+HEAD_CATALOG = {"tables": 30, "views": 2, "triggers": 2, "foreign_keys": 64, "columns": 292}
 
 
 def catalog(connection):
@@ -80,7 +80,7 @@ def test_upgrade_downgrade_upgrade(db_engine, alembic_config):
     command.upgrade(alembic_config, "head")
     with db_engine.connect() as connection:
         assert dict(catalog(connection)) == first_catalog
-        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0009"
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0010"
     assert schema_dump() == first_dump
 
     # 최신 설계를 직접 적용한 스키마도 마이그레이션 head와 같아야 한다.
@@ -133,7 +133,7 @@ def test_child_memos_backfill_constraints_and_revision_round_trip(db_engine, ale
     command.downgrade(alembic_config, "0001")
     assert schema_dump() == v1_dump
     with db_engine.connect() as connection:
-        assert dict(catalog(connection)) == {**HEAD_CATALOG, "foreign_keys": 57, "columns": 266}
+        assert dict(catalog(connection)) == {"tables": 27, "views": 2, "triggers": 2, "foreign_keys": 57, "columns": 266}
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0001"
         assert dict(connection.execute(text("SELECT * FROM daily_note_inputs WHERE id=:id"),
                                        {"id": before["id"]}).mappings().one()) == before
@@ -141,7 +141,7 @@ def test_child_memos_backfill_constraints_and_revision_round_trip(db_engine, ale
     command.upgrade(alembic_config, "head")
     with db_engine.begin() as connection:
         assert dict(catalog(connection)) == HEAD_CATALOG
-        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0009"
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0010"
         assert dict(connection.execute(text("SELECT * FROM daily_note_inputs WHERE id=:id"),
                                        {"id": before["id"]}).mappings().one()) == {**before, "child_memos": []}
         connection.execute(text("DELETE FROM daily_note_inputs"))
@@ -227,7 +227,7 @@ def test_seed_twice_keeps_same_rows_and_password_hash(db_engine, alembic_config)
         subprocess.run([sys.executable, "-m", "db.seeds.demo", *args], cwd=root, env=env,
                        capture_output=True, text=True, check=True)
     tables = ("organizations", "classrooms", "users", "classroom_staff", "children", "child_guardians", "rooms",
-              "documents", "document_chunks", "requests")
+              "documents", "document_chunks", "requests", "feed_posts", "feed_photos", "feed_photo_children")
 
     def snapshot():
         with db_engine.connect() as connection:
@@ -238,7 +238,7 @@ def test_seed_twice_keeps_same_rows_and_password_hash(db_engine, alembic_config)
     first = snapshot()
     run_seed()
     assert snapshot() == first
-    assert {table: len(rows) for table, rows in first.items()} == dict(zip(tables, (1, 2, 21, 2, 21, 19, 1, 3, 3, 22), strict=True))
+    assert {table: len(rows) for table, rows in first.items()} == dict(zip(tables, (1, 2, 21, 2, 21, 19, 1, 3, 3, 22, 4, 5, 5), strict=True))
     classrooms = {row["id"]: row for row in first["classrooms"]}
     assert (classrooms[seed.CLASS_STAR]["name"], classrooms[seed.CLASS_STAR]["age_group"]) == ("만 4세 별빛반", 4)
     assert (classrooms[seed.CLASS_SUN]["name"], classrooms[seed.CLASS_SUN]["age_group"]) == ("만 5세 햇님반", 5)

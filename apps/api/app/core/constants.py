@@ -26,3 +26,8 @@ REJECTION_RULE_TEXTS = {
     "slot_unavailable": "담임이 남긴 상담 시간 거절 이유를 확인해 후보를 제안해 주세요.",
     "room_unavailable": "담임이 남긴 상담실 거절 이유를 확인해 후보를 제안해 주세요.",
 }
+
+# [제안] T54 사진 업로드 제한이에요.
+MAX_PHOTO_BYTES = 5 * 1024 * 1024
+MAX_PHOTOS = 10
+MAX_POST_BYTES = MAX_PHOTOS * MAX_PHOTO_BYTES + 1024 * 1024
