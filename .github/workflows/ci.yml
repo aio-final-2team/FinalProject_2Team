@@ -88,7 +88,7 @@ jobs:
             tests/integration/api/test_cards.py tests/integration/api/test_complaints.py \
             tests/integration/api/test_consultations.py tests/integration/api/test_memories.py \
             tests/integration/api/test_consultation_reminders.py tests/integration/api/test_care_requests.py \
-            tests/integration/api/test_feed.py
+            tests/integration/api/test_feed.py tests/integration/api/test_video_consult.py
 
   build-images:
     name: Build ${{ matrix.name }} image

@@ -80,7 +80,7 @@ def test_upgrade_downgrade_upgrade(db_engine, alembic_config):
     command.upgrade(alembic_config, "head")
     with db_engine.connect() as connection:
         assert dict(catalog(connection)) == first_catalog
-        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0010"
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0011"
     assert schema_dump() == first_dump
 
     # 최신 설계를 직접 적용한 스키마도 마이그레이션 head와 같아야 한다.
@@ -141,7 +141,7 @@ def test_child_memos_backfill_constraints_and_revision_round_trip(db_engine, ale
     command.upgrade(alembic_config, "head")
     with db_engine.begin() as connection:
         assert dict(catalog(connection)) == HEAD_CATALOG
-        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0010"
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0011"
         assert dict(connection.execute(text("SELECT * FROM daily_note_inputs WHERE id=:id"),
                                        {"id": before["id"]}).mappings().one()) == {**before, "child_memos": []}
         connection.execute(text("DELETE FROM daily_note_inputs"))
@@ -374,3 +374,24 @@ def test_transaction_commits_and_rolls_back(db_engine, alembic_config):
     with db.transaction() as connection:
         assert connection.scalar(text("SELECT name FROM organizations WHERE id=:id"), {"id": org_id}) == "[TEST] rollback"
         connection.execute(text("DELETE FROM organizations WHERE id=:id"), {"id": org_id})
+
+
+def test_video_actions_previous_revision_roundtrip(seeded_db, alembic_config):
+    with seeded_db.begin() as c:
+        old = c.scalar(text("INSERT INTO events(org_id,actor_type,action) VALUES (:org,'system','created') RETURNING id"),
+                       {"org": seed.ORG})
+        for action in ("video_joined", "video_left"):
+            c.execute(text("INSERT INTO events(org_id,request_id,actor_type,action) VALUES (:org,:req,'system',:action)"),
+                      {"org": seed.ORG, "req": seed.REQUEST_COUGH, "action": action})
+    command.downgrade(alembic_config, "0010")
+    with seeded_db.begin() as c:
+        assert c.scalar(text("SELECT count(*) FROM events WHERE action IN ('video_joined','video_left')")) == 0
+        assert c.scalar(text("SELECT count(*) FROM events WHERE id=:id"), {"id": old}) == 1
+        with pytest.raises(IntegrityError), c.begin_nested():
+            c.execute(text("INSERT INTO events(org_id,actor_type,action) VALUES (:org,'system','video_joined')"),
+                      {"org": seed.ORG})
+    command.upgrade(alembic_config, "head")
+    with seeded_db.begin() as c:
+        c.execute(text("INSERT INTO events(org_id,actor_type,action) VALUES (:org,'system','video_joined')"),
+                  {"org": seed.ORG})
+        assert dict(catalog(c)) == HEAD_CATALOG

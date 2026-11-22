@@ -1,6 +1,6 @@
--- 유치온 DB 스키마 초안 (T09) · 문서 버전 v0.16 ([제안] T54 피드·앨범 11/21 반영)
+-- 유치온 DB 스키마 초안 (T09) · 문서 버전 v0.17 ([제안][선택] T56 화상상담 11/22 반영)
 -- 설계서: Docs/Step2/DB_스키마_설계서.md
--- 이 파일은 최종 설계 모양이다. 실제 적용은 apps/api/migrations의 0001 → 0002 → 0003 → 0004 → 0005 → 0006 → 0007 → 0008 → 0009 → 0010으로 한다.
+-- 이 파일은 최종 설계 모양이다. 실제 적용은 apps/api/migrations의 0001 → 0002 → 0003 → 0004 → 0005 → 0006 → 0007 → 0008 → 0009 → 0010 → 0011로 한다.
 -- 대상: PostgreSQL 16 + pgvector 0.8 (compose.yaml의 pgvector/pgvector:pg16). Supabase는 쓰지 않는다(설계서 5.1)
 -- 기관 경계: 기관에 속한 표끼리는 (id, org_id) 짝으로 참조해서 다른 원 행을 섞어 넣으면 DB가 거부한다
 
@@ -344,7 +344,8 @@ CREATE TABLE events (
                                    'answered_from_saved', 'slot_hold_expired',
                                    'daily_note_drafted', 'daily_note_edited', 'daily_note_confirmed', 'daily_note_sent', 'agent_requeued',
                                    'consultation_delay_reported', 'consultation_reminded',
-                                   'feed_post_created', 'feed_post_deleted', 'feed_post_hidden', 'photo_scope_changed')),
+                                   'feed_post_created', 'feed_post_deleted', 'feed_post_hidden', 'photo_scope_changed',
+                                   'video_joined', 'video_left')),
     -- 시스템이 한 일(보류 예정일 자동 재개, 상담 시간 잡아 두기 풀림)은 actor_type = 'system', actor_id = NULL
     from_status  text,
     to_status    text,

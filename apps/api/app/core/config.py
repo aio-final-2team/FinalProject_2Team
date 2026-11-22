@@ -2,8 +2,9 @@
 
 import os
 import re
+import json
 from math import isfinite
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, time
 
 _MOCK_JWT_SECRET = "local-dev-only-change-me-32-bytes-min"
@@ -26,6 +27,11 @@ class Settings:
     request_agent: str = "app.modules.requests.agent_stub:run_request"
     run_in: str = "api"
     celery_broker_url: str = "redis://redis:6379/0"
+    feature_video_consult: bool = False
+    feature_voice_analysis: bool = False
+    feature_neighborhood_feed: bool = False
+    feature_growth_video: bool = False
+    video_ice_servers: list[dict] = field(default_factory=lambda: [{"urls": "stun:stun.l.google.com:19302"}])
 
 
 def load_settings() -> Settings:
@@ -52,6 +58,14 @@ def load_settings() -> Settings:
     writer_timeout = float(os.getenv("DAILY_NOTE_WRITER_TIMEOUT", "300"))
     if not isfinite(writer_timeout) or writer_timeout <= 0:
         raise ValueError("DAILY_NOTE_WRITER_TIMEOUT: 0보다 큰 초 필요")
+    ice_servers = json.loads(os.getenv("VIDEO_ICE_SERVERS") or '[{"urls":"stun:stun.l.google.com:19302"}]')
+    if not isinstance(ice_servers, list) or any(
+        not isinstance(server, dict) or not server.get("urls")
+        or not isinstance(server["urls"], (str, list))
+        or (isinstance(server["urls"], list) and any(not isinstance(url, str) or not url for url in server["urls"]))
+        for server in ice_servers
+    ):
+        raise ValueError("VIDEO_ICE_SERVERS: urls가 있는 JSON 배열 필요")
     return Settings(
         jwt_secret=jwt_secret,
         jwt_access_ttl_hours=int(os.getenv("JWT_ACCESS_TTL_HOURS", "12")),
@@ -66,6 +80,11 @@ def load_settings() -> Settings:
         request_agent=os.getenv("REQUEST_AGENT", "app.modules.requests.agent_stub:run_request"),
         run_in=run_in,
         celery_broker_url=os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0"),
+        feature_video_consult=os.getenv("FEATURE_VIDEO_CONSULT", "false").lower() == "true",
+        feature_voice_analysis=os.getenv("FEATURE_VOICE_ANALYSIS", "false").lower() == "true",
+        feature_neighborhood_feed=os.getenv("FEATURE_NEIGHBORHOOD_FEED", "false").lower() == "true",
+        feature_growth_video=os.getenv("FEATURE_GROWTH_VIDEO", "false").lower() == "true",
+        video_ice_servers=ice_servers,
     )
 
 
