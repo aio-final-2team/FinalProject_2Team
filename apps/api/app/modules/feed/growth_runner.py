@@ -86,7 +86,14 @@ def dimensions(data):
 def eligible(source):
     try:
         with source.open("rb") as handle:
-            width, height = dimensions(handle.read(64 * 1024))
+            head = handle.read(64 * 1024)
+            try:
+                width, height = dimensions(head)
+            except (ValueError, IndexError, struct.error):
+                if not head.startswith(b"\xff\xd8") or len(head) < 64 * 1024:
+                    raise
+                # 폰 JPEG는 큰 APP 묶음 뒤에 크기 머리가 있어요. 1MB까지만 더 읽어요.
+                width, height = dimensions(head + handle.read(960 * 1024))
         return min(width, height) >= 1 and width * height <= 40_000_000
     except (ValueError, IndexError, struct.error, OSError):
         return False

@@ -835,6 +835,18 @@ def test_eligible_reads_only_first_64_kib(tmp_path, monkeypatch):
     opened().read.assert_called_once_with(64*1024)
 
 
+def test_eligible_reads_more_when_jpeg_size_header_is_after_64_kib(tmp_path):
+    import struct
+    app1 = b'\xff\xe1'+struct.pack('>H', 40000)+b'\0'*39998
+    sof = b'\xff\xc0'+struct.pack('>HBHH', 8, 8, 600, 800)+b'\0'
+    source = tmp_path/'phone.jpg'
+    source.write_bytes(b'\xff\xd8'+app1+app1+sof+b'\0'*100)
+    assert source.read_bytes().index(sof) > 64*1024
+    assert runner.eligible(source)
+    source.write_bytes(b'\xff\xd8'+app1+app1+b'\0'*100)
+    assert not runner.eligible(source)
+
+
 def test_listing_and_file_do_not_wait_for_child_row_lock(client, parent, growth_backend):
     if growth_backend != 'db':
         pytest.skip('[TEST] PG 행 잠금은 DB 모드에서만 검사해요.')
