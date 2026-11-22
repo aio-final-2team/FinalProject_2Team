@@ -6,6 +6,11 @@ services:
       context: .
       dockerfile: apps/api/Dockerfile
     environment: &api-environment
+      FEATURE_VIDEO_CONSULT: ${FEATURE_VIDEO_CONSULT:-false}
+      FEATURE_VOICE_ANALYSIS: ${FEATURE_VOICE_ANALYSIS:-false}
+      FEATURE_NEIGHBORHOOD_FEED: ${FEATURE_NEIGHBORHOOD_FEED:-false}
+      FEATURE_GROWTH_VIDEO: ${FEATURE_GROWTH_VIDEO:-false}
+      VIDEO_ICE_SERVERS: ${VIDEO_ICE_SERVERS:-}
       MEDIA_DIR: ${MEDIA_DIR:-/media}
       DATA_BACKEND: ${DATA_BACKEND:-mock}
       SEED_DEMO: ${SEED_DEMO:-true}

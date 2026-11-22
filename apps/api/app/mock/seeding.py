@@ -57,6 +57,16 @@ def populate():
     state.cards[card.id] = card
     store.add_event(None, "created", card=card)
 
+    from app.core.config import settings
+    if settings.feature_video_consult and not any(b.status == "confirmed" for b in state.bookings.values()):
+        from app.mock.records import Booking
+        req = store.Request(seed.VIDEO_REQUEST, seed.ORG, seed.CLASS_STAR, seed.CHILD, seed.PARENT,
+                            "demo-video-consult", "consultation", "가상 화상상담", status="sent_or_booked")
+        state.requests[req.id] = req
+        state.bookings[seed.VIDEO_BOOKING] = Booking(seed.VIDEO_BOOKING, seed.ORG, req.id, None, seed.TEACHER,
+                                                   seed.ROOM, seed.video_period(), seed.TEACHER)
+        store.add_event(req, "booked", actor_type="user", actor_id=seed.TEACHER)
+
     from app.core import media
     media.reset_mock()
     for child in state.children.values():

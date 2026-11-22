@@ -106,6 +106,31 @@ def seed_demo(connection, *, refresh_note_requests=False):
 
     if has_feed:
         seed_feed(connection)
+    from app.core.config import settings
+    if settings.feature_video_consult:
+        seed_video_consult(connection)
+
+
+def seed_video_consult(connection):
+    if connection.scalar(text("SELECT EXISTS (SELECT 1 FROM consultation_bookings WHERE org_id=:org AND status='confirmed')"),
+                         {"org": seed.ORG}):
+        return
+    from app.modules.requests.events import record
+    connection.execute(text("""
+        INSERT INTO requests(id,org_id,classroom_id,child_id,requester_id,client_request_id,type,body,status)
+        VALUES (:id,:org,:class,:child,:parent,'demo-video-consult','consultation','가상 화상상담','sent_or_booked')
+        ON CONFLICT DO NOTHING
+    """), {"id": seed.VIDEO_REQUEST, "org": seed.ORG, "class": seed.CLASS_STAR,
+           "child": seed.CHILD, "parent": seed.PARENT})
+    inserted = connection.scalar(text("""
+        INSERT INTO consultation_bookings(id,org_id,request_id,teacher_id,room_id,period,confirmed_by)
+        VALUES (:id,:org,:req,:teacher,:room,tstzrange(:start,:end,'[)'),:teacher)
+        ON CONFLICT DO NOTHING RETURNING id
+    """), {"id": seed.VIDEO_BOOKING, "org": seed.ORG, "req": seed.VIDEO_REQUEST, "teacher": seed.TEACHER,
+           "room": seed.ROOM, **seed.video_period()})
+    if inserted:
+        req = connection.execute(text("SELECT * FROM requests WHERE id=:id"), {"id": seed.VIDEO_REQUEST}).mappings().one()
+        record(connection, req, "booked", actor_type="user", actor_id=seed.TEACHER)
 
 
 def seed_feed(connection):

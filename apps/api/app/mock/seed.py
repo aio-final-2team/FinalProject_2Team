@@ -65,6 +65,8 @@ MENU = demo_id("b01")
 NOTICE = demo_id("b02")
 OLD_NOTICE = demo_id("b03")
 RULE = demo_id("d01")
+VIDEO_BOOKING = demo_id("901")
+VIDEO_REQUEST = demo_id("790")
 REQUEST_COUGH = demo_id("708")
 REQUEST_PICKUP = demo_id("70a")
 
@@ -181,6 +183,14 @@ FEED_PHOTOS = [
     (demo_id("f05"), demo_id("e04"), []),
 ]
 FEED_CREATED_AT = datetime.fromisoformat("2026-11-21T09:00:00+09:00")
+
+
+def video_period():
+    """선택 기능 시연용 오늘 14:00~14:30 가상 예약이에요."""
+    from datetime import timedelta
+    from app.core.schedule import KST
+    start = datetime.now(KST).replace(hour=14, minute=0, second=0, microsecond=0)
+    return {"start": start, "end": start + timedelta(minutes=30)}
 
 
 def feed_png():

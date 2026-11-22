@@ -2821,6 +2821,62 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
           description: Unprocessable Entity
+  /api/v1/consultations/{booking_id}/room:
+    get:
+      tags:
+      - '[선택] 화상상담'
+      summary: Room
+      description: '[제안][선택] FEATURE_VIDEO_CONSULT=true일 때 예약 담임·신청 보호자만 접속해요. signal_path에
+        ?ticket=…로 WebSocket을 열어요. {type: offer|answer|ice|bye, data}만 상대에게 전달해요(64KiB·초당
+        20개). 실패는 1008, 입퇴장은 peer_joined·peer_left예요.'
+      operationId: room_api_v1_consultations__booking_id__room_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: booking_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Booking Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VideoRoom'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
   /health:
     get:
       tags:
@@ -5663,6 +5719,46 @@ components:
       - display_name
       - org_id
       title: UserOut
+    VideoRoom:
+      properties:
+        booking_id:
+          type: string
+          format: uuid
+          title: Booking Id
+        opens_at:
+          type: string
+          format: date-time
+          title: Opens At
+        closes_at:
+          type: string
+          format: date-time
+          title: Closes At
+        ice_servers:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Ice Servers
+        signal_path:
+          type: string
+          title: Signal Path
+        ticket:
+          type: string
+          title: Ticket
+        ticket_expires_at:
+          type: string
+          format: date-time
+          title: Ticket Expires At
+      type: object
+      required:
+      - booking_id
+      - opens_at
+      - closes_at
+      - ice_servers
+      - signal_path
+      - ticket
+      - ticket_expires_at
+      title: VideoRoom
   securitySchemes:
     HTTPBearer:
       type: http
