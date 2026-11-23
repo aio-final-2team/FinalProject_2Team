@@ -352,7 +352,18 @@ function Review({ notes }: { notes: DailyNote[] }) {
 
       {!allSent && noRecord.length > 0 && (
         <>
-          <Label right={<span>{noRecord.length}명</span>}>반 활동만 작성된 아이</Label>
+          <Label
+            right={
+              <span className="flex items-center gap-2">
+                {noRecord.length}명
+                <SubButton small tone="gray" onClick={() => setPlainOk((p) => ({ ...p, ...Object.fromEntries(noRecord.map((n) => [n.id, true])) }))}>
+                  모두 이대로 사용
+                </SubButton>
+              </span>
+            }
+          >
+            반 활동만 작성된 아이
+          </Label>
           <ul className="overflow-hidden rounded-lg bg-card shadow-card">
             {noRecord.map((n) =>
               row(
@@ -421,7 +432,7 @@ function Review({ notes }: { notes: DailyNote[] }) {
         {preview && (
           <div className="grid gap-1 rounded-lg bg-g p-3 text-callout">
             <b className="text-headline">{nameI(names[preview.child_id] ?? "아이")}의 오늘</b>
-            {preview.content.items.map((it, i) => (
+            {preview.content.items.filter((it) => it.value.trim()).map((it, i) => (
               <span key={i}>
                 <b className="mr-1.5 text-footnote text-ink2">{it.key === "child" ? "아이 이야기" : it.label}</b>
                 {it.value}

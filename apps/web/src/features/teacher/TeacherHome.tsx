@@ -50,9 +50,9 @@ export function TeacherHome() {
     <div className="mx-auto max-w-[680px] px-4 pb-32 lg:pb-10">
       <header className="flex min-h-[52px] items-center justify-between pt-2">
         <SymbolMark className="size-8" />
-        <button className="grid size-10 place-items-center rounded-md text-ink" aria-label="알림">
+        <Link to="/teacher/notifications" className="grid size-11 place-items-center rounded-md text-ink" aria-label="알림">
           <Icon name="bell" className="size-6" />
-        </button>
+        </Link>
       </header>
       <h1 className="mt-1 text-large-title font-bold tracking-[-0.025em]">오늘</h1>
       <p className="mt-0.5 text-footnote font-medium text-ink2">{dateLabel(date)} · {user?.display_name}</p>

@@ -1,3 +1,4 @@
+import { Link } from "react-router";
 import { useMemo, useState } from "react";
 import { useChildren } from "@/api/notes";
 import { useSession } from "@/app/session";
@@ -24,7 +25,9 @@ export function RecordsPage() {
     <div className="mx-auto max-w-[680px] px-4 pb-32 lg:pb-10">
       <header className="flex min-h-[52px] items-center justify-between pt-2">
         <SymbolMark className="size-8" />
-        <button className="grid size-10 place-items-center rounded-md text-ink" aria-label="알림"><Icon name="bell" className="size-6" /></button>
+        <Link to="/teacher/notifications" className="grid size-11 place-items-center rounded-md text-ink" aria-label="알림">
+          <Icon name="bell" className="size-6" />
+        </Link>
       </header>
       <h1 className="mt-1 text-large-title font-bold tracking-[-0.025em]">아이 관찰 기록</h1>
       <p className="mt-0.5 text-footnote font-medium text-ink2">{dateLabel(date)} · 수업 중 기억해 둘 내용을 짧게 남겨 주세요</p>

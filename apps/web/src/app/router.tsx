@@ -5,6 +5,7 @@ import { LoginPage } from "@/features/login/LoginPage";
 import { NoteDetail } from "@/features/notes/NoteDetail";
 import { NotesPage } from "@/features/notes/NotesPage";
 import { TeacherHome } from "@/features/teacher/TeacherHome";
+import { TeacherNotifications } from "@/features/common/NotificationList";
 import { RecordsPage } from "@/features/records/RecordsPage";
 import { ParentHome } from "@/features/parent/ParentHome";
 import { NewRequestPage } from "@/features/parent/NewRequestPage";
@@ -30,6 +31,7 @@ export const router = createBrowserRouter([
       { index: true, element: <Navigate to="home" replace /> },
       { path: "home", element: <TeacherHome /> },
       { path: "records", element: <RecordsPage /> },
+      { path: "notifications", element: <TeacherNotifications /> },
       { path: "notes", element: <NotesPage /> },
       { path: "notes/:noteId", element: <NoteDetail /> },
       /* 문의·민원 받은함은 11/27 범위 밖(알림장과 따로). 주소만 남겨 둔다 */
@@ -46,6 +48,7 @@ export const router = createBrowserRouter([
     ),
     children: [
       { index: true, element: <Navigate to="inbox" replace /> },
+      { path: "notifications", element: <TeacherNotifications role="director" /> },
       { path: "inbox", element: <InboxPage role="director" /> },
       { path: "inbox/:cardId", element: <InboxPage role="director" /> },
     ],
