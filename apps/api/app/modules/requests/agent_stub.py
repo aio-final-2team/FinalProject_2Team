@@ -9,7 +9,7 @@ from datetime import datetime
 from sqlalchemy import text
 
 from app.core.db import transaction
-from app.core.request_rules import classify
+from app.modules.requests.supervisor import classify_request, validate_proposal
 from app.core.schedule import KST, due_at
 from app.modules.requests.complaints import repeat_count
 from app.modules.requests.events import record, set_status
@@ -30,6 +30,20 @@ def new_card(connection, req, kind, assignee, draft=None):
 
 
 def run_request(request_id):
+    # LLM 호출은 요청 행 잠금 밖에서 한다. 요청 본문·유형은 접수 후 고정이다.
+    with transaction() as connection:
+        initial = connection.execute(text("SELECT type,body,status FROM requests WHERE id=:id"),
+                                     {"id": request_id}).mappings().one_or_none()
+        if initial is None or initial["status"] not in ("received", "classified", "assigned", "needs_info"):
+            return
+        has_card = connection.scalar(text("SELECT EXISTS (SELECT 1 FROM cards WHERE request_id=:id)"),
+                                     {"id": request_id})
+        # 기존 규칙대로 needs_info 문의·민원만 카드가 있어도 다시 처리한다.
+        if has_card and (initial["status"] != "needs_info" or initial["type"] == "consultation"):
+            return
+    if initial["type"] not in ("inquiry", "consultation", "complaint"):
+        return
+    proposal = classify_request(initial["type"], initial["body"])
     with transaction() as connection:
         row = connection.execute(text("SELECT * FROM requests WHERE id=:id FOR UPDATE"),
                                  {"id": request_id}).mappings().one_or_none()
@@ -42,7 +56,8 @@ def run_request(request_id):
         has_card = connection.scalar(text("SELECT EXISTS (SELECT 1 FROM cards WHERE request_id=:id)"), {"id": request_id})
         if has_card and (req["status"] != "needs_info" or req["type"] == "consultation"):
             return
-        fields = classify(req["type"], req["body"])
+        fields = validate_proposal(req["type"], req["body"],
+                                   proposal if req["type"] == initial["type"] and req["body"] == initial["body"] else {})
         if req["type"] == "complaint" and fields["topic_key"] != "other":
             # 서로 다른 요청의 동시 분류도 앞선 커밋을 포함해 세 번째를 셀 수 있어야 해요.
             # FK가 잡는 반 행 잠금과 충돌하지 않도록 묶음별 트랜잭션 자문 잠금을 써요.

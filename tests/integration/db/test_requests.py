@@ -128,6 +128,21 @@ def test_stub_transaction_rolls_back_then_handoff_once(db_client, parent, seeded
     assert len(rows(seeded_db, "cards", rid)) == 1
 
 
+def test_needs_info_inquiry_with_existing_card_can_be_reprocessed(db_client, parent, seeded_db, monkeypatch):
+    rid = create(db_client, parent).json()["request"]["id"]
+    calls = []
+    monkeypatch.setattr(agent_stub, "classify_request", lambda *args: calls.append(args) or {})
+    # 이미 카드가 있는 완료 요청은 모델에 보내지 않는다.
+    agent_stub.run_request(UUID(rid))
+    assert calls == []
+    with seeded_db.begin() as connection:
+        connection.execute(text("UPDATE requests SET status='needs_info' WHERE id=:id"), {"id": rid})
+    agent_stub.run_request(UUID(rid))
+    assert len(calls) == 1
+    assert len(rows(seeded_db, "cards", rid)) == 2
+    assert rows(seeded_db, "requests", rid)[0]["status"] == "awaiting_review"
+
+
 def test_custom_entrypoint_is_selected(db_client, parent, seeded_db, monkeypatch):
     import sys
     from types import SimpleNamespace
