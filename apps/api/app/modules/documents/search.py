@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import re
 from datetime import date, datetime
+from uuid import UUID
 
 from sqlalchemy import text
 
@@ -63,6 +64,11 @@ def search_documents(user, kindergarten_id: str, doc_type: str, query: str, clas
     parent = user.role == "parent"
     with transaction() as connection:
         if parent:
+            if classroom_id is not None:
+                try:
+                    classroom_id = UUID(str(classroom_id))
+                except ValueError as error:
+                    raise ApiError(404, "NOT_FOUND") from error
             allowed_classes = set(connection.scalars(text("""
                 SELECT c.classroom_id FROM child_guardians cg
                 JOIN children c ON (c.id, c.org_id)=(cg.child_id, cg.org_id)

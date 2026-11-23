@@ -104,6 +104,16 @@ def test_search_scope_for_parent_class_and_other_org(docs):
     assert future == []  # 시행일(12/01) 전 자료는 아직 찾지 않음
 
 
+def test_parent_search_accepts_string_classroom_ids(docs):
+    own = search_documents(parent(), str(seed.ORG), "notice", "겨울방학",
+                           classroom_id=str(seed.CLASS_STAR), on_date=date(2026, 11, 20))["chunks"]
+    assert own
+    with pytest.raises(ApiError) as denied:
+        search_documents(parent(), str(seed.ORG), "notice", "현장체험학습 도시락",
+                         classroom_id=str(seed.CLASS_SUN), on_date=date(2026, 11, 20))
+    assert denied.value.status == 404
+
+
 def test_upload_conflicting_notice_is_pending_with_conflicts(db_client, teacher, docs):
     response = upload(db_client, teacher, "겨울방학_다시알림.md", WINTER_1226)
     assert response.status_code == 202, response.text
