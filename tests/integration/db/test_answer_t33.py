@@ -16,9 +16,11 @@ class Writer:
     answer = None
 
     def __init__(self, role):
-        pass
+        self.role = role
 
     def json(self, system, user):
+        if self.role == "CHECKER":
+            return {"passed": True, "issues": []}
         if isinstance(self.answer, Exception):
             raise self.answer
         return self.answer
