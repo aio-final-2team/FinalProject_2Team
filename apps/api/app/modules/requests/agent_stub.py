@@ -104,6 +104,9 @@ def run_request(request_id):
                         forecast = None
                 answer = answer_for_request(req, forecast=forecast)
                 draft.update({key: answer[key] for key in ("text", "no_evidence", "conflict")})
+                if answer["no_evidence"] or answer["conflict"]:
+                    # API 5.7: 근거 없음·충돌은 초안 없는 카드. 대체 문장이 승인으로 학부모에게 나가면 안 돼요.
+                    draft["text"] = ""
             else:
                 draft["text"] = "(모의 초안) 말씀해 주셔서 감사합니다. 확인해서 다시 안내드릴게요."
         card = new_card(connection, req, "reply_draft", teacher, draft)
