@@ -40,3 +40,6 @@ postgres_data/
 .DS_Store
 
 /var/media/
+
+# 백업 결과(infra/backup/backup.sh). 저장소에 올리지 않아요.
+/backups/

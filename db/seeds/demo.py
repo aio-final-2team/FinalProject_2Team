@@ -40,6 +40,11 @@ def seed_demo(connection, *, refresh_note_requests=False):
             VALUES (:classroom_id, :org_id, :user_id, :valid_from, :valid_to) ON CONFLICT DO NOTHING
         """), {**assignment, "org_id": seed.ORG})
     has_feed = connection.scalar(text("SELECT to_regclass('public.feed_posts') IS NOT NULL"))
+    # 퇴소 작업(withdraw_child)을 거친 아이에게는 보호자 연결·공개 범위·태그된 사진을 다시 넣지 않아요.
+    withdrawn = set(connection.scalars(text("""
+        SELECT (detail->>'child_id')::uuid FROM events
+        WHERE org_id=:org AND action='photo_scope_changed' AND detail->>'withdrawn'='true'
+    """), {"org": seed.ORG}))
     for child in seed.CHILDREN:
         # 옛 revision의 왕복 시험에서도 시드를 쓸 수 있게 새 칸은 0010부터 넣어요.
         columns = ", photo_scope" if has_feed else ""
@@ -48,7 +53,7 @@ def seed_demo(connection, *, refresh_note_requests=False):
             INSERT INTO children (id, org_id, classroom_id, display_name, is_virtual{columns})
             VALUES (:id, :org_id, :classroom_id, :display_name, true{values}) ON CONFLICT DO NOTHING
         """), {**child, "org_id": seed.ORG, "photo_scope": seed.PHOTO_SCOPES.get(child["id"], "family")})
-        for guardian in child["guardian_ids"]:
+        for guardian in [] if child["id"] in withdrawn else child["guardian_ids"]:
             connection.execute(text("""
                 INSERT INTO child_guardians (child_id, org_id, user_id, relation)
                 VALUES (:child_id, :org_id, :user_id, :relation) ON CONFLICT DO NOTHING
@@ -105,10 +110,10 @@ def seed_demo(connection, *, refresh_note_requests=False):
         """), refreshed)
 
     if has_feed:
-        seed_feed(connection)
+        seed_feed(connection, withdrawn)
 
 
-def seed_feed(connection):
+def seed_feed(connection, withdrawn=frozenset()):
     from app.core import media
 
     first_posts = False
@@ -121,13 +126,15 @@ def seed_feed(connection):
     if first_posts:
         # 0009 시드→0010에서도 새 DB와 같게, 이후 가족이 바꾼 값은 보존해요.
         for child_id, scope in seed.PHOTO_SCOPES.items():
+            if child_id in withdrawn:
+                continue
             connection.execute(text("UPDATE children SET photo_scope=:scope WHERE id=:id AND org_id=:org"),
                                {"id": child_id, "org": seed.ORG, "scope": scope})
     png = seed.feed_png()
     metadata = media.inspect(png)
     for photo_id, post_id, tags in seed.FEED_PHOTOS:
-        # 작성자가 지운 시드 글은 기동 때도 복원하지 않아요.
-        inserted = connection.scalar(text("""
+        # 작성자가 지운 시드 글과 퇴소한 아이가 태그된 사진은 기동 때도 복원하지 않아요.
+        inserted = not withdrawn.intersection(tags) and connection.scalar(text("""
             INSERT INTO feed_photos(id,org_id,post_id,storage_path,media_type,size_bytes,sha256,created_at)
             SELECT :id,:org,:post,:path,:media_type,:size_bytes,:sha256,:now
             FROM feed_posts WHERE id=:post AND org_id=:org AND deleted_at IS NULL
