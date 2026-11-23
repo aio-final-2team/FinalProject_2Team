@@ -64,6 +64,7 @@ def test_forged_quote_is_removed():
         "text": "가짜 답", "evidence": [{"chunk_id": 1, "quote": "12월 26일부터"}],
         "no_evidence": False, "conflict": False}), Checker())
     assert result["no_evidence"] and result["evidence"] == [] and result["text"] == NO_ANSWER
+    assert [issue["field"] for issue in result["check_result"]["issues"]] == ["출처"]
 
 
 def test_empty_skips_writer():
@@ -89,6 +90,7 @@ def test_conflict_uses_safe_text():
         "text": "추측", "evidence": [{"chunk_id": 1, "quote": "겨울방학"}],
         "no_evidence": False, "conflict": True}), Checker())
     assert result["conflict"] and result["text"] == NO_ANSWER
+    assert [issue["field"] for issue in result["check_result"]["issues"]] == ["출처"]
 
 
 def test_search_retries_once():

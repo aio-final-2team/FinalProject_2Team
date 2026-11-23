@@ -121,7 +121,8 @@ def draft_answer(question: str, search, writer=None, checker=None) -> dict:
             return fallback(trace)
         draft = _verify(answer, candidates, trace)
         if draft["no_evidence"] or draft["conflict"]:
-            return {**draft, "check_result": {"passed": False, "issues": [], "attempt": attempt + 1},
+            problem = "자료끼리 내용이 달라요." if draft["conflict"] else "자료에서 근거를 찾지 못했어요."
+            return {**draft, "check_result": _check_result(False, [{"field": "출처", "problem": problem}], attempt + 1),
                     "trace": [*trace, "end"]}
         issues = _review(checker, question, draft, candidates, attempt + 1, trace)
         if issues is None:

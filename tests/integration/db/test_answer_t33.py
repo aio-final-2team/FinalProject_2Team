@@ -5,6 +5,8 @@ from uuid import uuid4
 from sqlalchemy import text
 
 from agents.llm import ModelError
+from app.core import users
+from app.core.auth import issue_token
 from app.core.db import transaction
 from app.mock import seed
 from app.modules.documents import embedding
@@ -96,11 +98,48 @@ def test_duplicate_citation_saves_one_evidence_row(db_client, seeded_db, monkeyp
     assert len(evidence) == 1
 
 
+def teacher_headers():
+    return {"Authorization": "Bearer " + issue_token(users.get_user(seed.TEACHER))}
+
+
+def assert_empty_draft_card(db_client, card):
+    """근거 없음·충돌 카드는 초안이 비어 있고, 일반 승인은 막히고, 직접 쓴 글만 발송된다."""
+    assert card["draft"]["text"] == ""
+    assert [issue["field"] for issue in card["check_result"]["issues"]] == ["출처"]
+    url = f"/api/v1/cards/{card['id']}/decisions"
+    blocked = db_client.post(url, headers=teacher_headers(), json={"version": card["version"], "decision": "approve"})
+    assert blocked.status_code == 409, blocked.text
+    sent = db_client.post(url, headers=teacher_headers(), json={
+        "version": card["version"], "decision": "edit_approve",
+        "edited_content": {"text": "선생님이 직접 확인해서 안내드려요."}})
+    assert sent.status_code == 200, sent.text
+    with transaction() as connection:
+        bodies = connection.scalars(text("SELECT body FROM request_messages WHERE request_id=:id ORDER BY created_at,id"),
+                                    {"id": card["request_id"]}).all()
+    assert bodies[-1] == "선생님이 직접 확인해서 안내드려요."
+    assert not any("자료에서 확인되지 않아" in body for body in bodies)
+
+
 def test_no_evidence_still_goes_to_teacher(db_client, seeded_db, monkeypatch):
     setup_graph(seeded_db, monkeypatch, {"text": "추측", "evidence": [], "no_evidence": True, "conflict": False})
     card, evidence, messages = create_card(db_client, "겨울방학 방과후 운영하나요?")
     assert card["assignee_id"] == seed.TEACHER and card["draft"]["no_evidence"] and not evidence
     assert messages == 1
+    assert_empty_draft_card(db_client, card)
+
+
+def test_conflict_card_has_no_draft_text(db_client, seeded_db, monkeypatch):
+    with seeded_db.begin() as connection:
+        seed_documents(connection)
+        chunk = connection.execute(text("""
+            SELECT ch.id FROM document_chunks ch JOIN documents d ON d.id=ch.document_id
+            WHERE d.title='겨울방학 안내' AND ch.location='1쪽 겨울방학 기간'
+        """)).mappings().one()
+    setup_graph(seeded_db, monkeypatch, {"text": "12월 24일 또는 26일", "no_evidence": False, "conflict": True,
+        "evidence": [{"chunk_id": chunk["id"], "quote": "12월 24일"}]})
+    card, _, messages = create_card(db_client, "겨울방학 언제부터인가요?")
+    assert card["draft"]["conflict"] and messages == 1
+    assert_empty_draft_card(db_client, card)
 
 
 def test_model_error_still_creates_card(db_client, seeded_db, monkeypatch):
@@ -109,6 +148,7 @@ def test_model_error_still_creates_card(db_client, seeded_db, monkeypatch):
     assert card["assignee_id"] == seed.TEACHER and card["draft"]["no_evidence"] and not evidence
     assert messages == 1
     assert card["check_result"]["passed"] is False
+    assert card["draft"]["text"] == ""
     assert card["check_result"]["issues"]
 
 
