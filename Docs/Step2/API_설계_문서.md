@@ -493,13 +493,13 @@ T12 화면 지도(성주, PR #254)를 계약표 v0.7과 대조했을 때 화면�
 
 **받은함 목록** (`GET /api/v1/cards`)
 
-쿼리 파라미터. 화면의 종류 필터(전체·긴급·민원·상담·문의)는 카드 종류(`kind`)가 아니라 요청 유형으로 받는다. `kind`는 `reply_draft`·`director_report` 같은 카드 종류라 화면의 '종류'와 뜻이 다르기 때문이다.
+쿼리 파라미터. 화면의 종류 필터(전체·민원·상담·문의)는 `request_type`으로 상태 필터와 함께 적용한다. 긴급 건은 ‘확인 필요’의 상단에 두고, `risk_level=urgent`는 API 조회 조건으로 제공한다. `kind`는 `reply_draft`·`director_report` 같은 카드 종류라 화면의 '종류'와 뜻이 다르기 때문이다.
 
 | 파라미터 | 타입 | 필수 | 값 | 설명 |
 | --- | --- | --- | --- | --- |
 | `filter` | string | 선택 | `unassigned`·`needs_review`·`uncertain`·`on_hold`·`in_progress`·`done` | 받은함 필터 6개(T04 2.2). 없으면 끝나지 않은 카드 전부 |
 | `request_type` | string | 선택 | `complaint`·`consultation`·`inquiry`·`all` | 종류 필터 '민원·상담·문의'. `all`이나 없으면 '전체' |
-| `risk_level` | string | 선택 | `urgent` | 종류 필터 '긴급' |
+| `risk_level` | string | 선택 | `urgent` | API의 긴급 카드 조회 조건. 화면 종류 필터에는 없음 |
 | `kind` | string | 선택 | 카드 종류 6개 | 카드 종류로 거를 때(원장 보고만 보기 등) |
 | `assignee` | string | 선택 | `me` | 내 담당만 |
 | `page`·`size` | integer | 선택 | 기본 1·20, `size` 최대 100 | 목록 규칙(1.5) |
