@@ -15,7 +15,7 @@ export function RecordsPage() {
   const cid = user?.classroom_ids[0];
   const date = todayKST();
   const kids = useChildren(cid);
-  const { records, add } = useRecords(cid, date);
+  const { records, add, remove } = useRecords(cid, date);
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState<string | null>(null);
   const recordedKids = useMemo(() => (kids.data ?? []).filter((k) => records[k.id]?.length), [kids.data, records]);
@@ -77,7 +77,7 @@ export function RecordsPage() {
       <p className="mt-6 px-1 text-footnote text-ink2">관찰 기록은 알림장 초안을 만들 때 아이별 내용으로 반영돼요.</p>
       <p className="mt-1 px-1 text-caption text-ink2">임시 저장 · 기록 API가 연결되기 전까지 이 기기에만 보관돼요.</p>
 
-      {openKid && <RecordSheet open name={openKid.display_name} entries={records[openKid.id] ?? []} onClose={() => setOpen(null)} onSave={(t) => add(openKid.id, t)} />}
+      {openKid && <RecordSheet open name={openKid.display_name} entries={records[openKid.id] ?? []} onClose={() => setOpen(null)} onSave={(t) => add(openKid.id, t)} onRemove={(i) => remove(openKid.id, i)} />}
     </div>
   );
 }

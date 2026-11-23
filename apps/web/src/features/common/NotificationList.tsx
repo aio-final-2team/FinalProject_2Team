@@ -1,4 +1,5 @@
 import { Link, useNavigate } from "react-router";
+import { useCards } from "@/api/cards";
 import { useNotifications, useReadNotification, type Notification } from "@/api/notifications";
 import { SymbolMark } from "@/components/Brand";
 import { Icon } from "@/components/Icon";
@@ -8,6 +9,7 @@ export function TeacherNotifications({ role = "teacher" }: { role?: "teacher" | 
   const nav = useNavigate();
   const list = useNotifications();
   const read = useReadNotification();
+  const cards = useCards("review");
   const items = list.data?.items ?? [];
   const back = role === "teacher" ? "/teacher/home" : "/director/inbox";
 
@@ -15,6 +17,11 @@ export function TeacherNotifications({ role = "teacher" }: { role?: "teacher" | 
     if (!n.read_at) read.mutate(n.id);
     if (n.subject_type === "daily_note") nav("/teacher/notes");
     else if (n.subject_type === "card" && n.subject_id) nav(`/${role}/inbox/${n.subject_id}`);
+    else {
+      /* 카드 알림은 subject_id가 없을 수 있어 요청 ID로 확인 필요 카드를 찾고, 없으면 받은함 목록으로 간다 */
+      const card = n.request_id ? cards.data?.items.find((c) => c.requestId === n.request_id) : undefined;
+      nav(card ? `/${role}/inbox/${card.id}` : `/${role}/inbox`);
+    }
   };
 
   return (
