@@ -86,7 +86,8 @@ def score(case: dict, note: dict, allowed: set[str] = frozenset()) -> dict:
         hits += ["(child 줄 있음)"] if any(line["key"] == "child" for line in note["content"]["items"]) else []
     return {"id": case["id"], "category": case["category"], "pass": not hits and flag_ok,
             "banned_hits": hits, "flag_ok": flag_ok, "kinds": sorted(kinds),
-            "ai_text": ai_text, "must_include": case["must_include"], "open_checks": note["open_checks"]}
+            "ai_text": ai_text, "must_include": case["must_include"], "open_checks": note["open_checks"],
+            "end": note.get("end"), "trace": note.get("trace")}
 
 
 def score_request(req: dict, note: dict) -> dict:
