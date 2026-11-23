@@ -1,3 +1,30 @@
 # apps/api/app/modules/documents
 
-원 자료의 출처·시행일·공개 범위와 적재 정보를 관리합니다.
+원 자료의 출처·시행일·공개 범위와 적재 정보를 관리합니다(T20, FR-04·FR-13·NFR-07).
+
+| 파일 | 하는 일 |
+| --- | --- |
+| `documents.py` | 교직원 자료 목록(태웅). 아래 `ingest`의 올리기·상세를 함께 내보냄 |
+| `ingest.py` | **자료 올리기(DB)**: 같은 내용이면 기존 문서(200), 아니면 문서 행을 만들고 조각 나누기·충돌 검사까지 끝낸 뒤 202. 충돌이면 `status = conflict_pending`이고 옛 판은 그대로 둠. 충돌 목록은 이력 `events(action='checked', detail.conflicts)`, 실패는 `events(tool_failed)`. 상세 조회 범위는 원장 전체·담임은 원 전체 + 지금 담당 반 |
+| `search.py` | **`search_documents` 도구(DB)**: 낱말 검색. 사용 중·적재 완료·적용 기간 안 문서만, 학부모는 공개 범위 `parents`·`all`과 원 전체 + 아이 반 자료만. 결과 `chunks[] {chunk_id, document_title, location, effective_from, content, score}` |
+| `parsing.py` | Markdown 원 자료를 읽어 머리말을 `documents` 열로 바꾸고, `## ` 제목 단위로 조각을 나눔. 제목이 근거 위치(`document_chunks.location`). 제목이 없으면 조각 하나, 위치 '본문' |
+| `conflicts.py` | 새 문서와 사용 중인 문서를 비교해 같은 항목의 날짜·숫자가 다르면 충돌 목록을 냄. 규칙 기반이라 모델을 부르지 않음. 대상 반이 겹치는 문서끼리만 비교 |
+
+## 정한 것 (11/23, 영민)
+
+- **검색은 낱말 검색부터**: 질문을 낱말로 나눠(조사 떼기) 찾은 비율(0~1)로 점수를 매기고, 같으면 제목·위치에 낱말이 있는 조각을 앞에 둬요. `document_chunks.embedding`은 비워 두고, bge-m3 벡터 검색은 T33에서 같은 함수 뒤에 붙여요. 11/27 시연(알림장)에는 검색이 필요 없어요.
+- **적재는 요청 안에서 바로**: 모델을 부르지 않는 가벼운 일이고, 파일 원문 열이 DB에 없어서 API·Celery 워커 어느 쪽에서도 같은 결과가 나오게 접수 요청 안에서 끝내요(모의 API와 같음). 무거운 임베딩은 저장된 조각을 읽어 뒤에서 할 거예요.
+- 지금 읽는 파일은 `.md`·`.markdown`·`.txt`(UTF-8)뿐이에요. HWP·PDF는 `failed` + "지금은 .md·.txt 글 파일만 읽을 수 있어요".
+
+## 원 자료 넣기
+
+```sh
+PYTHONPATH=apps/api python -m db.seeds.documents   # 데모 시드 뒤에
+```
+
+T11 가상 원 자료 다섯 폴더의 Markdown 30개 중 29개를 넣어요. 만 3세반(C3)만 대상인 `NT-2026-31`은 시드에 그 반이 없어 원 전체로 잘못 보이지 않게 넣지 않아요. 원 자료끼리 일부러 넣은 충돌(겨울방학 12/24 vs 12/26, 30문항 YC-F03)은 평가용이라 둘 다 사용 중으로 넣어요.
+
+## 시험
+
+- DB 없이: `tests/unit/test_documents_parsing.py`·`test_documents_conflicts.py`·`test_documents_search_terms.py`
+- DB: `tools/test_db.sh tests/integration/db/test_documents_t20.py` — 적재 29개·위치·대상 반, 겨울방학 검색(위치·시행일), 학부모 반 범위·다른 기관·시행 전 자료, 충돌 올리기(`conflict_pending`+`conflicts[]`), 같은 내용 다시 올리기(200), 새 판(`superseded`), 읽을 수 없는 파일(`failed`), 다른 반 대상 올리기·상세(404)

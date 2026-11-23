@@ -239,20 +239,17 @@ def test_parent_note_classroom_filter_does_not_deny_or_log(db_client, records, s
         assert connection.scalar(text("SELECT count(*) FROM events WHERE action='permission_denied'")) == events_before
 
 
-@pytest.mark.parametrize("method,path,actor", [
-    ("POST", "/documents", seed.TEACHER),
-    ("GET", "/documents/{local_card}", seed.TEACHER),
+@pytest.mark.parametrize("method,path,actor,status", [
+    ("POST", "/documents", seed.TEACHER, 422),            # T20에서 연결: 본문이 없으면 형식 오류
+    ("GET", "/documents/{local_card}", seed.TEACHER, 404),  # 없는 자료는 404(범위 밖과 같음)
+    ("GET", "/documents/{local_card}", seed.PARENT, 403),   # 학부모는 자료 상세를 못 봄
 ])
-def test_pending_endpoints_fail_closed(db_client, records, method, path, actor):
+def test_document_endpoints_connected_and_closed(db_client, records, method, path, actor, status):
     path = path.format(**records, local_class=seed.CLASS_STAR)
     headers = {"Authorization": "Bearer " + issue_token(users.get_user(actor)),
-               "X-Request-ID": "pending-workflow"}
+               "X-Request-ID": "documents-connected"}
     response = db_client.request(method, "/api/v1" + path, headers=headers)
-    assert response.status_code == 501, response.text
-    assert response.json() == {"error": {
-        "code": "NOT_IMPLEMENTED", "message": "DB 모드에서는 아직 준비 중인 기능이에요.",
-        "trace_id": "pending-workflow", "details": {}}}
-    # 학부모에게 위험 등급·보류 이유나 mock의 업무 데이터를 보내지 않는다.
+    assert response.status_code == status, response.text
     assert db_client.request(method, "/api/v1" + path).status_code == 401
 
 

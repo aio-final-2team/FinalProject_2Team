@@ -12,10 +12,10 @@ from app.api.schemas.views import (NotificationList, NotificationResponse, Draft
                                   SendResponse, DocumentResponse, DocumentList, MemoryKind, MemoryList, RegenerateResponse)
 from app.api.schemas.common import errors
 from app.core.auth import CurrentUser, current_user as note_user, require_roles as note_roles
-# 자료 쓰기·상세는 후속 항목에서 연결해요.
-from app.core.workflows import require_workflow_roles as require_roles
 from app import backend
-from app.backend import documents
+
+# 자료 쓰기·상세도 DB 모드에서 연결했어요(T20). 두 모드 모두 역할만 확인하고 backend.documents를 그때그때 불러요.
+require_roles = note_roles
 
 router = APIRouter(tags=["알림장·자료"])
 Sort = Literal["-created_at", "created_at"]
@@ -96,11 +96,11 @@ def upload_document(response: Response, file: UploadFile = File(...),
                     visibility: Literal["staff", "parents", "all"] = Form(...), effective_from: Date = Form(...),
                     classroom_ids: list[UUID] = Form([], alias="classroom_ids[]"), replaces_document_id: UUID | None = Form(None),
                     user: CurrentUser = Depends(require_roles("teacher", "director"))):
-    doc, created = documents.upload(user, file.filename or "자료", file.file.read(), doc_type, visibility,
+    doc, created = backend.documents.upload(user, file.filename or "자료", file.file.read(), doc_type, visibility,
                                     classroom_ids, effective_from, replaces_document_id)
     if not created:
         response.status_code = 200
-    return {"document": documents.view(doc)}
+    return {"document": backend.documents.view(doc)}
 
 
 @router.get("/documents", response_model=DocumentList, responses=errors(401, 403, 422))
@@ -111,4 +111,4 @@ def document_list(page: int = Query(1, ge=1), size: int = Query(20, ge=1, le=100
 
 @router.get("/documents/{document_id}", response_model=DocumentResponse, responses=errors(401, 403, 404, 422))
 def document_detail(document_id: UUID, user: CurrentUser = Depends(require_roles("teacher", "director"))):
-    return {"document": documents.view(documents.in_scope(user, document_id))}
+    return {"document": backend.documents.view(backend.documents.in_scope(user, document_id))}
