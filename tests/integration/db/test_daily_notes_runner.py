@@ -94,6 +94,11 @@ def test_startup_recovers_running_and_queued_without_replaying_finished(seeded_d
         assert states[ids["failed"]] == "failed"
         assert connection.scalar(text("SELECT count(*) FROM daily_notes")) == 40
         assert connection.scalar(text("SELECT count(*) FROM cards")) == 4
+        # 멈춘 running 하나만 점검 작업(시스템)이 되돌린 이력으로 남는다.
+        assert connection.execute(text("""
+            SELECT actor_type, detail->>'selected_strategy', (detail->>'retry_count')::int FROM events
+            WHERE action='agent_requeued'
+        """)).all() == [("system", "requeue_stale", 1)]
     with TestClient(main.app):
         pass
     assert len(captured) == 2

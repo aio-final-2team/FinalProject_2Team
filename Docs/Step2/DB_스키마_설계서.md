@@ -716,10 +716,10 @@ FK를 걸 수 없는 참조가 두 곳 있다. `cards.subject_id`와 `notificati
 - **정상 복구**(`recovered`): 실패한 뒤 다시 시도해 저장했고, 모든 아이가 검증을 통과했다(`draft_failed = 0`). 저장된 초안은 `draft`·`needs_check` 상태라 담임이 화면에서 바로 검토할 수 있다.
 - **대체 응답**(`fallback`): 실패한 뒤 다시 시도해 저장했지만 일부 아이는 템플릿이다(`0 < draft_failed < saved`). 검증을 통과한 아이의 초안은 검토할 수 있다.
 - **사람 이관**(`handed_off`): 다시 시도한 뒤에도 작업이 실패했거나, 저장한 아이 알림장이 모두 템플릿인 경우다.
-- **복구율**은 정상 복구 건수를, 다시 시도해 결과가 난 incident 수(정상 복구, 대체 응답, 사람 이관을 합친 수)로 나눈 값이다. 실패한 작업은 담임이 다시 시도해야 복구 대상이 되므로, 다시 시도 전인 incident는 분모에서 뺀다.
-- 감지 시간은 `detection_ms`, 복구 시간은 `duration_ms`로 잰다. 스크립트는 둘 다 중앙값과 최대를 내고, 마지막 저장에서 템플릿으로 남아 담임이 직접 쓴 아이 수도 따로 낸다.
+- **복구율**은 정상 복구 건수를 다시 시도해 결과가 난 incident 수로 나눈 값이다. 분모에는 정상 복구, 대체 응답, 사람 이관을 합친 수가 들어간다. 실패한 작업은 담임이 다시 시도해야 복구 대상이 되므로, 아직 다시 시도하지 않은 incident는 분모에서 뺀다. 가이드와 다른 점도 여기서 생긴다. 가이드의 '자동 복구 대상'은 시스템이 스스로 복구를 시도하는 실패를 뜻하지만, 알림장은 사람이 다시 시도를 누른 실패를 대상으로 센다.
+- 감지 시간은 `detection_ms`, 복구 시간은 `duration_ms`로 잰다. 스크립트는 두 값 모두 중앙값과 최대를 낸다. 마지막 저장 때 템플릿으로 남아 있어 담임이 직접 쓴 아이 수도 따로 센다.
 
-스크립트는 위 요약 표를 내고, incident마다 가이드의 여덟 칸을 한 줄씩 낸다. 이 기록을 12/18 결과서의 복구 건수와 소요 시간 근거로 쓴다. 장애를 일부러 넣어 확인한 시험은 두 개다. `test_daily_note_recovery.py::test_timeout_then_regenerate_is_one_recovered_incident_with_times`는 작성기 시간 초과, 다시 만들기, 저장이 차례로 일어났을 때 incident 하나의 정상 복구로 집계되는지 본다. `::test_failed_retry_is_handed_off_then_partial_template_is_fallback`은 다시 시도해도 실패하면 사람 이관이 되는지, 그다음 시도에서 두 아이만 템플릿이면 대체 응답으로 바뀌고 직접 쓸 아이가 2명으로 나오는지 본다.
+스크립트는 위 요약 표 말고도 `selected_strategy`별 표를 낸다. 이 표는 담임 다시 만들기(`retry_by_teacher`), 점검 작업의 되돌리기(`requeue_stale`), 아이별 템플릿(`template_fallback`)을 쓴 incident를 결과별로 따로 세기 때문에, 결과서에서는 다른 분모로도 복구율을 계산할 수 있다. 마지막으로 incident마다 가이드의 여덟 칸을 한 줄씩 낸다. 이 기록을 12/18 결과서의 복구 건수와 소요 시간 근거로 쓴다. 장애를 일부러 넣어 확인한 시험은 두 개다. `test_daily_note_recovery.py::test_timeout_then_regenerate_is_one_recovered_incident_with_times`는 작성기 시간 초과, 다시 만들기, 저장이 차례로 일어났을 때 incident 하나의 정상 복구로 집계되는지 본다. `::test_failed_retry_is_handed_off_then_partial_template_is_fallback`은 다시 시도해도 실패하면 사람 이관이 되는지, 그다음 시도에서 두 아이만 템플릿이면 대체 응답으로 바뀌고 직접 쓸 아이가 2명으로 나오는지 본다.
 
 **알림**
 
@@ -909,7 +909,7 @@ API 설계 문서의 403·404 조건은 이 표와 내용이 같고, AI 보안 �
 
 ### 4.4 차단 시험
 
-기관 복합 FK는 다른 기관의 행을 이 원의 행에 잘못 잇는 저장을 막는다. 하지만 조회·수정·파일 열람 권한은 API가 요청마다 확인하므로, 아래 세 사람으로 실제 HTTP를 불러 시험했다. 기대값은 API 설계 문서 4장의 규칙과 같다. 다른 기관이면 언제나 404이고, 같은 기관이라도 범위 밖이면 404다. 예외는 피드 반 칸 하나로, 같은 기관 사람을 403 `FORBIDDEN`으로 거부한다. 거부한 요청은 `events`에 `permission_denied`로 남는다. 사례마다 권한 있는 사람의 정상 호출 한 번과 막혀야 하는 호출을 같은 시험 안에서 함께 부른다. 표의 실제 결과는 9.2의 실행에서 나온 값이다.
+기관 복합 FK는 다른 기관의 행이 이 원의 행에 잘못 이어져 저장되는 것을 막는다. 하지만 조회·수정·파일 열람 권한은 API가 요청마다 확인하는 일이라, 아래 세 사람으로 실제 HTTP를 불러 시험했다. 기대값은 API 설계 문서 4장의 규칙과 같다. 다른 기관이면 언제나 404이고, 같은 기관이라도 범위 밖이면 404다. 피드만 예외다. 반 칸에서는 같은 기관 사람이라도 그 반 아이의 보호자가 아니면, 원 칸에서는 지금 연결된 아이가 없는 보호자면 403 `FORBIDDEN`으로 거부한다. 거부한 요청은 `events`에 `permission_denied`로 남는다. 사례마다 같은 시험 안에서 권한 있는 사람의 정상 호출 한 번과 막혀야 하는 호출을 함께 부른다. 표의 실제 결과는 9.2의 실행에서 나온 값이다.
 
 - **다른 기관 사용자**: 다른 원에 속한 담임·학부모 계정
 - **다른 반 보호자**: 햇님반 아이의 보호자이기만 한 계정이 별빛반 자료를 부르는 경우
@@ -927,10 +927,10 @@ API 설계 문서의 403·404 조건은 이 표와 내용이 같고, AI 보안 �
 | 다른 반 보호자 · 조회 | 햇님반 보호자가 별빛반 알림장 목록을 부름 | 200, 0건, 거부 이력 없음 | 200, 0건, 이력 없음 | 목록은 자기 아이 알림장만 걸러 보여 준다 | `test_scope_cases.py::test_other_class_guardian_is_blocked_on_read_update_and_file` |
 | 다른 반 보호자 · 수정 | 별빛반 아이로 요청 접수 / 그 아이 사진 공개 범위 바꾸기 / 반 칸 글 올리기 | 404 / 403 / 403, 거부 이력 | 404 / 403 / 403, 거부 이력 | 연결된 아이가 아니다 | 같은 시험, `test_feed.py::test_class_all_read_surfaces_and_write_deny_with_persistent_events` |
 | 다른 반 보호자 · 파일 열람 | 별빛반 반 칸 사진 / 가족 범위로 가려진 원 칸 사진 / 자료 상세 | 403 / 404 / 403 `FORBIDDEN_ROLE` | 403 / 404 / 403 | 반 칸 권한 없음 / 태그된 아이가 허용하지 않음 / 학부모는 자료 상세를 못 봄 | 같은 시험, `test_scope.py::test_document_endpoints_connected_and_closed` |
-| 연결이 끝난 보호자 · 정상 | 연결을 지우기 전에 그 아이 알림장·반 칸 사진·태그된 원 칸 사진을 엶 | 1건, 200 | 1건, 200 | 연결된 아이다 | `test_scope_cases.py::test_unlinked_guardian_loses_child_notes_requests_and_class_photos` |
-| 연결이 끝난 보호자 · 조회 | 연결을 지운 뒤 자기가 낸 요청 / 그 아이 알림장 / 반 칸 목록을 부름 | 404 / 0건 / 403 | 404 / 0건 / 403 | 요청마다 지금의 `child_guardians`를 다시 읽는다 | `test_scope.py::test_parent_request_ownership_and_live_guardian_link`, `test_scope_cases.py::test_unlinked_guardian_loses_child_notes_requests_and_class_photos`, `test_feed.py::test_author_can_delete_after_losing_class_access` |
-| 연결이 끝난 보호자 · 수정 | 그 아이로 요청 접수 / 사진 공개 범위 바꾸기 | 404 / 403 | 404 / 403 | 위와 같음 | `test_scope_cases.py::test_unlinked_guardian_loses_child_notes_requests_and_class_photos`, `test_feed.py::test_only_current_child_guardian_can_read_or_change_scope` |
-| 연결이 끝난 보호자 · 파일 열람 | 반 칸 사진 / 그 아이가 태그된 원 칸 사진 / 아이와 무관한 원 칸 사진 | 403 / 404 / 200 | 403 / 404 / 200 | 원 칸은 같은 기관 계정에 열려 있다. 계정을 끄면(`is_active = false`) 401로 닫힌다 | `test_scope_cases.py::test_unlinked_guardian_loses_child_notes_requests_and_class_photos` |
+| 연결이 끝난 보호자 · 정상 | 연결을 지우기 전에 그 아이 알림장·반 칸 사진·태그된 원 칸 사진을 엶 | 1건, 200 | 1건, 200 | 연결된 아이다 | `test_scope_cases.py::test_unlinked_guardian_loses_child_notes_requests_and_all_feed_photos` |
+| 연결이 끝난 보호자 · 조회 | 연결을 지운 뒤 자기가 낸 요청 / 그 아이 알림장 / 반 칸 목록 / 원 칸 목록·앨범·글 상세를 부름 | 404 / 0건 / 403 / 403 | 404 / 0건 / 403 / 403, 거부 이력 | 요청마다 지금의 `child_guardians`를 다시 읽는다. 남은 아이가 없으면 원 칸도 열지 않는다 | `test_scope.py::test_parent_request_ownership_and_live_guardian_link`, `test_scope_cases.py::test_unlinked_guardian_loses_child_notes_requests_and_all_feed_photos`, `test_feed.py::test_author_can_delete_after_losing_class_access`, `test_feed.py::test_org_lane_closes_for_guardian_without_linked_child` |
+| 연결이 끝난 보호자 · 수정 | 그 아이로 요청 접수 / 사진 공개 범위 바꾸기 / 원 칸 글 올리기 | 404 / 403 / 403 | 404 / 403 / 403 | 위와 같음 | `test_scope_cases.py::test_unlinked_guardian_loses_child_notes_requests_and_all_feed_photos`, `test_feed.py::test_only_current_child_guardian_can_read_or_change_scope`, `test_feed.py::test_org_lane_closes_for_guardian_without_linked_child` |
+| 연결이 끝난 보호자 · 파일 열람 | 반 칸 사진 / 그 아이가 태그된 원 칸 사진 / 아이와 무관한 원 칸 사진 | 403 / 403 / 403, 거부 이력 | 403 / 403 / 403, 거부 이력(목록 포함 다섯 건) | 남은 아이가 없으면 칸 권한에서 먼저 막는다. 계정까지 끄면(`is_active = false`) 401 | `test_scope_cases.py::test_unlinked_guardian_loses_child_notes_requests_and_all_feed_photos`, `test_feed.py::test_org_lane_closes_for_guardian_without_linked_child` |
 
 위 표 밖의 차단 시험은 다음과 같다.
 
@@ -1222,7 +1222,7 @@ WHERE type = 'complaint' AND classroom_id = :classroom_id AND topic_key = :topic
 | `develop` `76900bb` + v0.18 변경 | 0010 | 공개 범위(`family`·`class`·`org`)별로 목록·상세·앨범·사진 파일이 보이는지 | `test_feed.py::test_photo_scope_filters_all_surfaces_and_uploader_always_sees`(시험 PG 모드) | 통과 |
 | `develop` `76900bb` + v0.18 변경 | 0010 | 알림장 초안·확인·발송·다시 만들기·복구 이력 | `test_daily_notes_runner.py`, `test_note_regenerate.py`, `test_daily_note_recovery.py`, `test_daily_notes.py`(시험 PG 모드) | 통과 |
 
-**다시 확인하는 방법.** 기준 커밋을 받은 뒤 레포 루트에서 `tools/test_db.sh`를 실행하면 된다. 이 스크립트는 `pgvector/pgvector:pg16` 임시 컨테이너를 빈 포트에 띄우며, 공용 DB는 쓰지 않는다. 그 컨테이너에서 `tests/integration/db` 전체와 공유 HTTP 시험을 모의·시험 PG 두 모드로 돌리고, 끝나면 컨테이너와 볼륨을 지운다. 실행 환경은 Python 3.12, 그리고 pgvector를 얹은 PostgreSQL 16이다. 실행 로그에는 시험 이름과 통과 수가 남는다. 이 판의 실행에서는 DB 시험 297개와 공유 HTTP 시험 670개가 모두 통과했다(실패 0).
+**다시 확인하는 방법.** 기준 커밋을 받은 뒤 레포 루트에서 `tools/test_db.sh`를 실행하면 된다. 이 스크립트는 `pgvector/pgvector:pg16` 임시 컨테이너를 빈 포트에 띄우며, 공용 DB는 쓰지 않는다. 그 컨테이너에서 `tests/integration/db` 전체와 공유 HTTP 시험을 모의·시험 PG 두 모드로 돌리고, 끝나면 컨테이너와 볼륨을 지운다. 실행 환경은 Python 3.12, 그리고 pgvector를 얹은 PostgreSQL 16이다. 실행 로그에는 시험 이름과 통과 수가 남는다. 이 판의 실행에서는 DB 시험 297개와 공유 HTTP 시험 672개가 모두 통과했다(실패 0).
 
 ## 10. LangGraph 체크포인트
 
@@ -1252,6 +1252,7 @@ WHERE type = 'complaint' AND classroom_id = :classroom_id AND topic_key = :topic
 
 칸·사진 권한은 API 설계 문서 3.29를 따른다. API는 요청이 올 때마다 현재 보호자 관계와 공개 범위를 읽어 검사한다.
 교직원이나 다른 반 보호자가 우리 반 피드를 요청하면 403 FORBIDDEN을 돌려주고 permission_denied 이력을 남긴다. 다른 기관에서 요청하면 다른 자원과 마찬가지로 404다.
+원 칸을 열 수 있는 사람은 같은 기관의 교직원과, 지금 연결된 아이가 하나라도 있는 보호자다. 따라서 연결된 아이가 없는 보호자는 원 칸에서도 403 FORBIDDEN을 받고, 같은 이력이 남는다.
 사진 한 장에 태그된 아이가 여럿이면 전원이 허용해야 사진이 보이고, 보이지 않는 사진은 앨범 total에도 세지 않는다.
 글을 삭제하면 deleted_at을 남기고 파일은 실제로 지운다. 반면 0010 downgrade는 표·새 이력·photo_scope만 되돌리고 파일 볼륨은 지우지 않는다.
 T50이 붙기 전까지는 사진을 올린 사람이 아이를 직접 표시한다. 얼굴 찾기·흐림·알림·화면은 이번 계약에 들어 있지 않다.
@@ -1262,18 +1263,18 @@ T50이 붙기 전까지는 사진을 올린 사람이 아이를 직접 표시한
 
 **공개 범위를 바꿀 때.** 사진·태그·메타데이터는 그대로 두고, 요청이 올 때마다 그 순간의 `photo_scope`로 볼 수 있는지 다시 판단한다. 그래서 범위를 좁히면 예전 사진도 바로 안 보인다(`test_feed.py::test_scope_changes_apply_to_old_photos_immediately_and_all_tagged_children_must_allow`). 다만 이미 내려받은 파일은 회수할 수 없다. 바꾼 사실은 `photo_scope_changed` 이력의 `detail.before`·`detail.after`로만 남긴다.
 
-**아이가 퇴소할 때.** MVP에는 퇴소 API가 없어서 관리 작업으로 처리한다. 보호자 연결(`child_guardians`)이 끝나면 그 보호자는 바로 막힌다(4.4). 반 칸 목록·사진은 403, 그 아이가 태그된 사진은 404, 그 아이의 알림장·요청은 0건·404가 된다. 하지만 원 칸은 같은 기관의 모든 계정에 열려 있어서, 계정이 살아 있으면 그 아이와 관계없는 원 칸 글과 사진은 계속 보인다. 사진 한 장은 태그된 아이 모두가 허용해야 보이므로, 여러 아이가 함께 찍힌 사진에서 그 아이 태그만 지우면 오히려 더 넓게 보인다. 관리 작업은 다음 순서로 한다.
+**아이가 퇴소할 때.** MVP에는 퇴소 API가 없어서 관리 작업으로 처리한다. 보호자 연결(`child_guardians`)이 끝나면 그 보호자는 바로 막힌다(4.4). 그 뒤로 반 칸 목록·사진은 403, 그 아이의 알림장·요청은 0건·404가 된다. 원 칸도 지금 연결된 아이가 있는 보호자만 열 수 있으므로, 다른 아이가 남지 않은 보호자는 원 칸 글과 사진도 403으로 볼 수 없다. 태그를 지울 때는 방향이 반대라는 점을 봐야 한다. 사진 한 장은 태그된 아이 모두가 허용해야 보이기 때문에, 여러 아이가 함께 찍힌 사진에서 그 아이 태그만 지우면 오히려 더 넓게 보인다. 관리 작업은 다음 순서로 한다.
 
-1. 그 아이의 보호자 연결을 지운다. 다른 아이가 남지 않은 보호자 계정은 `users.is_active = false`로 끄며, 그 뒤의 요청은 401이 된다.
-2. 그 아이의 `photo_scope`를 `family`로 되돌린다. 보호자가 없으니 그 아이가 태그된 사진은 올린 사람 말고는 아무도 볼 수 없게 된다.
-3. 그 아이만 태그된 사진은 태그(`feed_photo_children`), 사진 행(`feed_photos`), 파일 순서로 지운다. 다른 아이와 함께 태그된 사진은 태그를 남겨 계속 가려 둔다.
+1. 그 아이의 보호자 연결을 지운다. 다른 아이가 남지 않은 보호자 계정은 추가로 `users.is_active = false`로 끌 수 있고, 그러면 그 뒤의 요청은 401이 된다.
+2. 그 아이의 `photo_scope`를 `family`로 되돌린다. 보호자가 없으므로 그 아이가 태그된 사진은 올린 사람 말고는 아무도 볼 수 없게 된다.
+3. 그 아이만 태그된 사진은 태그(`feed_photo_children`), 사진 행(`feed_photos`), 파일 순서로 지운다. 다른 아이와 함께 태그된 사진은 태그를 그대로 두어 계속 가려 둔다.
 4. 그 아이 요청에서 나온 기억을 아래 방식으로 비운다.
 
 이력(`events`)은 지우지 않는다. `detail`에는 비밀값과 불필요한 개인정보를 넣지 않는다는 규칙(2.2)이 있어서, 피드 이력에 들어가는 값은 글·사진·아이 ID와 공개 범위 값, 추적 ID뿐이다.
 
 **기억.** `memories`는 담임 본인의 거절 이유·선호 기록이고, 보호자가 지우는 기능은 없다. 담임이 지우면(API 3.25) 내용(`content`)과 구조화 값(`structured`)을 그 자리에서 비우고 지운 시각만 남긴다. 그 반 아이 이름은 저장할 때부터 가린다. 기억이 아이와 이어지는 길은 하나뿐이다. `source_card_id`로 카드를 찾고, 그 카드가 가리키는 요청의 `child_id`를 따라가야 한다. 지금 코드에는 퇴소할 때 기억을 비우는 일이 없으므로, 위 4번은 관리 작업이 같은 방식으로 한다. 내용을 비우고 `deleted_at`을 채우는 것이다.
 
-**파일 삭제가 실패할 때.** 글을 지우면 먼저 `feed_posts.deleted_at`과 `feed_post_deleted` 이력을 한 트랜잭션으로 커밋한다. 커밋되는 순간부터 API는 그 글과 사진을 어디에서도 돌려주지 않고, 파일은 그다음에 지운다. 파일 삭제가 실패해도 응답은 204다. 파일은 그대로 남고 `feed_photo_delete_failed photo_id=…` 경고 로그만 찍힌다(`test_feed.py::test_disk_delete_failure_leaves_only_orphan_file_after_commit`). 남은 파일은 점검 작업으로 정리한다. `MEDIA_DIR`에 있는 파일 가운데, 지우지 않은 글(`deleted_at IS NULL`)의 `feed_photos.storage_path` 어디에도 없는 파일을 골라 지우는 방식이다. 모의 모드의 `mock/` 폴더는 뺀다. 이 점검 스크립트는 아직 없다. 지운 글의 `feed_photos`·`feed_photo_children` 행은 DB에 남지만 API가 읽지 않는다.
+**파일 삭제가 실패할 때.** 글을 지우면 먼저 `feed_posts.deleted_at`과 `feed_post_deleted` 이력을 한 트랜잭션으로 커밋한다. 커밋되는 순간부터 API는 그 글과 사진을 어디에서도 돌려주지 않고, 파일은 그다음에 지운다. 파일 삭제가 실패해도 응답은 204다. 파일은 그대로 남고 `feed_photo_delete_failed photo_id=…` 경고 로그만 찍힌다(`test_feed.py::test_disk_delete_failure_leaves_only_orphan_file_after_commit`). 남은 파일은 점검 작업으로 정리한다. `MEDIA_DIR`에 있는 파일 가운데, 지우지 않은 글(`deleted_at IS NULL`)의 `feed_photos.storage_path` 어디에도 없는 파일을 골라 지우는 방식이다. 모의 모드의 `mock/` 폴더는 뺀다. 지운 글의 `feed_photos`·`feed_photo_children` 행은 DB에 남지만 API가 읽지 않는다.
 
 **백업에서 복원할 때.** 배포 전에 DB를 `pg_dump`로 받아 백업해 두고, 복원할 때는 그 파일을 빈 DB에 `psql`로 되돌린다(배포 문서 7-2). 사진 파일은 DB 밖의 `media_data` 볼륨에 있어 이 백업에 들어가지 않는다. 시험 PG에서 백업 시점에 덤프를 받고, 글을 지우고 공개 범위를 좁힌 뒤 복원해 보니 지운 글의 본문이 다시 보였고 공개 범위도 넓은 값으로 돌아갔다. 사진 파일은 이미 지워져 404였다. 복원하기 전 DB에서 백업 시각 뒤의 `feed_post_deleted`·`feed_post_hidden`·`photo_scope_changed` 이력을 옮겨 두었다가 복원한 DB에 같은 순서로 다시 적용하자, 복원으로 열렸던 글과 공개 범위가 도로 닫혔다(`test_backup_restore.py::test_dump_restore_revives_deleted_post_until_later_events_are_reapplied`). 그래서 복원 절차는 다음과 같다.
 
@@ -1282,7 +1283,14 @@ T50이 붙기 전까지는 사진을 올린 사람이 아이를 직접 표시한
 3. 뽑아 둔 이력을 순서대로 다시 적용한다. 글은 `deleted_at`·`status = 'hidden'`을, 아이는 `photo_scope = detail.after`를 채우고, 이력 행도 다시 넣는다.
 4. 지금 DB를 잃어 이력을 뽑을 수 없으면, 사진 파일이 없는 글을 지운 글로 보고 `deleted_at`을 채운다. 파일은 글을 지울 때만 사라지기 때문이다.
 
-기억 삭제와 퇴소 관리 작업은 이력을 남기지 않아서 복원하면 되살아난다. 그러니 이 둘은 복원한 뒤 관리 작업을 다시 돌려야 한다. 3번과 4번을 대신 해 주는 복원 스크립트는 아직 없다.
+기억 삭제와 퇴소 관리 작업은 이력을 남기지 않아서 복원하면 되살아난다. 그러니 이 둘은 복원한 뒤 관리 작업을 다시 돌려야 한다.
+
+**지금 상태와 남은 일.**
+
+- 고아 파일 점검 스크립트는 아직 없다. 위 '파일 삭제가 실패할 때'의 절차만 정해 두었다.
+- 복원한 뒤 이력을 다시 적용하는 스크립트도 아직 없다. 같은 일을 시험에서 SQL로 해 보고 닫히는 것만 확인했다.
+- 배포 전 백업은 DB만 받고 사진 파일 볼륨(`media_data`)은 받지 않는다. 사진 백업 방식은 아직 정하지 않았다.
+- 기억 삭제와 퇴소 관리 작업은 이력을 남기지 않는다. 남기려면 새 이력 종류가 필요해 마이그레이션이 생긴다.
 
 ## 변경 이력
 
@@ -1303,7 +1311,7 @@ T50이 붙기 전까지는 사진을 올린 사람이 아이를 직접 표시한
 | v0.15 | 2026-11-21 | 0009: 상담 예상 종료를 예약 당일·원래 종료 + 3시간 안으로 제한 |
 | v0.16 | 2026-11-21 | 0010: 피드·사진 메타데이터 표 세 개, `children.photo_scope`, 피드 이력 네 종류 |
 | v0.17 | 2026-11-23 | 과정 이야기를 걷어내고 문장을 다듬음. 낡은 개수·진행 상태를 지금 DDL·코드에 맞춤. 원에 남은 답은 바로 답하지 않고 담임 카드 초안으로만 쓰도록 기획서·에이전트 명세(T14)에 맞춤 |
-| v0.18 | 2026-11-23 | 11/20 강사 피드백 반영. 다른 기관·다른 반·연결이 끝난 보호자 차단 시험(4.4), 알림장 초안 실패·복구 이력(2.6), 사진·기억의 보존과 삭제(피드·앨범 절), 마이그레이션 적용 기록(9.2)을 더함 |
+| v0.18 | 2026-11-23 | 11/20 강사 피드백 반영. 다른 기관·다른 반·연결이 끝난 보호자 차단 시험(4.4), 알림장 초안 실패·복구 이력(2.6), 사진·기억의 보존과 삭제(피드·앨범 절), 마이그레이션 적용 기록(9.2)을 더함. 연결된 아이가 없는 보호자에게는 원 칸도 닫음 |
 
 
 ## 부록. 가이드 제출 전 체크리스트

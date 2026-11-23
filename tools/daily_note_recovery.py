@@ -49,11 +49,16 @@ def summarize(connection, since, until):
             "validation_result": closing["validation_result"], "duration_ms": closing.get("duration_ms"),
             "detection_ms": events[first]["detail"]["detection_ms"]})
     counts = Counter(i["recovery_status"] for i in incidents)
+    # 결과서에서 다른 분모(예: 담임 다시 만들기만)로도 계산할 수 있게 전략별로도 나눠 센다.
+    by_strategy = {}
+    for incident in incidents:
+        by_strategy.setdefault(incident["selected_strategy"], Counter())[incident["recovery_status"]] += 1
     target = counts["recovered"] + counts["fallback"] + counts["handed_off"]
     detection = [i["detection_ms"] for i in incidents]
     duration = [i["duration_ms"] for i in incidents if i["duration_ms"] is not None]
     return {"incidents": incidents, "recovered": counts["recovered"], "fallback": counts["fallback"],
             "handed_off": counts["handed_off"], "pending": counts["pending"], "handed_children": handed_children,
+            "by_strategy": {name: dict(c) for name, c in sorted(by_strategy.items())},
             "recovery_rate": counts["recovered"] / target if target else None,
             "detection_ms": (median(detection), max(detection)) if detection else None,
             "duration_ms": (median(duration), max(duration)) if duration else None}
@@ -80,6 +85,10 @@ def main():
                          ("복구 시간 중앙값·최대(ms)", "-" if duration is None else "%d · %d" % duration),
                          ("담임이 직접 쓴 아이(템플릿)", result["handed_children"])):
         print(f"| {label} | {value} |")
+    statuses = ("recovered", "fallback", "handed_off", "pending")
+    print("\n| selected_strategy | incident | 정상 복구 | 대체 응답 | 사람 이관 | 대기 |\n|" + " --- |" * 6)
+    for name, c in result["by_strategy"].items():
+        print(f"| {name} | {sum(c.values())} | " + " | ".join(str(c.get(k, 0)) for k in statuses) + " |")
     print("\n| " + " | ".join(COLUMNS) + " |\n|" + " --- |" * len(COLUMNS))
     for incident in result["incidents"]:
         print("| " + " | ".join("-" if incident[c] is None else str(incident[c]) for c in COLUMNS) + " |")

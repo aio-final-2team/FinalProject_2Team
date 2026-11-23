@@ -67,6 +67,7 @@ def test_timeout_then_regenerate_is_one_recovered_incident_with_times(db_client,
         "retry_count": 1, "fallback_used": False, "recovery_status": "recovered",
         "validation_result": "all_children_passed", "duration_ms": duration, "detection_ms": detection}]
     assert (result["recovered"], result["fallback"], result["handed_off"], result["pending"]) == (1, 0, 0, 0)
+    assert result["by_strategy"] == {"retry_by_teacher": {"recovered": 1}}
     assert result["recovery_rate"] == 1 and result["duration_ms"] == (duration, duration) and duration >= 0
     assert result["detection_ms"] == (detection, detection)
 
@@ -101,5 +102,6 @@ def test_failed_retry_is_handed_off_then_partial_template_is_fallback(db_client,
         True, "some_children_template", "fallback")
     result = summary(seeded_db)
     assert result["incidents"][0]["selected_strategy"] == "retry_by_teacher+template_fallback"
+    assert result["by_strategy"] == {"retry_by_teacher+template_fallback": {"fallback": 1}}
     assert (result["recovered"], result["fallback"], result["handed_off"], result["handed_children"]) == (0, 1, 0, 2)
     assert result["recovery_rate"] == 0 and result["duration_ms"] == (drafted["duration_ms"],) * 2

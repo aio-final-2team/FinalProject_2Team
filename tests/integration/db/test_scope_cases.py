@@ -99,7 +99,7 @@ def test_other_class_guardian_is_blocked_on_read_update_and_file(feed_files, rec
     assert denials(seeded_db, "hidden") == []
 
 
-def test_unlinked_guardian_loses_child_notes_requests_and_class_photos(feed_files, records, seeded_db):
+def test_unlinked_guardian_loses_child_notes_requests_and_all_feed_photos(feed_files, records, seeded_db):
     client = feed_files
     class_photo = photo_post(client, seed.PARENT_OTHER, CLASS, [[]])["photos"][0]
     tagged = photo_post(client, seed.PARENT_OTHER, ORG, [[seed.CHILD]])["photos"][0]
@@ -115,17 +115,15 @@ def test_unlinked_guardian_loses_child_notes_requests_and_class_photos(feed_file
     assert sent_notes() == 1
     assert all(client.get(p["file_url"], headers=auth(seed.PARENT)).status_code == 200
                for p in (class_photo, tagged, untagged))
-    unlink(seeded_db, seed.CHILD, seed.PARENT)
+    unlink(seeded_db, seed.CHILD, seed.PARENT)  # parent01에게 남은 아이가 없다
     assert sent_notes() == 0
     assert ask(client, seed.PARENT, seed.CHILD, "unlinked").status_code == 404
-    assert client.get(class_photo["file_url"], headers=auth(seed.PARENT, "unlinked")).status_code == 403
-    assert len(denials(seeded_db, "unlinked")) == 2
-    assert client.get(tagged["file_url"], headers=auth(seed.PARENT)).status_code == 404
-    # 원 칸은 같은 기관 사람에게 열려 있어 계정이 살아 있는 동안은 아이와 무관한 사진이 보인다.
-    assert client.get(ORG + "/posts", headers=auth(seed.PARENT)).status_code == 200
-    assert client.get(untagged["file_url"], headers=auth(seed.PARENT)).status_code == 200
-    # 퇴소 작업이 남은 아이가 없는 보호자 계정을 끄면 원 칸도 닫힌다.
+    # 원 칸도 지금 연결된 아이가 있는 보호자만 연다. 아이와 무관한 원 칸 사진도 막힌다.
+    for path in (class_photo["file_url"], tagged["file_url"], untagged["file_url"], ORG + "/posts"):
+        assert client.get(path, headers=auth(seed.PARENT, "unlinked")).status_code == 403, path
+    assert len(denials(seeded_db, "unlinked")) == 5
+    # 추가 조치로 계정까지 끄면 인증 단계에서 401이 된다.
     headers = auth(seed.PARENT)
     with seeded_db.begin() as connection:
         connection.execute(text("UPDATE users SET is_active=false WHERE id=:id"), {"id": seed.PARENT})
-    assert client.get(untagged["file_url"], headers=headers).status_code == 401
+    assert client.get(ORG + "/posts", headers=headers).status_code == 401
