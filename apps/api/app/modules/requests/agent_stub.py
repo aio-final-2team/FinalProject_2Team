@@ -14,6 +14,7 @@ from app.core.schedule import KST, due_at
 from app.modules.requests.complaints import repeat_count
 from app.modules.requests.events import record, set_status
 from app.modules.consultations.slots import propose_slots
+from app.modules.documents.answer import answer_for_request, graph_enabled, save_evidence
 
 
 def new_card(connection, req, kind, assignee, draft=None):
@@ -70,9 +71,16 @@ def run_request(request_id):
             return
         high_risk = req["risk_level"] in ("urgent", "uncertain")
         draft = {"summary": req["body"][:60], "no_evidence": True}
+        answer = None
         if not high_risk:
-            draft["text"] = "(모의 초안) 말씀해 주셔서 감사합니다. 확인해서 다시 안내드릴게요."
+            if req["type"] == "inquiry" and graph_enabled():
+                answer = answer_for_request(req)
+                draft.update({key: answer[key] for key in ("text", "no_evidence", "conflict")})
+            else:
+                draft["text"] = "(모의 초안) 말씀해 주셔서 감사합니다. 확인해서 다시 안내드릴게요."
         card = new_card(connection, req, "reply_draft", teacher, draft)
+        if answer:
+            save_evidence(connection, card, answer)
         if not high_risk:
             card["check_result"] = {"passed": True, "issues": [], "attempt": 1}
             connection.execute(text("UPDATE cards SET check_result=CAST(:check AS jsonb) WHERE id=:id"),

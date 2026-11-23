@@ -34,3 +34,16 @@ T11 가상 원 자료 다섯 폴더의 Markdown 30개 중 29개를 넣어요. �
 
 - DB 없이: `tests/unit/test_documents_parsing.py`·`test_documents_conflicts.py`·`test_documents_search_terms.py`
 - DB: `tools/test_db.sh tests/integration/db/test_documents_t20.py` — 적재 29개·위치·대상 반, 겨울방학 검색(위치·시행일), 학부모 반 범위·다른 기관·시행 전 자료, 충돌 올리기(`conflict_pending`+`conflicts[]`), 같은 내용 다시 올리기(200), 새 판(`superseded`), 읽을 수 없는 파일(`failed`), 다른 반 대상 올리기·상세(404)
+
+## 임베딩·답변 초안 (T33)
+
+기본은 낱말 검색과 모의 초안입니다. `apps/api/requirements-embedding.txt`를 별도로 설치하고
+`EMBEDDING_MODEL=BAAI/bge-m3`로 설정하면 첫 사용 때 모델을 읽습니다. 원 자료를 넣은 뒤
+`PYTHONPATH=apps/api python -m db.seeds.embed`로 빈 조각의 벡터를 채웁니다.
+같은 판(`bge-m3@1`)의 벡터가 있는 조각은 낱말 점수와 코사인 유사도를 반씩 섞습니다.
+벡터가 없거나 기능을 끄면 낱말 점수만 씁니다.
+
+`ANSWER_WRITER=graph`면 위험도가 높지 않은 학부모 문의에 한해 자료 AI가 네 문서 종류를 찾습니다.
+인용문이 실제 조각에 있는지 코드가 확인한 뒤 카드의 `card_evidence`에 저장합니다.
+근거가 없거나 문서가 충돌하면 확인 문장으로 바꾸고 담임 카드에 넘깁니다.
+실제 모델 호출에는 `OPENAI_API_KEY`와 `LLM_MODEL_DOCUMENT` 설정이 필요합니다.
