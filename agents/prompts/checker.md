@@ -29,6 +29,7 @@
 | 다른 아이 | 알림장에 다른 아이 이름이 있거나, 메모가 다른 아이 이야기로 보인다 | `other_child` |
 | 날짜 | 메모의 날짜가 준비물·통신문 날짜와 다르다. 보호자 요청이 오늘이 아닌 날(어제·내일) 이야기다 | `date_check` |
 | 결석 | 메모가 결석이다. 보낼지 선생님이 정한다 | `absent` |
+| 문의에 답이 없음 | 보호자 문의 줄이 메모로 답하지 못하고 문의만 옮겨 두었다 | `sensitive` (`request_id`에 그 요청 ID) |
 | 보호자 요청 누락 | 그날 보호자 요청 중 `source.request_id`로 다룬 줄이 없는 것이 있다 | `request_missed` (`request_id`에 그 요청 ID, `sentence`는 null) |
 
 - `not_in_memo`·`request_missed`는 `return_to_step`으로 자료 AI에 돌려보낸다(최대 2번). 나머지는 고칠 문제가 아니라 선생님이 볼 일이라 돌려보내지 않고 `open_checks`로만 남긴다.
