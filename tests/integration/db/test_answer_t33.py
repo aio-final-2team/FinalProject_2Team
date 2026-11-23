@@ -44,7 +44,7 @@ def create_card(db_client, body):
         card = connection.execute(text("SELECT * FROM cards WHERE request_id=:id AND kind='reply_draft'"),
                                   {"id": request_id}).mappings().one()
         evidence = connection.execute(text("""
-            SELECT e.quote, ch.location FROM card_evidence e JOIN document_chunks ch ON ch.id=e.chunk_id
+            SELECT e.quote, e.score, ch.location FROM card_evidence e JOIN document_chunks ch ON ch.id=e.chunk_id
             WHERE e.card_id=:id
         """), {"id": card["id"]}).mappings().all()
     return card, evidence
@@ -66,6 +66,7 @@ def test_answer_evidence_card(db_client, seeded_db, monkeypatch):
     assert card["draft"]["text"] == "겨울방학은 12월 24일부터예요."
     assert not card["draft"]["no_evidence"]
     assert evidence[0]["location"] == "1쪽 겨울방학 기간"
+    assert evidence[0]["score"] is not None
 
 
 def test_no_evidence_still_goes_to_teacher(db_client, seeded_db, monkeypatch):

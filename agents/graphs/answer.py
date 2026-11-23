@@ -39,10 +39,10 @@ def draft_answer(question: str, search, writer=None) -> dict:
         try:
             answer = model.json(prompt, payload)
             if not isinstance(answer, dict) or not isinstance(answer.get("evidence"), list) or not isinstance(answer.get("text"), str):
-                raise ModelError("답 모양 오류")
+                raise ModelError("답 모양 오류", format=True)
             break
-        except ModelError:
-            if attempt:
+        except ModelError as error:
+            if attempt or not error.format:
                 return fallback([*trace, "write"])
     trace.append("write")
     by_id = {str(chunk["chunk_id"]): chunk for chunk in candidates}
@@ -53,7 +53,7 @@ def draft_answer(question: str, search, writer=None) -> dict:
         chunk = by_id.get(str(item.get("chunk_id")))
         quote = item.get("quote")
         if chunk and isinstance(quote, str) and quote.strip() and re.sub(r"\s+", "", quote) in re.sub(r"\s+", "", chunk["content"]):
-            evidence.append({"chunk_id": chunk["chunk_id"], "quote": quote})
+            evidence.append({"chunk_id": chunk["chunk_id"], "quote": quote, "score": chunk["score"]})
     no_evidence = bool(answer.get("no_evidence")) or not evidence
     conflict = bool(answer.get("conflict"))
     return {"text": NO_ANSWER if no_evidence or conflict else answer["text"], "evidence": evidence,

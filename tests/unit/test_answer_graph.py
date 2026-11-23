@@ -45,6 +45,18 @@ def test_empty_skips_writer():
     assert writer.calls == 0
 
 
+def test_transport_error_does_not_retry():
+    writer = Writer(ModelError("전송 실패"))
+    result = draft_answer("겨울방학", search, writer)
+    assert result["no_evidence"] and writer.calls == 1
+
+
+def test_format_error_retries_once():
+    writer = Writer(ModelError("답 모양 실패", format=True))
+    result = draft_answer("겨울방학", search, writer)
+    assert result["no_evidence"] and writer.calls == 2
+
+
 def test_conflict_uses_safe_text():
     result = draft_answer("겨울방학", search, Writer({
         "text": "추측", "evidence": [{"chunk_id": 1, "quote": "겨울방학"}],

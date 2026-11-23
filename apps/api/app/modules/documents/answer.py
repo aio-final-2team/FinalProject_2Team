@@ -28,7 +28,7 @@ def save_evidence(connection, card, answer):
             INSERT INTO card_evidence(card_id, org_id, chunk_id, rank, score, quote)
             VALUES (:card, :org, :chunk, :rank, :score, :quote)
         """), {"card": card["id"], "org": card["org_id"], "chunk": item["chunk_id"],
-               "rank": rank, "score": None, "quote": item["quote"]})
+               "rank": rank, "score": item["score"], "quote": item["quote"]})
 
 
 def graph_enabled():
