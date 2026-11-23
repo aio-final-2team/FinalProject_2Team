@@ -20,7 +20,7 @@ PROMPTS = Path(__file__).resolve().parents[1] / "prompts"
 RETURN_KINDS = {"not_in_memo", "request_missed"}       # 자료 AI가 고칠 수 있는 문제
 MODEL_KINDS = {"not_in_memo", "sensitive", "other_child", "date_check", "absent"}  # 검사 AI가 낼 수 있는 값
 MAX_RETURNS = 2
-REQUEST_KEY = {"medication": "medication", "pickup": "pickup", "inquiry": "day"}
+REQUEST_KEY = {"medication": "medication", "pickup": "pickup", "inquiry": "inquiry"}  # 계약 v0.4.1(#282)
 NO_SUPPLIES = {"", "없음"}
 
 PROBLEM = {

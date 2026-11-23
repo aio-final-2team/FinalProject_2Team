@@ -48,7 +48,7 @@
 | --- | --- | --- | --- |
 | `day` | 오늘 하루 | 반 공통 활동 | `{type: teacher_input}` |
 | `child` | 아이 메모 | 이 아이 메모를 풀어 쓴 문장. 메모가 비면 이 줄을 넣지 않는다 | `{type: teacher_input}` |
-| `medication`·`pickup`·`day` | 보호자 요청 | 보호자 요청마다 한 줄. 투약은 `medication`, 귀가는 `pickup`, 그 밖의 문의는 `day` | `{type: request, request_id}` |
+| `medication`·`pickup`·`inquiry` | 보호자 요청 | 보호자 요청마다 한 줄. 투약은 `medication`, 귀가는 `pickup`, 문의는 `inquiry` | `{type: request, request_id}` |
 | `supplies` | 준비물 | 반 공통 준비물. 없으면 넣지 않는다 | `{type: teacher_input}` 또는 근거 통신문 `{type: document, …}` |
 | `meal` | 식사 | 입력 {menu}의 그날 식단. 없으면 넣지 않는다 | `{type: document, document_id, document_title}` |
 

@@ -248,7 +248,7 @@ def test_unanswered_inquiry_keeps_text_and_asks_teacher():
     line = next(item for item in note["content"]["items"] if item["source"]["type"] == "request")
     assert line["value"] == "기침을 한다고 알려 주셨어요." and "_unanswered" not in line
     [check] = note["open_checks"]
-    assert check["kind"] == "sensitive" and check["request_id"] == "r1" and check["item_key"] == "day"
+    assert check["kind"] == "sensitive" and check["request_id"] == "r1" and check["item_key"] == "inquiry"
 
 
 def test_request_line_repeating_child_line_becomes_request_text():
