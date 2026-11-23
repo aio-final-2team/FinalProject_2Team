@@ -64,7 +64,7 @@ def payloads() -> list[dict]:
                      "memo": memo.get(c["child_key"], ""),
                      "requests": [{"request_id": r["request_key"], "type": r["type"], "text": r["body"]}
                                   for r in sorted(reqs, key=lambda r: r["created_at"]) if r["child_key"] == c["child_key"]]}
-                    for c in roster["children"]]
+                    for c in roster["children"] + roster.get("seed_children", [])]  # 시연 반 20명(FB-018-4)
         out.append({"input_id": f"eval-{d}", "note_date": d, "classroom": roster["classroom_name"],
                     "activities": day["activities"], "supplies": day["supplies"], "children": children,
                     "menu": menu_for(d)})

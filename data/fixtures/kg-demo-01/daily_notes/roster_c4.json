@@ -115,5 +115,22 @@
       "display_name": "로아",
       "is_virtual": true
     }
+  ],
+  "seed_children_note": "시연 반은 20명(FB-018-4, 11/23 결정): 위 18명 + 기존 시드 시험용 2명. 함정 평가는 18명만 써요",
+  "seed_children": [
+    {
+      "child_key": "SEED-501",
+      "child_id": "00000000-0000-4000-8000-000000000501",
+      "display_name": "하늘",
+      "is_virtual": true,
+      "seed": "C-DEMO-01, 보호자 parent01(학부모 화면 시연 계정)"
+    },
+    {
+      "child_key": "SEED-503",
+      "child_id": "00000000-0000-4000-8000-000000000503",
+      "display_name": "노을",
+      "is_virtual": true,
+      "seed": "C-DEMO-03, 보호자 parent02"
+    }
   ]
 }
