@@ -89,3 +89,15 @@ export function useRegenerate() {
     },
   });
 }
+
+/**
+ * 입력 ID 복구 (API 문서 3.19): 같은 반·같은 날짜로 POST /daily-notes/drafts를 다시 보내면 새로 실행하지 않고
+ * 이미 접수된 작업(200)이 돌아온다. 이 기기에 input_id가 없을 때(다른 기기에서 만든 알림장)만, 알림장이 이미 있는 날짜에 쓴다.
+ */
+export async function recoverInputId(classroomId: string, date: string): Promise<string> {
+  const r = await api<DraftJob>("/api/v1/daily-notes/drafts", {
+    method: "POST",
+    body: JSON.stringify({ classroom_id: classroomId, note_date: date, activities: "(기존 작업 조회)", supplies: "" }),
+  });
+  return r.input_id;
+}

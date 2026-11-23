@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "@/api/client";
-import { loadInputId, saveInputId, useChildren, useCreateDraft, useDraftJob, useNotes, usePatchNote, useRegenerate, useSendNotes } from "@/api/notes";
+import { loadInputId, recoverInputId, saveInputId, useChildren, useCreateDraft, useDraftJob, useNotes, usePatchNote, useRegenerate, useSendNotes } from "@/api/notes";
 import { useSession } from "@/app/session";
 import { Dock, PrimaryButton, SubButton } from "@/components/Dock";
 import { Icon } from "@/components/Icon";
@@ -22,6 +22,9 @@ export function NotesPage() {
   const date = todayKST();
   const notes = useNotes(cid, date);
   const [jobId, setJobId] = useState<string>();
+  /* 알림장이 아직 없는데 이 기기에 접수한 작업이 있으면 그 진행 상태를 이어서 본다 (API 23). 새로고침해도 입력을 다시 쓰지 않는다 */
+  const stored = !notes.data?.length ? loadInputId(cid, date) : null;
+  const resume = useDraftJob(stored ?? undefined);
 
   if (notes.isLoading) return <Frame><p className="py-16 text-center text-callout text-ink2">불러오는 중…</p></Frame>;
   if (notes.isError)
@@ -31,7 +34,10 @@ export function NotesPage() {
       </Frame>
     );
   if (jobId) return <Progress jobId={jobId} onDone={() => setJobId(undefined)} />;
-  if (!notes.data?.length) return <Compose onStarted={setJobId} />;
+  if (!notes.data?.length) {
+    if (stored && resume.data && resume.data.draft_status !== "succeeded") return <Progress jobId={stored} onDone={() => setJobId(undefined)} />;
+    return <Compose onStarted={setJobId} />;
+  }
   return <Review notes={notes.data} />;
 }
 
@@ -118,6 +124,7 @@ function Compose({ onStarted }: { onStarted: (id: string) => void }) {
       <textarea
         id="note-activities"
         rows={3}
+        maxLength={2000}
         value={activities}
         onChange={(e) => setActivities(e.target.value)}
         onFocus={() => !activities && setActivities("가을 낙엽으로 왕관을 만들고 놀이터에서 술래잡기를 했어요")}
@@ -130,7 +137,7 @@ function Compose({ onStarted }: { onStarted: (id: string) => void }) {
         </p>
       )}
       <Label>가정에서 준비할 것</Label>
-      <input value={supplies} onChange={(e) => setSupplies(e.target.value)} onFocus={() => !supplies && setSupplies("김장 체험: 앞치마, 팔토시") } placeholder="예: 11/27(금) 김장 체험: 앞치마, 팔토시" className={`${field} h-12 border-line`} />
+      <input value={supplies} maxLength={2000} onChange={(e) => setSupplies(e.target.value)} onFocus={() => !supplies && setSupplies("김장 체험: 앞치마, 팔토시") } placeholder="예: 11/27(금) 김장 체험: 앞치마, 팔토시" className={`${field} h-12 border-line`} />
 
       <Label>
         <span className="inline-flex items-center gap-1">
@@ -163,6 +170,12 @@ function Progress({ jobId, onDone }: { jobId: string; onDone: () => void }) {
   useEffect(() => {
     const t = setInterval(() => setShown((s) => Math.min(s + 1, 3)), 700);
     return () => clearInterval(t);
+  }, []);
+  /* queued·running이 시작한 지 300초(DAILY_NOTE_WRITER_TIMEOUT)를 넘기면 서버가 다시 접수할 수 있다 (3.26) */
+  const [late, setLate] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setLate(true), 300_000);
+    return () => clearTimeout(t);
   }, []);
   const step = st === "succeeded" ? shown : Math.min(shown, st === "running" ? 2 : 1);
   useEffect(() => {
@@ -198,6 +211,12 @@ function Progress({ jobId, onDone }: { jobId: string; onDone: () => void }) {
             ))}
           </ol>
           <p className="mt-3 text-footnote text-ink2">다른 화면으로 가도 계속 만들어요. 다 되면 알려 드려요.</p>
+          {late && st !== "succeeded" && (
+            <div className="mt-3 flex items-center justify-between gap-2 rounded-md bg-g p-3 text-footnote">
+              <span>오래 걸리고 있어요. 멈춘 것 같으면 다시 접수할 수 있어요.</span>
+              <SubButton small onClick={() => regen.mutate(jobId)} disabled={regen.isPending}>다시 만들기</SubButton>
+            </div>
+          )}
         </section>
       )}
       <Dock>
@@ -228,7 +247,12 @@ function Review({ notes }: { notes: DailyNote[] }) {
   const [writeFor, setWriteFor] = useState<DailyNote | null>(null);
   const regen = useRegenerate();
   const [regenSheet, setRegenSheet] = useState(false);
-  const inputId = loadInputId(cid, date);
+  const [inputId, setInputId] = useState(() => loadInputId(cid, date));
+  /* 다른 기기에서 만든 알림장이라 이 기기에 입력 ID가 없으면 API 3.19의 중복 접수 규칙으로 되찾는다 */
+  useEffect(() => {
+    if (inputId) return;
+    recoverInputId(cid, date).then((id) => { saveInputId(cid, date, id); setInputId(id); }).catch(() => {});
+  }, [inputId, cid, date]);
   /* 보내기가 409 NOTE_BATCH_BLOCKED로 막혔을 때 details.blocked[]를 보여 준다. 빈 목록이면 초안이 아직 만들어지는 중 */
   const [blocked, setBlocked] = useState<{ note_id: string; child_id: string; open_checks?: { problem?: string }[] }[] | null>(null);
 
@@ -452,6 +476,7 @@ function Review({ notes }: { notes: DailyNote[] }) {
 
       <Sheet open={regenSheet} onClose={() => setRegenSheet(false)} title="초안 다시 만들기">
         <p className="text-callout text-ink2">내가 고친 알림장과 이미 확인한 알림장은 그대로 두고, 나머지만 새로 써요.</p>
+        <p className="rounded-md bg-g p-3 text-footnote text-ink2">처음 접수한 반 활동·준비물·아이별 메모로 다시 만들어요. 그 뒤에 새로 쓴 관찰 기록은 반영되지 않으니, 필요한 내용은 아이 상세에서 직접 추가해 주세요. 식단과 보호자 요청은 다시 모아요.</p>
         <div className="grid grid-cols-[1fr_2fr] gap-2">
           <SubButton tone="gray" className="h-[52px]" onClick={() => setRegenSheet(false)}>취소</SubButton>
           <PrimaryButton
