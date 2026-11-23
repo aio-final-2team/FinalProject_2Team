@@ -20,6 +20,18 @@ fi
 git pull --ff-only
 compose=(docker compose --env-file "$env_file" -f compose.yaml -f infra/team-server/compose.server.yaml)
 "${compose[@]}" config --quiet
+# 직접 빌드하는 이미지(api·web)의 지금 판을 :prev로 남겨요. 새 판이 안 뜨면 다시 빌드하지 않고 바로 되돌려요(DEPLOY.md 7-1).
+mapfile -t built < <("${compose[@]}" config --format json | python3 -c '
+import json, sys
+c = json.load(sys.stdin)
+project = c["name"]
+print("\n".join(sorted({s.get("image") or project + "-" + n for n, s in c["services"].items() if "build" in s})))')
+for image in "${built[@]}"; do
+    if docker image inspect "$image" >/dev/null 2>&1; then
+        docker tag "$image" "${image%:*}:prev"
+        echo "직전 이미지를 남겼어요: ${image%:*}:prev"
+    fi
+done
 "${compose[@]}" up -d --build
 "${compose[@]}" ps
 echo '기동을 요청했어요. tools/smoke.sh "$API_BASE_URL"로 API 흐름을 확인해 주세요.'
