@@ -20,6 +20,7 @@ from sqlalchemy import text
 from app.core.db import transaction
 from app.core.errors import ApiError
 from app.core.schedule import KST
+from . import embedding
 
 DOC_TYPES = ("notice", "schedule", "menu", "policy")
 # 낱말 끝에 붙는 조사·어미. 긴 것부터 떼요
@@ -62,6 +63,8 @@ def search_documents(user, kindergarten_id: str, doc_type: str, query: str, clas
     words = terms(query)
     today = on_date or datetime.now(KST).date()
     parent = user.role == "parent"
+    query_vector = embedding.embed([query]) if embedding.enabled() else []
+    vector = "[" + ",".join(map(str, query_vector[0])) + "]" if query_vector and len(query_vector[0]) == 1024 else None
     with transaction() as connection:
         if parent:
             if classroom_id is not None:
@@ -77,7 +80,9 @@ def search_documents(user, kindergarten_id: str, doc_type: str, query: str, clas
             if classroom_id is not None and classroom_id not in allowed_classes:
                 raise ApiError(404, "NOT_FOUND")
         rows = connection.execute(text("""
-            SELECT ch.id AS chunk_id, d.title AS document_title, ch.location, d.effective_from, ch.content
+            SELECT ch.id AS chunk_id, d.title AS document_title, ch.location, d.effective_from, ch.content,
+                   CASE WHEN CAST(:vector AS vector) IS NOT NULL AND ch.embedding_version = :version
+                        THEN 1 - (ch.embedding <=> CAST(:vector AS vector)) ELSE NULL END AS vector_score
             FROM document_chunks ch JOIN documents d ON (d.id, d.org_id) = (ch.document_id, ch.org_id)
             WHERE d.org_id = :org AND d.doc_type = :doc_type AND d.status = 'active' AND d.ingest_status = 'succeeded'
               AND (d.effective_from IS NULL OR d.effective_from <= :today)
@@ -94,15 +99,17 @@ def search_documents(user, kindergarten_id: str, doc_type: str, query: str, clas
                    OR EXISTS (SELECT 1 FROM document_classrooms dc
                               WHERE (dc.document_id, dc.org_id) = (d.id, d.org_id)
                                 AND dc.classroom_id = CAST(:classroom AS uuid)))
-        """),
-            {"org": user.org_id, "doc_type": doc_type, "today": today, "parent": parent,
-             "allowed_classes": list(allowed_classes) if parent else [],
-             "classroom": str(classroom_id) if classroom_id else None}).mappings().all()
+        """), {"org": user.org_id, "doc_type": doc_type, "today": today, "parent": parent,
+               "allowed_classes": list(allowed_classes) if parent else [],
+               "classroom": str(classroom_id) if classroom_id else None,
+               "vector": vector, "version": embedding.VERSION}).mappings().all()
     ranked = []
     for row in rows:
-        value = score(words, row["document_title"], row["location"] or "", row["content"])
+        lexical = score(words, row["document_title"], row["location"] or "", row["content"])
+        value = round(0.5 * lexical + 0.5 * max(0.0, row["vector_score"]), 3) if row["vector_score"] is not None else lexical
         if value > 0:
-            ranked.append({**row, "location": row["location"] or "본문", "score": value})
+            ranked.append({key: row[key] for key in ("chunk_id", "document_title", "location", "effective_from", "content")}
+                          | {"location": row["location"] or "본문", "score": value})
     def order(row):
         # 점수가 같으면 제목·위치에 낱말이 있는 조각, 낱말이 더 많이 나오는 조각, 새 판 순서
         heads = sum((w in row["document_title"]) + (w in row["location"]) for w in words)
