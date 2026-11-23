@@ -60,13 +60,14 @@ def _invoke(request_id, payload, expected_card_id=None):
     # 체크포인트는 UUID·카드 ID·분기만 저장하고, 임의 Python 객체는 읽지 않는다.
     serializer = JsonPlusSerializer(allowed_msgpack_modules=[])
     request_id = str(UUID(str(request_id)))
+    key = f"request-graph:{request_id}"
     with psycopg.connect(_database_uri(), autocommit=True, row_factory=dict_row) as checkpoint_connection:
         checkpointer = PostgresSaver(checkpoint_connection, serde=serializer)
-        # setup()의 동시 인덱스 생성은 열린 업무 트랜잭션 밖에서 끝낸다.
         checkpointer.setup()
-        with transaction() as connection:
-            connection.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))"),
-                               {"key": f"request-graph:{request_id}"})
+        # 요청별 직렬화는 이 autocommit 연결의 세션 잠금으로 한다. 트랜잭션을 쥐지 않으니
+        # 그래프가 도는 동안 SQLAlchemy 풀 연결은 노드가 쓰는 짧은 순간에만 빌린다.
+        checkpoint_connection.execute("SELECT pg_advisory_lock(hashtextextended(%s,0))", (key,))
+        try:
             graph = build_graph(checkpointer, _route_request, _prepare_card, _card_status)
             config = {"configurable": {"thread_id": thread_id(request_id)},
                       "tags": ["request-agent"]}
@@ -76,6 +77,12 @@ def _invoke(request_id, payload, expected_card_id=None):
                         or not any(task.interrupts for task in snapshot.tasks)):
                     return None  # 이미 재개했거나 다른 카드의 승인을 기다리는 중
             return graph.invoke(payload, config=config)
+        finally:
+            # 예외·타임아웃에도 푼다. 연결이 이미 끊겼다면 연결을 닫을 때 서버가 잠금을 풀어요.
+            try:
+                checkpoint_connection.execute("SELECT pg_advisory_unlock(hashtextextended(%s,0))", (key,))
+            except psycopg.Error:
+                log.warning("요청 그래프 잠금 해제 실패, 연결을 닫아 해제해요")
 
 
 def run_request(request_id):

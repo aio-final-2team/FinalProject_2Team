@@ -157,3 +157,115 @@ def test_escalation_does_not_finish_waiting_graph(db_client, seeded_db, monkeypa
         assert connection.scalar(text("SELECT count(*) FROM checkpoints WHERE thread_id=:thread"),
                                  {"thread": card["graph_thread_id"]}) == before
         assert connection.scalar(text("SELECT status FROM cards WHERE id=:id"), {"id": card["id"]}) == "pending"
+
+
+def slow_prepare(monkeypatch, seen, delay=0.4):
+    """카드를 만드는 느린 모의 모델 자리. 이때 풀에서 빌려 간 연결 수와 호출 수를 센다."""
+    import time
+    from app.core.db import get_engine
+
+    original = graph_agent.prepare_request
+
+    def slow(request_id):
+        seen.append(get_engine().pool.checkedout())
+        time.sleep(delay)
+        return original(request_id)
+
+    monkeypatch.setattr(graph_agent, "prepare_request", slow)
+
+
+def advisory_locks(seeded_db):
+    with seeded_db.connect() as connection:
+        return connection.scalar(text("""
+            SELECT count(*) FROM pg_locks WHERE locktype='advisory'
+              AND database=(SELECT oid FROM pg_database WHERE datname=current_database())
+        """))
+
+
+def test_graph_run_does_not_hold_pool_connection_while_slow(db_client, seeded_db, monkeypatch):
+    from app.core.db import get_engine
+
+    seen = []
+    slow_prepare(monkeypatch, seen)
+    request_id, _ = graph_request(db_client, monkeypatch)
+    assert seen == [0]  # 느린 처리 중 풀 연결 0개. 예전에는 잠금 트랜잭션이 1개를 쥐고 있었다
+    assert get_engine().pool.checkedout() == 0
+    assert advisory_locks(seeded_db) == 0
+    assert card_for(seeded_db, request_id, "reply_draft")["graph_thread_id"] == graph_agent.thread_id(request_id)
+
+
+def test_slow_duplicate_runs_are_serialized_by_session_lock(db_client, seeded_db, monkeypatch):
+    import threading
+    import time
+
+    request_id, _ = graph_request(db_client, monkeypatch)
+    state = {"active": 0, "peak": 0}
+    guard = threading.Lock()
+
+    def slow(_request_id):  # 잠금이 없으면 세 실행이 겹쳐서 peak가 2 이상이 된다
+        with guard:
+            state["active"] += 1
+            state["peak"] = max(state["peak"], state["active"])
+        time.sleep(0.4)
+        with guard:
+            state["active"] -= 1
+
+    monkeypatch.setattr(graph_agent, "prepare_request", slow)
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        list(pool.map(graph_agent.run_request, [request_id] * 3))
+    assert state["peak"] == 1 and state["active"] == 0
+    with seeded_db.connect() as connection:
+        assert connection.scalar(text("SELECT count(*) FROM cards WHERE request_id=:id"), {"id": request_id}) == 1
+    assert advisory_locks(seeded_db) == 0
+
+
+def test_session_lock_is_released_after_error(db_client, seeded_db, monkeypatch):
+    import pytest
+    from app.core.db import get_engine
+
+    request_id, _ = graph_request(db_client, monkeypatch)
+    card = card_for(seeded_db, request_id, "reply_draft")
+
+    def broken(*args):
+        raise RuntimeError("[TEST] 그래프 오류")
+
+    original = graph_agent.build_graph
+    monkeypatch.setattr(graph_agent, "build_graph", broken)
+    with pytest.raises(RuntimeError):
+        graph_agent.run_request(request_id)
+    with pytest.raises(RuntimeError):
+        graph_agent.resume_request(card["id"])
+    assert advisory_locks(seeded_db) == 0
+    assert get_engine().pool.checkedout() == 0
+    monkeypatch.setattr(graph_agent, "build_graph", original)
+    assert graph_agent.run_request(request_id) is not None  # 잠금이 남았다면 여기서 멈춘다
+
+
+def test_concurrent_double_approval_sends_once_and_resumes_after_commit(db_client, seeded_db, monkeypatch):
+    request_id, _ = graph_request(db_client, monkeypatch)
+    card = card_for(seeded_db, request_id, "reply_draft")
+    committed_at_resume = []
+    original = graph_agent.resume_request
+
+    def spy(card_id):
+        with seeded_db.connect() as connection:  # 재개 시점에 승인이 이미 커밋돼 보여야 한다
+            committed_at_resume.append(connection.scalar(
+                text("SELECT status FROM cards WHERE id=:id"), {"id": card_id}))
+        return original(card_id)
+
+    monkeypatch.setattr(graph_agent, "resume_request", spy)
+
+    def approve(_):
+        return db_client.post(f"/api/v1/cards/{card['id']}/decisions", headers=teacher_auth(),
+                              json={"version": 1, "decision": "approve"})
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        responses = list(pool.map(approve, range(2)))
+    assert sorted(response.status_code for response in responses) == [200, 409], [r.text for r in responses]
+    assert next(r for r in responses if r.status_code == 409).json()["error"]["code"] == "ALREADY_DECIDED"
+    assert committed_at_resume == ["done"]  # 재개는 성공한 한 번만, 커밋 뒤에만
+    with seeded_db.connect() as connection:
+        assert connection.scalar(text("SELECT count(*) FROM approvals WHERE card_id=:id"), {"id": card["id"]}) == 1
+        assert connection.scalar(text("SELECT count(*) FROM request_messages WHERE request_id=:id"),
+                                 {"id": request_id}) == 2  # 접수 + 발송 1번
+    assert advisory_locks(seeded_db) == 0
