@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { newKey, useCard, useCardAction } from "@/api/cards";
+import { useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "@/api/client";
 import { Button } from "@/components/Button";
 import { Icon } from "@/components/Icon";
@@ -39,6 +40,7 @@ function ReasonChips({ options, value, onChange }: { options: string[]; value: s
  */
 export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Role, "parent">; backTo: string }) {
   const { data: c, isLoading, isError, refetch } = useCard(id);
+  const qc = useQueryClient();
   const act = useCardAction(id, role);
   const toast = useToast();
   const [sheet, setSheet] = useState<SheetKind>(null);
@@ -67,6 +69,16 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
     setText("");
     setSheet(k);
   };
+  /** 실패 처리: 판 충돌·이미 처리됨은 최신 상세를 다시 불러오고, 그 밖의 실패는 다시 시도를 준다 */
+  const fail = (error: unknown, retry: () => void) => {
+    if (error instanceof ApiError && (error.code === "CARD_VERSION_CONFLICT" || error.code === "ALREADY_DECIDED")) {
+      setSheet(null);
+      qc.invalidateQueries({ queryKey: ["cards"] });
+      toast({ kind: "error", title: error.code === "ALREADY_DECIDED" ? "이미 처리된 카드예요" : "카드가 방금 바뀌었어요", sub: "최신 내용으로 다시 불러왔어요. 확인하고 다시 처리해 주세요" });
+      return;
+    }
+    toast({ kind: "error", title: "처리하지 못했어요", sub: error instanceof ApiError ? `${error.message}${error.code ? ` (${error.code})` : ""}` : "연결을 확인하고 다시 눌러 주세요", action: { label: "다시 시도", run: retry } });
+  };
   const run = (body: CardAction, ok: { title: string; sub?: string }) =>
     act.mutate(
       { body, card: c, key: key.current },
@@ -75,7 +87,7 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
           setSheet(null);
           toast({ kind: "ok", ...ok });
         },
-        onError: (error) => toast({ kind: "error", title: "처리하지 못했어요", sub: error instanceof ApiError ? `${error.message}${error.code ? ` (${error.code})` : ""}` : "연결을 확인하고 다시 눌러 주세요", action: { label: "다시 시도", run: () => run(body, ok) } }),
+        onError: (error) => fail(error, () => run(body, ok)),
       },
     );
   const send = () => {
@@ -84,7 +96,7 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
     const body: CardAction = { action: "approve_send", draft };
     const k = key.current;
     sendTimer.current = window.setTimeout(() => {
-      act.mutate({ body, card: c, key: k }, { onSettled: () => setPendingSend(false) });
+      act.mutate({ body, card: c, key: k }, { onError: (e) => fail(e, () => send()), onSettled: () => setPendingSend(false) });
     }, 5000);
     toast({
       kind: "undo",
@@ -101,7 +113,7 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
     });
   };
 
-  const isOpen = !["completed", "rejected", "sent_or_booked"].includes(c.status) || (c.parentConfirmedAt && c.status === "sent_or_booked");
+  const isOpen = !["completed", "rejected", "sent_or_booked"].includes(c.status) || ((c.parentConfirmedAt || c.type === "complaint") && c.status === "sent_or_booked");
   const director = role === "director";
   const holdDates = [1, 2, 7].map((days) => {
     const d = new Date();
@@ -302,7 +314,7 @@ function TeacherActions({ c, open, draft, slot, pending, run }: { c: Card; open:
         </div>
       </>
     );
-  if (c.status === "sent_or_booked" && c.parentConfirmedAt)
+  if (c.status === "sent_or_booked" && (c.parentConfirmedAt || c.type === "complaint"))
     return <Button icon="approve" onClick={() => open("complete")}>처리 완료</Button>;
   if (c.type === "consult")
     return (
