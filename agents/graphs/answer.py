@@ -46,13 +46,17 @@ def _ask_writer(model, prompt, payload, trace):
 def _verify(answer, candidates, trace):
     by_id = {str(chunk["chunk_id"]): chunk for chunk in candidates}
     evidence = []
+    seen = set()
     for item in answer["evidence"]:
         if not isinstance(item, dict):
             continue
         chunk = by_id.get(str(item.get("chunk_id")))
+        if chunk and chunk["chunk_id"] in seen:
+            continue  # card_evidence PK가 (card_id, chunk_id)라 같은 조각은 한 번만 남긴다
         quote = item.get("quote")
         if (chunk and isinstance(quote, str) and quote.strip()
                 and re.sub(r"\s+", "", quote) in re.sub(r"\s+", "", chunk["content"])):
+            seen.add(chunk["chunk_id"])
             evidence.append({"chunk_id": chunk["chunk_id"], "quote": quote, "score": chunk["score"]})
     no_evidence = bool(answer.get("no_evidence")) or not evidence
     conflict = bool(answer.get("conflict"))
@@ -117,7 +121,8 @@ def draft_answer(question: str, search, writer=None, checker=None) -> dict:
             return fallback(trace)
         draft = _verify(answer, candidates, trace)
         if draft["no_evidence"] or draft["conflict"]:
-            return {**draft, "check_result": {"passed": False, "issues": [], "attempt": attempt + 1},
+            problem = "자료끼리 내용이 달라요." if draft["conflict"] else "자료에서 근거를 찾지 못했어요."
+            return {**draft, "check_result": _check_result(False, [{"field": "출처", "problem": problem}], attempt + 1),
                     "trace": [*trace, "end"]}
         issues = _review(checker, question, draft, candidates, attempt + 1, trace)
         if issues is None:
