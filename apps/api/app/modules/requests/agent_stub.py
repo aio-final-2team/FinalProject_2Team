@@ -15,6 +15,7 @@ from app.modules.requests.complaints import repeat_count
 from app.modules.requests.events import record, set_status
 from app.modules.consultations.slots import propose_slots
 from app.modules.documents.answer import answer_for_request, graph_enabled, save_evidence
+from app.modules.documents.public_sources import attach_law_evidence
 
 
 def new_card(connection, req, kind, assignee, draft=None):
@@ -104,6 +105,8 @@ def run_request(request_id):
             card["check_result"] = {"passed": True, "issues": [], "attempt": 1}
             connection.execute(text("UPDATE cards SET check_result=CAST(:check AS jsonb) WHERE id=:id"),
                                {"id": card["id"], "check": json.dumps(card["check_result"])})
+        if req["type"] == "complaint":
+            attach_law_evidence(connection, card, req)  # 주제표에 있는 주제만 법령 근거를 붙임(T52)
         record(connection, req, "drafted", card=card, actor_type="agent", agent_name="document")
         repeated = (repeat_count(connection, req) or 0) >= 3
         director = connection.scalar(text("""
