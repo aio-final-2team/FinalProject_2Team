@@ -7,6 +7,9 @@ def lane_access(user, lane, target_id, classrooms, children, deny):
     if lane == "org":
         if target_id != user.org_id:
             deny(404)
+        # 원 칸도 보호자는 지금 연결된 아이가 있어야 연다. 퇴소 등으로 연결이 끝나면 다른 반 보호자처럼 막는다.
+        if user.role == "parent" and not any(user.id in c["guardian_ids"] for c in children.values()):
+            deny(403)
     else:
         if target_id not in classrooms:
             deny(404)

@@ -94,6 +94,11 @@ def test_startup_recovers_running_and_queued_without_replaying_finished(seeded_d
         assert states[ids["failed"]] == "failed"
         assert connection.scalar(text("SELECT count(*) FROM daily_notes")) == 40
         assert connection.scalar(text("SELECT count(*) FROM cards")) == 4
+        # 멈춘 running 하나만 점검 작업(시스템)이 되돌린 이력으로 남는다.
+        assert connection.execute(text("""
+            SELECT actor_type, detail->>'selected_strategy', (detail->>'retry_count')::int FROM events
+            WHERE action='agent_requeued'
+        """)).all() == [("system", "requeue_stale", 1)]
     with TestClient(main.app):
         pass
     assert len(captured) == 2
@@ -240,7 +245,8 @@ def test_bad_writer_configuration_marks_failed_with_safe_queryable_error(db_clie
     assert notes(db_client, teacher) == []
     with seeded_db.connect() as connection:
         assert connection.scalar(text("SELECT count(*) FROM cards WHERE kind='daily_note'")) == 1
-        assert connection.scalar(text("SELECT count(*) FROM events")) == 0
+        # 아이별 이력은 없고, 반 묶음 카드에 작업 실패 한 줄만 남는다.
+        assert connection.execute(text("SELECT action, actor_type FROM events")).all() == [("tool_failed", "system")]
 
 
 @pytest.mark.parametrize("memo", ["열이 났음", "넘어져 다침", "약 먹음"])
@@ -327,7 +333,7 @@ def test_note_save_error_rolls_back_all_children_and_marks_job_failed(db_client,
         assert notes(db_client, teacher) == []
         with seeded_db.connect() as connection:
             assert connection.scalar(text("SELECT count(*) FROM daily_notes")) == 0
-            assert connection.scalar(text("SELECT count(*) FROM events")) == 0
+            assert connection.execute(text("SELECT action FROM events")).scalars().all() == ["tool_failed"]
     finally:
         with seeded_db.begin() as connection:
             connection.execute(text("ALTER TABLE daily_notes DROP CONSTRAINT test_reject_child"))

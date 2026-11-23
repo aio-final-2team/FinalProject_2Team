@@ -10,6 +10,7 @@ from concurrent.futures import Future
 from datetime import datetime, time, timedelta
 from importlib import import_module
 from threading import Thread
+from time import monotonic
 from uuid import UUID, uuid4
 
 from sqlalchemy import text
@@ -105,16 +106,45 @@ def _validated(result, payload):
     return rows
 
 
+def batch_event(connection, input_id, action, actor_type, *, actor_id=None, **detail):
+    """반 묶음 카드에 incident 이력을 남긴다. 칸 이름은 Auto-Healing incident 기록을 따르고 메모 원문은 넣지 않는다."""
+    connection.execute(text("""
+        INSERT INTO events (org_id, card_id, actor_type, actor_id, action, detail)
+        SELECT org_id, id, :actor_type, :actor, :action, CAST(:detail AS jsonb) FROM cards
+        WHERE subject_type='daily_note_batch' AND subject_id=:id
+    """), {"id": input_id, "actor_type": actor_type, "actor": actor_id, "action": action,
+           "detail": json.dumps({"incident_id": str(input_id), **detail})})
+
+
+def incident_state(connection, input_id):
+    """(다시 넣은 횟수, 첫 실패 뒤 지난 ms). 실패가 없으면 ms는 None이다."""
+    return connection.execute(text("""
+        SELECT count(*) FILTER (WHERE e.action='agent_requeued'),
+               (extract(epoch FROM now() - min(e.created_at) FILTER (WHERE e.action='tool_failed')) * 1000)::bigint
+        FROM events e JOIN cards c ON (c.id,c.org_id)=(e.card_id,e.org_id)
+        WHERE c.subject_type='daily_note_batch' AND c.subject_id=:id
+    """), {"id": input_id}).one()
+
+
+def requeued(connection, input_id, actor_type, actor_id=None):
+    batch_event(connection, input_id, "agent_requeued", actor_type, actor_id=actor_id,
+                selected_strategy="retry_by_teacher" if actor_type == "user" else "requeue_stale",
+                retry_count=incident_state(connection, input_id)[0] + 1)
+
+
 def requeue_daily_note_drafts(*, stale_only=False):
     """API 단독 실행은 시작 때 복구하고, worker 모드는 제한을 넘긴 실행만 복구해요."""
     with transaction() as connection:
-        connection.execute(text("""
+        moved = connection.scalars(text("""
             UPDATE daily_note_inputs i SET draft_status='queued' WHERE draft_status='running'
               AND (NOT :stale_only OR coalesce((
                 SELECT (c.draft->>'draft_started_at')::timestamptz FROM cards c
                 WHERE c.subject_type='daily_note_batch' AND c.subject_id=i.id AND c.org_id=i.org_id
               ), i.created_at) < now()-make_interval(secs=>:timeout))
-        """), {"stale_only": stale_only, "timeout": settings.daily_note_writer_timeout + 60})
+            RETURNING i.id
+        """), {"stale_only": stale_only, "timeout": settings.daily_note_writer_timeout + 60}).all()
+        for input_id in moved:
+            requeued(connection, input_id, "system")
         return connection.scalars(text("""
             SELECT id FROM daily_note_inputs WHERE draft_status='queued' ORDER BY created_at, id
         """)).all()
@@ -148,6 +178,7 @@ def run_daily_note_drafts(input_id):
                 UPDATE cards SET draft=draft || jsonb_build_object('draft_started_at', CURRENT_TIMESTAMP)
                 WHERE subject_type='daily_note_batch' AND subject_id=:id AND org_id=:org RETURNING draft
             """), {"id": input_id, "org": entry["org_id"]}).scalar_one()
+            retry_count, started = incident_state(connection, input_id)[0], monotonic()
     if entry is None:
         return
     try:
@@ -165,6 +196,7 @@ def run_daily_note_drafts(input_id):
             if current != entry["run_token"]:
                 return
             edited = edited_child_ids(connection, input_id)
+            counts = {"saved": 0, "needs_check": 0, "draft_failed": 0}
             for row in rows:
                 previous = connection.execute(text("""
                     SELECT * FROM daily_notes WHERE input_id=:input AND child_id=:child FOR UPDATE
@@ -186,14 +218,33 @@ def run_daily_note_drafts(input_id):
                        "status": "needs_check" if row["open_checks"] else "draft",
                        "content": json.dumps(row["content"], default=str),
                        "checks": json.dumps(checks, default=str)}).mappings().one()
+                counts["saved"] += 1
+                counts["needs_check"] += int(saved["status"] == "needs_check")
+                counts["draft_failed"] += int(any(c["kind"] == "draft_failed" for c in checks))
                 record(connection, saved, "daily_note_drafted",
                        from_status=previous["status"] if previous else None,
                        **({"regenerated_by": metadata["regenerated_by"]} if metadata.get("regenerated_by") else {}))
             connection.execute(text("UPDATE daily_note_inputs SET draft_status='succeeded' WHERE id=:id"), {"id": input_id})
+            # 대체 응답 = 아이별 초안이 실패해 반 공통 줄 템플릿과 draft_failed 확인으로 저장된 아이가 있음.
+            passed, failed_ms = counts["saved"] - counts["draft_failed"], incident_state(connection, input_id)[1]
+            outcome = {"fallback_used": counts["draft_failed"] > 0, "validation_result": (
+                "all_children_passed" if not counts["draft_failed"] else
+                "some_children_template" if passed else "all_children_template")}
+            if failed_ms is not None:
+                outcome["recovery_status"] = ("recovered" if not counts["draft_failed"] else
+                                              "fallback" if passed else "handed_off")
+                outcome["duration_ms"] = failed_ms if passed else None
+            batch_event(connection, input_id, "drafted", "agent", retry_count=retry_count, **counts, **outcome)
     except Exception as error:
         # 예외 원문에는 입력 메모가 섞일 수 있어 종류만 기록하고 API에는 고정 오류를 준다.
         log.error("알림장 초안 실패 input_id=%s error_type=%s", input_id, type(error).__name__)
         with transaction() as connection:
-            connection.execute(text("""
-                UPDATE daily_note_inputs SET draft_status='failed' WHERE id=:id AND xmin::text=:token
-            """), {"id": input_id, "token": entry["run_token"]})
+            failed = connection.execute(text("""
+                UPDATE daily_note_inputs SET draft_status='failed' WHERE id=:id AND xmin::text=:token RETURNING id
+            """), {"id": input_id, "token": entry["run_token"]}).one_or_none()
+            # 다시 만들기에 밀린 옛 실행의 실패는 남기지 않는다.
+            if failed is not None:
+                batch_event(connection, input_id, "tool_failed", "system", retry_count=retry_count,
+                            detected_failure="writer_timeout" if isinstance(error, TimeoutError) else "writer_error",
+                            detection_ms=round((monotonic() - started) * 1000), fallback_used=False,
+                            validation_result="job_failed", recovery_status="handed_off" if retry_count else "pending")

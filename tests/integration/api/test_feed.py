@@ -409,6 +409,20 @@ def test_author_can_delete_after_losing_class_access(client, parent, feed_backen
     assert not path.exists()
 
 
+def test_org_lane_closes_for_guardian_without_linked_child(client, parent, teacher, feed_backend):
+    own = post(client, teacher, root=ORG)
+    assert client.get(ORG + "/posts", headers=parent).status_code == 200
+    unlink(feed_backend, seed.CHILD, seed.PARENT)  # parent01은 하늘이 하나만 연결돼 있었어요.
+    headers = {**parent, "X-Request-ID": "t54-unlinked"}
+    before = len(audit(feed_backend))
+    for path in (ORG + "/posts", ORG + "/albums", f"{BASE}/posts/{own['id']}", own["photos"][0]["file_url"]):
+        err(client.get(path, headers=headers), 403, "FORBIDDEN")
+    err(create(client, headers, root=ORG), 403, "FORBIDDEN")
+    denied = audit(feed_backend)[before:]
+    assert len(denied) == 5 and all(e["action"] == "permission_denied" for e in denied)
+    assert all(e["detail"]["trace_id"] == "t54-unlinked" for e in denied)
+
+
 @pytest.mark.parametrize("actor", ["teacher", "parent_other"])
 def test_unauthorized_invalid_upload_does_not_read_body(client, actor, request, monkeypatch, feed_backend):
     from starlette.requests import Request
