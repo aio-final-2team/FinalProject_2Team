@@ -4,10 +4,19 @@
 | --- | --- |
 | 작업 | T13 API 설계 문서(FastAPI·Function Calling 도구 계약)·모의 API (#170) |
 | 작성 · 검토 | 태웅 · 인혜 |
-| 판 | v0.7.2 · 2026-11-23 (판마다 바뀐 내용은 맨 끝 변경 이력 참고) |
-| 함께 보는 문서 | 기획서 3장(기능 요구사항 FR)·4장(비기능 요구사항 NFR), T04 흐름·권한 명세, [입출력 계약표](입출력_계약표_초안.md), [DB 스키마 설계서](DB_스키마_설계서.md) |
+| 계약을 쓰는 쪽 | 화면 T12·T32(성주), 알림장 그래프 T32(프롬프트 검토 영민), 요청 처리 에이전트·자료·근거 검색 T29·T20·T33(영민) |
+| 판 | v0.8 · 2026-11-23 인계 (판마다 바뀐 내용은 맨 끝 변경 이력 참고. 계약을 바꾸면 예시·모의 응답·시험도 함께 고친다) |
+| 검토 기준 | `develop` 브랜치의 [API 설계 문서](https://github.com/aio-final-2team/FinalProject_2Team/blob/develop/Docs/Step2/API_설계_문서.md). API별 상태(2장)는 develop `24258f2` 코드로 판정했다 |
+| 함께 보는 문서 | 아래 기준 판 표의 문서들, T04 흐름·권한 명세 |
 
-이 문서는 유치온 API 49개와 에이전트 도구 15개의 계약을 적는다. 1~6장은 강사님 'API 설계 문서 작성법'에 나온 '문서에 들어가는 여섯 가지'의 순서를 따르고, 7장에는 API 필드와 DB 컬럼의 대응을, 8장에는 설정값을 적었다. 필드·권한·오류는 입출력 계약표와 같아야 한다. 두 문서가 어긋나면 계약표를 먼저 고친 뒤 두 문서의 판을 함께 올린다. 구현(FastAPI의 `/docs`)과 달라졌을 때도 둘을 대조해 판을 올린다. 모의 API와 생성물 `contracts/openapi.yaml`도 이 문서와 함께 둔다. 모의 API를 쓰는 법과 데모 계정은 [모의 API 안내](../../contracts/mock_api/README.md)에 있다. 제목에 [제안]이 붙은 절은 아직 팀이 확인하지 않은 내용이다. 투약·귀가(3.27), 상담 지연 입력(3.28), 피드·앨범(3.29) 같은 절이 그렇다.
+| 함께 맞춘 문서 | 기준 판 |
+| --- | --- |
+| [기획서](../Step1/기획서.md) | 11/18 실측 반영본에 11/20 팀 결정 D02(첫 시연 범위)를 더한 develop 판. 3장 기능 요구사항(FR)과 4장 비기능 요구사항(NFR)의 번호를 쓴다 |
+| [입출력 계약표](입출력_계약표_초안.md) | v0.18 · 2026-11-21 |
+| [DB 스키마 설계서](DB_스키마_설계서.md) | v0.18 · 2026-11-23, 마이그레이션 0001~0010 |
+| OpenAPI 생성물 `contracts/openapi.yaml` | 마지막 생성 커밋 `04c4691`. 앱이 내는 `/openapi.json`과 같은지는 `test_contract_matches_application`으로 확인한다 |
+
+이 문서는 유치온 API 49개(기준 v0.8, develop `24258f2`)와 에이전트 도구 15개의 계약을 담는다. 1~6장은 강사님 'API 설계 문서 작성법'에 나온 '문서에 들어가는 여섯 가지'의 순서를 따르고, 7장에는 API 필드와 DB 컬럼의 대응을, 8장에는 설정값을 적었다. 필드·권한·오류는 입출력 계약표와 같아야 한다. 두 문서가 어긋나면 계약표를 먼저 고친 뒤 두 문서의 판을 함께 올린다. 구현(FastAPI의 `/docs`)과 달라졌을 때도 둘을 대조해 판을 올린다. 모의 API와 생성물 `contracts/openapi.yaml`도 이 문서와 함께 둔다. 모의 API를 쓰는 법과 데모 계정은 [모의 API 안내](../../contracts/mock_api/README.md)에 있다. 제목에 [제안]이 붙은 절은 팀이 아직 계약을 확인하지 않은 내용으로, 투약·귀가(3.27), 상담 지연 입력(3.28), 피드·앨범(3.29)이 여기에 해당한다. API별로 지금 어디까지 동작하는지는 2장 표의 상태 칸에 적었다.
 
 **목차.** 1. 공통 정보와 인증 · 2. API 목록 · 3. 엔드포인트 상세 명세 · 4. 검증과 권한 규칙 · 5. Tool 정의와 호출 흐름 · 6. 실행 규칙 · 7. API 필드와 DB 컬럼 대응 · 8. 설정값 · 부록 A. 예시 ID · 부록 B. 강사 가이드 체크리스트 대조 · 변경 이력
 
@@ -94,62 +103,115 @@ FastAPI가 기본으로 내는 422 응답은 예외 처리기에서 위 형식�
 
 ## 2. API 목록
 
+첫 시연은 알림장 흐름으로 고정한다. 담임이 반 활동과 아이별 메모를 입력하면 AI가 초안을 만들고, 담임이 이를 확인·수정한 뒤 반 전체에 보낸다(기획서 2.3, 결정 D02). 이때 화면은 로그인·내 정보(3.8), 반 아이 목록(3.24), 초안 만들기·진행 상태(3.19), 알림장 보기(3.20), 고치기·확인(3.21), 반 알림장 보내기(3.6) 순서로 API를 부른다. 초안을 만들지 못했거나 다시 써야 하면 다시 만들기(3.26)를 부른다. 알림장을 보내면 학부모는 알림 목록(3.11)에서 `note_sent` 알림을 받고, 알림장 보기(3.20)에서 자기 아이 알림장을 연다.
 
-아래 표에 API 49개를 모았다. 인증·역할 열의 '자기 것'·'우리 반'은 4.2의 범위 규칙을 뜻하고, 상세 열은 각 API를 자세히 적은 3장의 절 번호다.
+아래 표에 API 49개(기준 v0.8, develop `24258f2`)를 모았다. 인증·역할 열의 '자기 것'·'우리 반'은 4.2의 범위 규칙을 뜻한다. 상세 열에는 각 API를 자세히 설명한 3장의 절 번호를 적었다. 상태 칸은 develop 코드를 DB 모드(`DATA_BACKEND=db`)로 띄운 뒤 49개를 한 번씩 호출해 보고 정했다.
 
-| # | 메서드 | 경로 | 인증·역할 | 설명 | 성공 | 요구사항 | 상세 |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | POST | `/api/v1/auth/login` | 없음 | 로그인, 토큰 발급 | 200 | FR-01 | 3.8 |
-| 2 | GET | `/api/v1/me` | JWT | 내 정보·내 아이(학부모)·담당 반(교직원) | 200 | FR-01 | 3.8 |
-| 3 | POST | `/api/v1/requests` | 학부모 | 요청 만들기(AI 처리 접수) | 202 | FR-02, FR-03 | 3.1 |
-| 4 | GET | `/api/v1/requests` | 학부모(자기 것) | 내 요청 목록 | 200 | FR-02 | 3.9 |
-| 5 | GET | `/api/v1/requests/{request_id}` | 학부모(자기 것) · 교직원(우리 반) | 요청 상세·대화·진행 기록 | 200 | FR-02, FR-11 | 3.2, 3.7 |
-| 6 | GET | `/api/v1/requests/{request_id}/stream` | 학부모(자기 것) | AI 진행 스트림(SSE) | 200 | NFR-10 | 3.2 |
-| 7 | POST | `/api/v1/requests/{request_id}/messages` | 학부모(자기 것) | 대화 이어 쓰기 | 201 | FR-02 | 3.10 |
-| 8 | POST | `/api/v1/requests/{request_id}/slot-choices` | 학부모(자기 것) | 상담 가능 시간 체크 | 200 | FR-05 | 3.4 |
-| 9 | POST | `/api/v1/requests/{request_id}/confirm` | 학부모(자기 민원) | 민원 회신 '확인했어요' | 200 | FR-07 | 3.5 |
-| 10 | GET | `/api/v1/notifications` | JWT(자기 것) | 알림 목록 | 200 | FR-12 | 3.11 |
-| 11 | POST | `/api/v1/notifications/{notification_id}/read` | JWT(자기 것) | 알림 읽음 | 200 | FR-12 | 3.11 |
-| 12 | GET | `/api/v1/cards` | 담임·원장 | 받은함(필터 6개·종류 필터·필터별 건수) | 200 | FR-09 | 3.12, 3.7 |
-| 13 | GET | `/api/v1/cards/{card_id}` | 담임(우리 반)·원장 | 카드 상세(초안·근거·반복 수·이력) | 200 | FR-04, FR-07, FR-09, FR-11 | 3.13, 3.7 |
-| 14 | GET | `/api/v1/cards/{card_id}/stream` | 담임(우리 반)·원장 | 카드 AI 진행 스트림(초안 글자 포함) | 200 | NFR-10 | 3.13 |
-| 15 | POST | `/api/v1/cards/{card_id}/decisions` | 담임(우리 반)·원장 | 카드 결정(승인·거절·보류·재개·반려·처리 완료·원장님께 올리기) | 200 | FR-05~FR-09 | 3.3 |
-| 16 | POST | `/api/v1/cards/{card_id}/reclassify` | 담임(우리 반)·원장 | 민원 위험 등급 다시 분류 | 200 | FR-03, FR-07 | 3.14 |
-| 17 | POST | `/api/v1/cards/{card_id}/bookings` | 담임(우리 반) | 상담 확정 | 200 | FR-05 | 3.4 |
-| 18 | POST | `/api/v1/cards/{card_id}/instructions` | 원장·원감 | 원장 보고 지시 | 200 | FR-07 | 3.15 |
-| 19 | POST | `/api/v1/cards/{card_id}/reassign` | 원장·원감 | 담당 재배정 | 200 | FR-09, FR-19 | 3.16 |
-| 20 | POST | `/api/v1/memory-rules/{rule_id}/decision` | 규칙 주인 | 개인 규칙 제안 켜기·거절 | 200 | FR-06 | 3.17 |
-| 21 | GET | `/api/v1/overview` | 원장·원감 | 원장 현황(미배정·대기·지연·완료·학부모 미확인 완료) | 200 | FR-09, FR-19 | 3.18 |
-| 22 | POST | `/api/v1/daily-notes/drafts` | 담임 | 알림장 초안 만들기(AI 처리 접수) | 202 | FR-10 | 3.19 |
-| 23 | GET | `/api/v1/daily-notes/drafts/{input_id}` | 담임(우리 반) | 알림장 초안 진행 상태 | 200 | FR-10 | 3.19 |
-| 24 | GET | `/api/v1/daily-notes` | 학부모(내 아이, 보낸 것) · 담임(우리 반) | 알림장 보기 | 200 | FR-10 | 3.20, 3.7 |
-| 25 | PATCH | `/api/v1/daily-notes/{note_id}` | 담임(우리 반) | 알림장 고치기·확인 | 200 | FR-10 | 3.21 |
-| 26 | POST | `/api/v1/daily-notes/send` | 담임(우리 반) | 반 알림장 한 번에 보내기 | 200 | FR-10 | 3.6 |
-| 27 | POST | `/api/v1/documents` | 원장·담임 | 자료 올리기(적재 접수) | 202 | FR-13 | 3.22 |
-| 28 | GET | `/api/v1/documents` | 교직원 | 자료 목록 | 200 | FR-13 | 3.23 |
-| 29 | GET | `/api/v1/documents/{document_id}` | 교직원 | 자료 상세·적재 상태 | 200 | FR-13 | 3.23 |
-| 30 | GET | `/api/v1/classrooms/{classroom_id}/children` | 담임(우리 반)·원장(같은 기관) | 반 아이 목록(이름순) | 200 | FR-10 | 3.24 |
-| 31 | GET | `/api/v1/memories` | 담임(본인) | 내 AI 기억 보기 | 200 | FR-06 | 3.25 |
-| 32 | DELETE | `/api/v1/memories/{memory_id}` | 담임(본인) | 내 AI 기억 지우기 | 204 | FR-06 | 3.25 |
-| 33 | POST | `/api/v1/daily-notes/drafts/{input_id}/regenerate` | 담임(우리 반) | 미확인 알림장 다시 만들기 | 202 | FR-10 | 3.26 |
-| 34 | GET | `/api/v1/children/{child_id}/pickup-guardians` | 자기 아이 보호자·담임·원장 | 등록된 인계자 목록 | 200 | FR-16 | 3.27 |
-| 35 | GET | `/api/v1/care-requests` | 담임·원장 | 교직원용 투약·귀가 요청 목록 | 200 | FR-16 | 3.27 |
-| 36 | POST | `/api/v1/requests/{request_id}/care-decisions` | 담임·원장 | 투약·인계를 실제로 확인·완료 | 200 | FR-16 | 3.27 |
-| 37 | POST | `/api/v1/consultations/{booking_id}/delay` | 그 반 예약 담임 | 상담 예상 종료 기록 | 200 | FR-17 | 3.28 |
-| 38 | GET | `/api/v1/classrooms/{classroom_id}/posts` | 그 반 아이 보호자 | 반 칸 글 목록 | 200 | FR-22·AC-06 | 3.29 |
-| 39 | POST | `/api/v1/classrooms/{classroom_id}/posts` | 그 반 아이 보호자 | 반 칸 글·사진 올리기 | 201 | FR-22·AC-06 | 3.29 |
-| 40 | GET | `/api/v1/organizations/{org_id}/posts` | 그 기관 보호자·교직원 | 원 칸 글 목록 | 200 | FR-22·AC-06 | 3.29 |
-| 41 | POST | `/api/v1/organizations/{org_id}/posts` | 그 기관 보호자·교직원 | 원 칸 글·사진 올리기 | 201 | FR-22·AC-06 | 3.29 |
-| 42 | GET | `/api/v1/posts/{post_id}` | 칸 권한 | 글 상세와 볼 수 있는 사진 | 200 | FR-22·AC-06 | 3.29 |
-| 43 | DELETE | `/api/v1/posts/{post_id}` | 같은 기관 작성자(반 이동·퇴소 뒤에도) | 글·사진 파일 지우기 | 204 | FR-22·AC-06 | 3.29 |
-| 44 | PATCH | `/api/v1/posts/{post_id}` | 그 기관 원장·원 칸 | 원 칸 글 숨기기 | 200 | FR-22·AC-06 | 3.29 |
-| 45 | GET | `/api/v1/classrooms/{classroom_id}/albums` | 그 반 아이 보호자 | 반 칸 앨범 | 200 | FR-22·AC-06 | 3.29 |
-| 46 | GET | `/api/v1/organizations/{org_id}/albums` | 그 기관 보호자·교직원 | 원 칸 앨범 | 200 | FR-22·AC-06 | 3.29 |
-| 47 | GET | `/api/v1/photos/{photo_id}/file` | 칸·사진 권한 | 사진 파일 받기(인증 필요) | 200 | FR-22·AC-06 | 3.29 |
-| 48 | GET | `/api/v1/children/{child_id}/photo-scope` | 그 아이 보호자 | 현재 사진 공개 범위 | 200 | FR-22·AC-06 | 3.29 |
-| 49 | PATCH | `/api/v1/children/{child_id}/photo-scope` | 그 아이 보호자 | 사진 공개 범위 바꾸기 | 200 | FR-22·AC-06 | 3.29 |
+| 상태 | 뜻 | 개수 |
+| --- | --- | --- |
+| DB 연결 | DB 모드에서 실제 표를 읽고 쓴다. 모의 API에도 같은 경로가 있다 | 33 |
+| 모의만 | 모의 API에만 있고, DB 모드에서는 501 `NOT_IMPLEMENTED`를 돌려준다 | 0 |
+| 제안 | 모의·DB 두 모드에서 동작하지만, 계약을 팀이 확인하기 전이다 | 16 |
 
-SSE 두 개(6번·14번)는 실시간 진행 화면(NFR-10)에서 쓴다. 투약·귀가 요청의 SSE는 AI 단계를 거치지 않고 현재 상태 done으로 바로 끝난다(3.27). 34~49번은 3.27~3.29에 적은 API로, 아직 팀이 확인하지 않았다.
+설계서를 실제 동작으로 잇는 단계는 네 가지다(A 화면 계약·B 저장·C 외부 연동·D 모델). 'DB 연결'은 이 가운데 B 저장까지 실제로 확인했다는 뜻이다. 화면과 모델까지 실제로 동작하는지는 첫 시연 흐름을 기준으로 2.1에 따로 적었다. 지금 '모의만' 상태인 API는 없다. 자료 올리기(27)와 자료 상세(29)도 DB에 연결돼 있다. '제안'인 세 절은 모두 기획서의 최종(반드시) 범위에 들어 있지만, 12/08 MVP에는 들어 있지 않다. 세 절의 상황은 아래와 같다.
+
+| 절 | 기획서 요구사항 | MVP(12/08) | 팀 확정 | 구현 |
+| --- | --- | --- | --- | --- |
+| 3.27 투약·귀가(API 34~36) | FR-16·AC-09, 최종·중요 | 들어 있지 않음 | 기능은 기획서 2.2에서 확정했고, API 계약은 팀 확인 전이다 | 모의·DB 모두 구현 |
+| 3.28 상담 지연 입력(API 37) | FR-17, 최종·중요 | 들어 있지 않음 | 위와 같음 | 모의·DB 모두 구현. 예약 변경과 실제 종료 입력은 후속 |
+| 3.29 피드·앨범(API 38~49) | FR-22·AC-06, 최종·중요 | 들어 있지 않음 | 위와 같음 | 모의·DB 모두 구현. DB는 마이그레이션 0010이 필요하다 |
+
+| # | 메서드 | 경로 | 인증·역할 | 설명 | 성공 | 요구사항 | 상세 | 상태 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | POST | `/api/v1/auth/login` | 없음 | 로그인, 토큰 발급 | 200 | FR-01 | 3.8 | DB 연결 |
+| 2 | GET | `/api/v1/me` | JWT | 내 정보·내 아이(학부모)·담당 반(교직원) | 200 | FR-01 | 3.8 | DB 연결 |
+| 3 | POST | `/api/v1/requests` | 학부모 | 요청 만들기(AI 처리 접수) | 202 | FR-02, FR-03 | 3.1 | DB 연결 |
+| 4 | GET | `/api/v1/requests` | 학부모(자기 것) | 내 요청 목록 | 200 | FR-02 | 3.9 | DB 연결 |
+| 5 | GET | `/api/v1/requests/{request_id}` | 학부모(자기 것) · 교직원(우리 반) | 요청 상세·대화·진행 기록 | 200 | FR-02, FR-11 | 3.2, 3.7 | DB 연결 |
+| 6 | GET | `/api/v1/requests/{request_id}/stream` | 학부모(자기 것) | AI 진행 스트림(SSE) | 200 | NFR-10 | 3.2 | DB 연결 |
+| 7 | POST | `/api/v1/requests/{request_id}/messages` | 학부모(자기 것) | 대화 이어 쓰기 | 201 | FR-02 | 3.10 | DB 연결 |
+| 8 | POST | `/api/v1/requests/{request_id}/slot-choices` | 학부모(자기 것) | 상담 가능 시간 체크 | 200 | FR-05 | 3.4 | DB 연결 |
+| 9 | POST | `/api/v1/requests/{request_id}/confirm` | 학부모(자기 민원) | 민원 회신 '확인했어요' | 200 | FR-07 | 3.5 | DB 연결 |
+| 10 | GET | `/api/v1/notifications` | JWT(자기 것) | 알림 목록 | 200 | FR-12 | 3.11 | DB 연결 |
+| 11 | POST | `/api/v1/notifications/{notification_id}/read` | JWT(자기 것) | 알림 읽음 | 200 | FR-12 | 3.11 | DB 연결 |
+| 12 | GET | `/api/v1/cards` | 담임·원장 | 받은함(필터 6개·종류 필터·필터별 건수) | 200 | FR-09 | 3.12, 3.7 | DB 연결 |
+| 13 | GET | `/api/v1/cards/{card_id}` | 담임(우리 반)·원장 | 카드 상세(초안·근거·반복 수·이력) | 200 | FR-04, FR-07, FR-09, FR-11 | 3.13, 3.7 | DB 연결 |
+| 14 | GET | `/api/v1/cards/{card_id}/stream` | 담임(우리 반)·원장 | 카드 AI 진행 스트림(초안 글자 포함) | 200 | NFR-10 | 3.13 | DB 연결 |
+| 15 | POST | `/api/v1/cards/{card_id}/decisions` | 담임(우리 반)·원장 | 카드 결정(승인·거절·보류·재개·반려·처리 완료·원장님께 올리기) | 200 | FR-05~FR-09 | 3.3 | DB 연결 |
+| 16 | POST | `/api/v1/cards/{card_id}/reclassify` | 담임(우리 반)·원장 | 민원 위험 등급 다시 분류 | 200 | FR-03, FR-07 | 3.14 | DB 연결 |
+| 17 | POST | `/api/v1/cards/{card_id}/bookings` | 담임(우리 반) | 상담 확정 | 200 | FR-05 | 3.4 | DB 연결 |
+| 18 | POST | `/api/v1/cards/{card_id}/instructions` | 원장·원감 | 원장 보고 지시 | 200 | FR-07 | 3.15 | DB 연결 |
+| 19 | POST | `/api/v1/cards/{card_id}/reassign` | 원장·원감 | 담당 재배정 | 200 | FR-09, FR-19 | 3.16 | DB 연결 |
+| 20 | POST | `/api/v1/memory-rules/{rule_id}/decision` | 규칙 주인 | 개인 규칙 제안 켜기·거절 | 200 | FR-06 | 3.17 | DB 연결 |
+| 21 | GET | `/api/v1/overview` | 원장·원감 | 원장 현황(미배정·대기·지연·완료·학부모 미확인 완료) | 200 | FR-09, FR-19 | 3.18 | DB 연결 |
+| 22 | POST | `/api/v1/daily-notes/drafts` | 담임 | 알림장 초안 만들기(AI 처리 접수) | 202 | FR-10 | 3.19 | DB 연결 |
+| 23 | GET | `/api/v1/daily-notes/drafts/{input_id}` | 담임(우리 반) | 알림장 초안 진행 상태 | 200 | FR-10 | 3.19 | DB 연결 |
+| 24 | GET | `/api/v1/daily-notes` | 학부모(내 아이, 보낸 것) · 담임(우리 반) · 원장(같은 기관) | 알림장 보기 | 200 | FR-10 | 3.20, 3.7 | DB 연결 |
+| 25 | PATCH | `/api/v1/daily-notes/{note_id}` | 담임(우리 반) | 알림장 고치기·확인 | 200 | FR-10 | 3.21 | DB 연결 |
+| 26 | POST | `/api/v1/daily-notes/send` | 담임(우리 반) | 반 알림장 한 번에 보내기 | 200 | FR-10 | 3.6 | DB 연결 |
+| 27 | POST | `/api/v1/documents` | 원장·담임 | 자료 올리기(적재 접수) | 202 | FR-13 | 3.22 | DB 연결 |
+| 28 | GET | `/api/v1/documents` | 교직원 | 자료 목록 | 200 | FR-13 | 3.23 | DB 연결 |
+| 29 | GET | `/api/v1/documents/{document_id}` | 교직원 | 자료 상세·적재 상태 | 200 | FR-13 | 3.23 | DB 연결 |
+| 30 | GET | `/api/v1/classrooms/{classroom_id}/children` | 담임(우리 반)·원장(같은 기관) | 반 아이 목록(이름순) | 200 | FR-10 | 3.24 | DB 연결 |
+| 31 | GET | `/api/v1/memories` | 담임(본인) | 내 AI 기억 보기 | 200 | FR-06 | 3.25 | DB 연결 |
+| 32 | DELETE | `/api/v1/memories/{memory_id}` | 담임(본인) | 내 AI 기억 지우기 | 204 | FR-06 | 3.25 | DB 연결 |
+| 33 | POST | `/api/v1/daily-notes/drafts/{input_id}/regenerate` | 담임(우리 반) | 미확인 알림장 다시 만들기 | 202 | FR-10 | 3.26 | DB 연결 |
+| 34 | GET | `/api/v1/children/{child_id}/pickup-guardians` | 자기 아이 보호자·담임·원장 | 등록된 인계자 목록 | 200 | FR-16 | 3.27 | 제안 |
+| 35 | GET | `/api/v1/care-requests` | 담임·원장 | 교직원용 투약·귀가 요청 목록 | 200 | FR-16 | 3.27 | 제안 |
+| 36 | POST | `/api/v1/requests/{request_id}/care-decisions` | 담임·원장 | 투약·인계를 실제로 확인·완료 | 200 | FR-16 | 3.27 | 제안 |
+| 37 | POST | `/api/v1/consultations/{booking_id}/delay` | 그 반 예약 담임 | 상담 예상 종료 기록 | 200 | FR-17 | 3.28 | 제안 |
+| 38 | GET | `/api/v1/classrooms/{classroom_id}/posts` | 그 반 아이 보호자 | 반 칸 글 목록 | 200 | FR-22·AC-06 | 3.29 | 제안 |
+| 39 | POST | `/api/v1/classrooms/{classroom_id}/posts` | 그 반 아이 보호자 | 반 칸 글·사진 올리기 | 201 | FR-22·AC-06 | 3.29 | 제안 |
+| 40 | GET | `/api/v1/organizations/{org_id}/posts` | 그 기관 교직원·연결된 아이가 있는 보호자 | 원 칸 글 목록 | 200 | FR-22·AC-06 | 3.29 | 제안 |
+| 41 | POST | `/api/v1/organizations/{org_id}/posts` | 그 기관 교직원·연결된 아이가 있는 보호자 | 원 칸 글·사진 올리기 | 201 | FR-22·AC-06 | 3.29 | 제안 |
+| 42 | GET | `/api/v1/posts/{post_id}` | 칸 권한 | 글 상세와 볼 수 있는 사진 | 200 | FR-22·AC-06 | 3.29 | 제안 |
+| 43 | DELETE | `/api/v1/posts/{post_id}` | 같은 기관 작성자(반 이동·퇴소 뒤에도) | 글·사진 파일 지우기 | 204 | FR-22·AC-06 | 3.29 | 제안 |
+| 44 | PATCH | `/api/v1/posts/{post_id}` | 그 기관 원장·원 칸 | 원 칸 글 숨기기 | 200 | FR-22·AC-06 | 3.29 | 제안 |
+| 45 | GET | `/api/v1/classrooms/{classroom_id}/albums` | 그 반 아이 보호자 | 반 칸 앨범 | 200 | FR-22·AC-06 | 3.29 | 제안 |
+| 46 | GET | `/api/v1/organizations/{org_id}/albums` | 그 기관 교직원·연결된 아이가 있는 보호자 | 원 칸 앨범 | 200 | FR-22·AC-06 | 3.29 | 제안 |
+| 47 | GET | `/api/v1/photos/{photo_id}/file` | 칸·사진 권한 | 사진 파일 받기(인증 필요) | 200 | FR-22·AC-06 | 3.29 | 제안 |
+| 48 | GET | `/api/v1/children/{child_id}/photo-scope` | 그 아이 보호자 | 현재 사진 공개 범위 | 200 | FR-22·AC-06 | 3.29 | 제안 |
+| 49 | PATCH | `/api/v1/children/{child_id}/photo-scope` | 그 아이 보호자 | 사진 공개 범위 바꾸기 | 200 | FR-22·AC-06 | 3.29 | 제안 |
+
+SSE 두 개(6번·14번)는 실시간 진행 화면(NFR-10)에서 쓴다. 투약·귀가 요청의 SSE는 AI 단계를 거치지 않고 현재 상태 done으로 바로 끝난다(3.27).
+
+### 2.1 첫 시연 흐름의 연결표와 실제 연결 범위
+
+알림장 흐름 하나를 요구사항부터 시험까지 한 줄로 이었다. 화면은 T12 화면 지도의 웹 경로다. 시험 이름 뒤에 (DB)가 붙으면 DB 모드에서만, (모의)가 붙으면 모의 모드에서만 돌고, 아무 표시가 없으면 두 모드에서 모두 돈다.
+
+| 단계 | 요구사항 | 화면 | API | 도구 | DB | 시험 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 반 입력·초안 | FR-10, AC-04 | `/teacher/notes` | 3.24, 3.19 | 5.5.1, 5.5.2 | `daily_note_inputs`, `daily_notes`, 이력 `daily_note_drafted` | `test_draft_preserves_inputs_requests_sources_and_duplicate`, `test_classroom_children_sorted_complete_and_director_allowed`(모의), `test_one_child_failure_keeps_other_children_and_blocks_batch`(DB) |
+| 확인·수정 | FR-10, FR-08 | `/teacher/notes/:noteId` | 3.20, 3.21 | — | `daily_notes.status`·`open_checks`·`confirmed_at`, 이력 `daily_note_edited`·`daily_note_confirmed` | `test_first_original_survives_edits_confirm_send_and_events_link_only_the_note`, `test_empty_patch_unconfirms_ready_note`(모의) |
+| 발송 잠금·보내기 | FR-10, FR-12, AC-04 | `/teacher/notes` | 3.6 | — | `daily_notes.sent_at`, `notifications`(`note_sent`), 이력 `daily_note_sent` | `test_batch_atomic_patch_and_parent_visibility`, `test_unfinished_batch_cannot_send` |
+| 다시 만들기 | FR-10 | 웹에 아직 없음 | 3.26 | 5.5.1, 5.5.2 | `daily_notes.ai_original`, 반 묶음 카드 `draft.regenerated_by` | `test_regenerate_preserves_edited_notes_and_ready_including_check_ids`, `test_regenerate_recovers_failed_or_stopped_input` |
+| 학부모 보기 | FR-10, FR-12 | `/parent/home`(알림 목록 화면은 아직 없음) | 3.20, 3.11 | — | `daily_notes`(`sent`만), `notifications` | `test_batch_atomic_patch_and_parent_visibility` |
+
+어느 부품까지 실제로 연결했는지는 아래와 같다.
+
+| 단계 | 연결할 것 | 지금 상태 | 근거 |
+| --- | --- | --- | --- |
+| A 화면 계약 | 웹 화면 ↔ API | 확인 안 됨. 웹 코드(`apps/web/src/api/notes.ts`)는 3.19·3.20·3.21·3.24·3.6을 부르지만, 화면 표시는 첫 시연에서 점검한다 | 화면 점검 전 |
+| B 저장 | API ↔ 시험 DB | 실제로 확인함 | 49개를 DB 모드로 불러 501이 없음, `tools/test_db.sh`의 DB 시험 290개 통과 |
+| C 외부 연동 | 외부 API | 해당 없음. 알림장 흐름은 외부 API를 부르지 않는다 | — |
+| D 모델 | 그래프 ↔ 모델 ↔ 저장 | 모의 연동 성공 / 실제 연동 대기. 기본 작성기는 모델을 부르지 않는 대역이고, 그래프는 가짜 모델로 단위 시험을 통과했다. 실제 모델로 앱을 거친 실행은 이 판에서 확인하지 않았다 | `tests/unit/test_daily_note_graph.py` 27개 통과 |
+
+**재현과 증빙.** 검토자는 아래 조건으로 같은 결과를 다시 볼 수 있다.
+
+| 칸 | 내용 |
+| --- | --- |
+| 기준 커밋 | develop `24258f2` |
+| 환경 | 시험용 PostgreSQL 16 + pgvector(`pgvector/pgvector:pg16`)에 마이그레이션 0001~0010과 데모 시드를 넣고 `DATA_BACKEND=db`로 띄운다. 작성기는 기본값(대역)이다. 모의 모드는 `DATA_BACKEND=mock`이다 |
+| 실행 명령 | `tools/test_db.sh`(시험용 DB를 띄워 DB 시험과 모의 HTTP 시험을 돌린 뒤 컨테이너를 지운다), `python -m pytest tests/unit/test_daily_note_graph.py tests/integration/api/test_openapi.py` |
+| 결과 | DB 시험 290개, 모의 HTTP 시험 670개, 그래프 단위 시험 27개, OpenAPI 대조 2개 통과 |
+| 화면 링크 | 아직 없다. 첫 시연 점검 때 붙인다 |
+
+| 남은 일 | 담당 | 다음 확인 |
+| --- | --- | --- |
+| 웹 화면에서 세 상태(진행 중·완료·실패)와 발송 잠금 표시 확인(A) | T32 성주 | T32 일정(11/30~12/02) |
+| 실제 모델로 알림장 초안 만들기(D) | T32 성주, 프롬프트 검토 영민 | T32 일정 |
+| 모의 API가 진행 중(`queued`·`running`) 응답을 내게 하기. 지금은 접수하면서 바로 끝나서 진행 중 화면은 DB 모드에서만 볼 수 있다 | T13 태웅 | 화면 점검 전 |
+| 웹의 다시 만들기 버튼과 학부모 알림 목록 화면 | T32 성주 | T32 일정 |
 
 ## 3. 엔드포인트 상세 명세
 
@@ -316,7 +378,7 @@ data: {"request_status": "needs_info"}
 | `decision` | 본문 | string | 필수 | 불가 | `approve`·`edit_approve`·`reject`·`hold`·`resume`·`dismiss`·`complete`·`escalate` | 결정. 원장 지시(`instruct`)는 18번 API |
 | `reason_code` | 본문 | string | `reject`·`dismiss`면 필수 | 불가 | 이유 코드 8개(4.1) | 거절·반려 이유 |
 | `reason_text` | 본문 | string | `hold`·`reason_code = other`면 필수, `complete`이고 학부모가 아직 확인하지 않았으면 필수 | 불가 | 1~500자 | 보류 이유·기타 이유·마무리한 방법 |
-| `hold_until` | 본문 | date | `hold`면 필수 | 불가 | 오늘 이후 | 보류 예정일 |
+| `hold_until` | 본문 | date | `hold`면 필수 | 불가 | 내일부터(오늘 날짜는 422) | 보류 예정일 |
 | `edited_content` | 본문 | object | `edit_approve`면 필수 | 불가 | 초안과 같은 모양 | 담임이 고친 내용 |
 
 ```http
@@ -1002,6 +1064,78 @@ HTTP/1.1 200 OK
 | 404 | `NOT_FOUND` | 없거나 기관·반·소유 범위 밖 |
 | 422 | `VALIDATION_FAILED` | 필수 칸·타입·길이, 중복 child_id, 그 반 아이가 아닌 메모(details.child_id) |
 
+#### 3.19.1 접수부터 결과 조회까지 한 번에 따라가기
+
+아래 응답은 2026-11-23 develop 코드에서 받은 JSON을 간추린 것이다. 모드를 따로 적지 않은 예시는 모의 모드에서 받았고, 새로 만든 ID는 `…`로 줄였다. 화면 연결은 첫 시연 때 점검한다.
+
+**① 접수.** 담임이 반 입력을 보내면 202 응답과 입력 ID(`input_id`)를 받는다. 모의 모드에서는 접수와 동시에 초안을 다 만들기 때문에 상태가 처음부터 `succeeded`다. DB 모드에서는 `queued`로 응답한 뒤 백그라운드에서 처리하므로, 조회해 보면 상태가 `running`을 거쳐 `succeeded`로 바뀐다.
+
+```http
+POST /api/v1/daily-notes/drafts
+{"classroom_id": "00000000-0000-4000-8000-000000000101", "note_date": "2026-11-23", "activities": "블록 놀이와 산책을 했어요.", "supplies": "내일 실내화", "child_memos": [{"child_id": "00000000-0000-4000-8000-000000000501", "memo": "블록으로 높은 탑을 쌓음"}]}
+HTTP/1.1 202 Accepted
+{"input_id": "…", "draft_status": "succeeded", "error": null}
+```
+
+같은 반·같은 날짜로 다시 보내면 내용이 달라도 새 작업을 만들지 않고, 200과 함께 처음 받은 `input_id`와 지금 상태를 돌려준다.
+
+**② 진행 상태 조회.** 202는 접수했다는 뜻이고, 조회 응답의 200은 조회에 성공했다는 뜻이다. 초안이 잘 만들어졌는지는 상태 코드가 아니라 `GET /api/v1/daily-notes/drafts/{input_id}`가 돌려주는 `draft_status`로 판단한다. 가이드의 `job_id`는 우리 `input_id`이고, `status`는 `draft_status`다. 가이드는 결과를 `result`에 담지만, 우리는 아이별 알림장을 ③의 3.20으로 따로 받는다. 완료 시각 칸은 없다.
+
+| 응답 | 뜻 | 화면이 할 일 |
+| --- | --- | --- |
+| 202 · `draft_status=queued`(모의는 바로 `succeeded`나 `failed`) | 처리 요청을 접수함 | 접수를 표시하고 진행 상태를 조회한다 |
+| 200 · `queued`·`running` | 조회는 성공했고 아직 만드는 중 | 결과를 성공처럼 보여 주지 않고 다시 조회한다 |
+| 200 · `succeeded` | 작업이 끝났고 아이별 초안이 저장됨 | ③에서 아이별 초안을 받아 보여 준다 |
+| 200 · `failed` + `error` | 조회는 성공했지만 작업이 실패함 | `error.message`를 보여 주고 다시 만들기(3.26)를 안내한다 |
+| 404 `NOT_FOUND` | 없는 입력 ID이거나 다른 반·다른 기관의 입력 | 자료가 있다는 사실도 알리지 않는다(1.2) |
+
+다시 조회와 새로 실행은 다르다. 다시 조회는 같은 `GET …/drafts/{input_id}`를 부르는 것이라 아무것도 바꾸지 않는다. 새로 실행하는 것은 다시 만들기(3.26 `POST …/drafts/{input_id}/regenerate`)뿐이다. 같은 반·같은 날짜로 `POST /daily-notes/drafts`를 다시 보내도 새로 실행되지 않고, 이미 접수된 작업이 돌아온다. 그래서 접수 응답이 끊겼을 때 같은 값으로 다시 보내도 작업이 둘로 늘지 않는다. 진행 중 화면은 DB 모드에서 확인한다. 모의 모드는 접수하면서 결과를 다 만들기 때문에 진행 중 응답을 낼 수 없다.
+
+**③ 아이별 초안 받기.** 작업이 완료되면 `GET /api/v1/daily-notes?classroom_id=…&date=…`(3.20)에서 아이마다 알림장을 하나씩 받는다. 확인할 항목이 있는 알림장은 `needs_check`이고, 없으면 `draft`다.
+
+```http
+GET /api/v1/daily-notes?classroom_id=00000000-0000-4000-8000-000000000101&date=2026-11-23&size=3&sort=created_at
+HTTP/1.1 200 OK
+{"total": 20, "page": 1, "size": 3, "items": [{"id": "…", "child_id": "00000000-0000-4000-8000-000000000501", "note_date": "2026-11-23", "status": "needs_check",
+  "content": {"items": [{"key": "day", "label": "오늘 하루", "value": "블록 놀이와 산책을 했어요."}, …, {"key": "child", "label": "아이 메모", "value": "블록으로 높은 탑을 쌓음"}, …]},
+  "open_checks": [{"id": "c1", "item_key": "supplies", "kind": "date_check", "problem": "준비물 날짜를 확인해 주세요", "sentence": "내일 실내화"}],
+  "confirmed_at": null, "sent_at": null}, …]}
+```
+
+**작업 전체가 실패한 경우.** 모델이 응답하지 않으면 작업이 `failed`로 끝나고, 아이별 알림장은 하나도 만들어지지 않는다. 이때 화면은 "초안을 만들지 못했어요"와 다시 만들기 버튼을 보여 준다. 모의 모드에서는 `activities`에 `[실패]`를 넣어 이 경우를 재현한다.
+
+```http
+GET /api/v1/daily-notes/drafts/{input_id}
+HTTP/1.1 200 OK
+{"input_id": "…", "draft_status": "failed", "error": {"code": "UPSTREAM_UNAVAILABLE", "message": "모델 응답이 없어 초안을 만들지 못했어요."}}
+GET /api/v1/daily-notes?classroom_id=00000000-0000-4000-8000-000000000101&date=2026-11-22
+HTTP/1.1 200 OK
+{"total": 0, "page": 1, "size": 20, "items": []}
+```
+
+**아이 한 명만 실패한 경우.** 작업은 `succeeded`로 끝나지만, 실패한 아이의 알림장에만 `draft_failed` 확인 항목이 남는다. 그 알림장에는 반 공통 줄만 있고 아이 메모 줄은 없다. 화면은 그 아이 알림장에 확인 항목을 띄우고, 담임은 알림장을 직접 써서 항목을 해결하거나 다시 만들기를 부른다. 모의 모드에는 이 경로가 없어서, 아래 응답은 DB 모드에서 아이 한 명의 초안 작성을 일부러 실패시켜 받았다. 응답에 나온 문장은 기본 작성기인 대역이 쓴 것이고, 그래프 작성기는 `problem`에 5.5.1의 문장을 쓴다.
+
+```json
+{"id": "…", "child_id": "00000000-0000-4000-8000-000000000501", "status": "needs_check",
+ "open_checks": [{"id": "…", "item_key": "child", "kind": "draft_failed", "problem": "아이 메모 초안을 만들지 못했어요. 직접 확인해 주세요", "sentence": null, "request_id": null}]}
+```
+
+**발송을 막는 조건.** 아래 조건 가운데 하나라도 걸리면 반 알림장 보내기(3.6)는 알림장을 하나도 보내지 않는다. 시험은 `tests/integration/api/test_daily_notes.py`와 `tests/integration/db/test_daily_notes_runner.py`에 있다. 표에 적은 앞 파일의 시험은 모의·DB 두 모드에서 모두 돈다.
+
+| 조건 | 응답 | 시험 |
+| --- | --- | --- |
+| 초안 작업이 `queued`·`running`·`failed`임 | 409 `NOTE_BATCH_BLOCKED`, `details.blocked = []` | `test_unfinished_batch_cannot_send`, `test_failed_writer_job_is_queryable_without_partial_notes` |
+| 확인하지 않은 알림장(`ready`가 아님)이 있음 | 409 `NOTE_BATCH_BLOCKED`. 확인 항목이 없어도 확인하지 않은 알림장은 모두 `blocked[]`에 들어간다 | `test_batch_atomic_patch_and_parent_visibility` |
+| 해결하지 않은 확인 항목이 있음 | 항목이 남아 있으면 확인(3.21의 `confirm`)부터 409 `INVALID_TRANSITION`이라 `ready`가 될 수 없다. 그래서 발송도 위 조건으로 막히고, 남은 항목은 `blocked[].open_checks`에 보인다 | `test_batch_atomic_patch_and_parent_visibility` |
+| 아이 한 명의 초안이 실패함 | 그 아이의 `draft_failed` 항목 때문에 위 조건으로 막힌다 | `test_one_child_failure_keeps_other_children_and_blocks_batch`(DB) |
+| 이미 보낸 알림장 | 막지 않는다. 다시 보내지 않고 `sent_count`에서도 뺀다. 같은 반을 한 번 더 보내면 200 `{"sent_count": 0}`이다 | `test_batch_atomic_patch_and_parent_visibility` |
+
+```json
+{"error": {"code": "NOTE_BATCH_BLOCKED", "message": "확인이 안 끝난 알림장이 있어요.", "trace_id": "…",
+  "details": {"blocked": [{"note_id": "…", "child_id": "00000000-0000-4000-8000-000000000501", "open_checks": [{"id": "c1", "item_key": "supplies", "kind": "date_check", "problem": "준비물 날짜를 확인해 주세요", "sentence": "내일 실내화"}]},
+                          {"note_id": "…", "child_id": "00000000-0000-4000-8000-000000000503", "open_checks": [{"id": "request-00000000-0000-4000-8000-00000000070a", "item_key": "pickup", "kind": "request_missed", "problem": "보호자 요청을 초안에 반영해 주세요", "sentence": null, "request_id": "00000000-0000-4000-8000-00000000070a"}]},
+                          {"note_id": "…", "child_id": "00000000-0000-4000-8000-000000005401", "open_checks": []}, …]}}}
+```
 
 ### 3.20 알림장 보기 — `GET /api/v1/daily-notes`
 
@@ -1088,13 +1222,13 @@ HTTP/1.1 200 OK
 | ③ 경로·쿼리 | 없음. |
 | ④ 요청 본문 | 아래 multipart/form-data 필드 표. classroom_ids[]는 같은 이름으로 여러 번 보낸다. |
 | ⑤ 검증·권한 | teacher·director만 호출할 수 있다. 대상 반과 이전 문서가 범위 안에 있는지 검사하고, 새 판으로 올릴 때 이전 문서는 active여야 한다. |
-| ⑥ 정상 응답 | 새 자료면 202 + document, 같은 기관에 바이트가 같은 자료가 이미 있으면 200 + 기존 document. |
+| ⑥ 정상 응답 | 새 자료면 202 + document, 같은 기관에 바이트까지 같은 자료가 이미 있으면 200 + 기존 document를 돌려준다. 다만 DB 모드에서 그 기존 자료가 적재에 실패한 상태라면, 같은 ID로 다시 적재하고 202를 돌려준다. |
 | ⑦ 오류 응답 | 아래 오류 표. |
-| ⑧ 실행 규칙 | 접수한 뒤 성공·실패는 GET /documents/{document_id}(3.23)로 확인한다. 모의 적재는 바로 끝나며, UTF-8로 치환 해독한 뒤 500자씩 나눈다(빈 파일도 1조각). 파일명 [실패]는 ingest_status=failed·chunk_count=0으로 끝난다. 새 판이 적재에 성공했을 때만 이전 자료를 superseded로 바꾸고, 실패하면 옛 판을 그대로 쓰며 supersedes_id도 비운다. |
+| ⑧ 실행 규칙 | 적재가 성공했는지 실패했는지는 접수한 뒤 GET /documents/{document_id}(3.23)로 확인한다. 두 모드 모두 접수 요청 안에서 적재를 끝내므로, 202 응답의 ingest_status는 succeeded나 failed다. 이전 자료는 새 판이 적재에 성공했을 때만 superseded로 바꾼다. 새 판의 적재가 실패하면 옛 판을 그대로 쓰고 supersedes_id도 비운다. 모의 적재는 UTF-8로 치환 해독한 뒤 500자씩 나눈다(빈 파일도 1조각). 파일명에 [실패]가 들어 있으면 ingest_status=failed·chunk_count=0으로 끝난다. DB 모드 적재에서는 파일 종류와 내용을 읽고 충돌도 검사한다. 그 결과는 아래 'DB 모드 적재 결과' 표에 있다. |
 
 | 필드 | 위치 | 타입 | 필수 | 빈값 | 제약 | 설명 |
 | --- | --- | --- | --- | --- | --- | --- |
-| `file` | 폼 | binary | 필수 | 빈 파일 허용 | 코드에 확장자·형식·크기 제한을 따로 두지 않음 | title은 파일명, 파일명이 없으면 자료 |
+| `file` | 폼 | binary | 필수 | 접수는 빈 파일 허용 | 2MiB(2,097,152바이트) 이하. 접수 단계에서는 확장자·형식을 보지 않음 | title은 파일명, 파일명이 없으면 자료. DB 모드는 적재 단계에서 .md·.markdown·.txt UTF-8 글만 읽으며, 빈 파일이나 다른 형식은 failed가 된다 |
 | `doc_type` | 폼 | string | 필수 | 불가 | notice·schedule·menu·policy·consult_timetable·law·public_data | 자료 유형 |
 | `visibility` | 폼 | string | 필수 | 불가 | staff·parents·all | 공개 범위 |
 | `classroom_ids[]` | 폼 | string[](UUID) | 선택 | 생략 가능 | 기본 [], 담임은 현재 담당 반 | 비우면 원 전체 |
@@ -1102,7 +1236,7 @@ HTTP/1.1 200 OK
 | `replaces_document_id` | 폼 | string(UUID) | 선택 | 생략 가능 | 범위 안의 active 문서 | 이전 판 |
 | `document` | 응답 | object | 항상 | 불가 | 전체 칸은 3.23 참고 | ID·적재 상태·조각 수·error |
 
-아래 예시는 200을 돌려준다. 올린 파일이 시드 식단표와 바이트가 같기 때문이다. 중복 여부는 같은 기관 안에서 파일 바이트의 SHA-256만 비교해 판단하므로, 이름·유형·공개 범위가 달라도 기존 자료를 돌려준다. 이전 판 상태는 이 중복 검사를 마친 뒤에 검사한다. 예시의 multipart 각 부분은 이름·값을 줄여 적었다.
+아래 예시는 200을 돌려준다. 올린 파일이 시드 식단표와 바이트가 같기 때문이다. 중복 여부는 같은 기관 안에서 파일 바이트의 SHA-256만 비교해 판단하므로, 이름·유형·공개 범위가 달라도 기존 자료를 돌려준다. 모의 모드는 이 중복 검사를 마친 뒤에 이전 판 상태를 검사하고, DB 모드는 이전 판 상태를 먼저 검사한다. 예시의 multipart 각 부분은 이름·값을 줄여 적었다.
 
 ```http
 POST /api/v1/documents
@@ -1119,7 +1253,29 @@ HTTP/1.1 200 OK
 | 403 | `FORBIDDEN_ROLE` | 허용하지 않은 역할 |
 | 404 | `NOT_FOUND` | 없거나 기관·반·소유 범위 밖 |
 | 409 | `INVALID_TRANSITION` | 이전 문서가 active가 아님 |
+| 413 | `VALIDATION_FAILED` | 파일이 2MiB를 넘음 |
 | 422 | `VALIDATION_FAILED` | 필수 칸·타입·허용 값·길이가 맞지 않음 |
+
+**DB 모드 적재 결과.** DB 모드는 글을 `## ` 제목 단위로 나누고, 그 제목을 근거 위치(location)로 쓴다. 제목이 없는 글은 본문 전체가 한 조각이 되고, 위치는 '본문'이다. 적재에 실패하면 이유와 상관없이 error.code는 `UPSTREAM_UNAVAILABLE`이다. 실패 이유는 error.message로 구분한다. 아래 결과는 2026-11-23 develop `24258f2`를 DB 모드로 띄운 뒤, 파일을 하나씩 직접 올려서 얻은 것이다.
+
+| 올린 파일 | 결과 | error.message와 남는 값 | 시험 |
+| --- | --- | --- | --- |
+| 이름이 .md·.markdown·.txt로 끝나지 않음(예: 식단표.hwp) | 202 · failed · chunk_count 0 | "지금은 .md·.txt 글 파일만 읽을 수 있어요" | `test_upload_unreadable_file_fails_with_message` |
+| UTF-8로 읽히지 않는 글 | 202 · failed | "UTF-8 글 파일이 아니에요" | 직접 호출로만 확인 |
+| 빈 파일, 공백·빈 줄만 있는 파일 | 202 · failed | "읽을 내용이 없어요". 모의 모드에서는 1조각으로 succeeded가 된다 | 직접 호출로만 확인 |
+| 맨 앞이 `---`로 시작함 | 머리말로 읽어 본문과 떼어 낸다 | 필수 키 6개(title·doc_type·kindergarten_id·effective_from·visibility·source)가 빠지거나 값이 허용 범위 밖이면 failed가 된다("머리말에 필수 값이 없습니다: …", "머리말이 닫히지 않았습니다" 등). 통과해도 자료 이름·유형·공개 범위·적용일은 폼 값을 쓴다 | `test_upload_conflicting_notice_is_pending_with_conflicts`, `test_bad_front_matter_is_rejected`(단위 시험) |
+| 사용 중인 다른 자료와 같은 항목의 날짜·숫자가 다름 | 202 · succeeded · conflict_pending | conflicts[]에 충돌 항목을 담는다. 새 판으로 올렸어도 옛 판은 active로 두고 supersedes_id를 비운다. 사람이 확인하기 전에는 근거 검색에 나오지 않는다 | `test_upload_conflicting_notice_is_pending_with_conflicts` |
+| 충돌 없는 새 판(replaces_document_id) | 202 · succeeded · active | supersedes_id에 옛 판 ID가 들어가고, 옛 판은 superseded가 된다 | `test_upload_plain_text_new_version_supersedes_old` |
+| 같은 기관에 바이트가 같은 자료가 있음 | 200 · 기존 자료 | 새 행을 만들지 않는다. 기존 자료가 superseded여도 그대로 돌려준다 | `test_upload_conflicting_notice_is_pending_with_conflicts`, superseded인 경우는 직접 호출로 확인 |
+| 적재에 실패했던 자료와 바이트가 같음 | 202 · 같은 ID로 다시 적재 | title을 새 파일명으로 바꾼다. 두 요청이 겹치면 한쪽만 적재하고, 늦은 쪽은 200을 받는다 | `test_upload_unreadable_file_fails_with_message`, `test_failed_reupload_runs_once_when_two_requests_race` |
+| 2MiB를 넘음 | 413 · `VALIDATION_FAILED` | "자료 파일은 2MiB 이하여야 해요." 자료 행을 만들지 않는다 | `test_upload_duplicate_class_and_size_limit` |
+
+충돌은 모델을 부르지 않고 규칙으로 찾는다. 목록 줄과 표 줄에 적힌 날짜, 그리고 목록 줄에서 ℃·원·분·명이 붙은 숫자를 항목 이름별로 모은다. 비교 대상은 같은 기관에서 사용 중(active)이고 적재가 끝난 다른 자료다. 새 판이 대신할 옛 판은 여기서 뺀다. 항목 이름이 같고 대상 반이 겹치는데 값이 다르면 충돌로 본다. 다만 식단표·상담 시간표(menu·consult_timetable)는 날짜를 비교하지 않는다. 충돌 항목 하나는 아래와 같은 모양이다(DB 모드, 시드 '겨울방학 안내'와 날짜가 다른 글을 올림).
+
+```json
+{"label": "겨울방학", "kind": "date", "value": "2026-12-26~2027-01-03", "location": "1쪽 겨울방학 기간",
+ "other_document_id": "…", "other_document_title": "겨울방학 안내", "other_location": "1쪽 겨울방학 기간", "other_value": "2026-12-24~2027-01-03"}
+```
 
 ### 3.23 자료 목록·상세 — `GET /api/v1/documents`, `GET /api/v1/documents/{document_id}`
 
@@ -1132,7 +1288,7 @@ HTTP/1.1 200 OK
 | ⑤ 검증·권한 | teacher·director만 볼 수 있다. 같은 기관 안에서 원 전체 자료와 현재 담당 반이 대상인 자료를 보며, 원장은 반 제한 없이 본다. visibility 값은 교직원 조회를 막지 않는다. |
 | ⑥ 정상 응답 | 목록은 200 + items[]·total·page·size, 상세는 200 + document. 적재에 실패한 자료도 조회는 200이다. |
 | ⑦ 오류 응답 | 아래 오류 표. |
-| ⑧ 실행 규칙 | 생성 시각으로 정렬한 뒤 쪽을 나눈다. 모의 구현은 superseded 자료도 목록에 남기며, conflicts는 항상 []다. status와 ingest_status는 따로 움직이므로 적재에 실패한 파일도 status=active일 수 있다. |
+| ⑧ 실행 규칙 | 목록은 생성 시각으로 정렬한 뒤 쪽을 나눈다. 두 모드 모두 superseded 자료도 목록에 남긴다. status와 ingest_status는 서로 따로 바뀌므로, 적재에 실패한 파일도 status=active일 수 있다. 모의 구현에서 conflicts는 늘 []다. DB 모드는 충돌 항목(3.22)을 상세에만 담고, 목록 items[]의 conflicts는 []로 둔다. DB 모드 목록의 error에는 현재 적재 상태가 반영되지 않는다. 그래서 실패한 뒤 다시 적재해 성공한 자료에도 지난 실패 내용이 남는다. 화면에서는 ingest_status가 failed일 때만 error를 보여 준다. |
 
 | 필드 | 위치 | 타입 | 필수 | 빈값 | 제약 | 설명 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -1141,8 +1297,8 @@ HTTP/1.1 200 OK
 | `sort` | 쿼리 | string | 선택 | 불가 | `-created_at`(기본)·`created_at` | 내림차순·오름차순 |
 | `document.id`·`title`·`doc_type`·`visibility`·`classroom_ids[]` | 상세 응답 | UUID·string·UUID[] | 항상 | 빈 classroom_ids 가능 | 목록 items[]도 같은 모양 | 자료 이름·종류·공개 범위·대상 반 |
 | `document.effective_from`·`effective_to`·`supersedes_id` | 상세 응답 | date·UUID | 항상 | effective_to·supersedes_id는 null 가능 | 새 판에만 이전 문서 ID | 적용 기간·판 연결 |
-| `document.status`·`ingest_status` | 상세 응답 | string | 항상 | 불가 | status는 모의 구현에서 active·superseded, ingest_status는 queued·running·succeeded·failed | 사용 상태·적재 진행 |
-| `document.chunk_count`·`conflicts[]`·`error` | 상세 응답 | integer·object[]·object | 항상 | error는 null 가능 | 조각 수, 오류는 {code, message} | 실패면 UPSTREAM_UNAVAILABLE, 충돌 판별은 모의 구현에 없음 |
+| `document.status`·`ingest_status` | 상세 응답 | string | 항상 | 불가 | status는 모의 구현에서 active·superseded이고 DB 모드는 conflict_pending도 쓴다. ingest_status는 queued·running·succeeded·failed | 사용 상태·적재 진행 |
+| `document.chunk_count`·`conflicts[]`·`error` | 상세 응답 | integer·object[]·object | 항상 | error는 null 가능 | 조각 수, 오류는 {code, message}, 충돌 항목 모양은 3.22 | 실패면 code는 UPSTREAM_UNAVAILABLE이고 이유는 message에 있다(3.22 DB 모드 적재 결과). 충돌 판별은 모의 구현에 없음 |
 | `total`·`page`·`size` | 응답 | integer | 항상 | 불가 | 전체 건수·요청한 쪽·크기 | 목록 공통 칸 |
 
 ```http
@@ -1283,7 +1439,7 @@ API 38~49는 2장 표의 경로를 쓰며 모두 `/api/v1` 아래에 있다. 사
 | ② 요청 헤더 | JWT 필수. 생성은 multipart/form-data, 숨김·범위 변경은 application/json이다 |
 | ③ 경로·쿼리 | 기관·반·글·사진·아이 ID는 UUID다. 목록은 기존 규칙대로 page=1·size=20(최대 100)·sort=-created_at이고, 오름차순은 created_at이다. 동률이면 같은 방향의 id로 정렬한다. 앨범의 child_id로는 보호자가 자기 아이만 고를 수 있다 |
 | ④ 요청 본문 | 글 생성은 body 1~2,000자(공백만으로는 안 됨), files 0~10장이다. child_ids는 파일 순서대로 아이 UUID 배열을 담은 JSON 문자열이다. 예: [["아이 UUID"],[]]. 기본 []는 모든 사진에 태그가 없다는 뜻이다. 숨김은 {"status":"hidden"}, 범위 변경은 {"photo_scope":"family"}(family·class·org 중 하나)다 |
-| ⑤ 검증·권한 | 칸 권한을 먼저 검사하고, 그다음 사진 공개 범위를 검사한다. class 칸은 그 반 아이의 보호자만 읽고 쓴다. 교직원이나 다른 반 보호자가 접근하면 목록·상세·앨범·파일 모두 403 FORBIDDEN을 돌려주고 permission_denied 이력을 남긴다. org 칸은 같은 기관의 보호자·교직원이 모두 읽고 쓴다. 다른 기관이나 없는 자원은 404다. 다른 아이의 범위를 조회·변경하거나, 남의 글을 삭제하거나, 원장이 아닌 사람이 숨기려 해도 403이다 |
+| ⑤ 검증·권한 | 칸 권한을 먼저 검사하고, 그다음 사진 공개 범위를 검사한다. class 칸은 그 반 아이의 보호자만 읽고 쓴다. 교직원이나 다른 반 보호자가 접근하면 목록·상세·앨범·파일 모두 403 FORBIDDEN을 돌려주고 permission_denied 이력을 남긴다. org 칸은 같은 기관의 교직원과, 지금 연결된 아이(`child_guardians`)가 하나라도 있는 보호자가 읽고 쓴다. 연결된 아이가 없는 보호자(퇴소 등)가 접근하면 목록·상세·앨범·파일·글 올리기 모두 403 FORBIDDEN을 돌려주고 permission_denied 이력을 남긴다. 다른 기관이나 없는 자원은 404다. 다른 아이의 범위를 조회·변경하거나, 남의 글을 삭제하거나, 원장이 아닌 사람이 숨기려 해도 403이다 |
 | ⑥ 정상 응답 | 글 생성 201과 상세/숨김 200은 {post: Post}, 목록·앨범은 {items,total,page,size}다. 범위 조회·변경 200은 {child_id,photo_scope}, 삭제는 204다. 파일은 검사한 형식의 바이트를 Cache-Control: private, no-store·X-Content-Type-Options: nosniff·Content-Disposition: inline과 함께 준다 |
 | ⑦ 오류 응답 | 공통 형식으로 401 UNAUTHENTICATED, 403 FORBIDDEN, 404 NOT_FOUND, 422 VALIDATION_FAILED를 준다. 태그한 아이가 다른 반/원 아이이거나, 태그가 중복되거나, 배열 수가 맞지 않아도 422다. 업로드 몸통이 51MiB를 넘으면 413 VALIDATION_FAILED다 |
 | ⑧ 저장·이력 | feed_posts·feed_photos·feed_photo_children, children.photo_scope(0010)를 쓴다. 생성·삭제·숨김·범위 변경은 events에 feed_post_created·feed_post_deleted·feed_post_hidden·photo_scope_changed로 남기며 trace_id·대상 ID를 함께 적는다. 새 알림은 만들지 않는다 |
@@ -1434,7 +1590,68 @@ def decide(card_id: UUID, body: CardDecision, user: User = Depends(current_staff
 | `get_daily_note` | 감독 | 요청한 학부모의 아이, 보낸 알림장만 | `note` 또는 없음 | `NOT_FOUND`(거짓) | 없으면 '아직 안 보냄' 안내 |
 | `find_saved_answer` | 감독 | 근거 문서가 모두 최신 | `saved_answer_id`, `similarity`, `sources_current` | `TOOL_TIMEOUT`(참) | 실패하면 원에 남은 답 없이 평소대로 처리 |
 
-### 5.5 도구 정의 예시 — `create_card`
+### 5.5 먼저 쓰는 도구 — 입력·결과·실패와 실행 전 확인
+
+먼저 채우는 도구는 세 개다. 첫 시연인 알림장에 쓰는 도구와, 모든 요청이 거치는 사람 인계에 쓰는 도구다. 입력은 이름·타입·필수·허용값으로, 결과는 결과 ID·상태·업무상 의미로 적는다. 실패는 형식·권한·충돌·일시 오류로 나누고, 다시 시도하는지와 최대 횟수, 그 뒤에 할 행동과 화면 문구를 적는다.
+
+알림장의 두 도구는 Function Calling 도구가 아니다. 알림장 그래프(`agents/graphs/daily_note.py`)가 모델에게서 JSON 한 덩어리를 받아 오는 호출이고, 저장·상태·이력은 백엔드 실행기(`apps/api/app/modules/daily_notes/runner.py`)가 맡는다. 그래프는 `DAILY_NOTE_WRITER=graph`일 때 쓴다. 기본값은 모델 없이 입력만 옮기는 대역이다. 서버는 두 도구를 실행하기 전과 결과를 저장하기 전에 5.3의 네 가지를 이렇게 확인한다.
+
+| 확인 | 알림장에서 하는 일 |
+| --- | --- |
+| ① 입력·허용 도구 | 아이 줄 쓰기는 자료 AI 모델(`LLM_MODEL_DOCUMENT`)로, 검사는 검사 AI 모델(`LLM_MODEL_CHECKER`)로만 부른다. 반 입력은 3.19의 형식 검사를 통과한 값만 들어간다 |
+| ② 사용자·소유권 | 담임의 현재 담당 반인지는 API가 먼저 본다(3.19 ⑤). 모델에 넘기는 입력은 백엔드가 그 기관·그 반의 아이, 그 아이 보호자의 그날 요청, 공개 범위가 맞는 식단만 골라 만든다. 모델의 답도 저장하기 전에 다시 본다. 입력에 없는 아이나, 다른 아이의 요청·입력에 없는 문서를 출처로 쓴 답이면 그 아이 알림장을 `draft_failed`로 바꾼다 |
+| ③ 필요한 승인 | 두 도구는 초안과 확인 항목을 저장할 뿐 학부모에게 보내지 않는다. 학부모에게는 담임이 확인(3.21)하고 보내기(3.6)를 해야 나간다 |
+| ④ 중복과 저장 결과 | 같은 반·같은 날짜의 작업은 하나뿐이다(3.19 ⑤). 저장하기 직전에 이 실행이 아직 최신인지 다시 확인해, 그 사이 다시 만들기가 시작됐으면 이 결과를 버린다. `ready`·`sent`이거나 담임이 고친 알림장은 덮어쓰지 않는다. 제한 시간(`DAILY_NOTE_WRITER_TIMEOUT`)이 지난 뒤 도착한 결과도 저장하지 않는다 |
+
+#### 5.5.1 알림장 아이 줄 쓰기 — 자료 AI(`write()`)
+
+프롬프트는 `agents/prompts/documents.md`의 '알림장 초안 쓰기' 절이다. 아이 메모나 그날 보호자 요청이 있는 아이마다 부른다. 둘 다 없는 아이는 모델을 부르지 않고 반 공통 줄만 둔다. 아이들은 `NOTE_DRAFT_CONCURRENCY`(기본 5)명씩 묶어 동시에 처리한다.
+
+| 입력 | 타입 | 필수 | 허용값·설명 |
+| --- | --- | --- | --- |
+| `note_date` | string(date) | 필수 | 알림 날짜 |
+| `classroom` | object | 필수 | `{ id, name }` |
+| `activities`·`supplies` | string | 필수 | 반 활동(1~2,000자)·준비물(빈 문자열 가능) |
+| `menu` | string 또는 null | 필수 | 그날 쓸 식단 본문. 없으면 null |
+| `child_name`·`child_memo` | string | 필수 | 아이 표시 이름과 담임 메모. 메모가 없으면 `""` |
+| `requests[]` | object[] | 필수 | `{ request_id, type, text }`. `type`은 `medication`·`pickup`·`inquiry` |
+| `review_issues[]` | object[] | 필수 | 검사 AI가 돌려보낸 확인 항목. 처음에는 `[]` |
+
+결과는 `{"child": "아이 메모 줄 또는 null", "requests": [{"request_id", "value", "answered"}]}`이다. 코드는 이 결과를 아이 메모 줄(출처 `teacher_input`)과 보호자 요청 줄(출처 `request`)로 바꾸고, 입력에 없는 `request_id`는 버린다. 반 공통 줄(`day`·`supplies`·`meal`)은 모델이 아니라 코드가 만든다. 저장하고 나면 결과 ID는 아이별 알림장 ID(3.20 `items[].id`)가 된다. 상태는 확인 항목이 있으면 `needs_check`, 없으면 `draft`다. 업무상으로는 담임이 고치고 확인할 초안이 생겼다는 뜻이다.
+
+| 실패 구분 | 언제 | 다시 하나 | 최대 횟수 | 그 뒤 | 담임 화면 문구 |
+| --- | --- | --- | --- | --- | --- |
+| 일시 오류 | 시간 초과·429·5xx·연결 오류 | 예 | 모델 호출 안에서 2번(1초 → 2초, 6.2) | 그 아이 알림장에 `draft_failed`를 남기고 담임에게 넘긴다. 다른 아이 초안은 그대로 저장한다 | "이 아이 초안을 만들지 못했어요. 다시 시도하거나 직접 써 주세요." |
+| 형식 오류 | JSON이 아닌 답 | 예 | 1번 더 묻는다 | 위와 같다 | 위와 같다 |
+| 요청 오류 | 모델 API의 400·401·403·422 | 아니요 | 0 | 위와 같다 | 위와 같다 |
+| 소유권 | 입력에 없는 아이·요청·문서를 출처로 씀 | 아니요 | 0 | 저장 전 검사에서 그 아이를 `draft_failed`로 바꾼다 | "아이 메모 초안을 만들지 못했어요. 직접 확인해 주세요" |
+| 충돌 | 실행 중에 다시 만들기가 시작됐거나 담임이 그 아이 알림장을 고치거나 확인함 | 아니요 | 0 | 이 실행 결과를 버리거나 그 아이를 건너뛴다 | 없음. 화면은 최신 상태를 다시 읽는다 |
+
+시험은 `test_writer_fails_twice_gives_draft_failed`, `test_writer_retry_once_then_succeeds`, `test_transport_failure_is_not_asked_again_in_graph`, `test_model_retries_only_retryable_errors_with_backoff`(`tests/unit/test_daily_note_graph.py`)와 `test_one_child_failure_keeps_other_children_and_blocks_batch`, `test_regenerate_supersedes_active_writer_success_or_failure`(DB)다.
+
+#### 5.5.2 알림장 초안 검사 — `check_draft`(검사 AI, `review()`·`code_checks()`)
+
+프롬프트는 `agents/prompts/checker.md`의 '알림장: 메모와 대조한다' 절이다. 5.5.1이 아이 한 명의 줄을 쓸 때마다 부른다.
+
+| 입력 | 타입 | 필수 | 허용값·설명 |
+| --- | --- | --- | --- |
+| `activities`·`supplies`·`menu` | string(`menu`는 null 가능) | 필수 | 5.5.1과 같다 |
+| `child_memo` | string | 필수 | 담임 메모 |
+| `requests[]` | object[] | 필수 | 5.5.1과 같다 |
+| `draft[]` | object[] | 필수 | 5.5.1이 쓴 줄 `{ key, label, value, source }` |
+
+모델의 결과는 `{"checks": [{"item_key", "kind", "problem", "sentence"}]}`이고, `kind`는 `not_in_memo`·`sensitive`·`other_child`·`date_check`·`absent` 다섯 값만 받는다. 여기에 코드가 다른 아이 이름(`other_child`), 보호자 요청 누락(`request_missed`), 투약 요청·옮기지 않은 메모·답하지 못한 문의(`sensitive`)를 더한다. 이렇게 합친 항목을 `open_checks[] { id, item_key, kind, problem, sentence, request_id? }`로 저장한다. 결과 ID는 확인 항목 ID(`open_checks[].id`, 저장할 때 UUID로 바꾼다)이고, 항목이 하나라도 있으면 알림장 상태는 `needs_check`다. 업무상으로는 담임이 보내기 전에 꼭 봐야 할 곳이라는 뜻이다. 항목이 남아 있으면 발송이 잠긴다(3.19.1).
+
+| 실패 구분 | 언제 | 다시 하나 | 최대 횟수 | 그 뒤 | 담임 화면 문구 |
+| --- | --- | --- | --- | --- | --- |
+| 일시 오류·요청 오류 | 5.5.1과 같다 | 5.5.1과 같다 | 5.5.1과 같다 | 검사를 통과로 치지 않고 `check_failed`를 남긴 채 담임에게 넘긴다. 이미 쓴 초안은 지우지 않는다 | "메모와 대조하는 검사가 끝나지 않았어요. 직접 읽고 확인해 주세요." |
+| 형식 오류 | JSON이 아니거나 `checks` 목록이 없음 | 예 | 1번 더 묻는다 | 위와 같다 | 위와 같다 |
+| 허용 밖 값 | `kind`가 다섯 값 밖 | 아니요 | 0 | 그 항목만 버린다 | 없음 |
+| 고칠 수 있는 문제 | `not_in_memo`·`request_missed`가 나옴 | 예. 5.5.1로 돌려보낸다(5.4의 `return_to_step`) | 2번 | 그래도 남으면 확인 항목을 그대로 둔 채 넘긴다 | 항목마다 `problem` 문장 |
+
+시험은 `test_checker_fails_twice_gives_check_failed_and_keeps_draft`, `test_returns_stop_after_two_and_leave_check`, `test_missing_request_is_returned_then_fixed`, `test_unknown_kind_from_checker_is_ignored`(`tests/unit/test_daily_note_graph.py`)다.
+
+#### 5.5.3 사람 인계 카드 — `create_card`
 
 아래는 모델에게 보이는 정의다. 백엔드가 채우는 값(`request_id`·`kind`·`assignee_id`)은 정의에 넣지 않는다. `description`은 모델이 이 도구를 언제 쓸지 판단하는 근거이므로 구체적으로 쓴다.
 
@@ -1458,6 +1675,27 @@ def decide(card_id: UUID, body: CardDecision, user: User = Depends(current_staff
 }
 ```
 
+입력의 이름·타입·허용값은 위 정의에 있다. 모델은 다섯 칸만 채우고, `request_id`·`kind`·`assignee_id`는 백엔드가 지금 요청에서 꺼내 채운다(5.3 ③). 이 도구는 요청이 아직 끝나지 않았을 때(`received`·`classified`·`assigned`·`needs_info`) 부른다. 근거 없음·문서 충돌·민원에 해당하면 반드시 이 도구로 사람에게 넘긴다.
+
+결과는 `{"ok": true, "data": {"card_id": "…"}, "trace_id": "…"}`이고, 결과 ID는 `card_id`다. 카드는 담당 담임이 있으면 `pending`, 없으면 `unassigned`이고, 요청은 `awaiting_review`가 된다. 긴급·판단 필요이거나 세 번째 반복 민원이면 원장 보고 카드도 만들고, 요청은 `escalated`가 된다. 업무상으로는 사람이 확인할 카드가 받은함에 생겼고, 학부모에게는 아직 답이 나가지 않았다는 뜻이다.
+
+| 실행 전 확인 | `create_card`에서 하는 일 |
+| --- | --- |
+| ① 입력·허용 도구 | 감독·자료 AI만 부른다(5.4). 인자는 위 정의로 다시 검사한다 |
+| ② 사용자·소유권 | 학부모 요청에서 나온 호출이면 그 학부모가 볼 수 있는 범위 안에서만 만든다. 요청·기관·반은 모델 인자가 아니라 백엔드 값으로 정한다 |
+| ③ 필요한 승인 | 카드는 사람 확인을 기다리는 일이라 승인 없이 만든다. 학부모에게 나가는 일은 담임 결정 API만 한다(5.3 ④) |
+| ④ 중복과 저장 결과 | 요청 행을 잠근 뒤, 같은 요청에 카드가 이미 있으면 새로 만들지 않는다 |
+
+| 실패 구분 | `code` | `retryable` | 최대 횟수 | 그 뒤 | 학부모 안내 |
+| --- | --- | --- | --- | --- | --- |
+| 형식 | `VALIDATION_FAILED` | 거짓 | 0 | 사람 카드로 넘긴다(5.4 기본) | — |
+| 권한·소유권 | `FORBIDDEN_SCOPE`·`NOT_FOUND` | 거짓 | 0 | 위와 같다 | — |
+| 충돌 | `INVALID_TRANSITION`(이미 끝난 요청) | 거짓 | 0 | 카드를 만들지 않는다 | — |
+| 일시 오류 | `SAVE_FAILED` | 참 | 1 | 그래도 실패하면 실행기나 점검 작업이 담당자 없는 카드를 만든다(6.3) | "말씀하신 내용은 받았는데 선생님께 넘기는 중에 저장 오류가 났어요. 확인이 늦어질 수 있으니 급하시면 원으로 전화 주세요." |
+
+쓰기 응답이 끊겼다면 카드가 이미 저장됐을 수 있다. 그래서 다시 부르기 전에 그 요청에 카드가 있는지 먼저 확인한다. 지금 실행기와 점검 작업도 요청을 잠근 뒤 카드가 있는지 다시 읽고 나서 카드를 만든다.
+
+**지금 코드.** 요청 처리는 아직 모델이 아니라 낱말 대역(`apps/api/app/modules/requests/agent_stub.py`)이 맡는다. 모델이 이 도구를 부르는 일은 요청 처리 에이전트(T29)가 붙으면 시작된다. 대역은 이 도구를 부르지 않고 `new_card()`로 카드를 바로 저장한다. 저장 중 예외가 나면 실행기(`runner.py`)는 다시 부르지 않고 곧바로 초안 없는 미배정 카드를 만든다. 이때 이력에는 실패 원인과 상관없이 `tool_failed`·`UPSTREAM_UNAVAILABLE`로 기록된다. 위 학부모 안내 문장도 아직 코드에 없어서, 학부모 화면에는 상태 표시 이름만 보인다(6.7 마지막 사례). 시험은 `test_agent_failure_preserves_request_and_hands_off_without_private_error`, `test_stub_transaction_rolls_back_then_handoff_once`, `test_sweep_exact_age_states_card_exclusion_and_concurrent_idempotency`(`tests/integration/db/test_requests.py`)다.
 
 ### 5.6 호출 흐름
 
@@ -1540,7 +1778,7 @@ def decide(card_id: UUID, body: CardDecision, user: User = Depends(current_staff
 | 알림장 초안 | `GET /daily-notes/drafts/{input_id}` | `draft_status = queued·running` | `succeeded`. 아이별 초안은 `GET /daily-notes?classroom_id=&date=`로 받음 | `failed` + `error { code, message }`(자세한 이유는 `events`의 `tool_failed`) |
 | 자료 올리기 | `GET /documents/{document_id}` | `ingest_status = queued·running` | `succeeded` + `chunk_count`(조각 수). 충돌이 있으면 `status = conflict_pending` + `conflicts[]` | `failed` + `error { code, message }` |
 
-**카드가 끝내 안 생긴 요청.** 요청은 `POST /requests`에서 먼저 저장된다. 그래서 AI가 카드 만들기(`create_card`)까지 실패하거나 처리 중에 멈춰도 요청은 남는다. 서버 점검 작업은 5분마다 돌면서, 진행 중 상태(`received`·`classified`·`assigned`)인데 5분 넘게 카드가 없는 요청을 찾는다. 처음 찾았을 때는 처리를 한 번 다시 넣고 `agent_requeued` 이력만 남긴다. 다시 넣고 5분이 지나도 카드가 없으면, 초안 없는 카드를 담당자 없이 만들고(받은함 '미배정') 요청을 `awaiting_review`로 바꾼다. 이때 넘긴 이유 `card_missing`을 이력 `events.detail.handoff_reason`에 남긴다. 그동안 학부모 화면에는 '접수됨'이 보이고 채팅 안내도 '받았지만 선생님 확인이 늦어질 수 있음'이어서, 화면과 안내 말이 어긋나지 않는다. 이 점검 작업은 실제 서버의 백그라운드 워커에서 돌고, 모의 API에서는 돌리지 않는다.
+**카드가 끝내 안 생긴 요청.** 요청은 `POST /requests`에서 먼저 저장된다. 그래서 AI가 카드 만들기(`create_card`)까지 실패하거나 처리 중에 멈춰도 요청은 남는다. 서버 점검 작업은 5분마다 돌면서, 진행 중 상태(`received`·`classified`·`assigned`)인데 5분 넘게 카드가 없는 요청을 찾는다. 처음 찾았을 때는 처리를 한 번 다시 넣고 `agent_requeued` 이력만 남긴다. 다시 넣고 5분이 지나도 카드가 없으면, 초안 없는 카드를 담당자 없이 만들고(받은함 '미배정') 요청을 `awaiting_review`로 바꾼다. 이때 넘긴 이유 `card_missing`을 이력 `events.detail.handoff_reason`에 남긴다. 그동안 학부모 화면에는 '접수됨'이 보인다. 채팅 안내는 '받았지만 선생님 확인이 늦어질 수 있음'으로 맞출 예정이지만, 이 문장은 아직 코드에 없다. 이 점검 작업은 실제 서버의 백그라운드 워커에서 돌고, 모의 API에서는 돌리지 않는다. 두 모드를 나란히 비교한 결과는 6.7 마지막 사례에 있다.
 
 
 ```json
@@ -1644,6 +1882,20 @@ Beat는 1분마다 시작이 하루 이내인 확정 예약을 읽고, 그중 �
 | 원장 지시 | D-02 카드 상세: 지시 남기기, T-02 카드 상세: 확인 필요 | `POST /cards/{card_id}/instructions`, `instruction`·`version` | `approvals.decision=instruct`, `reason_text`=지시, 원장 카드 `done`, 요청 `awaiting_review`, 이력 `instructed` | 원장만. 담임이 원장 보고 카드를 결정·지시하면 403 `FORBIDDEN_ROLE` | `test_director_report_permission_instructions_reassign` |
 | 판단 필요 재분류 | T-02 카드 상세: 다시 분류 일반/긴급 → 확인 필요 또는 원장 보고 | `POST /cards/{card_id}/reclassify`, `risk_level`·`risk_category`·`reason`·`version` | 요청 `awaiting_review`, 긴급이면 다시 `escalated`, 보고 카드는 중복 생성 안 함 | 담임·원장, 원장 보고 카드는 원장만 | `test_reclassify_uncertain_and_escalate` |
 | 사람이 쓴 답 승인 | T-02 카드 상세: 직접 답 쓰기 → 승인하고 보내기, P-04 요청 상세: 답변 도착 | `POST /cards/{card_id}/decisions`, `decision=edit_approve`, `edited_content.text` | 승인 기록 뒤 요청 `sent_or_booked`, 회신 카드 `done` | 담임 승인(5.3 ④) | `test_explicit_escalation_and_edit_approval`(일반 민원의 수동 인계). 긴급 민원 회신까지 연결한 시험 없음 |
+
+**요청은 접수됐지만 인계 카드 저장에 실패**
+
+학부모 화면에는 요청이 접수된 것으로 보이는데, 선생님 받은함에는 카드가 없을 수 있다. 사용자에게 보이는 안내와 실제 상태가 어긋나기 쉬운 경우라서 2026-11-23 develop `24258f2`에서 두 모드를 직접 돌려 비교했다. DB 모드에서는 시험용 DB를 쓰고, 카드를 저장하는 함수를 일부러 실패시켰다. 화면 열의 값은 학부모 요청 상세의 `status_label`이다.
+
+| 시점 | 학부모 화면 | 모의 응답 | DB 모드 결과 | 점검 작업 |
+| --- | --- | --- | --- | --- |
+| 접수 | 접수됨 | 202 `received` | 202 `received` | — |
+| 카드 저장이 실패함 | 선생님 확인 중 | 재현할 수 없다. 모의는 접수하면서 카드를 함께 만들어, 바로 담당 담임 카드 `pending`과 요청 `awaiting_review`가 된다 | 실행기가 이력 `tool_failed`(`UPSTREAM_UNAVAILABLE`, `handoff_reason = ai_failed`)를 남기고 초안 없는 미배정 카드를 바로 만든다. 요청은 `awaiting_review`가 되고, 원장에게 `new_card` 알림이 1건 간다 | 할 일이 없다 |
+| 실행기의 처리까지 실패해 카드가 아예 없음 | 접수됨 | 재현할 수 없다 | 요청은 `received`로 남고 카드는 0장, 이력은 `created` 하나뿐이다 | — |
+| 접수하고 5분이 지난 첫 점검 | 접수됨 | 점검 작업이 없다 | 그대로 | 처리를 한 번 다시 넣고 `agent_requeued` 이력만 남긴다 |
+| 다시 넣고 5분이 지난 점검 | 선생님 확인 중 | 점검 작업이 없다 | 미배정 카드가 생긴다 | 초안 없는 미배정 카드를 만들고 요청을 `awaiting_review`로 바꾼다. 이력 `checked`에 `handoff_reason = card_missing`을 남긴다. 원장 받은함의 '미배정' 필터에 보인다 |
+
+어긋나는 곳은 두 군데다. 첫째, 모의 API로는 이 실패를 볼 수 없으므로 화면은 DB 모드에서 따로 확인해야 한다. 둘째, 카드가 미배정으로 만들어져도 학부모 화면은 '선생님 확인 중'으로 바뀐다. 하지만 실제로는 원장이 담당을 정하기 전까지 어떤 담임도 이 카드를 받지 않는다. 5.4에 적은 안내 문장("말씀하신 내용은 받았는데 선생님께 넘기는 중에 저장 오류가 났어요…")은 아직 코드에 없다. 시험은 `test_agent_failure_preserves_request_and_hands_off_without_private_error`, `test_unassigned_card_reassign_and_cards_without_request`, `test_broker_failure_preserves_rows_and_periodic_sweep_recovers`다.
 
 ## 7. API 필드와 DB 컬럼 대응
 
@@ -1751,12 +2003,12 @@ MVP 설정값은 서버 설정(`.env`)으로 관리한다. `.env.example`에는 
 
 | 체크리스트(가이드 33쪽) | 이 문서 |
 | --- | --- |
-| 구현할 API가 모두 목록 표에 있고 요구사항 ID와 연결된다 | 2장(49개, 요구사항 열) |
+| 구현할 API가 모두 목록 표에 있고 요구사항 ID와 연결된다 | 2장(49개, 요구사항 열·상태 칸) |
 | 서버 주소·인증·오류 형식·/docs·변경 이력이 있다 | 1장, 끝의 변경 이력 |
 | 구현할 API마다 상세 명세와 필드 명세 표가 있다 | 3장(49개 전부) |
 | 형식 오류(422)와 권한·승인 오류(403)를 나눠 적었다 | 4.1 |
-| 202를 쓰는 API는 작업 상태·결과·실패 조회가 있다 | 6.3 |
-| Tool마다 성공·실패 출력과 실패 후 처리가 있다 | 5.2, 5.4, 5.7 |
+| 202를 쓰는 API는 작업 상태·결과·실패 조회가 있다 | 3.19.1, 6.3 |
+| Tool마다 성공·실패 출력과 실패 후 처리가 있다 | 5.2, 5.4, 5.5, 5.7 |
 | 타임아웃·재시도·중복 실행 방지 규칙이 있다 | 6.1, 6.2, 6.4, 6.7 |
 | ID 형식이 같고, 필드와 DB 컬럼의 대응이 분명하다 | 1.5, 5.7, 6.7, 7장 |
 
@@ -1777,3 +2029,4 @@ MVP 설정값은 서버 설정(`.env`)으로 관리한다. `.env.example`에는 
 | v0.7 | 2026-11-21 | 피드·앨범·사진 공개 범위 API(38~49)를 더함 | 태웅 |
 | v0.7.1 | 2026-11-21 | 피드 업로드 크기 제한·권한 검사 순서·파일 삭제 시점을 맞춤 | 태웅 |
 | v0.7.2 | 2026-11-23 | 과정 이야기를 걷어내고 문장을 다듬음. 원에 남은 답은 바로 답하지 않고 담임 카드 초안으로만 쓰도록 기획서·에이전트 명세(T14)에 맞춤 | 태웅 |
+| v0.8 | 2026-11-23 | 11/20 강사 피드백을 반영함. 2장에 첫 시연 순서와 API별 상태 칸을, 3.19.1에 알림장 접수부터 발송 차단까지의 응답 예시를, 5.5에 먼저 쓰는 도구 세 개의 입력·출력·실패 뒤 행동을, 6.7에 인계 카드 저장 실패 사례를 더함. 3.22·3.23에 DB 모드 적재 결과(읽는 파일 종류·빈 파일·머리말·충돌·새 판·다시 적재)를 더하고, 3.29에 연결된 아이가 없는 학부모의 원 칸 권한을 더함. 문서 머리에 기준 판 표를 두고, 자료 올리기 크기 제한(2MiB·413)과 보류 예정일 경계를 코드에 맞춤 | 태웅 |
