@@ -49,6 +49,16 @@ def test_valid_quote():
     assert result["trace"] == ["search", "write", "verify", "check", "end"]
 
 
+def test_same_chunk_cited_twice_is_kept_once():
+    # card_evidence 기본키가 (card_id, chunk_id)라 같은 조각이 두 번 들어가면 저장이 실패한다.
+    result = draft_answer("겨울방학", search, Writer({
+        "text": "12월 24일부터예요.", "evidence": [{"chunk_id": 1, "quote": "12월 24일"},
+                                                  {"chunk_id": "1", "quote": "겨울방학"}],
+        "no_evidence": False, "conflict": False}), Checker())
+    assert [item["chunk_id"] for item in result["evidence"]] == [1]
+    assert result["evidence"][0]["quote"] == "12월 24일"
+
+
 def test_forged_quote_is_removed():
     result = draft_answer("겨울방학", search, Writer({
         "text": "가짜 답", "evidence": [{"chunk_id": 1, "quote": "12월 26일부터"}],

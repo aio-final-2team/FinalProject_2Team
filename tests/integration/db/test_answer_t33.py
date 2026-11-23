@@ -81,6 +81,21 @@ def test_answer_evidence_card(db_client, seeded_db, monkeypatch):
     assert [role for role, _ in Writer.calls] == ["DOCUMENT", "CHECKER"]
 
 
+def test_duplicate_citation_saves_one_evidence_row(db_client, seeded_db, monkeypatch):
+    with seeded_db.begin() as connection:
+        seed_documents(connection)
+        chunk = connection.execute(text("""
+            SELECT ch.id FROM document_chunks ch JOIN documents d ON d.id=ch.document_id
+            WHERE d.title='겨울방학 안내' AND ch.location='1쪽 겨울방학 기간'
+        """)).mappings().one()
+    setup_graph(seeded_db, monkeypatch, {"text": "겨울방학은 12월 24일부터예요.",
+        "evidence": [{"chunk_id": chunk["id"], "quote": "12월 24일"},
+                     {"chunk_id": chunk["id"], "quote": "12월 24일"}], "no_evidence": False, "conflict": False})
+    card, evidence, _ = create_card(db_client, "겨울방학 언제부터인가요?")
+    assert card["draft"]["text"] == "겨울방학은 12월 24일부터예요."  # 실행 전체가 롤백되지 않는다
+    assert len(evidence) == 1
+
+
 def test_no_evidence_still_goes_to_teacher(db_client, seeded_db, monkeypatch):
     setup_graph(seeded_db, monkeypatch, {"text": "추측", "evidence": [], "no_evidence": True, "conflict": False})
     card, evidence, messages = create_card(db_client, "겨울방학 방과후 운영하나요?")
