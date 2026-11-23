@@ -212,3 +212,60 @@ def test_concurrent_run_keeps_child_order_and_same_result():
     assert [n["child_id"] for n in together] == [str(i) for i in range(8)]
     assert together == one_by_one
     assert 1 < model.peak <= 4
+
+
+WEEK = """# 11월 3주 식단표 (11/16~11/20)
+
+| 날짜 | 점심 | 오후 간식 |
+| --- | --- | --- |
+| 11-17(화) | 차조밥, 콩나물국 | 고구마 |
+| 11-18(수) | 카레라이스②⑥, 계란국① | 사과 |
+"""
+
+
+def test_meal_line_uses_only_that_day_row():
+    from agents.graphs.daily_note import meal_text
+
+    assert meal_text(WEEK, "2026-11-18") == "점심: 카레라이스②⑥, 계란국① / 오후 간식: 사과"
+    assert meal_text(WEEK, "2026-11-20") == WEEK  # 행이 없으면 원문
+    assert meal_text("점심: 카레라이스", "2026-11-18") == "점심: 카레라이스"
+
+
+def test_same_line_same_kind_checks_are_merged():
+    req = {"request_id": "r1", "type": "medication", "text": "점심 후 약 먹여 주세요"}
+    writer = Script({"child": None, "requests": [{"request_id": "r1", "value": "점심 후 약을 먹여 달라는 요청이 있었어요."}]})
+    checker = Script({"checks": [{"item_key": "medication", "kind": "sensitive", "problem": "투약", "sentence": "x"}]})
+    [note] = draft_daily_notes(payload([kid("a", "지아", "", [req])]), writer, checker)
+    [check] = note["open_checks"]
+    assert check["kind"] == "sensitive" and check["request_id"] == "r1"
+
+
+def test_unanswered_inquiry_keeps_text_and_asks_teacher():
+    req = {"request_id": "r1", "type": "inquiry", "text": "기침해요. 낮잠 때 잘 봐 주세요."}
+    writer = Script({"child": "블록 놀이를 했어요.",
+                     "requests": [{"request_id": "r1", "value": "기침을 한다고 알려 주셨어요.", "answered": False}]})
+    [note] = draft_daily_notes(payload([kid("a", "새봄", "블록놀이", [req])]), writer, Script(OK))
+    line = next(item for item in note["content"]["items"] if item["source"]["type"] == "request")
+    assert line["value"] == "기침을 한다고 알려 주셨어요." and "_unanswered" not in line
+    [check] = note["open_checks"]
+    assert check["kind"] == "sensitive" and check["request_id"] == "r1" and check["item_key"] == "inquiry"
+
+
+def test_request_line_repeating_child_line_becomes_request_text():
+    req = {"request_id": "r1", "type": "inquiry", "text": "요즘 친구랑 잘 지내나요?"}
+    writer = Script({"child": "친구에게 먼저 사과했어요.",
+                     "requests": [{"request_id": "r1", "value": "친구에게 먼저 사과했어요."}]})
+    [note] = draft_daily_notes(payload([kid("a", "윤슬", "친구에게 먼저 사과함", [req])]), writer, Script(OK))
+    line = next(item for item in note["content"]["items"] if item["source"]["type"] == "request")
+    assert line["value"] == "보호자 요청: 요즘 친구랑 잘 지내나요?"
+    assert [c["kind"] for c in note["open_checks"]] == ["sensitive"]
+
+
+def test_eval_memo_score_ignores_request_checks():
+    from tools.eval_daily_note import score
+
+    case = {"id": "ND-03", "category": "지어내기", "must_not_include": ["협동"], "expect_flag": False,
+            "flag_kind": None, "must_include": []}
+    note = {"content": {"items": [{"key": "child", "value": "블록놀이를 했어요.", "source": {"type": "teacher_input"}}]},
+            "open_checks": [{"kind": "sensitive", "item_key": "day", "request_id": "GR-14"}]}
+    assert score(case, note)["pass"] is True
