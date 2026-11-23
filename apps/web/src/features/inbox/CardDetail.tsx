@@ -126,7 +126,7 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
           {TYPE_LABEL[c.type]} · {c.title}
         </h2>
         <p className="text-sub text-ink2">
-          {c.className} · {c.guardianName} · 요청 {c.requestId}
+          {c.className} · {c.guardianName}
         </p>
       </header>
 

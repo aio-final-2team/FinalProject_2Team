@@ -29,7 +29,11 @@ type CardDetail = {
   timeline: Array<{ action: string; actor_type: string; agent_name: string | null; created_at: string }>;
 };
 
-export type CardsResult = { items: Card[]; counts: Record<InboxFilter, number> };
+/** 서버의 위험 분류 코드를 교사가 읽는 말로 바꾼다 (API RiskCategory) */
+const RISK: Record<string, string> = { child_safety: "아이 안전", staff_attack: "교직원 대상 폭언", legal_external: "법적·외부 대응", privacy_leak: "개인정보 유출" };
+const riskLabel = (c?: string | null) => (c ? (RISK[c] ?? c) : undefined);
+export type TypeFilter = "all" | "complaint" | "consultation" | "inquiry";
+export type CardsResult = { items: Card[]; counts: Record<InboxFilter, number>; typeCounts: Record<TypeFilter, number> };
 const UI_TO_API_FILTER: Record<InboxFilter, ApiInboxFilter> = { review: "needs_review", judge: "uncertain", unassigned: "unassigned", hold: "on_hold", progress: "in_progress", done: "done" };
 const API_TO_UI_FILTER: Record<ApiInboxFilter, InboxFilter> = { needs_review: "review", uncertain: "judge", unassigned: "unassigned", on_hold: "hold", in_progress: "progress", done: "done" };
 const requestType = (value: ApiRequestType | "pickup" | null | undefined): RequestType => value === "consultation" ? "consult" : value === "complaint" ? "complaint" : "inquiry";
@@ -46,7 +50,7 @@ const statusFromItem = (item: CardItem, filter: InboxFilter): Status => {
 const cardFromItem = (item: CardItem, filter: InboxFilter): Card => ({
   id: item.id, version: item.version, kind: item.kind, inboxFilter: filter,
   requestId: item.request_id ?? "-", type: requestType(item.request_type), status: statusFromItem(item, filter), risk: risk(item.risk_level),
-  urgentReason: item.risk_category ?? undefined, title: item.title || item.status_label, childName: "", guardianName: "보호자",
+  urgentReason: riskLabel(item.risk_category), title: item.title || item.status_label, childName: "", guardianName: "보호자",
   className: item.classroom.name, createdAt: item.due_at ?? new Date().toISOString(), original: item.title, sources: [],
   check: item.check ? { passed: item.check.passed, note: item.check.issue_count ? `확인 항목 ${item.check.issue_count}개` : undefined } : undefined,
   repeatCount: item.repeat_count ?? undefined, escalated: item.risk_level === "urgent" || item.kind === "director_report",
@@ -65,7 +69,7 @@ const cardFromDetail = (data: CardDetail): Card => {
   return {
     id: data.card.id, version: data.card.version, kind: data.card.kind, requestId: req?.id ?? "-", type: requestType(req?.type),
     status: req?.status ?? (data.card.status === "done" ? "completed" : "awaiting_review"), risk: risk(req?.risk_level),
-    urgentReason: req?.risk_category ?? undefined, title: req?.title ?? data.card.summary, childName: "", guardianName: "보호자",
+    urgentReason: riskLabel(req?.risk_category), title: req?.title ?? data.card.summary, childName: "", guardianName: "보호자",
     className: "담당 반", createdAt: req?.created_at ?? new Date().toISOString(), original: req?.body ?? data.card.summary,
     summary: data.card.summary || undefined, draft, sources,
     check: data.card.check_result ? { passed: !!data.card.check_result.passed, note: data.card.check_result.note } : undefined,
@@ -74,13 +78,14 @@ const cardFromDetail = (data: CardDetail): Card => {
   };
 };
 
-export const useCards = (filter: InboxFilter) => useQuery({
-  queryKey: ["cards", "list", filter],
+export const useCards = (filter: InboxFilter, type: TypeFilter = "all") => useQuery({
+  queryKey: ["cards", "list", filter, type],
   queryFn: async (): Promise<CardsResult> => {
     const apiFilter = UI_TO_API_FILTER[filter];
-    const result = await api<CardList>(`/api/v1/cards?filter=${apiFilter}&size=100`);
+    const result = await api<CardList>(`/api/v1/cards?filter=${apiFilter}&size=100${type === "all" ? "" : `&request_type=${type}`}`);
     const counts = Object.fromEntries(Object.entries(result.counts).map(([key, value]) => [API_TO_UI_FILTER[key as ApiInboxFilter], value])) as Record<InboxFilter, number>;
-    return { items: result.items.map((item) => cardFromItem(item, filter)), counts };
+    const typeCounts = { all: 0, complaint: 0, consultation: 0, inquiry: 0, ...((result as { type_counts?: Partial<Record<TypeFilter, number>> }).type_counts ?? {}) };
+    return { items: result.items.map((item) => cardFromItem(item, filter)), counts, typeCounts };
   },
 });
 

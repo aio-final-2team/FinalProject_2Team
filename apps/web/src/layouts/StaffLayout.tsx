@@ -1,4 +1,7 @@
+import { useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router";
+import { Sheet } from "@/components/Sheet";
+import { SubButton } from "@/components/Dock";
 import { useCards } from "@/api/cards";
 import { useNotes } from "@/api/notes";
 import { todayKST } from "@/domain/notes";
@@ -26,8 +29,14 @@ export function StaffLayout({ role }: { role: Exclude<Role, "parent"> }) {
           { to: `${base}/home`, icon: "home", label: "홈", count: 0 },
           { to: `${base}/records`, icon: "class", label: "관찰 기록", count: 0 },
           { to: `${base}/notes`, icon: "document", label: "알림장", count: noteLeft },
+          { to: `${base}/inbox`, icon: "inbox", label: "받은함", count: review },
         ]
       : [{ to: `${base}/inbox`, icon: "inbox", label: "받은함", count: review }];
+  const [me, setMe] = useState(false);
+  const logout = () => {
+    signOut();
+    nav("/login");
+  };
 
   return (
     <div className="min-h-full lg:grid lg:grid-cols-[232px_1fr]">
@@ -68,8 +77,11 @@ export function StaffLayout({ role }: { role: Exclude<Role, "parent"> }) {
         <Outlet />
       </main>
 
-      {items.length > 1 && (
-        <nav className="glass fixed inset-x-0 bottom-0 z-30 grid grid-flow-col bg-bar pb-[max(10px,env(safe-area-inset-bottom))] pt-2 shadow-[0_-1px_0_var(--sep)] backdrop-blur-xl backdrop-saturate-[1.8] lg:hidden" aria-label="주 메뉴">
+      <Sheet open={me} onClose={() => setMe(false)} title="내 정보">
+        <p className="text-callout"><b>{user?.display_name}</b> · {role === "teacher" ? "담임 교사" : "원장"}</p>
+        <SubButton tone="gray" className="h-[52px] w-full" onClick={logout}>로그아웃</SubButton>
+      </Sheet>
+      <nav className="glass fixed inset-x-0 bottom-0 z-30 grid grid-flow-col bg-bar pb-[max(10px,env(safe-area-inset-bottom))] pt-2 shadow-[0_-1px_0_var(--sep)] backdrop-blur-xl backdrop-saturate-[1.8] lg:hidden" aria-label="주 메뉴">
           {items.map((it) => (
             <NavLink key={it.to} to={it.to} className={({ isActive }) => `relative grid justify-items-center gap-0.5 text-caption font-semibold ${isActive ? "text-accent" : "text-ink2"}`}>
               <span className="relative">
@@ -79,8 +91,11 @@ export function StaffLayout({ role }: { role: Exclude<Role, "parent"> }) {
               {it.label}
             </NavLink>
           ))}
+          <button type="button" onClick={() => setMe(true)} className="relative grid justify-items-center gap-0.5 text-caption font-semibold text-ink2">
+            <Icon name="profile" className="size-6" />
+            내 정보
+          </button>
         </nav>
-      )}
     </div>
   );
 }
