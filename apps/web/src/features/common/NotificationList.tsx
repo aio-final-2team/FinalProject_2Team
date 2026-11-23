@@ -1,4 +1,5 @@
 import { Link, useNavigate } from "react-router";
+import { QueryState, StaleBanner } from "@/components/QueryState";
 import { useCards } from "@/api/cards";
 import { useNotifications, useReadNotification, type Notification } from "@/api/notifications";
 import { SymbolMark } from "@/components/Brand";
@@ -31,11 +32,10 @@ export function TeacherNotifications({ role = "teacher" }: { role?: "teacher" | 
         {role === "teacher" ? "홈" : "받은함"}
       </Link>
       <h1 className="text-large-title font-bold tracking-[-0.025em]">알림</h1>
-      <p className="mb-4 mt-0.5 text-footnote font-medium text-ink2">{items.filter((n) => !n.read_at).length}개 안 읽음</p>
-      {list.isLoading ? (
-        <p className="py-10 text-center text-callout text-ink2">불러오는 중…</p>
-      ) : list.isError ? (
-        <p className="rounded-lg bg-danger-tint p-4 text-callout text-danger">알림을 불러오지 못했어요. 잠시 뒤 다시 열어 주세요.</p>
+      <StaleBanner queries={[list]} />
+      <p className="mb-4 mt-0.5 min-h-4 text-footnote font-medium text-ink2">{list.data ? `${items.filter((n) => !n.read_at).length}개 안 읽음` : ""}</p>
+      {list.isLoading || (list.isError && list.data === undefined) ? (
+        <QueryState queries={[list]} errorTitle="알림을 불러오지 못했어요">{null}</QueryState>
       ) : !items.length ? (
         <div className="grid justify-items-center gap-2 py-12 text-center">
           <SymbolMark className="size-16" />

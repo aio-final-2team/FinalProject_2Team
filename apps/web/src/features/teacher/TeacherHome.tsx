@@ -10,6 +10,7 @@ import { BellLink } from "@/components/BellLink";
 import { Icon } from "@/components/Icon";
 import { dateLabel, todayKST } from "@/domain/notes";
 import { useRecords } from "@/features/records/store";
+import { QueryState } from "@/components/QueryState";
 import { SOON } from "./SoonPage";
 
 type Doc = { id: string; title: string; doc_type: string; status: string; effective_from: string };
@@ -58,6 +59,7 @@ export function TeacherHome() {
       <h1 className="mt-1 text-large-title font-bold tracking-[-0.025em]">오늘</h1>
       <p className="mt-0.5 text-footnote font-medium text-ink2">{dateLabel(date)} · {user?.display_name}</p>
 
+      <QueryState queries={[kids, notes, inbox]} skeleton={3}>
       {urgent.length > 0 && (
         <>
           <Label>먼저 확인해 주세요</Label>
@@ -124,6 +126,7 @@ export function TeacherHome() {
         </Card>
         {notice && <Card><b className="block text-callout">{notice.title}</b><span className="text-caption text-ink2">가정통신문 · {notice.effective_from}부터</span></Card>}
       </div>
+      </QueryState>
     </div>
   );
 }

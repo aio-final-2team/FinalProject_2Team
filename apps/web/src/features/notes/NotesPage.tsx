@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "@/api/client";
+import { QueryState } from "@/components/QueryState";
 import { loadInputId, recoverInputId, saveInputId, useChildren, useCreateDraft, useDraftJob, useNotes, usePatchNote, useRegenerate, useSendNotes } from "@/api/notes";
 import { useSession } from "@/app/session";
 import { Dock, PrimaryButton, SubButton } from "@/components/Dock";
@@ -26,11 +27,10 @@ export function NotesPage() {
   const stored = !notes.data?.length ? loadInputId(cid, date) : null;
   const resume = useDraftJob(stored ?? undefined);
 
-  if (notes.isLoading) return <Frame><p className="py-16 text-center text-callout text-ink2">불러오는 중…</p></Frame>;
-  if (notes.isError)
+  if (notes.isLoading || (notes.isError && notes.data === undefined))
     return (
       <Frame>
-        <p className="mt-4 rounded-lg bg-danger-tint p-4 text-callout text-danger">알림장을 불러오지 못했어요. 모의 API 서버(8000)가 켜져 있는지 확인해 주세요.</p>
+        <QueryState queries={[notes]} errorTitle="알림장을 불러오지 못했어요">{null}</QueryState>
       </Frame>
     );
   if (jobId) return <Progress jobId={jobId} onDone={() => setJobId(undefined)} />;

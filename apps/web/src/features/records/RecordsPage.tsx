@@ -6,6 +6,7 @@ import { SymbolMark } from "@/components/Brand";
 import { BellLink } from "@/components/BellLink";
 import { Icon } from "@/components/Icon";
 import { dateLabel, todayKST } from "@/domain/notes";
+import { QueryState } from "@/components/QueryState";
 import { RecordSheet } from "./RecordSheet";
 import { useRecords } from "./store";
 
@@ -44,7 +45,7 @@ export function RecordsPage() {
         </span>
       </label>
 
-      {kids.isLoading && <p className="py-6 text-center text-callout text-ink2">아이 목록을 불러오는 중…</p>}
+      {(kids.isLoading || (kids.isError && kids.data === undefined)) && <QueryState queries={[kids]} skeleton={2} errorTitle="아이 목록을 불러오지 못했어요">{null}</QueryState>}
       {query.trim() && (
         <ul className="mt-2 overflow-hidden rounded-lg bg-card shadow-card">
           {results.map((k) => {
