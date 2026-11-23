@@ -56,6 +56,7 @@ def test_sweep_lists_only_orphans_and_deletes_them_only_with_apply(media_root, s
     outside = old(tmp_path / "outside.png")
     (media_root / "link.png").symlink_to(outside)
     old(media_root / "mock" / "seed.png")
+    video = old(media_root / "videos" / "growth.mp4")   # 다른 기능의 하위 폴더는 사진 행이 없어도 고아가 아니다
     (media_root / "fresh.png").write_bytes(b"uploading")
     expected = [f"{seed.demo_id('f05')}.png", "stray.png"]   # 지운 글의 사진과 행이 없는 파일
 
@@ -64,8 +65,8 @@ def test_sweep_lists_only_orphans_and_deletes_them_only_with_apply(media_root, s
     assert media_sweep.sweep(apply=True) == expected
     assert not stray.exists() and not (media_root / expected[0]).exists()
     remaining = sorted(p.name for p in media_root.iterdir())
-    assert remaining == sorted([f"{seed.demo_id(f'f0{n}')}.png" for n in range(1, 5)] + ["fresh.png", "link.png", "mock"])
-    assert outside.exists() and media_sweep.sweep(apply=True) == []
+    assert remaining == sorted([f"{seed.demo_id(f'f0{n}')}.png" for n in range(1, 5)] + ["fresh.png", "link.png", "mock", "videos"])
+    assert video.exists() and outside.exists() and media_sweep.sweep(apply=True) == []
 
 
 @pytest.mark.parametrize("name", ["../outside.png", "/etc/hostname", "mock/../../outside.png", "."])

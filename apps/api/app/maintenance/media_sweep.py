@@ -32,18 +32,17 @@ def live_paths(connection):
 
 
 def orphans(connection, min_age=600):
-    """모의 모드의 mock/ 폴더와 링크는 건너뛴다. 막 올라오는 사진을 피하려고 min_age초 안의 파일도 뺀다."""
+    """피드 사진은 MEDIA_DIR 바로 아래에만 저장된다(media.save). 그래서 하위 폴더는 보지 않는다.
+    모의 모드의 mock/, 다른 기능이 쓰는 폴더(예: 성장 영상 videos/)가 여기에 든다.
+    링크와 막 올라오는 사진(min_age초 안)도 뺀다."""
     base, live, found = root(), live_paths(connection), []
     newest = time.time() - min_age
-    for folder, dirs, files in os.walk(base):
-        if Path(folder) == base:
-            dirs[:] = [d for d in dirs if d != "mock"]
-        for name in files:
-            path = Path(folder, name)
-            relative = path.relative_to(base).as_posix()
-            if path.is_symlink() or relative in live or path.stat().st_mtime > newest:
-                continue
-            found.append(relative)
+    for entry in os.scandir(base):
+        if not entry.is_file(follow_symlinks=False) or entry.name in live:
+            continue
+        if entry.stat(follow_symlinks=False).st_mtime > newest:
+            continue
+        found.append(entry.name)
     return sorted(found)
 
 

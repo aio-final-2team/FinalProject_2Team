@@ -78,6 +78,14 @@ def test_restore_stops_when_current_db_is_unreadable_unless_skip_export(tmp_path
     assert "== 1. 지금 DB에서 백업 뒤 변경 뽑기 (SKIP_EXPORT=1이라 건너뜀)" in dry_run
 
 
+def test_restore_refuses_a_missing_reapply_file_before_touching_anything(tmp_path):
+    backup = backup_folder(tmp_path / "backups" / "20261123T050000Z")
+    result, calls = run(tmp_path, "restore.sh", backup, tmp_path / "server.env", "--yes",
+                        REAPPLY_FILE=str(tmp_path / "missing.json"))
+    assert result.returncode == 1 and "REAPPLY_FILE이 없어요" in result.stderr
+    assert " stop " not in calls and "DROP DATABASE" not in calls
+
+
 def test_backup_keeps_only_newest_complete_folders(tmp_path):
     root = tmp_path / "backups"
     for stamp in ("20261101T000000Z", "20261102T000000Z", "20261103T000000Z"):

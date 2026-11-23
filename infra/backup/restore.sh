@@ -21,6 +21,8 @@ import json; print("\n".join(f"{d}  {n}" for n, d in json.load(open("meta.json")
     | sha256sum --check --quiet) || { echo "백업 폴더의 파일이 meta.json과 달라요: $backup" >&2; exit 1; }
 since=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["created_at"])' "$backup/meta.json")
 reapply=${REAPPLY_FILE:-$backup/reapply-$(date -u +%Y%m%dT%H%M%SZ).json}
+# DB를 지운 뒤에야 없는 파일을 알게 되지 않도록 먼저 확인한다.
+[[ -z "${REAPPLY_FILE:-}" || -f "$REAPPLY_FILE" ]] || { echo "REAPPLY_FILE이 없어요: $REAPPLY_FILE" >&2; exit 1; }
 running=()
 maint=("${compose[@]}" run --rm --no-deps -T --entrypoint python api -m)
 
