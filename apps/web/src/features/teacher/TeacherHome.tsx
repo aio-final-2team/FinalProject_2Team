@@ -10,6 +10,7 @@ import { BellLink } from "@/components/BellLink";
 import { Icon } from "@/components/Icon";
 import { dateLabel, todayKST } from "@/domain/notes";
 import { useRecords } from "@/features/records/store";
+import { SOON } from "./SoonPage";
 
 type Doc = { id: string; title: string; doc_type: string; status: string; effective_from: string };
 
@@ -100,6 +101,20 @@ export function TeacherHome() {
           <Link to="/teacher/records" className="inline-flex h-9 items-center rounded-md bg-fill px-3 text-footnote font-semibold">기록 추가</Link>
         </div>
       </Card>
+
+      <Label>곧 만나요</Label>
+      <ul className="overflow-hidden rounded-lg bg-card shadow-card">
+        {Object.entries(SOON).map(([k, v]) => (
+          <li key={k} className="border-b border-sep last:border-0">
+            <Link to={`/teacher/soon/${k}`} className="flex min-h-12 items-center gap-3 px-3 py-2.5">
+              <span className="grid size-9 shrink-0 place-items-center rounded-md bg-fill text-ink"><Icon name={v.icon} className="size-5" /></span>
+              <span className="min-w-0 flex-1 text-callout font-semibold">{v.title}</span>
+              <span className="text-caption font-semibold text-ink2">준비 중</span>
+              <Icon name="chevR" className="size-4 text-ink2" />
+            </Link>
+          </li>
+        ))}
+      </ul>
 
       <Label>오늘 우리 반</Label>
       <div className="grid gap-2">
