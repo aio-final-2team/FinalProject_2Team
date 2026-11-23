@@ -130,8 +130,9 @@ def decide(user, card_id, body):
                                      reason_text=body.reason_text, **actor)
             next_card = store._new_card(req, card.kind, card.assignee_id, dict(card.draft))
             next_card.check_result = card.check_result
-            if card.kind == "reply_draft":
-                next_card.draft["text"] = "(모의 재초안) 내용을 다시 확인해서 안내드릴게요."
+            if card.kind == "reply_draft":  # 거절 뒤 재초안은 초안 없는 카드(API 5.7). 담임이 직접 써서 edit_approve
+                next_card.draft["text"] = ""
+                next_card.check_result = None
             if card.kind == "consult_slots":
                 for slot in store.slots_of_request(req.id):
                     slot.status = "discarded"

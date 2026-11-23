@@ -30,11 +30,27 @@ def new_card(connection, req, kind, assignee, draft=None):
     return card
 
 
+def draft_outside_lock(initial, first, prefetched):
+    """자료·검사 AI(최악 수십 분)를 요청 행 잠금 밖에서 부른다. 저장은 run_request의 짧은 잠금 트랜잭션에서만 한다."""
+    if initial["type"] != "inquiry" or not graph_enabled() or first.get("risk_level") in ("urgent", "uncertain"):
+        return None
+    forecast = None
+    day, fetched = prefetched.get("forecast", (None, None))
+    if fetched:  # 못 가져온 예보는 여기서 다시 부르지 않는다
+        try:
+            with transaction() as connection:  # 공공 자료는 같은 내용이면 같은 조각이라, 초안을 버려도 남아서 문제없다
+                forecast = forecast_evidence(connection, initial["org_id"], day, forecast=fetched)
+        except Exception:
+            forecast = None
+    return answer_for_request(initial, forecast=forecast)
+
+
 def run_request(request_id):
     # LLM 호출은 요청 행 잠금 밖에서 한다. 요청 본문·유형은 접수 후 고정이다.
     with transaction() as connection:
-        initial = connection.execute(text("SELECT type,body,status FROM requests WHERE id=:id"),
-                                     {"id": request_id}).mappings().one_or_none()
+        initial = connection.execute(text("""
+            SELECT type,body,status,org_id,classroom_id,requester_id FROM requests WHERE id=:id
+        """), {"id": request_id}).mappings().one_or_none()
         if initial is None or initial["status"] not in ("received", "classified", "assigned", "needs_info"):
             return
         has_card = connection.scalar(text("SELECT EXISTS (SELECT 1 FROM cards WHERE request_id=:id)"),
@@ -49,6 +65,7 @@ def run_request(request_id):
     first = validate_proposal(initial["type"], initial["body"], proposal)
     prefetched = prefetch_public(initial["type"], initial["body"], first["topic_key"], datetime.now(KST).date(),
                                  with_forecast=graph_enabled(), risk_category=first.get("risk_category"))
+    drafted = draft_outside_lock(initial, first, prefetched)
     with transaction() as connection:
         row = connection.execute(text("SELECT * FROM requests WHERE id=:id FOR UPDATE"),
                                  {"id": request_id}).mappings().one_or_none()
@@ -91,35 +108,27 @@ def run_request(request_id):
             return
         high_risk = req["risk_level"] in ("urgent", "uncertain")
         draft = {"summary": req["body"][:60], "no_evidence": True}
-        answer = None
+        answer, check = None, None
         if not high_risk:
             if req["type"] == "inquiry" and graph_enabled():
-                forecast = None
-                day, fetched = prefetched.get("forecast", (None, None))
-                if fetched and req["body"] == initial["body"]:  # 못 가져온 예보는 여기서 다시 부르지 않는다
-                    try:
-                        with connection.begin_nested():  # 저장 오류가 바깥 트랜잭션을 망치지 않게 한다
-                            forecast = forecast_evidence(connection, req["org_id"], day, forecast=fetched)
-                    except Exception:
-                        forecast = None
-                answer = answer_for_request(req, forecast=forecast)
-                draft.update({key: answer[key] for key in ("text", "no_evidence", "conflict")})
-                if answer["no_evidence"] or answer["conflict"]:
+                # 잠금 밖에서 만든 초안은 같은 본문일 때만 쓴다. 없으면 모델을 잠금 안에서 다시 부르지 않고 초안 없는 카드로 둔다.
+                answer = drafted if drafted and req["body"] == initial["body"] else None
+                if answer:
+                    draft.update({key: answer[key] for key in ("text", "no_evidence", "conflict")})
+                    check = answer.get("check_result")
+                if answer is None or answer["no_evidence"] or answer["conflict"]:
                     # API 5.7: 근거 없음·충돌은 초안 없는 카드. 대체 문장이 승인으로 학부모에게 나가면 안 돼요.
                     draft["text"] = ""
             else:
                 draft["text"] = "(모의 초안) 말씀해 주셔서 감사합니다. 확인해서 다시 안내드릴게요."
+                check = {"passed": True, "issues": [], "attempt": 1}
         card = new_card(connection, req, "reply_draft", teacher, draft)
         if answer:
             save_evidence(connection, card, answer)
-        if answer:
-            card["check_result"] = answer.get("check_result")
+        if check is not None:
+            card["check_result"] = check
             connection.execute(text("UPDATE cards SET check_result=CAST(:check AS jsonb) WHERE id=:id"),
-                               {"id": card["id"], "check": json.dumps(card["check_result"])})
-        elif not high_risk:
-            card["check_result"] = {"passed": True, "issues": [], "attempt": 1}
-            connection.execute(text("UPDATE cards SET check_result=CAST(:check AS jsonb) WHERE id=:id"),
-                               {"id": card["id"], "check": json.dumps(card["check_result"])})
+                               {"id": card["id"], "check": json.dumps(check)})
         if req["type"] == "complaint":
             attach_law_evidence(connection, card, req, prefetched)  # 조건에 맞을 때만 법령 근거를 붙임(T52)
         record(connection, req, "drafted", card=card, actor_type="agent", agent_name="document")
