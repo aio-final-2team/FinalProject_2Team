@@ -2,6 +2,7 @@
 
 from importlib import import_module
 from datetime import timedelta
+import logging
 
 from sqlalchemy import text
 
@@ -9,6 +10,8 @@ from app.core.config import settings
 from app.core.db import transaction
 from app.modules.requests.agent_stub import new_card
 from app.modules.requests.events import record, set_status
+
+log = logging.getLogger(__name__)
 
 
 def _handoff(connection, req, reason):
@@ -70,4 +73,9 @@ def sweep_missing_cards(now):
             publish("request", request_id)
         else:
             run_request(request_id)
+    try:
+        from app.modules.requests.graph_agent import sweep_approval_resumes
+        sweep_approval_resumes()
+    except Exception as error:  # noqa: BLE001 - 누락 카드 점검은 그래프 재전달 실패와 독립적으로 끝낸다
+        log.warning("승인 그래프 재전달 점검 실패 error_type=%s", type(error).__name__)
     return len(requeued) + handed_off

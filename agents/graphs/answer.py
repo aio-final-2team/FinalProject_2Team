@@ -16,7 +16,9 @@ MAX_REWRITES = 2
 
 def fallback(trace):
     return {"text": NO_ANSWER, "evidence": [], "no_evidence": True, "conflict": False,
-            "trace": [*trace, "end"]}
+            "check_result": {"passed": False, "issues": [{"field": "출처",
+                                                               "problem": "자료 답변을 확인하지 못했어요."}],
+                             "attempt": 0}, "trace": [*trace, "end"]}
 
 
 def _prompt(file, start, end=None):
@@ -84,6 +86,11 @@ def _review(model, question, draft, candidates, attempt, trace):
     return None
 
 
+def _check_result(passed, issues, attempt):
+    return {"passed": passed, "issues": [{"field": issue["field"], "problem": issue["problem"]}
+                                         for issue in issues], "attempt": attempt}
+
+
 def draft_answer(question: str, search, writer=None, checker=None) -> dict:
     trace = []
     candidates = []
@@ -110,10 +117,13 @@ def draft_answer(question: str, search, writer=None, checker=None) -> dict:
             return fallback(trace)
         draft = _verify(answer, candidates, trace)
         if draft["no_evidence"] or draft["conflict"]:
-            return {**draft, "trace": [*trace, "end"]}
+            return {**draft, "check_result": {"passed": False, "issues": [], "attempt": attempt + 1},
+                    "trace": [*trace, "end"]}
         issues = _review(checker, question, draft, candidates, attempt + 1, trace)
         if issues is None:
             return fallback(trace)
         if not issues:
-            return {**draft, "trace": [*trace, "end"]}
-    return fallback(trace)
+            return {**draft, "check_result": _check_result(True, [], attempt + 1),
+                    "trace": [*trace, "end"]}
+        last_check = _check_result(False, issues, attempt + 1)
+    return {**fallback(trace), "check_result": last_check}

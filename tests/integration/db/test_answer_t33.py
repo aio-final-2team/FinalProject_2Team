@@ -14,13 +14,16 @@ from db.seeds.documents import seed_documents
 
 class Writer:
     answer = None
+    checker_answer = None
+    calls = []
 
     def __init__(self, role):
         self.role = role
 
     def json(self, system, user):
+        self.calls.append((self.role, user))
         if self.role == "CHECKER":
-            return {"passed": True, "issues": []}
+            return self.checker_answer or {"passed": True, "issues": []}
         if isinstance(self.answer, Exception):
             raise self.answer
         return self.answer
@@ -32,6 +35,8 @@ def setup_graph(seeded_db, monkeypatch, answer):
     monkeypatch.setenv("ANSWER_WRITER", "graph")
     from agents.graphs import answer as graph
     Writer.answer = answer
+    Writer.checker_answer = {"passed": True, "issues": []}
+    Writer.calls = []
     monkeypatch.setattr(graph, "OpenAIModel", Writer)
 
 
@@ -49,7 +54,9 @@ def create_card(db_client, body):
             SELECT e.quote, e.score, ch.location FROM card_evidence e JOIN document_chunks ch ON ch.id=e.chunk_id
             WHERE e.card_id=:id
         """), {"id": card["id"]}).mappings().all()
-    return card, evidence
+        messages = connection.scalar(text("SELECT count(*) FROM request_messages WHERE request_id=:id"),
+                                     {"id": request_id})
+    return card, evidence, messages
 
 
 def test_answer_evidence_card(db_client, seeded_db, monkeypatch):
@@ -63,24 +70,31 @@ def test_answer_evidence_card(db_client, seeded_db, monkeypatch):
     assert quote in chunk["content"]
     setup_graph(seeded_db, monkeypatch, {"text": "겨울방학은 12월 24일부터예요.",
         "evidence": [{"chunk_id": chunk["id"], "quote": quote}], "no_evidence": False, "conflict": False})
-    card, evidence = create_card(db_client, "겨울방학 언제부터인가요?")
+    card, evidence, messages = create_card(db_client, "겨울방학 언제부터인가요?")
     assert card["assignee_id"] == seed.TEACHER
     assert card["draft"]["text"] == "겨울방학은 12월 24일부터예요."
     assert not card["draft"]["no_evidence"]
     assert evidence[0]["location"] == "1쪽 겨울방학 기간"
     assert evidence[0]["score"] is not None
+    assert card["check_result"]["passed"] is True
+    assert messages == 1  # 접수 메시지만 있고 초안은 승인 전 발송되지 않음
+    assert [role for role, _ in Writer.calls] == ["DOCUMENT", "CHECKER"]
 
 
 def test_no_evidence_still_goes_to_teacher(db_client, seeded_db, monkeypatch):
     setup_graph(seeded_db, monkeypatch, {"text": "추측", "evidence": [], "no_evidence": True, "conflict": False})
-    card, evidence = create_card(db_client, "겨울방학 방과후 운영하나요?")
+    card, evidence, messages = create_card(db_client, "겨울방학 방과후 운영하나요?")
     assert card["assignee_id"] == seed.TEACHER and card["draft"]["no_evidence"] and not evidence
+    assert messages == 1
 
 
 def test_model_error_still_creates_card(db_client, seeded_db, monkeypatch):
     setup_graph(seeded_db, monkeypatch, ModelError("모델 오류"))
-    card, evidence = create_card(db_client, "겨울방학 언제부터인가요?")
+    card, evidence, messages = create_card(db_client, "겨울방학 언제부터인가요?")
     assert card["assignee_id"] == seed.TEACHER and card["draft"]["no_evidence"] and not evidence
+    assert messages == 1
+    assert card["check_result"]["passed"] is False
+    assert card["check_result"]["issues"]
 
 
 def test_hybrid_score_uses_matching_vector(seeded_db, monkeypatch):
