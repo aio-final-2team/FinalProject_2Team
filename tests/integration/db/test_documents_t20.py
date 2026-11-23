@@ -151,6 +151,26 @@ def test_upload_unreadable_file_fails_with_message(db_client, teacher, docs):
     assert retried.json()["document"]["error"] is None
 
 
+def test_failed_reupload_runs_once_when_two_requests_race(db_client, teacher, seeded_db, docs, monkeypatch):
+    from app.modules.documents import ingest
+
+    failed = upload(db_client, teacher, "일정표.hwp", "## 일정\n- 12월 24일 종업식\n").json()["document"]
+    winner = upload(db_client, teacher, "일정표.md", "## 일정\n- 12월 24일 종업식\n")
+    assert winner.status_code == 202 and winner.json()["document"]["ingest_status"] == "succeeded"
+    # 늦은 요청은 이긴 쪽이 running으로 바꾸기 전에 failed를 읽은 상태예요
+    real = ingest.in_scope
+    monkeypatch.setattr(ingest, "in_scope", lambda user, doc_id: {**real(user, doc_id), "ingest_status": "failed"})
+    late = upload(db_client, teacher, "일정표.md", "## 일정\n- 12월 24일 종업식\n")
+    assert late.status_code == 200, late.text
+    doc = late.json()["document"]
+    assert doc["id"] == failed["id"] and doc["ingest_status"] == "succeeded"
+    assert doc["chunk_count"] == winner.json()["document"]["chunk_count"]
+    with seeded_db.begin() as connection:
+        failures = connection.scalar(text("""
+            SELECT count(*) FROM events WHERE action='tool_failed' AND detail->>'document_id'=:id
+        """), {"id": failed["id"]})
+    assert failures == 1  # 처음 .hwp 실패 한 번뿐
+
 def test_upload_duplicate_class_and_size_limit(db_client, teacher, seeded_db, docs):
     content = "## 중복 반 시험\n- 준비물: 별빛반 물병\n"
     response = db_client.post("/api/v1/documents", headers=teacher,

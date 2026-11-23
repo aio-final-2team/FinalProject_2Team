@@ -10,6 +10,7 @@
 
 import json
 import os
+import re
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -19,7 +20,7 @@ PROMPTS = Path(__file__).resolve().parents[1] / "prompts"
 RETURN_KINDS = {"not_in_memo", "request_missed"}       # 자료 AI가 고칠 수 있는 문제
 MODEL_KINDS = {"not_in_memo", "sensitive", "other_child", "date_check", "absent"}  # 검사 AI가 낼 수 있는 값
 MAX_RETURNS = 2
-REQUEST_KEY = {"medication": "medication", "pickup": "pickup", "inquiry": "day"}
+REQUEST_KEY = {"medication": "medication", "pickup": "pickup", "inquiry": "inquiry"}  # 계약 v0.4.1(#282)
 NO_SUPPLIES = {"", "없음"}
 
 PROBLEM = {
@@ -29,14 +30,17 @@ PROBLEM = {
     "other_child": "다른 아이 이름이 들어 있어요. 이 아이 알림장에서는 빼 주세요.",
     "memo_left_out": "선생님 메모를 알림장에 옮기지 않았어요. 메모를 보고 직접 확인해 주세요.",
     "medication": "보호자 투약 요청이에요. 보내기 전에 직접 확인해 주세요.",
+    "unanswered": "보호자 문의에 선생님 답이 필요해요. 메모에 답할 내용이 없었어요.",
 }
 
 WRITE_FORMAT = """
 ## 답 형식
 JSON 하나로만 답한다.
-{"child": "아이 메모 줄 문장, 쓰지 않으면 null", "requests": [{"request_id": "입력의 request_id", "value": "그 요청을 옮긴 문장"}]}
+{"child": "아이 메모 줄 문장, 쓰지 않으면 null", "requests": [{"request_id": "입력의 request_id", "value": "그 요청 줄 문장", "answered": true}]}
 - 반 공통 활동·준비물·식단 줄은 코드가 만든다. 너는 child와 requests만 쓴다.
 - requests에는 입력의 보호자 요청마다 하나씩 쓴다.
+- 문의에 메모로 답했으면 answered는 true, 메모에 답할 내용이 없어 문의 내용만 옮겼으면 false다.
+- 요청 줄에 아이 메모 줄과 같은 문장을 다시 쓰지 않는다.
 """
 
 CHECK_FORMAT = """
@@ -66,7 +70,9 @@ def draft_daily_notes(payload: dict, writer: JsonModel | None = None, checker: J
     checker = checker or OpenAIModel("CHECKER")
     names = [child["display_name"] for child in payload["children"]]
     common = common_lines(payload)
-    run = lambda child: draft_child(payload, child, common, names, writer, checker)
+    def run(child):
+        return draft_child(payload, child, common, names, writer, checker)
+
     workers = workers or concurrency()
     if workers == 1:
         return [run(child) for child in payload["children"]]
@@ -81,40 +87,72 @@ def common_lines(payload: dict) -> dict:
                              "source": {"type": "teacher_input"}}
     menu = payload.get("menu")
     if menu:
-        lines["meal"] = {"key": "meal", "label": "식사", "value": menu["text"],
+        lines["meal"] = {"key": "meal", "label": "식사", "value": meal_text(menu["text"], payload["note_date"]),
                          "source": {"type": "document", "document_id": menu["document_id"], "document_title": menu["title"]}}
     return lines
+
+
+def meal_text(text: str, note_date: str) -> str:
+    """주간 식단표 본문에서 그날 행만 '점심: … / 오후 간식: …'으로. 행을 못 찾으면 원문 그대로."""
+    mmdd = str(note_date)[5:10]
+    lines = [line.strip() for line in text.splitlines() if line.strip().startswith("|")]
+    row = next((line for line in lines if re.match(rf"\|\s*{re.escape(mmdd)}\b", line)), None)
+    if row is None:
+        return text
+    def cells(line):
+        return [cell.strip() for cell in line.strip("|").split("|")]
+
+    header = cells(lines[0]) if lines and lines[0] != row else []
+    values = cells(row)[1:]
+    names = header[1:] if len(header) == len(values) + 1 else [""] * len(values)
+    return " / ".join(f"{name}: {value}" if name else value for name, value in zip(names, values) if value)
 
 
 def draft_child(payload, child, common, names, writer, checker) -> dict:
     memo = (child.get("memo") or "").strip()
     requests = child.get("requests") or []
+    trace: list[dict] = []  # 단계·결과 요약만 남긴다. 모델의 생각 원문은 남기지 않는다(T25 4칸)
     if not memo and not requests:  # 쓸 것이 없으면 AI를 부르지 않는다(빈 메모를 채우지 않음)
-        return result(child, common, [], [])
+        trace.append({"step": "skip", "result": "메모·요청 없음"})
+        return result(child, common, [], [], trace, "done")
 
     issues: list[dict] = []
     for attempt in range(MAX_RETURNS + 1):
         try:
             own = twice(lambda: write(writer, payload, child, issues))
-        except ModelError:
-            return result(child, common, [], [new_check("child", "draft_failed")])
+        except ModelError as error:
+            trace.append({"step": "write", "attempt": attempt, "result": "failed", "error": str(error)})
+            return result(child, common, [], [new_check("child", "draft_failed")], trace, "handoff")
+        trace.append({"step": "write", "attempt": attempt, "result": "ok",
+                      "lines": [{"key": line["key"], "value": line["value"]} for line in own]})
         found = code_checks(own, child, names)
         try:
             found += twice(lambda: review(checker, payload, child, own))
-        except ModelError:
+            review_result = "ok"
+        except ModelError as error:
             found.append(new_check("child", "check_failed"))
-        found = unique(found + memo_left_out(memo, own, found))
+            review_result = f"failed: {error}"
+        found = unique(found + memo_left_out(memo, own, found) + unanswered(own))
         issues = [f for f in found if f["kind"] in RETURN_KINDS]
-        if not issues or attempt == MAX_RETURNS or any(f["kind"] == "check_failed" for f in found):
-            return result(child, common, own, found)
+        trace.append({"step": "check", "attempt": attempt, "result": review_result,
+                      "kinds": [f["kind"] for f in found]})
+        if any(f["kind"] == "check_failed" for f in found):
+            return result(child, common, own, found, trace, "handoff")
+        if not issues:
+            return result(child, common, own, found, trace, "needs_check" if found else "done")
+        if attempt == MAX_RETURNS:
+            return result(child, common, own, found, trace, "handoff")
+        trace.append({"step": "return", "attempt": attempt, "kinds": [f["kind"] for f in issues]})
     raise AssertionError("unreachable")
 
 
 def twice(call):
-    """1번 다시(T14 6장). 두 번째도 실패하면 ModelError를 그대로 올린다."""
+    """답 모양이 틀렸을 때만 1번 더 묻는다(T14 6장). 전송 오류 재시도는 llm.py(API 설계 6.2)가 이미 했다."""
     try:
         return call()
-    except ModelError:
+    except ModelError as error:
+        if not error.format:
+            raise
         return call()
 
 
@@ -132,13 +170,33 @@ def write(model: JsonModel, payload, child, issues) -> list[dict]:
     text = (answer.get("child") or "").strip() if isinstance(answer.get("child"), str) else ""
     if text:
         lines.append({"key": "child", "label": "아이 메모", "value": text, "source": {"type": "teacher_input"}})
+    def same(a, b):
+        return re.sub(r"\s+", "", a) == re.sub(r"\s+", "", b)
+
     for line in answer.get("requests") or []:
         req = by_id.get(line.get("request_id"))
         value = (line.get("value") or "").strip() if isinstance(line.get("value"), str) else ""
-        if req and value:  # 입력에 없는 요청 ID는 버린다
-            lines.append({"key": REQUEST_KEY[req["type"]], "label": "보호자 요청", "value": value,
-                          "source": {"type": "request", "request_id": req["request_id"]}})
+        if not (req and value):  # 입력에 없는 요청 ID는 버린다
+            continue
+        answered = line.get("answered") is not False
+        if text and same(value, text):  # 아이 메모 줄을 다시 쓴 것: 요청 원문을 옮기고 선생님 답으로 넘긴다
+            value, answered = f"보호자 요청: {req['text']}", False
+        out = {"key": REQUEST_KEY[req["type"]], "label": "보호자 요청", "value": value,
+               "source": {"type": "request", "request_id": req["request_id"]}}
+        if req["type"] == "inquiry" and not answered:
+            out["_unanswered"] = True
+        lines.append(out)
     return lines
+
+
+def unanswered(own: list[dict]) -> list[dict]:
+    """메모로 답하지 못한 문의는 선생님 확인으로 넘긴다(팀 1안, 11/20)."""
+    found = []
+    for line in own:
+        if line.pop("_unanswered", False):
+            found.append(new_check(line["key"], "sensitive", problem=PROBLEM["unanswered"],
+                                   sentence=line["value"], request_id=line["source"]["request_id"]))
+    return found
 
 
 def code_checks(own: list[dict], child: dict, names: list[str]) -> list[dict]:
@@ -179,7 +237,7 @@ def review(model: JsonModel, payload, child, own) -> list[dict]:
     answer = model.json(section("checker.md", "## 알림장: 메모와 대조한다") + CHECK_FORMAT, user)
     checks = answer.get("checks")
     if not isinstance(checks, list):
-        raise ModelError("checks 목록이 없어요")
+        raise ModelError("checks 목록이 없어요", format=True)
     found = []
     for check in checks:
         if isinstance(check, dict) and check.get("kind") in MODEL_KINDS:
@@ -197,16 +255,20 @@ def new_check(item_key, kind, problem=None, sentence=None, request_id=None) -> d
 
 
 def unique(found: list[dict]) -> list[dict]:
-    seen, out = set(), []
+    """같은 줄(item_key)·같은 kind는 하나로 합친다. 요청 누락만 요청마다 따로 둔다."""
+    kept: dict[tuple, dict] = {}
     for f in found:
-        key = (f["kind"], f["item_key"], f.get("request_id"), f.get("sentence"))
-        if key not in seen:
-            seen.add(key)
-            out.append(f)
-    return out
+        key = (f["kind"], f["item_key"], f.get("request_id") if f["kind"] == "request_missed" else None)
+        if key not in kept:
+            kept[key] = dict(f)
+        elif f.get("request_id") and not kept[key].get("request_id"):
+            kept[key]["request_id"] = f["request_id"]
+    return list(kept.values())
 
 
-def result(child, common, own, found) -> dict:
+def result(child, common, own, found, trace=None, end="done") -> dict:
+    """end: done(확인 없음) · needs_check(선생님 볼 일) · handoff(실패·한도 초과로 사람에게). 백엔드는 trace·end를 저장하지 않는다."""
     items = [common["day"], *own, *(common[k] for k in ("supplies", "meal") if k in common)]
     checks = [{"id": f"c{n}", **f} for n, f in enumerate(found, start=1)]
-    return {"child_id": child["child_id"], "content": {"items": items}, "open_checks": checks}
+    return {"child_id": child["child_id"], "content": {"items": items}, "open_checks": checks,
+            "end": end, "trace": (trace or []) + [{"step": "end", "result": end}]}

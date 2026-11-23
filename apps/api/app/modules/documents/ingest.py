@@ -110,11 +110,12 @@ def upload(user, filename, data, doc_type, visibility, classroom_ids, effective_
     if not created:
         prior = in_scope(user, existing)
         if prior["ingest_status"] == "failed":
+            # 두 요청이 같이 failed를 읽어도 먼저 running으로 바꾼 쪽만 다시 적재한다.
             with transaction() as connection:
-                connection.execute(text("""
-                    UPDATE documents SET title=:title, ingest_status='running' WHERE id=:id AND org_id=:org
-                """), {"title": filename, "id": existing, "org": user.org_id})
-            created = True
+                created = connection.scalar(text("""
+                    UPDATE documents SET title=:title, ingest_status='running'
+                    WHERE id=:id AND org_id=:org AND ingest_status='failed' RETURNING id
+                """), {"title": filename, "id": existing, "org": user.org_id}) is not None
     if created:
         run_ingest(existing, data, replaces_document_id)
     with transaction() as connection:
@@ -202,7 +203,8 @@ def run_ingest(document_id, data: bytes, replaces):
         message = str(error) if isinstance(error, DocumentFormatError) else "자료를 읽지 못했어요."
         log.warning("자료 적재 실패 %s: %s", document_id, type(error).__name__)
         with transaction() as connection:
-            connection.execute(text("UPDATE documents SET ingest_status='failed' WHERE id=:id"), {"id": document_id})
+            connection.execute(text("UPDATE documents SET ingest_status='failed' WHERE id=:id AND ingest_status='running'"),
+                               {"id": document_id})
             connection.execute(text("""
                 INSERT INTO events (org_id, actor_type, action, detail)
                 SELECT org_id, 'system', 'tool_failed', CAST(:detail AS jsonb) FROM documents WHERE id=:id

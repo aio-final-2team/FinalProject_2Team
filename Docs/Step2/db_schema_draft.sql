@@ -479,7 +479,7 @@ CREATE UNIQUE INDEX memory_rules_one_open
     ON memory_rules (owner_id, reason_code) WHERE status IN ('proposed', 'active');
 
 -- 원에 남은 답(FR-20). 담임이 승인한 문의 답을 원 단위로 저장. 개인 기억(memories)과 따로 둠
--- 바로 답하는 조건: 질문 뜻이 충분히 같고 근거 문서가 최신일 때만(T04 합의 7)
+-- 담임 카드 초안으로 쓰는 조건: 질문 뜻이 충분히 같고 근거 문서가 최신일 때만. 학부모에게 바로 보내지 않음
 CREATE TABLE saved_answers (
     id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     org_id              uuid NOT NULL,
