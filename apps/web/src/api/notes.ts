@@ -60,3 +60,32 @@ export function useSendNotes(classroomId?: string, date?: string) {
     onSettled: () => qc.invalidateQueries({ queryKey: ["notes", classroomId, date] }),
   });
 }
+
+/* ── 입력 ID 기억: 다시 만들기(API 26)가 input_id를 쓴다. 알림장 응답에는 input_id가 없어서 이 기기에 둔다 ── */
+const inKey = (cid: string, date: string) => `yuchion.input.${cid}.${date}`;
+export function saveInputId(cid: string, date: string, id: string) {
+  try {
+    localStorage.setItem(inKey(cid, date), id);
+  } catch {
+    /* 저장이 막히면 다시 만들기 버튼만 숨긴다 */
+  }
+}
+export function loadInputId(cid: string | undefined, date: string): string | null {
+  try {
+    return cid ? localStorage.getItem(inKey(cid, date)) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** API 26(3.26): 저장해 둔 입력으로 아직 확인하지 않은 초안만 다시 만든다. 고친 알림장·확인한 알림장은 보존(kept_edited) */
+export function useRegenerate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (inputId: string) => api<DraftJob & { kept_edited: number }>(`/api/v1/daily-notes/drafts/${inputId}/regenerate`, { method: "POST" }),
+    onSuccess: (_r, inputId) => {
+      qc.invalidateQueries({ queryKey: ["draft-job", inputId] });
+      qc.invalidateQueries({ queryKey: ["notes"] });
+    },
+  });
+}

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "@/api/client";
-import { useChildren, useCreateDraft, useDraftJob, useNotes, usePatchNote, useSendNotes } from "@/api/notes";
+import { loadInputId, saveInputId, useChildren, useCreateDraft, useDraftJob, useNotes, usePatchNote, useRegenerate, useSendNotes } from "@/api/notes";
 import { useSession } from "@/app/session";
 import { Dock, PrimaryButton, SubButton } from "@/components/Dock";
 import { Icon } from "@/components/Icon";
@@ -95,7 +95,7 @@ function Compose({ onStarted }: { onStarted: (id: string) => void }) {
         supplies: supplies.trim(),
         child_memos: recorded.map((k) => ({ child_id: k.id, memo: memoOf(k.id) })).filter((m) => m.memo),
       },
-      { onSuccess: (job) => onStarted(job.input_id), onError: (e) => setErr(e instanceof ApiError ? e.message : "초안 만들기를 시작하지 못했어요. 잠시 뒤 다시 눌러 주세요.") },
+      { onSuccess: (job) => { saveInputId(cid, date, job.input_id); onStarted(job.input_id); }, onError: (e) => setErr(e instanceof ApiError ? e.message : "초안 만들기를 시작하지 못했어요. 잠시 뒤 다시 눌러 주세요.") },
     );
   };
   const field = "w-full rounded-md border-[1.5px] bg-card px-3 text-body outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--tint)]";
@@ -157,6 +157,7 @@ function Progress({ jobId, onDone }: { jobId: string; onDone: () => void }) {
   const { user } = useSession();
   const qc = useQueryClient();
   const job = useDraftJob(jobId);
+  const regen = useRegenerate();
   const st = job.data?.draft_status ?? "queued";
   const [shown, setShown] = useState(0);
   useEffect(() => {
@@ -179,7 +180,7 @@ function Progress({ jobId, onDone }: { jobId: string; onDone: () => void }) {
         <section className="mt-4 grid gap-3 rounded-lg bg-card p-4 shadow-card">
           <b className="text-headline">초안을 만들지 못했어요</b>
           <p className="text-callout text-ink2">{job.data?.error?.message ?? "잠시 뒤 다시 만들어 주세요."} 관찰 기록은 그대로 있어요.</p>
-          <SubButton onClick={onDone}>다시 시도</SubButton>
+          <SubButton onClick={() => regen.mutate(jobId)} disabled={regen.isPending}>{regen.isPending ? "다시 접수하는 중…" : "다시 만들기"}</SubButton>
         </section>
       ) : (
         <section className="mt-4 rounded-lg bg-card p-4 shadow-card">
@@ -225,6 +226,11 @@ function Review({ notes }: { notes: DailyNote[] }) {
   const [showClean, setShowClean] = useState(false);
   const [plainOk, setPlainOk] = useState<Record<string, boolean>>({});
   const [writeFor, setWriteFor] = useState<DailyNote | null>(null);
+  const regen = useRegenerate();
+  const [regenSheet, setRegenSheet] = useState(false);
+  const inputId = loadInputId(cid, date);
+  /* 보내기가 409 NOTE_BATCH_BLOCKED로 막혔을 때 details.blocked[]를 보여 준다. 빈 목록이면 초안이 아직 만들어지는 중 */
+  const [blocked, setBlocked] = useState<{ note_id: string; child_id: string; open_checks?: { problem?: string }[] }[] | null>(null);
 
   const c = { needs_check: 0, draft: 0, ready: 0, sent: 0 };
   notes.forEach((n) => c[n.status]++);
@@ -267,8 +273,9 @@ function Review({ notes }: { notes: DailyNote[] }) {
       },
       onError: (e) => {
         setSheet(false);
-        const blocked = e instanceof ApiError && e.code === "NOTE_BATCH_BLOCKED";
-        toast({ kind: "error", title: blocked ? "확인이 안 끝난 알림장이 있어요" : "보내지 못했어요", sub: blocked ? "걸린 아이를 먼저 확인해 주세요" : "잠시 뒤 다시 보내 주세요" });
+        const isBlocked = e instanceof ApiError && e.code === "NOTE_BATCH_BLOCKED";
+        if (isBlocked) setBlocked(((e.details as { blocked?: typeof blocked })?.blocked ?? []) as NonNullable<typeof blocked>);
+        toast({ kind: "error", title: isBlocked ? "확인이 안 끝난 알림장이 있어요" : "보내지 못했어요", sub: isBlocked ? "막힌 아이를 목록에서 확인해 주세요" : "잠시 뒤 다시 보내 주세요" });
       },
     });
 
@@ -310,6 +317,31 @@ function Review({ notes }: { notes: DailyNote[] }) {
           )}
         </div>
       </section>
+
+      {blocked && !allSent && (
+        <section role="alert" className="mt-4 rounded-lg bg-danger-tint p-3 text-callout">
+          <b className="text-danger">보내기가 막혔어요</b>
+          {blocked.length ? (
+            <ul className="mt-1.5 grid gap-1 text-footnote text-ink">
+              {blocked.map((b) => (
+                <li key={b.note_id}>
+                  <Link to={`/teacher/notes/${b.note_id}`} className="font-semibold underline">{names[b.child_id] ?? "아이"}</Link>
+                  <span className="text-ink2"> · {b.open_checks?.map((o) => o.problem).filter(Boolean).join(", ") || "확인 필요"}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-1 text-footnote text-ink2">초안이 아직 만들어지는 중이에요. 잠시 뒤 다시 보내 주세요.</p>
+          )}
+        </section>
+      )}
+
+      {!allSent && inputId && (
+        <div className="mt-3 flex items-center justify-between gap-2 px-1 text-footnote text-ink2">
+          <span>초안이 마음에 안 들면 확인하지 않은 아이만 다시 만들 수 있어요</span>
+          <SubButton small tone="gray" onClick={() => setRegenSheet(true)}>다시 만들기</SubButton>
+        </div>
+      )}
 
       {!allSent && flagged.length > 0 && (
         <>
@@ -403,6 +435,32 @@ function Review({ notes }: { notes: DailyNote[] }) {
           </SubButton>
           <PrimaryButton onClick={doSend} loading={send.isPending}>
             보내기
+          </PrimaryButton>
+        </div>
+      </Sheet>
+
+      <Sheet open={regenSheet} onClose={() => setRegenSheet(false)} title="초안 다시 만들기">
+        <p className="text-callout text-ink2">내가 고친 알림장과 이미 확인한 알림장은 그대로 두고, 나머지만 새로 써요.</p>
+        <div className="grid grid-cols-[1fr_2fr] gap-2">
+          <SubButton tone="gray" className="h-[52px]" onClick={() => setRegenSheet(false)}>취소</SubButton>
+          <PrimaryButton
+            loading={regen.isPending}
+            onClick={() =>
+              inputId &&
+              regen.mutate(inputId, {
+                onSuccess: (r) => {
+                  setRegenSheet(false);
+                  setBlocked(null);
+                  toast({ kind: "ok", title: "초안을 다시 만들고 있어요", sub: r.kept_edited ? `고친 알림장 ${r.kept_edited}개는 그대로 두었어요` : undefined });
+                },
+                onError: () => {
+                  setRegenSheet(false);
+                  toast({ kind: "error", title: "다시 만들지 못했어요", sub: "이미 보낸 알림장이 있으면 다시 만들 수 없어요" });
+                },
+              })
+            }
+          >
+            다시 만들기
           </PrimaryButton>
         </div>
       </Sheet>

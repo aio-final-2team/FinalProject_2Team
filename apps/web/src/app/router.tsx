@@ -1,6 +1,5 @@
 import { createBrowserRouter, Navigate } from "react-router";
 import { Guard } from "@/features/common/Guard";
-import { Later } from "@/features/common/Later";
 import { InboxPage } from "@/features/inbox/InboxPage";
 import { LoginPage } from "@/features/login/LoginPage";
 import { NoteDetail } from "@/features/notes/NoteDetail";
@@ -8,6 +7,10 @@ import { NotesPage } from "@/features/notes/NotesPage";
 import { TeacherHome } from "@/features/teacher/TeacherHome";
 import { RecordsPage } from "@/features/records/RecordsPage";
 import { ParentHome } from "@/features/parent/ParentHome";
+import { NewRequestPage } from "@/features/parent/NewRequestPage";
+import { NotificationsPage } from "@/features/parent/NotificationsPage";
+import { RequestDetailPage } from "@/features/parent/RequestDetailPage";
+import { RequestsPage } from "@/features/parent/RequestsPage";
 import { ParentLayout } from "@/layouts/ParentLayout";
 import { StaffLayout } from "@/layouts/StaffLayout";
 import { StateView } from "@/components/StateView";
@@ -57,9 +60,10 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <Navigate to="home" replace /> },
       { path: "home", element: <ParentHome /> },
-      { path: "requests", element: <Later audience="parent" title="요청" /> },
-      { path: "requests/new", element: <Later audience="parent" title="새 요청" /> },
-      { path: "requests/:requestId", element: <Later audience="parent" title="요청 상세" /> },
+      { path: "notifications", element: <NotificationsPage /> },
+      { path: "requests", element: <RequestsPage /> },
+      { path: "requests/new", element: <NewRequestPage /> },
+      { path: "requests/:requestId", element: <RequestDetailPage /> },
     ],
   },
   {

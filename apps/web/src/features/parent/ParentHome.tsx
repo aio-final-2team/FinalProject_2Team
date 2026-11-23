@@ -1,3 +1,4 @@
+import { Link } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/api/client";
 import { Buddy } from "@/components/Brand";
@@ -35,9 +36,9 @@ export function ParentHome() {
       <header className="bg-brand-fill px-4 pb-6 pt-[max(12px,env(safe-area-inset-top))] text-on-brand">
         <div className="mx-auto flex max-w-[680px] items-center justify-between">
           <img src={wordWhite} alt="유치온" className="h-5 w-auto" />
-          <button className="grid size-10 place-items-center rounded-md" aria-label="알림 (준비 중)">
+          <Link to="/parent/notifications" className="grid size-11 place-items-center rounded-md" aria-label="알림">
             <Icon name="bell" className="size-6" />
-          </button>
+          </Link>
         </div>
         <div className="mx-auto max-w-[680px]">
           <h1 className="mt-4 text-large-title font-bold tracking-[-0.025em]">{child ? `${nameI(child.display_name)}의 오늘` : "오늘"}</h1>
