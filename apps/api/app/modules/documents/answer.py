@@ -9,7 +9,7 @@ from agents.graphs.answer import draft_answer, fallback
 from app.modules.documents.search import search_documents
 
 
-def answer_for_request(req, writer=None):
+def answer_for_request(req, writer=None, checker=None):
     user = SimpleNamespace(id=req["requester_id"], org_id=req["org_id"], role="parent")
 
     def search(doc_type, query):
@@ -17,7 +17,7 @@ def answer_for_request(req, writer=None):
                                 classroom_id=req["classroom_id"], top_k=8)["chunks"]
 
     try:
-        return draft_answer(req["body"], search, writer=writer)
+        return draft_answer(req["body"], search, writer=writer, checker=checker)
     except Exception:  # 모델·자료 오류가 카드 생성을 막지 않도록 한다
         return fallback(["search", "write"])
 

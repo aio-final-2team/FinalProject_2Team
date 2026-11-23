@@ -81,7 +81,11 @@ def run_request(request_id):
         card = new_card(connection, req, "reply_draft", teacher, draft)
         if answer:
             save_evidence(connection, card, answer)
-        if not high_risk:
+        if answer:
+            card["check_result"] = answer.get("check_result")
+            connection.execute(text("UPDATE cards SET check_result=CAST(:check AS jsonb) WHERE id=:id"),
+                               {"id": card["id"], "check": json.dumps(card["check_result"])})
+        elif not high_risk:
             card["check_result"] = {"passed": True, "issues": [], "attempt": 1}
             connection.execute(text("UPDATE cards SET check_result=CAST(:check AS jsonb) WHERE id=:id"),
                                {"id": card["id"], "check": json.dumps(card["check_result"])})
