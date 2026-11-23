@@ -4,7 +4,7 @@ from datetime import date
 
 import pytest
 
-from app.modules.documents.public_sources import event_day, forecast_line, law_evidence, law_topics, prefetch_public
+from app.modules.documents.public_sources import event_day, forecast_line, law_evidence, law_rule_key, law_topics, prefetch_public
 
 TODAY = date(2026, 11, 23)
 
@@ -36,11 +36,29 @@ def test_event_day_handles_invalid_date_and_year_end():
     assert event_day("1월 1일 행사 날씨", date(2026, 12, 30)) == date(2027, 1, 1)
 
 
-def test_law_topics_only_have_two_known_topics():
+def test_law_topics_only_have_two_known_rules():
     topics = law_topics()
-    assert set(topics) == {"health_hygiene", "teacher"}
-    assert topics["health_hygiene"]["law_name"] == "학교보건법"
-    assert topics["teacher"]["article"] == "제17조"
+    assert set(topics) == {"infection", "child_safety"}
+    assert (topics["infection"]["law_name"], topics["infection"]["article"]) == ("학교보건법", "제8조")
+    assert (topics["child_safety"]["law_name"], topics["child_safety"]["article"]) == ("아동복지법", "제17조")
+
+
+@pytest.mark.parametrize("topic, risk, body, expected", [
+    ("teacher", None, "선생님 말투가 너무 차가워요", None),
+    ("health_hygiene", None, "투약 실수가 있었어요", None),
+    ("health_hygiene", None, "낮잠 시간에 이불이 지저분했어요", None),
+    ("health_hygiene", None, "아이가 수족구에 걸렸는데 언제 가나요", "infection"),
+    ("health_hygiene", None, "독감 때문에 등원 중지라고 들었어요", "infection"),
+    ("health_hygiene", None, "반에 노로바이러스가 돈대요", "infection"),
+    ("teacher", "child_safety", "선생님이 아이를 때렸대요", "child_safety"),
+    ("other", None, "코로나 걸렸어요", None),  # 건강·위생 주제가 아니면 감염병 낱말만으로 붙이지 않는다
+])
+def test_law_rule_key_needs_narrow_condition(topic, risk, body, expected):
+    assert law_rule_key(topic, risk, body) == expected
+
+
+def test_teacher_topic_alone_never_gets_child_welfare_law():
+    assert law_rule_key("teacher", "staff_attack", "선생님이 가만두지 않겠대요") is None
 
 
 def test_law_evidence_returns_none_for_unlisted_topic():
@@ -62,12 +80,15 @@ def test_prefetch_only_fetches_what_the_request_needs(monkeypatch):
     monkeypatch.setattr(public_sources, "fetch_law", lambda topic: calls.append(("law", topic)) or {"unchecked": True})
     monkeypatch.setattr(public_sources, "fetch_forecast", lambda day: calls.append(("forecast", day)) or {"x": 1})
     assert prefetch_public("complaint", "민원", "fee", TODAY) == {}
-    assert prefetch_public("complaint", "민원", "health_hygiene", TODAY) == {"law": ("health_hygiene", {"unchecked": True})}
+    assert prefetch_public("complaint", "수족구 걸렸어요", "health_hygiene", TODAY) == {"law": ("infection", {"unchecked": True})}
+    assert prefetch_public("complaint", "투약 실수예요", "health_hygiene", TODAY) == {}
+    assert prefetch_public("complaint", "아이를 때렸대요", "teacher", TODAY, risk_category="child_safety") == {
+        "law": ("child_safety", {"unchecked": True})}
     assert prefetch_public("inquiry", "내일 비 오나요?", "other", TODAY, with_forecast=False) == {}
     assert prefetch_public("inquiry", "내일 준비물?", "other", TODAY) == {}
     assert prefetch_public("inquiry", "내일 비 오나요?", "other", TODAY) == {"forecast": (date(2026, 11, 24), {"x": 1})}
     assert prefetch_public("consultation", "내일 비 오나요?", "other", TODAY) == {}
-    assert calls == [("law", "health_hygiene"), ("forecast", date(2026, 11, 24))]
+    assert calls == [("law", "infection"), ("law", "child_safety"), ("forecast", date(2026, 11, 24))]
 
 
 def test_prefetch_law_error_becomes_unchecked(monkeypatch):
@@ -76,4 +97,5 @@ def test_prefetch_law_error_becomes_unchecked(monkeypatch):
     def boom(topic):
         raise RuntimeError("법령 API 오류")
     monkeypatch.setattr(public_sources, "fetch_law", boom)
-    assert prefetch_public("complaint", "민원", "teacher", TODAY) == {"law": ("teacher", {"unchecked": True})}
+    assert prefetch_public("complaint", "독감이에요", "health_hygiene", TODAY) == {
+        "law": ("infection", {"unchecked": True})}

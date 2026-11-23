@@ -13,6 +13,7 @@ from app.modules.requests import agent_stub
 from tools.public_apis.common import upstream
 from tests.integration.db.test_answer_t33 import Writer, create_card, setup_graph
 
+INFECTION = "[TEST] 아이가 수족구에 걸렸는데 등원해도 되나요"
 LAW_TEXT = "학교의 장은 감염병에 걸렸거나 걸릴 우려가 있는 학생에게 등교 중지를 명할 수 있다."
 
 
@@ -51,20 +52,20 @@ class FakeWeather:
                 "source_url": "https://apis.data.go.kr/test", "fetched_at": "2026-11-23T10:00:00+09:00"}
 
 
-def complaint(connection, topic, monkeypatch):
+def complaint(connection, topic, monkeypatch, body="[TEST] 민원"):
     monkeypatch.setattr(agent_stub, "classify_request", lambda *_: {"topic_key": topic})
     FakeLaw.fail, FakeLaw.calls, FakeLaw.held = False, 0, []
     monkeypatch.setattr("tools.public_apis.law.LawClient", FakeLaw)
     return connection.scalar(text("""
         INSERT INTO requests (org_id,classroom_id,child_id,requester_id,client_request_id,type,body,title)
-        VALUES (:org,:class,:child,:parent,:key,'complaint','[TEST] 민원','[TEST] 민원') RETURNING id
+        VALUES (:org,:class,:child,:parent,:key,'complaint',:body,:body) RETURNING id
     """), {"org": seed.ORG, "class": seed.CLASS_STAR, "child": seed.CHILD, "parent": seed.PARENT,
-           "key": str(uuid4())})
+           "key": str(uuid4()), "body": body})
 
 
-def run(seeded_db, topic, monkeypatch, fail=False):
+def run(seeded_db, topic, monkeypatch, fail=False, body="[TEST] 민원"):
     with seeded_db.begin() as connection:
-        request_id = complaint(connection, topic, monkeypatch)
+        request_id = complaint(connection, topic, monkeypatch, body)
     FakeLaw.fail = fail
     agent_stub.run_request(request_id)
     with seeded_db.begin() as connection:
@@ -76,6 +77,7 @@ def run(seeded_db, topic, monkeypatch, fail=False):
             WHERE e.card_id=:id ORDER BY e.rank
         """), {"id": card["id"]}).mappings().all()
         status = connection.scalar(text("SELECT status FROM requests WHERE id=:id"), {"id": request_id})
+    run.request_id = request_id
     return card, evidence, status
 
 
@@ -90,7 +92,7 @@ def warnings(db_client, card):
 
 
 def test_health_complaint_gets_law_evidence(db_client, seeded_db, monkeypatch):
-    card, evidence, status = run(seeded_db, "health_hygiene", monkeypatch)
+    card, evidence, status = run(seeded_db, "health_hygiene", monkeypatch, body=INFECTION)
     assert [e["title"] for e in evidence] == ["학교보건법 제8조"]
     assert evidence[0]["location"] == "제8조" and LAW_TEXT in evidence[0]["quote"]
     assert "law_unchecked" not in card["draft"] and status == "awaiting_review"
@@ -98,8 +100,48 @@ def test_health_complaint_gets_law_evidence(db_client, seeded_db, monkeypatch):
     assert "학교보건법 제8조" in str(body) and "law_unchecked" not in found
 
 
+def test_teacher_tone_complaint_gets_no_law(db_client, seeded_db, monkeypatch):
+    card, evidence, _ = run(seeded_db, "teacher", monkeypatch, body="선생님 말투가 너무 차가워요")
+    assert not evidence and "law_unchecked" not in card["draft"] and FakeLaw.calls == 0
+
+
+def test_medication_mistake_complaint_gets_no_infection_law(db_client, seeded_db, monkeypatch):
+    card, evidence, _ = run(seeded_db, "health_hygiene", monkeypatch, body="약을 잘못 먹였어요. 투약 실수 같아요")
+    assert not evidence and FakeLaw.calls == 0
+
+
+def test_child_safety_complaint_gets_child_welfare_law(db_client, seeded_db, monkeypatch):
+    _, evidence, _ = run(seeded_db, "teacher", monkeypatch, body="선생님이 아이를 때렸다고 해요")
+    assert [e["title"] for e in evidence] == ["아동복지법 제17조"]
+
+
+def approve_and_read_sources(db_client, seeded_db, card, text_for_parent=None):
+    from tests.integration.db.test_cards import BASE, auth
+    decision = {"version": card["version"], "decision": "approve"}
+    if text_for_parent:
+        decision |= {"decision": "edit_approve", "edited_content": {"text": text_for_parent}}
+    response = db_client.post(f"{BASE}/cards/{card['id']}/decisions", headers=auth(seed.TEACHER), json=decision)
+    assert response.status_code == 200, response.text
+    response = db_client.get(f"{BASE}/requests/{run.request_id}", headers=auth(seed.PARENT))
+    assert response.status_code == 200, response.text
+    return [row["document_title"] for row in response.json()["data"]["sources"]] \
+        if "data" in response.json() else [row["document_title"] for row in response.json()["sources"]]
+
+
+def test_parent_sources_hide_law_the_teacher_did_not_use(db_client, seeded_db, monkeypatch):
+    card, evidence, _ = run(seeded_db, "health_hygiene", monkeypatch, body=INFECTION)
+    assert [e["title"] for e in evidence] == ["학교보건법 제8조"]  # 담임 카드에는 보인다
+    assert approve_and_read_sources(db_client, seeded_db, card) == []
+
+
+def test_parent_sources_show_law_the_teacher_cited(db_client, seeded_db, monkeypatch):
+    card, _, _ = run(seeded_db, "health_hygiene", monkeypatch, body=INFECTION)
+    sources = approve_and_read_sources(db_client, seeded_db, card, "학교보건법 제8조에 따라 등원을 쉬어 주세요.")
+    assert sources == ["학교보건법 제8조"]
+
+
 def test_law_failure_still_creates_card_with_warning(db_client, seeded_db, monkeypatch):
-    card, evidence, status = run(seeded_db, "health_hygiene", monkeypatch, fail=True)
+    card, evidence, status = run(seeded_db, "health_hygiene", monkeypatch, fail=True, body=INFECTION)
     assert not evidence and card["draft"]["law_unchecked"] is True
     assert status == "awaiting_review"
     _, found = warnings(db_client, card)
@@ -117,8 +159,8 @@ def test_unlisted_topic_has_no_law_evidence(db_client, seeded_db, monkeypatch):
 def test_same_law_stored_once(seeded_db, monkeypatch):
     monkeypatch.setattr("tools.public_apis.law.LawClient", FakeLaw)
     with seeded_db.begin() as connection:
-        first = public_sources.law_evidence(connection, seed.ORG, "health_hygiene")
-        second = public_sources.law_evidence(connection, seed.ORG, "health_hygiene")
+        first = public_sources.law_evidence(connection, seed.ORG, "infection")
+        second = public_sources.law_evidence(connection, seed.ORG, "infection")
         assert first["chunk_id"] == second["chunk_id"]
         row = connection.execute(text("""
             SELECT count(*) AS n, min(source) AS source, bool_and(visibility='all') AS visible,
@@ -177,12 +219,12 @@ def inquiry(connection, body):
 
 def test_law_api_called_without_holding_db_connection(db_client, seeded_db, monkeypatch):
     """법령 호출(최대 10초)이 카드 저장 트랜잭션·연결·잠금 밖에서 일어나고, 한 번만 부른다."""
-    card, evidence, _ = run(seeded_db, "health_hygiene", monkeypatch)
+    card, evidence, _ = run(seeded_db, "health_hygiene", monkeypatch, body=INFECTION)
     assert evidence and FakeLaw.calls == 1 and FakeLaw.held == [0]
 
 
 def test_law_failure_is_fetched_once_outside_transaction(db_client, seeded_db, monkeypatch):
-    card, evidence, _ = run(seeded_db, "health_hygiene", monkeypatch, fail=True)
+    card, evidence, _ = run(seeded_db, "health_hygiene", monkeypatch, fail=True, body=INFECTION)
     assert not evidence and card["draft"]["law_unchecked"] is True
     assert FakeLaw.calls == 1 and FakeLaw.held == [0]  # 실패해도 트랜잭션 안에서 다시 부르지 않음
 

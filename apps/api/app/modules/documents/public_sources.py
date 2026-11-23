@@ -26,6 +26,22 @@ def law_topics():
     return json.loads(TOPICS_FILE.read_text(encoding="utf-8"))
 
 
+def infection_words(when):
+    """요청에 이 낱말이 있어야 감염병 조문을 붙인다. 감염병 15종 파일의 이름(등교 중지 안 하는 감기군 제외)을 재사용한다."""
+    names = json.loads((TOPICS_FILE.parent / when["disease_names_file"]).read_text(encoding="utf-8"))["diseases"]
+    return list(when["words"]) + [item["name"] for item in names if item["name"] != "감기군"]
+
+
+def law_rule_key(topic_key, risk_category, body):
+    """법령 조문을 붙일 조건에 맞는 규칙 이름. 주제가 넓어 주제만으로는 붙이지 않고, 없으면 None."""
+    for key, rule in law_topics().items():
+        when = rule["when"]
+        if risk_category in when.get("risk_categories", ()) or (
+                topic_key in when.get("topic_keys", ()) and any(word in body for word in infection_words(when))):
+            return key
+    return None
+
+
 def store_public(connection, org_id, doc_type, title, source_url, fetched_at, location, text_body,
                  effective_to=None):
     """공공 자료 한 건을 documents와 조각 1개로 저장하고 chunk_id를 돌려준다. 같은 내용이면 같은 조각이다."""
@@ -49,7 +65,7 @@ def store_public(connection, org_id, doc_type, title, source_url, fetched_at, lo
 
 
 def fetch_law(topic_key, client=None):
-    """주제표에 있는 주제의 법령 조문을 가져온다. DB를 쓰지 않으니 트랜잭션 밖에서 불러야 한다.
+    """법령표에 있는 규칙(topic_key)의 법령 조문을 가져온다. DB를 쓰지 않으니 트랜잭션 밖에서 불러야 한다.
     표에 없으면 None, 못 가져오면 {"unchecked": True}."""
     topic = law_topics().get(topic_key)
     if topic is None:
@@ -111,14 +127,15 @@ def forecast_evidence(connection, org_id, day, client=None, forecast=None):
             "document_title": title, "location": str(day), "content": line, "effective_from": None}
 
 
-def prefetch_public(request_type, body, topic_key, today, with_forecast=True):
+def prefetch_public(request_type, body, topic_key, today, with_forecast=True, risk_category=None):
     """공공 API 호출(최대 10초)을 DB 트랜잭션·연결을 잡기 전에 끝내 둔다. 결과는 처리 안에서 저장만 한다."""
     found = {}
-    if request_type == "complaint" and topic_key in law_topics():
+    rule_key = law_rule_key(topic_key, risk_category, body) if request_type == "complaint" else None
+    if rule_key:
         try:
-            found["law"] = (topic_key, fetch_law(topic_key))
+            found["law"] = (rule_key, fetch_law(rule_key))
         except Exception:
-            found["law"] = (topic_key, {"unchecked": True})
+            found["law"] = (rule_key, {"unchecked": True})
     if request_type == "inquiry" and with_forecast:
         day = event_day(body, today)
         if day:
@@ -149,9 +166,12 @@ def attach_law_evidence(connection, card, req, prefetched=None):
     item = None
     try:
         with connection.begin_nested():  # 저장 오류가 바깥 트랜잭션을 망치지 않게 한다
-            topic_key, fetched = (prefetched or {}).get("law", (None, None))
-            item = law_evidence(connection, req["org_id"], req.get("topic_key"),
-                                fetched=fetched if topic_key == req.get("topic_key") else None)
+            rule_key = law_rule_key(req.get("topic_key"), req.get("risk_category"), req["body"])
+            if rule_key is None:
+                return
+            prefetched_key, fetched = (prefetched or {}).get("law", (None, None))
+            item = law_evidence(connection, req["org_id"], rule_key,
+                                fetched=fetched if prefetched_key == rule_key else None)
             if item and item.get("chunk_id"):
                 rank = connection.scalar(text("SELECT coalesce(max(rank),0)+1 FROM card_evidence WHERE card_id=:id"),
                                          {"id": card["id"]})
