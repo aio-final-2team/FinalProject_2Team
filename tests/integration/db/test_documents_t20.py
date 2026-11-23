@@ -1,6 +1,7 @@
 """T20 자료 창고(DB): 원 자료 적재, 낱말 검색, 자료 올리기·충돌 표시·새 판·실패를 검사해요."""
 
 from datetime import date
+import hashlib
 from types import SimpleNamespace
 
 import pytest
@@ -82,12 +83,18 @@ def test_search_finds_winter_break_with_location_and_date(docs):
 
 
 def test_search_scope_for_parent_class_and_other_org(docs):
+    unfiltered = search_documents(parent(), str(seed.ORG), "notice", "현장체험학습 도시락",
+                                  on_date=date(2026, 11, 20))["chunks"]
+    assert all(c["document_title"] != "11월 현장체험학습 안내 (만 5세반)" for c in unfiltered)
     sun_only = search_documents(parent(), str(seed.ORG), "notice", "현장체험학습 도시락",
                                 classroom_id=seed.CLASS_STAR, on_date=date(2026, 11, 20))["chunks"]
     assert all(c["document_title"] != "11월 현장체험학습 안내 (만 5세반)" for c in sun_only)  # 별빛반 아이는 햇님반 자료 못 봄
-    sun = search_documents(parent(), str(seed.ORG), "notice", "현장체험학습 도시락",
-                           classroom_id=seed.CLASS_SUN, on_date=date(2026, 11, 20))["chunks"]
-    assert sun[0]["document_title"] == "11월 현장체험학습 안내 (만 5세반)"
+    with pytest.raises(ApiError) as denied:
+        search_documents(parent(), str(seed.ORG), "notice", "현장체험학습 도시락",
+                         classroom_id=seed.CLASS_SUN, on_date=date(2026, 11, 20))
+    assert denied.value.status == 404
+    assert search_documents(parent(), str(seed.ORG), "notice", "현장체험학습 도시락",
+                            classroom_id=seed.CLASS_STAR, on_date=date(2026, 11, 20))["chunks"] == sun_only
     with pytest.raises(ApiError) as error:
         search_documents(staff(), "00000000-0000-4000-8000-00000000ffff", "notice", "겨울방학")
     assert error.value.status == 404
@@ -95,6 +102,16 @@ def test_search_scope_for_parent_class_and_other_org(docs):
         search_documents(staff(), str(seed.ORG), "law", "겨울방학")  # 도구 doc_type은 네 가지만
     future = search_documents(staff(), str(seed.ORG), "notice", "크리스마스", on_date=date(2026, 11, 20))["chunks"]
     assert future == []  # 시행일(12/01) 전 자료는 아직 찾지 않음
+
+
+def test_parent_search_accepts_string_classroom_ids(docs):
+    own = search_documents(parent(), str(seed.ORG), "notice", "겨울방학",
+                           classroom_id=str(seed.CLASS_STAR), on_date=date(2026, 11, 20))["chunks"]
+    assert own
+    with pytest.raises(ApiError) as denied:
+        search_documents(parent(), str(seed.ORG), "notice", "현장체험학습 도시락",
+                         classroom_id=str(seed.CLASS_SUN), on_date=date(2026, 11, 20))
+    assert denied.value.status == 404
 
 
 def test_upload_conflicting_notice_is_pending_with_conflicts(db_client, teacher, docs):
@@ -127,6 +144,52 @@ def test_upload_unreadable_file_fails_with_message(db_client, teacher, docs):
     doc = response.json()["document"]
     assert response.status_code == 202 and doc["ingest_status"] == "failed" and doc["chunk_count"] == 0
     assert doc["error"] == {"code": "UPSTREAM_UNAVAILABLE", "message": "지금은 .md·.txt 글 파일만 읽을 수 있어요"}
+    retried = upload(db_client, teacher, "식단표.txt", "binary")
+    assert retried.status_code == 202
+    assert retried.json()["document"]["id"] == doc["id"]
+    assert retried.json()["document"]["ingest_status"] == "succeeded"
+    assert retried.json()["document"]["error"] is None
+
+
+def test_upload_duplicate_class_and_size_limit(db_client, teacher, seeded_db, docs):
+    content = "## 중복 반 시험\n- 준비물: 별빛반 물병\n"
+    response = db_client.post("/api/v1/documents", headers=teacher,
+        data={"doc_type": "notice", "visibility": "all", "effective_from": "2026-11-23",
+              "classroom_ids[]": [str(seed.CLASS_STAR), str(seed.CLASS_STAR)]},
+        files={"file": ("중복반.txt", content.encode(), "text/plain")})
+    assert response.status_code == 202, response.text
+    assert response.json()["document"]["classroom_ids"] == [str(seed.CLASS_STAR)]
+    oversized = upload(db_client, teacher, "큰자료.md", "a" * (2 * 1024 * 1024 + 1))
+    assert oversized.status_code == 413
+    assert oversized.json()["error"]["message"] == "자료 파일은 2MiB 이하여야 해요."
+    with seeded_db.begin() as connection:
+        assert connection.scalar(text("SELECT count(*) FROM documents WHERE title='큰자료.md'")) == 0
+
+
+def test_upload_other_class_existing_and_replacement_denied(db_client, teacher, seeded_db, docs):
+    with seeded_db.begin() as connection:
+        old = connection.scalar(text("SELECT id FROM documents WHERE title='만 5세반 12월 주간 활동 계획'"))
+    replacement = upload(db_client, teacher, "새판.txt", "## 새 판\n- 안내: 준비물\n", replaces_document_id=str(old))
+    assert replacement.status_code == 404
+    with seeded_db.begin() as connection:
+        assert connection.scalar(text("SELECT status FROM documents WHERE id=:id"), {"id": old}) == "active"
+        assert connection.scalar(text("SELECT count(*) FROM events WHERE action='permission_denied' AND detail->>'resource_id'=:id"),
+                                 {"id": str(old)}) == 1
+
+
+def test_upload_same_bytes_outside_scope_is_denied(db_client, teacher, seeded_db, docs):
+    content = "## 햇님반 비공개 시험\n- 준비물: 물병\n"
+    digest = hashlib.sha256(content.encode()).hexdigest()
+    with seeded_db.begin() as connection:
+        document_id = connection.scalar(text("""
+            INSERT INTO documents (org_id,title,doc_type,source,uploaded_by,content_sha256)
+            VALUES (:org,'햇님반 비공개.txt','notice','uploaded',:user,:sha) RETURNING id
+        """), {"org": seed.ORG, "user": seed.TEACHER, "sha": digest})
+        connection.execute(text("""
+            INSERT INTO document_classrooms (org_id,document_id,classroom_id) VALUES (:org,:doc,:classroom)
+        """), {"org": seed.ORG, "doc": document_id, "classroom": seed.CLASS_SUN})
+    response = upload(db_client, teacher, "햇님반 비공개.txt", content)
+    assert response.status_code == 404
 
 
 def test_teacher_cannot_target_or_read_other_class_document(db_client, teacher, seeded_db, docs):

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import re
 from datetime import date, datetime
+from uuid import UUID
 
 from sqlalchemy import text
 
@@ -65,6 +66,19 @@ def search_documents(user, kindergarten_id: str, doc_type: str, query: str, clas
     query_vector = embedding.embed([query]) if embedding.enabled() else []
     vector = "[" + ",".join(map(str, query_vector[0])) + "]" if query_vector and len(query_vector[0]) == 1024 else None
     with transaction() as connection:
+        if parent:
+            if classroom_id is not None:
+                try:
+                    classroom_id = UUID(str(classroom_id))
+                except ValueError as error:
+                    raise ApiError(404, "NOT_FOUND") from error
+            allowed_classes = set(connection.scalars(text("""
+                SELECT c.classroom_id FROM child_guardians cg
+                JOIN children c ON (c.id, c.org_id)=(cg.child_id, cg.org_id)
+                WHERE cg.org_id=:org AND cg.user_id=:user
+            """), {"org": user.org_id, "user": user.id}))
+            if classroom_id is not None and classroom_id not in allowed_classes:
+                raise ApiError(404, "NOT_FOUND")
         rows = connection.execute(text("""
             SELECT ch.id AS chunk_id, d.title AS document_title, ch.location, d.effective_from, ch.content,
                    CASE WHEN CAST(:vector AS vector) IS NOT NULL AND ch.embedding_version = :version
@@ -74,6 +88,11 @@ def search_documents(user, kindergarten_id: str, doc_type: str, query: str, clas
               AND (d.effective_from IS NULL OR d.effective_from <= :today)
               AND (d.effective_to IS NULL OR d.effective_to >= :today)
               AND (NOT :parent OR d.visibility IN ('parents', 'all'))
+              AND (NOT :parent OR NOT EXISTS (SELECT 1 FROM document_classrooms dc
+                                  WHERE (dc.document_id, dc.org_id) = (d.id, d.org_id))
+                   OR EXISTS (SELECT 1 FROM document_classrooms dc
+                              WHERE (dc.document_id, dc.org_id) = (d.id, d.org_id)
+                                AND dc.classroom_id = ANY(CAST(:allowed_classes AS uuid[]))))
               AND (CAST(:classroom AS uuid) IS NULL
                    OR NOT EXISTS (SELECT 1 FROM document_classrooms dc
                                   WHERE (dc.document_id, dc.org_id) = (d.id, d.org_id))
@@ -81,6 +100,7 @@ def search_documents(user, kindergarten_id: str, doc_type: str, query: str, clas
                               WHERE (dc.document_id, dc.org_id) = (d.id, d.org_id)
                                 AND dc.classroom_id = CAST(:classroom AS uuid)))
         """), {"org": user.org_id, "doc_type": doc_type, "today": today, "parent": parent,
+               "allowed_classes": list(allowed_classes) if parent else [],
                "classroom": str(classroom_id) if classroom_id else None,
                "vector": vector, "version": embedding.VERSION}).mappings().all()
     ranked = []

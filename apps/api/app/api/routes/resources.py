@@ -12,6 +12,8 @@ from app.api.schemas.views import (NotificationList, NotificationResponse, Draft
                                   SendResponse, DocumentResponse, DocumentList, MemoryKind, MemoryList, RegenerateResponse)
 from app.api.schemas.common import errors
 from app.core.auth import CurrentUser, current_user as note_user, require_roles as note_roles
+from app.core.constants import MAX_DOCUMENT_BYTES
+from app.core.errors import ApiError
 from app import backend
 
 # 자료 쓰기·상세도 DB 모드에서 연결했어요(T20). 두 모드 모두 역할만 확인하고 backend.documents를 그때그때 불러요.
@@ -90,13 +92,16 @@ def send_notes(body: NoteBatchIn, user: CurrentUser = Depends(note_roles("teache
 
 
 @router.post("/documents", status_code=202, response_model=DocumentResponse,
-             responses={200: {"model": DocumentResponse}, **errors(401, 403, 404, 409, 422)})
+             responses={200: {"model": DocumentResponse}, **errors(401, 403, 404, 409, 413, 422)})
 def upload_document(response: Response, file: UploadFile = File(...),
                     doc_type: Literal["notice", "schedule", "menu", "policy", "consult_timetable", "law", "public_data"] = Form(...),
                     visibility: Literal["staff", "parents", "all"] = Form(...), effective_from: Date = Form(...),
                     classroom_ids: list[UUID] = Form([], alias="classroom_ids[]"), replaces_document_id: UUID | None = Form(None),
                     user: CurrentUser = Depends(require_roles("teacher", "director"))):
-    doc, created = backend.documents.upload(user, file.filename or "자료", file.file.read(), doc_type, visibility,
+    data = file.file.read(MAX_DOCUMENT_BYTES + 1)
+    if len(data) > MAX_DOCUMENT_BYTES:
+        raise ApiError(413, "VALIDATION_FAILED", message="자료 파일은 2MiB 이하여야 해요.")
+    doc, created = backend.documents.upload(user, file.filename or "자료", data, doc_type, visibility,
                                     classroom_ids, effective_from, replaces_document_id)
     if not created:
         response.status_code = 200
