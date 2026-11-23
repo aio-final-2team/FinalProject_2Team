@@ -1,6 +1,7 @@
 """카드 결정은 요청 → 같은 요청의 카드 순서로 잠그고 한 번에 저장해요."""
 
 import json
+import logging
 from contextlib import contextmanager
 
 from sqlalchemy import text
@@ -16,6 +17,8 @@ from app.modules.consultations.bookings import book_slot
 from app.modules.requests.events import record, set_status
 from app.modules.requests.requests import _expire, _lock
 from app.modules.memories.memories import remember_rejection
+
+log = logging.getLogger(__name__)
 
 
 @contextmanager
@@ -100,6 +103,16 @@ def result(card, req, next_card=None):
         "request": {k: req[k] for k in ("id", "status", "parent_confirmed_at")} if req else None,
         "next_card_id": next_card["id"] if next_card else None,
     }
+
+
+def _resume_graph_after_commit(card):
+    if not card.get("graph_thread_id") or card["status"] not in ("done", "rejected"):
+        return
+    try:
+        from app.modules.requests.graph_agent import try_resume
+        try_resume(card["id"])
+    except Exception as error:  # noqa: BLE001 - 승인 커밋은 유지하고 주기 점검에서 다시 전달한다
+        log.warning("승인 뒤 그래프 전달 실패 error_type=%s", type(error).__name__)
 
 
 def report(connection, req):
@@ -234,7 +247,9 @@ def decide(user, card_id, body):
                 set_status(connection, req, "needs_info", action="info_requested", card=next_card)
             else:
                 set_status(connection, req, "awaiting_review", action="drafted", card=next_card)
-        return result(card, req, next_card)
+        response = result(card, req, next_card)
+    _resume_graph_after_commit(card)
+    return response
 
 
 def rule_decision(user, rule_id, body):
@@ -297,9 +312,11 @@ def book(user, card_id, body):
         set_status(connection, req, "approved", action="approved", **actor)
         set_status(connection, req, "sent_or_booked", action="booked", **actor)
         touch(connection, card, "done")
-        return {"booking": {"id": booking_id, "room": slot["room"],
-                            "period": {"start": slot["period"].lower, "end": slot["period"].upper}},
-                "request": result(card, req)["request"]}
+        response = {"booking": {"id": booking_id, "room": slot["room"],
+                                "period": {"start": slot["period"].lower, "end": slot["period"].upper}},
+                    "request": result(card, req)["request"]}
+    _resume_graph_after_commit(card)
+    return response
 
 
 def reclassify(user, card_id, body):

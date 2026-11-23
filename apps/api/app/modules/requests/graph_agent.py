@@ -1,5 +1,6 @@
 """LangGraph 요청 입구. REQUEST_AGENT=app.modules.requests.graph_agent:run_request 로 선택한다."""
 
+import logging
 from uuid import UUID
 
 from sqlalchemy import text
@@ -7,6 +8,8 @@ from sqlalchemy import text
 from agents.graphs.request import build_graph
 from app.core.db import database_url, transaction
 from app.modules.requests.agent_stub import run_request as prepare_request
+
+log = logging.getLogger(__name__)
 
 
 def thread_id(request_id) -> str:
@@ -48,7 +51,7 @@ def _database_uri():
     return database_url().set(drivername="postgresql").render_as_string(hide_password=False)
 
 
-def _invoke(request_id, payload):
+def _invoke(request_id, payload, expected_card_id=None):
     import psycopg
     from langgraph.checkpoint.postgres import PostgresSaver
     from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
@@ -65,9 +68,14 @@ def _invoke(request_id, payload):
             connection.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))"),
                                {"key": f"request-graph:{request_id}"})
             graph = build_graph(checkpointer, _route_request, _prepare_card, _card_status)
-            return graph.invoke(payload,
-                                config={"configurable": {"thread_id": thread_id(request_id)},
-                                        "tags": ["request-agent"]})
+            config = {"configurable": {"thread_id": thread_id(request_id)},
+                      "tags": ["request-agent"]}
+            if expected_card_id is not None:
+                snapshot = graph.get_state(config)
+                if (snapshot.values.get("card_id") != str(expected_card_id)
+                        or not any(task.interrupts for task in snapshot.tasks)):
+                    return None  # 이미 재개했거나 다른 카드의 승인을 기다리는 중
+            return graph.invoke(payload, config=config)
 
 
 def run_request(request_id):
@@ -80,10 +88,46 @@ def resume_request(card_id):
     """카드 결정이 커밋된 뒤 호출할 입구. 승인 내용은 그래프가 DB에서 다시 읽는다."""
     from langgraph.types import Command
 
+    card_id = UUID(str(card_id))
     with transaction() as connection:
         row = connection.execute(text("""
-            SELECT request_id, graph_thread_id FROM cards WHERE id=:id
-        """), {"id": UUID(str(card_id))}).mappings().one_or_none()
+            SELECT request_id, graph_thread_id, status, kind FROM cards WHERE id=:id
+        """), {"id": card_id}).mappings().one_or_none()
     if row is None or row["request_id"] is None or row["graph_thread_id"] != thread_id(row["request_id"]):
         return None
-    return _invoke(str(row["request_id"]), Command(resume=True))
+    if row["status"] == "rejected":
+        with transaction() as connection:
+            next_card = connection.scalar(text("""
+                SELECT id FROM cards WHERE request_id=:request AND kind=:kind AND id<>:old
+                  AND status IN ('pending','in_review') AND graph_thread_id IS NULL
+                ORDER BY created_at DESC,id DESC LIMIT 1
+            """), {"request": row["request_id"], "kind": row["kind"], "old": card_id})
+        if next_card is not None:
+            return run_request(row["request_id"])  # 거절로 생긴 새 카드를 같은 thread에 연결
+    return _invoke(str(row["request_id"]), Command(resume=True), expected_card_id=card_id)
+
+
+def try_resume(card_id):
+    """승인 DB 커밋 뒤에 호출한다. 전달 실패가 승인 API 응답을 바꾸지 않게 한다."""
+    try:
+        return resume_request(card_id)
+    except Exception as error:  # noqa: BLE001 - 주기 점검이 승인 기록으로 다시 전달한다
+        log.warning("요청 그래프 재개 실패 error_type=%s", type(error).__name__)
+        return None
+
+
+def sweep_approval_resumes():
+    """승인·이력에 남은 종료 카드를 다시 확인한다. 재개 완료 카드에는 효과가 없다."""
+    with transaction() as connection:
+        card_ids = connection.execute(text("""
+            SELECT c.id FROM cards c WHERE c.graph_thread_id IS NOT NULL
+              AND c.status IN ('done','rejected')
+              AND EXISTS (SELECT 1 FROM approvals a WHERE a.card_id=c.id AND a.org_id=c.org_id
+                          AND a.decision IN ('approve','edit_approve','reject','dismiss','complete'))
+              AND EXISTS (SELECT 1 FROM events e WHERE e.card_id=c.id AND e.org_id=c.org_id
+                          AND e.action IN ('approved','booked','rejected','dismissed','completed'))
+            ORDER BY c.created_at,c.id
+        """)).scalars().all()
+    for card_id in card_ids:
+        try_resume(card_id)
+    return len(card_ids)
