@@ -6,6 +6,7 @@ import { useChildren, useNotes } from "@/api/notes";
 import { useSession } from "@/app/session";
 import { SymbolMark } from "@/components/Brand";
 import { PrimaryButton, SubButton } from "@/components/Dock";
+import { BellLink } from "@/components/BellLink";
 import { Icon } from "@/components/Icon";
 import { dateLabel, todayKST } from "@/domain/notes";
 import { useRecords } from "@/features/records/store";
@@ -24,6 +25,7 @@ export function TeacherHome() {
   const { records } = useRecords(cid, date);
   const docs = useQuery({ queryKey: ["documents"], queryFn: () => api<{ items: Doc[] }>("/api/v1/documents?size=50").then((r) => r.items) });
 
+  const urgent = (inbox.data?.items ?? []).filter((c) => c.risk === "urgent");
   const list = notes.data ?? [];
   const recorded = (kids.data ?? []).filter((k) => records[k.id]?.length).length;
   const c = { needs_check: 0, draft: 0, ready: 0, sent: 0 };
@@ -50,13 +52,24 @@ export function TeacherHome() {
     <div className="mx-auto max-w-[680px] px-4 pb-32 lg:pb-10">
       <header className="flex min-h-[52px] items-center justify-between pt-2">
         <SymbolMark className="size-8" />
-        <Link to="/teacher/notifications" className="grid size-11 place-items-center rounded-md text-ink" aria-label="알림">
-          <Icon name="bell" className="size-6" />
-        </Link>
+        <BellLink to="/teacher/notifications" />
       </header>
       <h1 className="mt-1 text-large-title font-bold tracking-[-0.025em]">오늘</h1>
       <p className="mt-0.5 text-footnote font-medium text-ink2">{dateLabel(date)} · {user?.display_name}</p>
 
+      {urgent.length > 0 && (
+        <>
+          <Label>먼저 확인해 주세요</Label>
+          <section className="rounded-lg bg-ink p-3 text-card">
+            <span className="text-caption font-bold">긴급</span>
+            <h2 className="mt-1 text-headline font-bold">아이 안전과 관련된 요청 {urgent.length}건이 있어요</h2>
+            <p className="mt-1 text-footnote opacity-90">{[...new Set(urgent.map((c) => c.urgentReason).filter(Boolean))].join(" · ") || "원장님께도 함께 보고됐어요"}</p>
+            <button type="button" onClick={() => nav(`/teacher/inbox/${urgent[0].id}`)} className="mt-3 flex h-[52px] w-full items-center justify-center rounded-md bg-card text-body font-semibold text-ink active:scale-[.97]">
+              긴급 요청 확인하기
+            </button>
+          </section>
+        </>
+      )}
       <Label>다음 할 일</Label>
       <Card accent={!allSent}>
         <span className={`text-caption font-bold ${allSent ? "text-ok" : "text-accent-ink"}`}>오늘 알림장</span>
