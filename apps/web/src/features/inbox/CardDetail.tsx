@@ -12,6 +12,15 @@ import { TYPE_LABEL } from "@/domain/status";
 import type { Card, CardAction, Role } from "@/domain/types";
 import { BackLink } from "./InboxPage";
 
+/** API 3.7 warnings[] 코드를 교사가 읽는 말로 */
+const WARNING: Record<string, string> = {
+  stale_evidence: "옛 판 자료가 근거에 섞여 있어요. 최신 자료와 맞는지 확인해 주세요",
+  no_evidence: "답변할 근거 자료를 찾지 못했어요. 직접 답을 써 주세요",
+  law_unchecked: "법령 근거를 확인하지 못했어요. 법적 내용은 직접 확인해 주세요",
+  check_unavailable: "검사 AI가 이 초안을 검사하지 못했어요. 보내기 전에 직접 읽어 주세요",
+  notify_failed: "원장님께 가는 알림을 만들지 못했어요. 원장님께 직접 알려 주세요",
+};
+
 type SheetKind = null | "send" | "reject" | "hold" | "complete" | "confirm_slot" | "note" | "reclassify";
 
 const Section = ({ title, children }: { title: string; children: ReactNode }) => (
@@ -133,6 +142,8 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
           {c.repeatCount && c.repeatCount >= 3 && <Pill tone="action">반복 {c.repeatCount}번째 · 30일</Pill>}
           {c.escalated && c.status !== "escalated" && <Pill>원장 보고</Pill>}
           {c.check?.passed && <Pill tone="done">검사 통과</Pill>}
+          {c.check && !c.check.passed && <Pill tone="action">검사 확인 필요</Pill>}
+          {c.noEvidence && <Pill tone="action">근거 없음</Pill>}
         </div>
         <h2 className="text-[22px] font-bold tracking-[-0.02em]">
           {TYPE_LABEL[c.type]} · {c.title}
@@ -141,6 +152,23 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
           {c.className} · {c.guardianName}
         </p>
       </header>
+
+      {(c.warnings?.length || (c.check && !c.check.passed && c.check.issues?.length)) ? (
+        <ul className="grid gap-1.5 rounded-2xl bg-card px-4 py-3 text-[14px]" aria-label="확인해 주세요">
+          {c.warnings?.map((w) => (
+            <li key={w} className="flex gap-2">
+              <span className="font-bold text-accent-ink">확인</span>
+              <span>{WARNING[w] ?? w}</span>
+            </li>
+          ))}
+          {c.check && !c.check.passed && c.check.issues?.map((i) => (
+            <li key={i} className="flex gap-2">
+              <span className="font-bold text-accent-ink">검사 AI</span>
+              <span>{i}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
 
       {c.risk === "urgent" && (
         <div className="flex gap-2.5 rounded-2xl bg-ink px-4 py-3 text-card">
@@ -213,9 +241,9 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
           </div>
         </Section>
       )}
-      {c.risk === "urgent" && isOpen && !director && (
+      {(c.risk === "urgent" || (c.noEvidence && !c.draft)) && isOpen && !director && (
         <Section title="직접 답 쓰기">
-          <textarea value={draft} onChange={(e) => setDraft(e.target.value)} onFocus={() => !draft && setDraft("확인해 주셔서 감사합니다. 상황을 확인한 뒤 오늘 중으로 다시 안내드리겠습니다.")} rows={4} placeholder="확인한 내용을 직접 써 주세요" className="rounded-2xl border-[1.5px] border-transparent bg-card px-4 py-3 text-[15px] outline-none focus:border-accent focus:shadow-[0_0_0_4px_var(--tint)]" />
+          <textarea value={draft} onChange={(e) => setDraft(e.target.value)} onFocus={() => !draft && setDraft("확인해 주셔서 감사합니다. 상황을 확인한 뒤 오늘 중으로 다시 안내드리겠습니다.")} rows={4} placeholder={c.noEvidence ? "자료에서 근거를 찾지 못했어요. 확인한 내용을 직접 써 주세요" : "확인한 내용을 직접 써 주세요"} className="rounded-2xl border-[1.5px] border-transparent bg-card px-4 py-3 text-[15px] outline-none focus:border-accent focus:shadow-[0_0_0_4px_var(--tint)]" />
         </Section>
       )}
 

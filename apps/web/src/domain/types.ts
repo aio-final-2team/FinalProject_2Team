@@ -25,7 +25,11 @@ export type Card = {
   summary?: string;
   draft?: string;
   sources: Source[];
-  check?: { passed: boolean; note?: string };
+  check?: { passed: boolean; note?: string; issues?: string[]; attempt?: number };
+  /** API warnings[]: stale_evidence · no_evidence · law_unchecked · check_unavailable · notify_failed */
+  warnings?: string[];
+  /** 초안 AI가 근거를 못 찾아 초안 없이 담임에게 넘긴 카드 (draft.no_evidence) */
+  noEvidence?: boolean;
   repeatCount?: number;
   escalated: boolean;
   assigned: boolean;

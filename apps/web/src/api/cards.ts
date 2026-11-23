@@ -20,7 +20,7 @@ type CardList = {
   counts: Record<ApiInboxFilter, number>; type_counts: Record<string, number>;
 };
 type CardDetail = {
-  card: { id: string; kind: string; status: string; version: number; summary: string; draft: Record<string, unknown>; check_result: { passed?: boolean; issues?: unknown[]; note?: string } | null; check_attempts: number };
+  card: { id: string; kind: string; status: string; version: number; summary: string; draft: Record<string, unknown>; check_result: { passed?: boolean; issues?: unknown[]; note?: string; attempt?: number } | null; check_attempts: number };
   request: null | { id: string; type: ApiRequestType | "pickup"; title: string | null; body: string; status: Status; risk_level: string | null; risk_category: string | null; repeat_count: number | null; parent_confirmed_at: string | null; classroom_id: string; created_at: string; updated_at: string };
   evidence: Array<{ document_title: string; location: string | null; effective_from: string | null; quote: string; is_current: boolean }>;
   warnings: string[];
@@ -72,7 +72,8 @@ const cardFromDetail = (data: CardDetail): Card => {
     urgentReason: riskLabel(req?.risk_category), title: req?.title ?? data.card.summary, childName: "", guardianName: "보호자",
     className: "담당 반", createdAt: req?.created_at ?? new Date().toISOString(), original: req?.body ?? data.card.summary,
     summary: data.card.summary || undefined, draft, sources,
-    check: data.card.check_result ? { passed: !!data.card.check_result.passed, note: data.card.check_result.note } : undefined,
+    check: data.card.check_result ? { passed: !!data.card.check_result.passed, note: data.card.check_result.note, issues: (data.card.check_result.issues ?? []).map((i: unknown) => (typeof i === "string" ? i : String((i as { message?: string; text?: string })?.message ?? (i as { text?: string })?.text ?? ""))).filter(Boolean), attempt: data.card.check_result.attempt } : undefined,
+    warnings: data.warnings ?? [], noEvidence: !!data.card.draft?.no_evidence,
     repeatCount: req?.repeat_count ?? undefined, escalated: req?.status === "escalated" || data.card.kind === "director_report",
     assigned: true, parentConfirmedAt: req?.parent_confirmed_at ?? undefined, slots, directorNote: data.director_instruction?.text, history,
   };
