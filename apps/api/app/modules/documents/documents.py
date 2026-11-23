@@ -46,3 +46,7 @@ def list_documents(user, page, size, sort):
         item["error"] = {key: error[key] for key in ("code", "message")} if error else None
         items.append(item)
     return {"items": items, "total": total, "page": page, "size": size}
+
+
+# 자료 올리기·상세(T20, 영민): 라우트가 backend.documents.upload·view·in_scope로 불러요
+from app.modules.documents.ingest import in_scope, upload, view  # noqa: E402,F401
