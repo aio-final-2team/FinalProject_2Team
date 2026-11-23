@@ -274,3 +274,39 @@ def test_forecast_failure_is_fetched_once_and_card_still_made(db_client, seeded_
                                   {"id": request_id})
         stored = connection.scalar(text("SELECT count(*) FROM documents WHERE title LIKE '기상청 단기예보%'"))
     assert draft["no_evidence"] is True and stored == 0
+
+
+def attach_law_document(seeded_db, card, title, source):
+    """카드 근거에 법령 자료 한 건을 더 붙인다(업로드 자료나 제목이 이상한 공공 법령을 흉내)."""
+    with seeded_db.begin() as connection:
+        doc = connection.scalar(text("""
+            INSERT INTO documents (org_id,title,doc_type,visibility,source,status,ingest_status,content_sha256,is_virtual)
+            VALUES (:org,:title,'law','all',:source,'active','succeeded',:sha,false) RETURNING id
+        """), {"org": seed.ORG, "title": title, "source": source, "sha": uuid4().hex})
+        chunk = connection.scalar(text("""
+            INSERT INTO document_chunks (document_id,org_id,chunk_index,location,content)
+            VALUES (:doc,:org,0,'1쪽','요약') RETURNING id
+        """), {"doc": doc, "org": seed.ORG})
+        connection.execute(text("""
+            INSERT INTO card_evidence (card_id,org_id,chunk_id,quote,rank,score)
+            VALUES (:card,:org,:chunk,'요약',9,1)
+        """), {"card": card["id"], "org": seed.ORG, "chunk": chunk})
+
+
+def test_parent_sources_show_uploaded_law_even_if_title_not_in_text(db_client, seeded_db, monkeypatch):
+    card, _, _ = run(seeded_db, "health_hygiene", monkeypatch, body=INFECTION)
+    attach_law_document(seeded_db, card, "학교안전법_요약.pdf", "uploaded")
+    assert approve_and_read_sources(db_client, seeded_db, card) == ["학교안전법_요약.pdf"]  # 공공 법령은 빠지고 업로드는 남음
+
+
+def test_parent_sources_public_law_needs_name_in_text(db_client, seeded_db, monkeypatch):
+    card, _, _ = run(seeded_db, "health_hygiene", monkeypatch, body=INFECTION)
+    attach_law_document(seeded_db, card, "아동복지법 제17조", "public_api")
+    sources = approve_and_read_sources(db_client, seeded_db, card, "아동복지법 제17조를 확인했어요.")
+    assert sources == ["아동복지법 제17조"]
+
+
+def test_parent_sources_hide_public_law_with_empty_first_word(db_client, seeded_db, monkeypatch):
+    card, _, _ = run(seeded_db, "health_hygiene", monkeypatch, body=INFECTION)
+    attach_law_document(seeded_db, card, " 공백으로 시작", "public_api")  # 첫 낱말이 빈 문자열이면 항상 맞던 문제
+    assert approve_and_read_sources(db_client, seeded_db, card) == []
