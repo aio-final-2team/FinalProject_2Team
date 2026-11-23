@@ -151,7 +151,8 @@ def test_graph_model_failure_isolated_to_one_child(db_client, teacher, graph_mod
     success = next(n for n in listed if n["child_id"] == str(seed.demo_id("5401")))
     assert success["status"] == "draft" and success["open_checks"] == []
     assert any(line["value"] == "[TEST] 성공 메모" for line in success["content"]["items"])
-    assert sum(v["child_memo"] == "[TEST] 실패" for v in models[failed_role].inputs) == 2
+    # 전송 실패 재시도는 llm.py(API 6.2)가 하고, 그래프는 같은 모델 오류를 다시 묻지 않아요(#293)
+    assert sum(v["child_memo"] == "[TEST] 실패" for v in models[failed_role].inputs) == 1
 
 
 def test_graph_entry_exception_marks_whole_job_failed(db_client, teacher, seeded_db, graph_models, monkeypatch):
