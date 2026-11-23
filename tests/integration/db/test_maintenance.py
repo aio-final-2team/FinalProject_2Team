@@ -125,3 +125,23 @@ def test_withdraw_dry_run_changes_nothing_then_apply_follows_four_steps(media_ro
     after = snapshot(seeded_db)
     assert not withdraw_child.pending(withdraw_child.withdraw(seed.CHILD, apply=True))
     assert snapshot(seeded_db) == after
+
+
+def test_demo_seed_does_not_bring_back_a_withdrawn_child(media_root, seeded_db):
+    from db.seeds.demo import seed_demo
+
+    other = next(c for c in seed.CHILDREN if c["id"] == seed.demo_id("503"))
+    withdraw_child.withdraw(seed.CHILD, apply=True)
+    with seeded_db.begin() as connection:
+        connection.execute(text("DELETE FROM child_guardians WHERE child_id=:c"), {"c": other["id"]})
+    with seeded_db.begin() as connection:   # SEED_DEMO=true인 API가 다시 뜰 때와 같은 호출
+        seed_demo(connection)
+    with seeded_db.connect() as connection:
+        guardians = connection.execute(text("SELECT child_id,count(*) FROM child_guardians WHERE child_id IN (:a,:b) "
+                                            "GROUP BY 1"), {"a": seed.CHILD, "b": other["id"]}).all()
+        assert dict(guardians) == {other["id"]: len(other["guardian_ids"])}
+        assert connection.scalar(text("SELECT count(*) FROM feed_photos WHERE id=:p"), {"p": SOLO}) == 0
+        assert set(connection.scalars(text("SELECT child_id FROM feed_photo_children WHERE photo_id=:p"),
+                                      {"p": SHARED})) == {seed.CHILD, other["id"]}
+        assert connection.scalar(text("SELECT photo_scope FROM children WHERE id=:c"), {"c": seed.CHILD}) == "family"
+    assert not media.path(f"{SOLO}.png").exists() and media.path(f"{SHARED}.png").exists()

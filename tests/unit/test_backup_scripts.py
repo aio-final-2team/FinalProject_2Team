@@ -64,6 +64,20 @@ def test_restore_stops_at_the_failing_step(tmp_path):
     assert "DROP DATABASE" not in calls and " start " not in calls
 
 
+def test_restore_stops_when_current_db_is_unreadable_unless_skip_export(tmp_path):
+    backup = backup_folder(tmp_path / "backups" / "20261123T050000Z")
+    result, calls = run(tmp_path, "restore.sh", backup, tmp_path / "server.env", "--yes", fail="alembic_version")
+    assert result.returncode == 1 and "SKIP_EXPORT=1" in result.stderr
+    assert "after_restore" not in calls and " stop " not in calls and "DROP DATABASE" not in calls
+    # SKIP_EXPORT=1이면 export 없이 2단계로 넘어간다. 2단계를 일부러 실패시켜 거기까지 간 것만 본다.
+    result, calls = run(tmp_path, "restore.sh", backup, tmp_path / "server.env", "--yes", fail=" stop ",
+                        SKIP_EXPORT="1")
+    assert result.returncode == 42 and "stop api" in calls
+    assert "alembic_version" not in calls and "after_restore" not in calls
+    dry_run = run(tmp_path, "restore.sh", backup, tmp_path / "server.env", SKIP_EXPORT="1")[0].stdout
+    assert "== 1. 지금 DB에서 백업 뒤 변경 뽑기 (SKIP_EXPORT=1이라 건너뜀)" in dry_run
+
+
 def test_backup_keeps_only_newest_complete_folders(tmp_path):
     root = tmp_path / "backups"
     for stamp in ("20261101T000000Z", "20261102T000000Z", "20261103T000000Z"):

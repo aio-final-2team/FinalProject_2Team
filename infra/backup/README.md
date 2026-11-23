@@ -33,11 +33,12 @@ BACKUP_KEEP=14 infra/backup/backup.sh "$SERVER_ENV_FILE"
 infra/backup/restore.sh backups/<시각>               # 할 일만 보여 줘요
 infra/backup/restore.sh backups/<시각> --yes         # 실제로 복원해요
 infra/backup/restore.sh backups/<시각> "$SERVER_ENV_FILE" --yes
+SKIP_EXPORT=1 infra/backup/restore.sh backups/<시각> --yes   # 지금 DB를 통째로 잃었을 때만
 ```
 
 복원을 시작하기 전에 두 파일의 sha256을 `meta.json`에 적힌 값과 맞춰 봐요. 그다음 아래 순서대로 진행하는데, 어느 단계에서든 실패하면 그 자리에서 멈춰요.
 
-1. 지금 DB를 읽을 수 있으면 백업 시각 이후의 변경을 뽑아서 `backups/<시각>/reapply-<지금 시각>.json`에 저장해요. 읽을 수 없으면 경고만 남기고 이 단계를 건너뛰어요.
+1. 지금 DB에서 백업 시각 이후의 변경을 뽑아서 `backups/<시각>/reapply-<지금 시각>.json`에 저장해요. 지금 DB를 읽을 수 없으면 여기서 멈춰요. 이 기록 없이 그대로 복원하면 백업 뒤에 지운 글과 기억이 다시 열리기 때문이에요. DB를 통째로 잃어서 다시 적용할 기록이 없을 때만 `SKIP_EXPORT=1`을 붙여 이 단계를 건너뛰어요.
 2. 실행 중인 api, worker, beat를 멈춰요. 웹과 DB는 그대로 둬요.
 3. DB를 지우고 덤프로 다시 만들어요. 사진 볼륨도 비운 뒤 백업 파일로 채워요.
 4. 마이그레이션을 올린 다음, 1단계에서 뽑아 둔 변경을 복원한 DB에 다시 적용해요.
@@ -93,4 +94,4 @@ DB 설계서의 '아이가 퇴소할 때'에 나오는 네 단계를 한 트랜�
 사진 파일은 커밋한 뒤에 지워요. 다른 아이와 함께 찍힌 사진은 지우지 않고 태그를 남겨서 계속 가려 둬요. 보호자 계정을 끄는 일(`users.is_active = false`)은 이 작업에서 하지 않아요.
 처리 기록은 `photo_scope_changed` 이력 한 줄로 남고, `detail`에 `withdrawn: true`와 지운 사진 ID가 들어가요. 이미 퇴소 처리가 끝난 아이에게 다시 돌려도 아무것도 바뀌지 않아요.
 
-데모 시드 아이는 퇴소 처리를 해도 되돌아올 수 있어요. `SEED_DEMO`가 켜진 API가 다시 뜨면 시드가 보호자 연결과 사진을 다시 넣기 때문이에요. 실제 아이는 시드에 없으니 상관없어요.
+데모 시드 아이를 퇴소 처리하면 `SEED_DEMO`가 켜진 API가 다시 떠도 되돌아오지 않아요. 시드가 `withdrawn` 이력이 있는 아이에게는 보호자 연결, 공개 범위, 그 아이가 태그된 사진을 다시 넣지 않아서예요.
