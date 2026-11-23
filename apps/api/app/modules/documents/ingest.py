@@ -68,41 +68,53 @@ def view(row) -> dict:
     item["classroom_ids"] = list(row["classroom_ids"] or [])
     item["conflicts"] = (row["job_check"] or {}).get("conflicts", [])
     error = row["job_error"]
-    item["error"] = {key: error[key] for key in ("code", "message")} if error else None
+    item["error"] = ({key: error[key] for key in ("code", "message")}
+                     if error and row["ingest_status"] == "failed" else None)
     return item
 
 
 def upload(user, filename, data, doc_type, visibility, classroom_ids, effective_from, replaces_document_id):
     """접수만 한다. 같은 기관에 같은 내용이 이미 있으면 그 문서를 돌려준다(created=False, 200)."""
     digest = hashlib.sha256(data).hexdigest()
+    classroom_ids = list(dict.fromkeys(classroom_ids))
+    if replaces_document_id is not None:
+        old = in_scope(user, replaces_document_id)
+        if old["status"] != "active":
+            raise ApiError(409, "INVALID_TRANSITION")
     with transaction() as connection:
         for classroom_id in classroom_ids:
             scope.classroom_in_scope(user, classroom_id, connection=connection)
         existing = connection.scalar(text("SELECT id FROM documents WHERE org_id=:org AND content_sha256=:sha"),
                                      {"org": user.org_id, "sha": digest})
-        if existing is None and replaces_document_id is not None:
-            old = connection.execute(text("SELECT status FROM documents WHERE id=:id AND org_id=:org"),
-                                     {"id": replaces_document_id, "org": user.org_id}).mappings().one_or_none()
-            if old is None:
-                raise ApiError(404, "NOT_FOUND")
-            if old["status"] != "active":
-                raise ApiError(409, "INVALID_TRANSITION")
         if existing is None:
             existing = connection.scalar(text("""
                 INSERT INTO documents (org_id, title, doc_type, visibility, source, effective_from, status,
                                        ingest_status, supersedes_id, uploaded_by, content_sha256, is_virtual)
                 VALUES (:org, :title, :doc_type, :visibility, 'uploaded', :effective_from, 'active',
                         'running', NULL, :user, :sha, true)
-                RETURNING id
+                ON CONFLICT (org_id, content_sha256) DO NOTHING RETURNING id
             """), {"org": user.org_id, "title": filename, "doc_type": doc_type, "visibility": visibility,
                    "effective_from": effective_from, "user": user.id, "sha": digest})
-            for classroom_id in classroom_ids:
-                connection.execute(text("""
-                    INSERT INTO document_classrooms (document_id, classroom_id, org_id) VALUES (:d, :c, :org)
-                """), {"d": existing, "c": classroom_id, "org": user.org_id})
-            created = True
+            created = existing is not None
+            if created:
+                for classroom_id in classroom_ids:
+                    connection.execute(text("""
+                        INSERT INTO document_classrooms (document_id, classroom_id, org_id) VALUES (:d, :c, :org)
+                        ON CONFLICT DO NOTHING
+                    """), {"d": existing, "c": classroom_id, "org": user.org_id})
+            else:
+                existing = connection.scalar(text("SELECT id FROM documents WHERE org_id=:org AND content_sha256=:sha"),
+                                             {"org": user.org_id, "sha": digest})
         else:
             created = False
+    if not created:
+        prior = in_scope(user, existing)
+        if prior["ingest_status"] == "failed":
+            with transaction() as connection:
+                connection.execute(text("""
+                    UPDATE documents SET title=:title, ingest_status='running' WHERE id=:id AND org_id=:org
+                """), {"title": filename, "id": existing, "org": user.org_id})
+            created = True
     if created:
         run_ingest(existing, data, replaces_document_id)
     with transaction() as connection:
