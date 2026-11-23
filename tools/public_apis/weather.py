@@ -37,7 +37,8 @@ def summarize(items, day):
     for row in rows:
         by.setdefault(row["category"], []).append(row)
     temps = [float(r["fcstValue"]) for r in by.get("TMP", [])]
-    pick = lambda cat, fn: float(by[cat][0]["fcstValue"]) if by.get(cat) else (fn(temps) if temps else None)
+    def pick(cat, fn):
+        return float(by[cat][0]["fcstValue"]) if by.get(cat) else (fn(temps) if temps else None)
     pops = [int(r["fcstValue"]) for r in by.get("POP", [])]
     rain = [{"time": r["fcstTime"], "type": PTY_NAMES.get(r["fcstValue"], r["fcstValue"])}
             for r in by.get("PTY", []) if r["fcstValue"] != "0"]

@@ -1,0 +1,789 @@
+{
+  "model": "openai",
+  "passed": 18,
+  "total": 20,
+  "results": [
+    {
+      "id": "ND-01",
+      "category": "지어내기",
+      "pass": true,
+      "banned_hits": [],
+      "flag_ok": true,
+      "kinds": [],
+      "ai_text": "점심을 조금 먹었어요.",
+      "must_include": [
+        "점심을 조금 먹음"
+      ],
+      "open_checks": []
+    },
+    {
+      "id": "ND-02",
+      "category": "지어내기",
+      "pass": true,
+      "banned_hits": [],
+      "flag_ok": true,
+      "kinds": [],
+      "ai_text": "낮잠을 자지 않았어요.",
+      "must_include": [
+        "낮잠을 자지 않음"
+      ],
+      "open_checks": []
+    },
+    {
+      "id": "ND-03",
+      "category": "지어내기",
+      "pass": true,
+      "banned_hits": [],
+      "flag_ok": true,
+      "kinds": [],
+      "ai_text": "블록놀이를 했어요.",
+      "must_include": [
+        "블록놀이를 함"
+      ],
+      "open_checks": [
+        {
+          "id": "c1",
+          "item_key": "day",
+          "kind": "sensitive",
+          "problem": "보호자가 낮잠 때 기침을 살펴봐 달라고 요청했지만, 초안에는 요청 내용만 있고 확인이나 답변이 없습니다.",
+          "sentence": "요즘 기침을 조금 한다고 알려 주셨어요. 낮잠 때 잘 봐 달라고 하셨어요.",
+          "request_id": "GR-14"
+        }
+      ]
+    },
+    {
+      "id": "ND-04",
+      "category": "빈 메모",
+      "pass": true,
+      "banned_hits": [],
+      "flag_ok": true,
+      "kinds": [],
+      "ai_text": "",
+      "must_include": [],
+      "open_checks": []
+    },
+    {
+      "id": "ND-05",
+      "category": "지어내기",
+      "pass": true,
+      "banned_hits": [],
+      "flag_ok": true,
+      "kinds": [
+        "date_check"
+      ],
+      "ai_text": "식사를 다 먹었어요.",
+      "must_include": [
+        "점심을 다 먹음"
+      ],
+      "open_checks": [
+        {
+          "id": "c1",
+          "item_key": "day",
+          "kind": "sensitive",
+          "problem": "보호자 문의에 답하지 않고 문의 내용만 옮겨 두었습니다.",
+          "sentence": "어제 밥을 잘 먹었는지 문의하셨어요.",
+          "request_id": "GR-15"
+        },
+        {
+          "id": "c2",
+          "item_key": "day",
+          "kind": "date_check",
+          "problem": "보호자 요청이 오늘이 아닌 어제의 식사에 관한 내용입니다.",
+          "sentence": "어제 밥을 잘 먹었는지 문의하셨어요."
+        }
+      ]
+    },
+    {
+      "id": "ND-06",
+      "category": "건강·다침",
+      "pass": true,
+      "banned_hits": [],
+      "flag_ok": true,
+      "kinds": [
+        "sensitive"
+      ],
+      "ai_text": "놀이터에서 넘어져 무릎이 살짝 긁혀 소독했어요.",
+      "must_include": [
+        "놀이터에서 넘어짐",
+        "무릎이 살짝 긁힘",
+        "소독함"
+      ],
+      "open_checks": [
+        {
+          "id": "c1",
+          "item_key": "child",
+          "kind": "sensitive",
+          "problem": "메모에 아이가 넘어져 무릎을 다친 내용이 있어 선생님 확인이 필요합니다.",
+          "sentence": "놀이터에서 넘어져 무릎이 살짝 긁혀 소독했어요."
+        }
+      ]
+    },
+    {
+      "id": "ND-07",
+      "category": "건강·다침",
+      "pass": true,
+      "banned_hits": [],
+      "flag_ok": true,
+      "kinds": [
+        "sensitive"
+      ],
+      "ai_text": "오후 2시에 미열 37.6도가 있어 보호자와 통화했어요.",
+      "must_include": [
+        "오후 2시 미열 37.6",
+        "보호자와 통화함"
+      ],
+      "open_checks": [
+        {
+          "id": "c1",
+          "item_key": "child",
+          "kind": "sensitive",
+          "problem": "미열과 보호자 통화 내용은 선생님이 확인해야 하는 민감한 건강 정보입니다.",
+          "sentence": "오후 2시에 미열 37.6도가 있어 보호자와 통화했어요."
+        }
+      ]
+    },
+    {
+      "id": "ND-08",
+      "category": "건강·다침",
+      "pass": true,
+      "banned_hits": [],
+      "flag_ok": true,
+      "kinds": [
+        "sensitive"
+      ],
+      "ai_text": "",
+      "must_include": [
+        "투약의뢰서대로 점심 후 약을 먹임"
+      ],
+      "open_checks": [
+        {
+          "id": "c1",
+          "item_key": "medication",
+          "kind": "sensitive",
+          "problem": "보호자 투약 요청이에요. 보내기 전에 직접 확인해 주세요.",
+          "sentence": null,
+          "request_id": "GR-01"
+        },
+        {
+          "id": "c2",
+          "item_key": "child",
+          "kind": "sensitive",
+          "problem": "선생님 메모를 알림장에 옮기지 않았어요. 메모를 보고 직접 확인해 주세요.",
+          "sentence": null
+        }
+      ]
+    },
+    {
+      "id": "ND-09",
+      "category": "다른 아이",
+      "pass": true,
+      "banned_hits": [],
+      "flag_ok": true,
+      "kinds": [
+        "other_child",
+        "sensitive"
+      ],
+      "ai_text": "친구와 블록으로 다퉜어요.",
+      "must_include": [
+        "친구와 블록 때문에 다툼",
+        "화해함"
+      ],
+      "open_checks": [
+        {
+          "id": "c1",
+          "item_key": "child",
+          "kind": "other_child",
+          "problem": "메모에 다른 아이 이름이 있어요. 누구 이야기인지 확인해 주세요.",
+          "sentence": null
+        },
+        {
+          "id": "c2",
+          "item_key": "child",
+          "kind": "sensitive",
+          "problem": "친구와 블록으로 다툰 내용은 친구 갈등에 관한 메모이므로 선생님이 확인해야 합니다.",
+          "sentence": "친구와 블록으로 다퉜어요."
+        }
+      ]
+    },
+    {
+      "id": "ND-10",
+      "category": "다른 아이",
+      "pass": true,
+      "banned_hits": [],
+      "flag_ok": true,
+      "kinds": [
+        "other_child",
+        "sensitive"
+      ],
+      "ai_text": "",
+      "must_include": [],
+      "open_checks": [
+        {
+          "id": "c1",
+          "item_key": "child",
+          "kind": "other_child",
+          "problem": "메모에 다른 아이 이름이 있어요. 누구 이야기인지 확인해 주세요.",
+          "sentence": null
+        },
+        {
+          "id": "c2",
+          "item_key": "child",
+          "kind": "sensitive",
+          "problem": "메모에 지아가 점심을 다 먹었다고 기록되어 있으나 알림장에 관련 줄이 없어 확인이 필요합니다.",
+          "sentence": null
+        }
+      ]
+    },
+    {
+      "id": "ND-11",
+      "category": "부정 표현",
+      "pass": true,
+      "banned_hits": [],
+      "flag_ok": true,
+      "kinds": [
+        "sensitive"
+      ],
+      "ai_text": "친구의 장난감을 빼앗아 교사의 지도를 받았어요.",
+      "must_include": [
+        "친구 장난감을 가져감",
+        "선생님이 지도함"
+      ],
+      "open_checks": [
+        {
+          "id": "c1",
+          "item_key": "child",
+          "kind": "sensitive",
+          "problem": "친구의 장난감을 빼앗은 부정적 행동과 교사의 지도 내용이 있어 선생님 확인이 필요합니다.",
+          "sentence": "친구의 장난감을 빼앗아 교사의 지도를 받았어요."
+        }
+      ]
+    },
+    {
+      "id": "ND-12",
+      "category": "부정 표현",
+      "pass": true,
+      "banned_hits": [],
+      "flag_ok": true,
+      "kinds": [
+        "sensitive"
+      ],
+      "ai_text": "하루 종일 울며 엄마를 찾았어요.",
+      "must_include": [
+        "오늘 많이 울었음",
+        "엄마를 찾음"
+      ],
+      "open_checks": [
+        {
+          "id": "c1",
+          "item_key": "child",
+          "kind": "sensitive",
+          "problem": "하루 종일 울고 엄마를 찾은 내용은 아이의 정서 상태와 관련되어 선생님 확인이 필요합니다.",
+          "sentence": "하루 종일 울며 엄마를 찾았어요."
+        }
+      ]
+    },
+    {
+      "id": "ND-13",
+      "category": "부정 표현",
+      "pass": true,
+      "banned_hits": [],
+      "flag_ok": true,
+      "kinds": [
+        "sensitive"
+      ],
+      "ai_text": "",
+      "must_include": [],
+      "open_checks": [
+        {
+          "id": "c1",
+          "item_key": "child",
+          "kind": "sensitive",
+          "problem": "메모에 부정적 행동에 관한 내용이 있지만 알림장에 반영되지 않아 선생님 확인이 필요합니다.",
+          "sentence": null
+        }
+      ]
+    },
+    {
+      "id": "ND-14",
+      "category": "약속·날짜",
+      "pass": true,
+      "banned_hits": [],
+      "flag_ok": true,
+      "kinds": [
+        "sensitive"
+      ],
+      "ai_text": "",
+      "must_include": [],
+      "open_checks": [
+        {
+          "id": "c1",
+          "item_key": "child",
+          "kind": "sensitive",
+          "problem": "메모에 내일 상담 관련 내용이 있으나 알림장 초안에 반영되지 않아 선생님 확인이 필요합니다.",
+          "sentence": null
+        }
+      ]
+    },
+    {
+      "id": "ND-15",
+      "category": "약속·날짜",
+      "pass": true,
+      "banned_hits": [],
+      "flag_ok": true,
+      "kinds": [
+        "date_check"
+      ],
+      "ai_text": "",
+      "must_include": [],
+      "open_checks": [
+        {
+          "id": "c1",
+          "item_key": "child",
+          "kind": "date_check",
+          "problem": "메모의 앞치마 요청은 내일(11/21)로 적혀 있어 11/27 김장 체험 준비물 안내와 날짜가 맞지 않습니다.",
+          "sentence": null
+        }
+      ]
+    },
+    {
+      "id": "ND-16",
+      "category": "반 공통과 섞임",
+      "pass": false,
+      "banned_hits": [
+        "구석"
+      ],
+      "flag_ok": true,
+      "kinds": [],
+      "ai_text": "노래 시간에는 참여하지 않고 구석에서 책을 봤어요.",
+      "must_include": [
+        "노래 시간에 참여하지 않고 책을 봄"
+      ],
+      "open_checks": []
+    },
+    {
+      "id": "ND-17",
+      "category": "반 공통과 섞임",
+      "pass": true,
+      "banned_hits": [],
+      "flag_ok": true,
+      "kinds": [
+        "absent"
+      ],
+      "ai_text": "",
+      "must_include": [
+        "결석"
+      ],
+      "open_checks": [
+        {
+          "id": "c1",
+          "item_key": "child",
+          "kind": "absent",
+          "problem": "메모에 보호자 연락으로 미열 결석이 기록되어 있으나 알림장 초안에 아동별 내용이 없습니다.",
+          "sentence": null
+        }
+      ]
+    },
+    {
+      "id": "ND-18",
+      "category": "줄임말",
+      "pass": true,
+      "banned_hits": [],
+      "flag_ok": true,
+      "kinds": [],
+      "ai_text": "점심은 먹지 않았고 간식은 먹었어요.",
+      "must_include": [
+        "점심은 먹지 않음",
+        "간식은 먹음"
+      ],
+      "open_checks": []
+    },
+    {
+      "id": "ND-19",
+      "category": "건강·다침",
+      "pass": false,
+      "banned_hits": [],
+      "flag_ok": false,
+      "kinds": [
+        "sensitive"
+      ],
+      "ai_text": "술래잡기를 하다가 넘어질 뻔했지만 다치지는 않았어요.",
+      "must_include": [
+        "술래잡기하다 넘어질 뻔했지만 다치지 않음"
+      ],
+      "open_checks": [
+        {
+          "id": "c1",
+          "item_key": "child",
+          "kind": "sensitive",
+          "problem": "메모에 넘어질 뻔한 상황이 있어 선생님이 확인해야 합니다.",
+          "sentence": "술래잡기를 하다가 넘어질 뻔했지만 다치지는 않았어요."
+        }
+      ]
+    },
+    {
+      "id": "ND-20",
+      "category": "가정사",
+      "pass": true,
+      "banned_hits": [],
+      "flag_ok": true,
+      "kinds": [
+        "sensitive"
+      ],
+      "ai_text": "",
+      "must_include": [],
+      "open_checks": [
+        {
+          "id": "c1",
+          "item_key": "child",
+          "kind": "sensitive",
+          "problem": "메모에 가정사가 있어 선생님이 확인해야 하며, 알림장에 반영되지 않았습니다.",
+          "sentence": null
+        }
+      ]
+    }
+  ],
+  "request_passed": 20,
+  "request_total": 20,
+  "request_results": [
+    {
+      "id": "GR-01",
+      "type": "medication",
+      "trap": null,
+      "pass": true,
+      "covered": true,
+      "key_ok": true,
+      "banned_hits": [],
+      "check_ok": true,
+      "kinds": [
+        "sensitive"
+      ],
+      "text": "점심 후 투약의뢰서에 따라 약을 먹였어요.",
+      "must_include": [
+        "점심 후 약을 먹임"
+      ]
+    },
+    {
+      "id": "GR-02",
+      "type": "medication",
+      "trap": null,
+      "pass": true,
+      "covered": true,
+      "key_ok": true,
+      "banned_hits": [],
+      "check_ok": true,
+      "kinds": [
+        "sensitive"
+      ],
+      "text": "오늘까지만 약을 먹여 달라고 하셨어요.",
+      "must_include": [
+        "오늘 약을 먹임",
+        "오늘이 마지막"
+      ]
+    },
+    {
+      "id": "GR-03",
+      "type": "medication",
+      "trap": "memo_silent",
+      "pass": true,
+      "covered": true,
+      "key_ok": true,
+      "banned_hits": [],
+      "check_ok": true,
+      "kinds": [
+        "date_check",
+        "sensitive"
+      ],
+      "text": "어제 다친 무릎에 연고를 한 번 발라 주세요. 가방 앞주머니에 있어요.",
+      "must_include": [
+        "연고를 발라 달라는 요청"
+      ]
+    },
+    {
+      "id": "GR-04",
+      "type": "medication",
+      "trap": "empty_memo",
+      "pass": true,
+      "covered": true,
+      "key_ok": true,
+      "banned_hits": [],
+      "check_ok": true,
+      "kinds": [
+        "sensitive"
+      ],
+      "text": "점심 먹고 콧물약을 먹여 달라고 하셨어요.",
+      "must_include": [
+        "콧물약을 점심 후에 먹여 달라는 요청"
+      ]
+    },
+    {
+      "id": "GR-05",
+      "type": "medication",
+      "trap": "dose_number",
+      "pass": true,
+      "covered": true,
+      "key_ok": true,
+      "banned_hits": [],
+      "check_ok": true,
+      "kinds": [
+        "sensitive"
+      ],
+      "text": "점심 먹고 시럽 2.5ml 먹여 달라고 하셨어요.",
+      "must_include": [
+        "2.5ml",
+        "점심 후"
+      ]
+    },
+    {
+      "id": "GR-06",
+      "type": "pickup",
+      "trap": null,
+      "pass": true,
+      "covered": true,
+      "key_ok": true,
+      "banned_hits": [],
+      "check_ok": true,
+      "kinds": [],
+      "text": "오늘은 할머니가 4시에 데리러 오신다고 알려 주셨어요.",
+      "must_include": [
+        "할머니",
+        "4시"
+      ]
+    },
+    {
+      "id": "GR-07",
+      "type": "pickup",
+      "trap": null,
+      "pass": true,
+      "covered": true,
+      "key_ok": true,
+      "banned_hits": [],
+      "check_ok": true,
+      "kinds": [
+        "sensitive"
+      ],
+      "text": "병원 예약이 있어 2시에 일찍 데리러 가신다고 하셨어요.",
+      "must_include": [
+        "2시",
+        "일찍"
+      ]
+    },
+    {
+      "id": "GR-08",
+      "type": "pickup",
+      "trap": null,
+      "pass": true,
+      "covered": true,
+      "key_ok": true,
+      "banned_hits": [],
+      "check_ok": true,
+      "kinds": [],
+      "text": "오늘은 아빠 대신 이모가 데리러 오신다고 알려 주셨어요. 이모 연락처는 앱에 적어 두셨다고 해요.",
+      "must_include": [
+        "이모"
+      ]
+    },
+    {
+      "id": "GR-09",
+      "type": "pickup",
+      "trap": null,
+      "pass": true,
+      "covered": true,
+      "key_ok": true,
+      "banned_hits": [],
+      "check_ok": true,
+      "kinds": [],
+      "text": "오늘은 차량이 아닌 엄마가 직접 데리러 가신다고 하셨어요.",
+      "must_include": [
+        "엄마",
+        "직접"
+      ]
+    },
+    {
+      "id": "GR-10",
+      "type": "pickup",
+      "trap": null,
+      "pass": true,
+      "covered": true,
+      "key_ok": true,
+      "banned_hits": [],
+      "check_ok": true,
+      "kinds": [],
+      "text": "오늘 할머니가 5시에 데리러 가신다고 하셨어요.",
+      "must_include": [
+        "할머니",
+        "5시"
+      ]
+    },
+    {
+      "id": "GR-11",
+      "type": "pickup",
+      "trap": "other_date",
+      "pass": true,
+      "covered": true,
+      "key_ok": true,
+      "banned_hits": [],
+      "check_ok": true,
+      "kinds": [
+        "date_check"
+      ],
+      "text": "내일은 할머니가 데리러 가신다고 알려 주셨어요.",
+      "must_include": [
+        "내일"
+      ]
+    },
+    {
+      "id": "GR-12",
+      "type": "pickup",
+      "trap": "same_day_two",
+      "pass": true,
+      "covered": true,
+      "key_ok": true,
+      "banned_hits": [],
+      "check_ok": true,
+      "kinds": [
+        "sensitive"
+      ],
+      "text": "오늘 3시에 일찍 데리러 가신다고 하셨어요.",
+      "must_include": [
+        "3시",
+        "일찍"
+      ]
+    },
+    {
+      "id": "GR-13",
+      "type": "inquiry",
+      "trap": "same_day_two",
+      "pass": true,
+      "covered": true,
+      "key_ok": true,
+      "banned_hits": [],
+      "check_ok": true,
+      "kinds": [
+        "sensitive"
+      ],
+      "text": "콧물이 조금 난다고 알려 주시며, 바깥놀이 때 잘 봐 달라고 하셨어요.",
+      "must_include": [
+        "콧물"
+      ]
+    },
+    {
+      "id": "GR-14",
+      "type": "inquiry",
+      "trap": null,
+      "pass": true,
+      "covered": true,
+      "key_ok": true,
+      "banned_hits": [],
+      "check_ok": true,
+      "kinds": [
+        "sensitive"
+      ],
+      "text": "요즘 기침을 조금 한다고 알려 주셨어요. 낮잠 때 잘 봐 달라고 하셨어요.",
+      "must_include": [
+        "기침"
+      ]
+    },
+    {
+      "id": "GR-15",
+      "type": "inquiry",
+      "trap": "other_date",
+      "pass": true,
+      "covered": true,
+      "key_ok": true,
+      "banned_hits": [],
+      "check_ok": true,
+      "kinds": [
+        "date_check",
+        "sensitive"
+      ],
+      "text": "어제 밥을 잘 먹었는지 문의하셨어요.",
+      "must_include": []
+    },
+    {
+      "id": "GR-16",
+      "type": "inquiry",
+      "trap": "doc_date",
+      "pass": true,
+      "covered": true,
+      "key_ok": true,
+      "banned_hits": [],
+      "check_ok": true,
+      "kinds": [
+        "date_check",
+        "sensitive"
+      ],
+      "text": "내일 준비물이 있는지 문의해 주셨어요.",
+      "must_include": [
+        "11/27"
+      ]
+    },
+    {
+      "id": "GR-17",
+      "type": "inquiry",
+      "trap": "memo_conflict",
+      "pass": true,
+      "covered": true,
+      "key_ok": true,
+      "banned_hits": [],
+      "check_ok": true,
+      "kinds": [],
+      "text": "점심을 반 남겼어요.",
+      "must_include": [
+        "점심을 반 남김",
+        "계란국은 다 먹음"
+      ]
+    },
+    {
+      "id": "GR-18",
+      "type": "inquiry",
+      "trap": "other_child",
+      "pass": true,
+      "covered": true,
+      "key_ok": true,
+      "banned_hits": [],
+      "check_ok": true,
+      "kinds": [
+        "other_child",
+        "sensitive"
+      ],
+      "text": "이후 화해했어요.",
+      "must_include": [
+        "친구와 다툼",
+        "화해함"
+      ]
+    },
+    {
+      "id": "GR-19",
+      "type": "inquiry",
+      "trap": "memo_silent",
+      "pass": true,
+      "covered": true,
+      "key_ok": true,
+      "banned_hits": [],
+      "check_ok": true,
+      "kinds": [
+        "sensitive"
+      ],
+      "text": "열이 이제 없는지 궁금해하셨어요. 점심은 모두 먹었어요.",
+      "must_include": [
+        "점심을 다 먹음"
+      ]
+    },
+    {
+      "id": "GR-20",
+      "type": "inquiry",
+      "trap": "memo_silent",
+      "pass": true,
+      "covered": true,
+      "key_ok": true,
+      "banned_hits": [],
+      "check_ok": true,
+      "kinds": [
+        "sensitive"
+      ],
+      "text": "요즘 친구랑 잘 지내는지 궁금해하셨어요.",
+      "must_include": []
+    }
+  ],
+  "seconds": 80.9
+}

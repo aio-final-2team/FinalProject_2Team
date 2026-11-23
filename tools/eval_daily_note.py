@@ -13,7 +13,6 @@
 
 import argparse
 import json
-import re
 import sys
 import time
 from pathlib import Path
@@ -46,14 +45,9 @@ class Echo:
 
 
 def menu_for(day: str) -> dict:
-    """식단표 MN-2026-W47의 그날 행(점심·간식)을 입구 함수의 menu 모양으로."""
-    text = (DATA / "menu/MN-2026-W47.md").read_text(encoding="utf-8")
-    mmdd = day[5:]
-    row = next(line for line in text.splitlines() if line.startswith(f"| {mmdd}("))
-    _, lunch, snack = [cell.strip() for cell in row.strip("|").split("|")]
-    clean = lambda s: re.sub(r"[①-⑳]", "", s)
-    return {"document_id": "MN-2026-W47", "title": "11월 3주 식단표 (11/16~11/20)",
-            "text": f"점심: {clean(lunch)} / 간식: {clean(snack)}"}
+    """백엔드처럼 식단 문서 본문 전체(한 주 표)를 menu.text로 넘긴다. 그날 행 고르기는 그래프가 한다."""
+    text = (DATA / "menu/MN-2026-W47.md").read_text(encoding="utf-8").split("---", 2)[-1].strip()
+    return {"document_id": "MN-2026-W47", "title": "11월 3주 식단표 (11/16~11/20)", "text": text}
 
 
 def payloads() -> list[dict]:
@@ -70,7 +64,7 @@ def payloads() -> list[dict]:
                      "memo": memo.get(c["child_key"], ""),
                      "requests": [{"request_id": r["request_key"], "type": r["type"], "text": r["body"]}
                                   for r in sorted(reqs, key=lambda r: r["created_at"]) if r["child_key"] == c["child_key"]]}
-                    for c in roster["children"]]
+                    for c in roster["children"] + roster.get("seed_children", [])]  # 시연 반 20명(FB-018-4)
         out.append({"input_id": f"eval-{d}", "note_date": d, "classroom": roster["classroom_name"],
                     "activities": day["activities"], "supplies": day["supplies"], "children": children,
                     "menu": menu_for(d)})
@@ -82,7 +76,8 @@ def score(case: dict, note: dict, allowed: set[str] = frozenset()) -> dict:
     ai_text = " ".join(line["value"] for line in note["content"]["items"]
                        if line["key"] in AI_KEYS and line["source"]["type"] != "request")
     hits = [word for word in case["must_not_include"] if word in ai_text]
-    kinds = {check["kind"] for check in note["open_checks"]}
+    # 메모 함정은 메모 쪽 확인만 본다. 보호자 요청에 붙은 확인(request_id 있음)은 요청 채점에서 본다
+    kinds = {check["kind"] for check in note["open_checks"] if not check.get("request_id")}
     if case["expect_flag"]:
         flag_ok = case["flag_kind"] in kinds
     else:
@@ -91,7 +86,8 @@ def score(case: dict, note: dict, allowed: set[str] = frozenset()) -> dict:
         hits += ["(child 줄 있음)"] if any(line["key"] == "child" for line in note["content"]["items"]) else []
     return {"id": case["id"], "category": case["category"], "pass": not hits and flag_ok,
             "banned_hits": hits, "flag_ok": flag_ok, "kinds": sorted(kinds),
-            "ai_text": ai_text, "must_include": case["must_include"]}
+            "ai_text": ai_text, "must_include": case["must_include"], "open_checks": note["open_checks"],
+            "end": note.get("end"), "trace": note.get("trace")}
 
 
 def score_request(req: dict, note: dict) -> dict:

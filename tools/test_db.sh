@@ -10,7 +10,8 @@ created=0
 cleanup() {
     local result=$?
     if (( created )); then
-        if ! docker rm -f "$container"; then
+        # 이미지가 데이터 볼륨을 선언해서 -v가 없으면 익명 볼륨(약 100MB)이 매번 남는다.
+        if ! docker rm -fv "$container"; then
             echo "시험 컨테이너 정리 실패: $container"
             result=1
         fi

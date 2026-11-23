@@ -36,14 +36,14 @@ export function NotesPage() {
 }
 
 /* 공통 틀: ‹ 홈, 큰 제목, 보조 줄 */
-function Frame({ sub, children }: { sub?: React.ReactNode; children: React.ReactNode }) {
+function Frame({ title = "오늘 알림장", sub, children }: { title?: string; sub?: React.ReactNode; children: React.ReactNode }) {
   const { user } = useSession();
   return (
     <div className="mx-auto max-w-[680px] px-4 pb-48 lg:pb-10">
       <Link to="/teacher/home" className="inline-flex min-h-11 items-center gap-0.5 pt-2 text-body font-medium text-accent">
         <Icon name="chevL" className="size-4" />홈
       </Link>
-      <h1 className="text-large-title font-bold tracking-[-0.025em]">오늘 알림장</h1>
+      <h1 className="text-large-title font-bold tracking-[-0.025em]">{title}</h1>
       <p className="mt-0.5 text-footnote font-medium text-ink2">{sub ?? `${user?.display_name} · ${dateLabel(todayKST())} · 17:00까지`}</p>
       {children}
     </div>
@@ -78,9 +78,7 @@ function Compose({ onStarted }: { onStarted: (id: string) => void }) {
   const [activities, setActivities] = useState("");
   const [supplies, setSupplies] = useState("");
   const [err, setErr] = useState("");
-  const total = kids.data?.length ?? 0;
   const recorded = (kids.data ?? []).filter((k) => records[k.id]?.length);
-  const missing = (kids.data ?? []).filter((k) => !records[k.id]?.length);
 
   const submit = () => {
     if (!activities.trim()) {
@@ -103,21 +101,20 @@ function Compose({ onStarted }: { onStarted: (id: string) => void }) {
   const field = "w-full rounded-md border-[1.5px] bg-card px-3 text-body outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--tint)]";
 
   return (
-    <Frame>
-      <Label>오늘 기록</Label>
+    <Frame title="오늘 알림장 만들기">
+      <Label>관찰 기록</Label>
       <section className="rounded-lg bg-card p-3 shadow-card">
         <div className="flex items-baseline gap-1.5">
           <b className="text-[30px] font-bold leading-9 tracking-[-0.03em] tabular-nums">{recorded.length}</b>
-          <span className="text-callout font-semibold text-ink2">/{total}명</span>
+          <span className="text-callout font-semibold text-ink2">명 기록 반영</span>
         </div>
-        <Meter parts={[[recorded.length, "bg-mint"]]} total={total} />
-        <p className="text-footnote text-ink2">{missing.length ? `기록 없음 ${missing.length}명 · ${missing.map((k) => k.display_name).join(", ")}` : "모든 아이 기록이 있어요"}</p>
+        <p className="text-footnote text-ink2">기록이 있는 아이의 개별 내용만 선택해서 반영돼요</p>
         <Link to="/teacher/records" className="mt-2 inline-flex h-8 items-center rounded-md bg-fill px-2.5 text-footnote font-semibold">
-          오늘 기록 보기
+          관찰 기록 보기
         </Link>
       </section>
 
-      <Label>오늘 반 활동 (모든 아이 첫 문장)</Label>
+      <Label>오늘 함께한 활동</Label>
       <textarea
         id="note-activities"
         rows={3}
@@ -132,7 +129,7 @@ function Compose({ onStarted }: { onStarted: (id: string) => void }) {
           {err}
         </p>
       )}
-      <Label>준비물</Label>
+      <Label>가정에서 준비할 것</Label>
       <input value={supplies} onChange={(e) => setSupplies(e.target.value)} onFocus={() => !supplies && setSupplies("김장 체험: 앞치마, 팔토시") } placeholder="예: 11/27(금) 김장 체험: 앞치마, 팔토시" className={`${field} h-12 border-line`} />
 
       <Label>
@@ -148,7 +145,7 @@ function Compose({ onStarted }: { onStarted: (id: string) => void }) {
 
       <Dock>
         <PrimaryButton onClick={submit} loading={create.isPending}>
-          초안 만들기
+          아이별 초안 만들기
         </PrimaryButton>
       </Dock>
     </Frame>
@@ -171,17 +168,17 @@ function Progress({ jobId, onDone }: { jobId: string; onDone: () => void }) {
     if (st === "succeeded" && step >= 3) qc.invalidateQueries({ queryKey: ["notes", user?.classroom_ids[0], todayKST()] }).then(onDone);
   }, [st, step, qc, user, onDone]);
   const rows: [string, string, string][] = [
-    ["감독 AI", "묶음 카드 만들기", "draft_status: queued"],
-    ["자료 AI", "아이별 초안 쓰는 중", "반 활동 + 오늘 기록 + 식단표"],
-    ["검사 AI", "기록과 대조하는 중", "없는 말 · 다른 아이 · 날짜 · 빠진 요청"],
-    ["", "다 됐어요", "draft_status: succeeded"],
+    ["", "오늘 자료 모으기", "반 활동 · 관찰 기록 · 식단표"],
+    ["", "아이별 문장 만들기", "아이마다 필요한 내용만 정리해요"],
+    ["", "기록과 내용 확인하기", "다른 아이 내용과 빠진 요청을 확인해요"],
+    ["", "다 됐어요", "이제 확인할 내용만 보여 드릴게요"],
   ];
   return (
-    <Frame>
+    <Frame title="알림장 만들기">
       {st === "failed" ? (
         <section className="mt-4 grid gap-3 rounded-lg bg-card p-4 shadow-card">
           <b className="text-headline">초안을 만들지 못했어요</b>
-          <p className="text-callout text-ink2">{job.data?.error?.message ?? "잠시 뒤 다시 만들어 주세요."} 오늘 기록은 그대로 있어요.</p>
+          <p className="text-callout text-ink2">{job.data?.error?.message ?? "잠시 뒤 다시 만들어 주세요."} 관찰 기록은 그대로 있어요.</p>
           <SubButton onClick={onDone}>다시 시도</SubButton>
         </section>
       ) : (
@@ -296,7 +293,7 @@ function Review({ notes }: { notes: DailyNote[] }) {
 
   const preview = notes.find((n) => hasChild(n)) ?? notes[0];
   return (
-    <Frame sub={`${user?.display_name} · ${notes.length}명 · ${allSent ? "보냄" : "17:00까지"}`}>
+    <Frame title="알림장 확인" sub={`${user?.display_name} · ${notes.length}명 · ${allSent ? "보냄" : "17:00까지"}`}>
       <section className="mt-4 rounded-lg bg-card p-3 shadow-card">
         <Meter parts={[[c.sent, "bg-ok"], [c.ready, "bg-lav"], [c.needs_check, "bg-accent"], [c.draft, "bg-ink3"]]} total={notes.length} />
         <div className="flex flex-wrap gap-x-3 text-footnote text-ink2">
@@ -307,7 +304,7 @@ function Review({ notes }: { notes: DailyNote[] }) {
           ) : (
             <>
               <span>확인 필요 <b className="text-ink tabular-nums">{c.needs_check}</b></span>
-              <span>검사 통과 <b className="text-ink tabular-nums">{c.draft}</b></span>
+              <span>문제 없음 <b className="text-ink tabular-nums">{c.draft}</b></span>
               <span>확인함 <b className="text-ink tabular-nums">{c.ready}</b></span>
             </>
           )}
@@ -316,14 +313,14 @@ function Review({ notes }: { notes: DailyNote[] }) {
 
       {!allSent && flagged.length > 0 && (
         <>
-          <Label right={<span>{flagged.length}명</span>}>검사 AI가 짚은 아이</Label>
+          <Label right={<span>{flagged.length}명</span>}>먼저 확인할 아이</Label>
           <ul className="overflow-hidden rounded-lg bg-card shadow-card">{flagged.map((n) => row(n, n.open_checks.map((o) => CHECK_KIND[o.kind]?.short ?? o.problem).join(" · ")))}</ul>
         </>
       )}
 
       {!allSent && noRecord.length > 0 && (
         <>
-          <Label right={<span>{noRecord.length}명</span>}>오늘 기록이 없는 아이</Label>
+          <Label right={<span>{noRecord.length}명</span>}>반 활동만 작성된 아이</Label>
           <ul className="overflow-hidden rounded-lg bg-card shadow-card">
             {noRecord.map((n) =>
               row(
@@ -331,10 +328,10 @@ function Review({ notes }: { notes: DailyNote[] }) {
                 "반 활동만 들어갔어요",
                 <span className="flex shrink-0 gap-1">
                   <SubButton small onClick={() => setWriteFor(n)}>
-                    한 줄 쓰기
+                    내용 추가
                   </SubButton>
                   <SubButton small tone="gray" onClick={() => setPlainOk((p) => ({ ...p, [n.id]: true }))}>
-                    반 활동만
+                    이대로 사용
                   </SubButton>
                 </span>,
               ),
@@ -345,7 +342,7 @@ function Review({ notes }: { notes: DailyNote[] }) {
 
       {!allSent && (
         <>
-          <Label right={<span>{clean.length}명</span>}>검사 통과</Label>
+          <Label right={<span>{clean.length}명</span>}>확인할 문제 없음</Label>
           <section className="overflow-hidden rounded-lg bg-card shadow-card">
             {showClean && <ul>{clean.map((n) => row(n, n.content.items.find((i) => i.key === "child")?.value ?? "반 활동만 들어갔어요"))}</ul>}
             <div className={`flex items-center justify-between gap-2 px-3 py-2.5 ${showClean && clean.length ? "border-t border-sep" : ""}`}>
@@ -355,7 +352,7 @@ function Review({ notes }: { notes: DailyNote[] }) {
               </button>
               {clean.length ? (
                 <SubButton onClick={confirmClean} disabled={busy}>
-                  {busy ? "확인하는 중…" : `${clean.length}명 한 번에 확인`}
+                  {busy ? "확인하는 중…" : `${clean.length}명 모두 확인`}
                 </SubButton>
               ) : (
                 <span className="text-caption font-bold text-lav">확인할 통과 아이가 없어요</span>
