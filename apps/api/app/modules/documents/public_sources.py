@@ -128,7 +128,7 @@ def forecast_evidence(connection, org_id, day, client=None, forecast=None):
 
 
 def prefetch_public(request_type, body, topic_key, today, with_forecast=True, risk_category=None):
-    """공공 API 호출(최대 10초)을 DB 트랜잭션·연결을 잡기 전에 끝내 둔다. 결과는 처리 안에서 저장만 한다."""
+    """공공 API 호출(법령은 검색→조문 두 번이라 최악 약 20초)을 DB 트랜잭션·연결을 잡기 전에 끝내 둔다. 결과는 처리 안에서 저장만 한다."""
     found = {}
     rule_key = law_rule_key(topic_key, risk_category, body) if request_type == "complaint" else None
     if rule_key:

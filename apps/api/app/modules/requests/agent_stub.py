@@ -45,7 +45,7 @@ def run_request(request_id):
     if initial["type"] not in ("inquiry", "consultation", "complaint"):
         return
     proposal = classify_request(initial["type"], initial["body"])
-    # 법령·예보 공공 API(최대 10초)는 DB 연결을 잡기 전에 가져와 둔다(T52). 저장만 아래 트랜잭션에서 한다.
+    # 법령·예보 공공 API(법령은 최악 약 20초)는 DB 연결을 잡기 전에 가져와 둔다(T52). 저장만 아래 트랜잭션에서 한다.
     first = validate_proposal(initial["type"], initial["body"], proposal)
     prefetched = prefetch_public(initial["type"], initial["body"], first["topic_key"], datetime.now(KST).date(),
                                  with_forecast=graph_enabled(), risk_category=first.get("risk_category"))
