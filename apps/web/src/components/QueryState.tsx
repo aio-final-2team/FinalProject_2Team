@@ -3,39 +3,40 @@ import { useNavigate } from "react-router";
 import { HOME, useSession } from "@/app/session";
 import type { UseQueryResult } from "@tanstack/react-query";
 import { ApiError } from "@/api/client";
-import { SkeletonRows, StateView } from "./StateView";
+import { SkeletonRows, StateView, type Variant } from "./StateView";
 
 /**
  * 화면 상태(불러오는 중·오류·최신 내용 못 받음)를 한 곳에서 정한다.
  * 오류 연출(움직임·애니메이션)을 나중에 고도화할 때는 이 파일의 ErrorState만 바꾸면 모든 화면에 적용된다.
  */
 
-type Kind = "error" | "empty" | "forbidden";
-
 /**
- * 실패 원인을 상태 화면 종류로 나눈다 (T12 2.8 · 디자인 시스템 7.15).
- * 교사·원장 '온' 심볼의 모양이 다르다: 오류 = 흔들림 + 다시 시도 배지, 권한 없음 = 눈 감기 + 네이비 자물쇠, 없음 = 깜빡임 + 민트 체크.
+ * 실패 원인을 6가지로 나눈다. 원인마다 상태 화면의 마크·배지가 다르다 (StateView의 Variant).
+ * 서버 오류 · 연결 끊김 · 시간 초과 · 권한 없음(403) · 없는 내용(404) · 방금 바뀜(409)
  */
-export function errorText(error: unknown): { kind: Kind; title: string; sub: string } {
+export function errorText(error: unknown): { variant: Variant; title: string; sub: string } {
   if (error instanceof ApiError) {
-    if (error.status === 403) return { kind: "forbidden", title: "이 내용은 볼 수 없어요", sub: "내 반 또는 내 권한의 내용만 볼 수 있어요" };
-    if (error.status === 404) return { kind: "empty", title: "찾는 내용이 없어요", sub: "지워졌거나 다른 반의 내용일 수 있어요" };
-    if (error.status >= 500) return { kind: "error", title: "서버가 잠시 응답하지 않아요", sub: "잠시 뒤 다시 시도해 주세요. 쓰던 내용은 그대로예요" };
-    return { kind: "error", title: "불러오지 못했어요", sub: error.message };
+    if (error.status === 403) return { variant: "forbidden", title: "이 내용은 볼 수 없어요", sub: "내 반 또는 내 권한의 내용만 볼 수 있어요" };
+    if (error.status === 404) return { variant: "notfound", title: "찾는 내용이 없어요", sub: "지워졌거나 다른 반의 내용일 수 있어요" };
+    if (error.status === 409) return { variant: "conflict", title: "내용이 방금 바뀌었어요", sub: "최신 내용을 다시 불러와서 확인해 주세요" };
+    if (error.status >= 500) return { variant: "server", title: "서버가 잠시 응답하지 않아요", sub: "잠시 뒤 다시 시도해 주세요. 쓰던 내용은 그대로예요" };
+    return { variant: "server", title: "불러오지 못했어요", sub: error.message };
   }
-  return { kind: "error", title: "연결이 끊겼어요", sub: "네트워크를 확인하고 다시 시도해 주세요" };
+  if (error instanceof DOMException && (error.name === "TimeoutError" || error.name === "AbortError")) return { variant: "timeout", title: "응답이 너무 늦어요", sub: "연결이 느린 것 같아요. 다시 시도해 주세요" };
+  return { variant: "offline", title: "연결이 끊겼어요", sub: "네트워크를 확인하고 다시 시도해 주세요. 쓰던 내용은 그대로예요" };
 }
 
 export function ErrorState({ error, onRetry, updatedAt, title, retrying }: { error?: unknown; onRetry: () => void; updatedAt?: number; title?: string; retrying?: boolean }) {
   const t = errorText(error);
   const nav = useNavigate();
   const { role } = useSession();
-  const when = t.kind === "error" && updatedAt ? ` · 마지막으로 불러온 시각 ${new Date(updatedAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}` : "";
+  const retryable = t.variant === "server" || t.variant === "offline" || t.variant === "timeout" || t.variant === "conflict";
+  const when = retryable && updatedAt ? ` · 마지막으로 불러온 시각 ${new Date(updatedAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}` : "";
   /* 할 수 있는 일 하나만 (7.15): 오류는 다시 시도, 권한 없음·없는 내용은 내 첫 화면으로 */
-  const action = t.kind === "error" ? { label: retrying ? "다시 불러오는 중…" : "다시 시도", run: onRetry } : { label: "내 첫 화면으로", run: () => nav(role ? HOME[role] : "/login") };
+  const action = retryable ? { label: retrying ? "다시 불러오는 중…" : t.variant === "conflict" ? "최신 내용 보기" : "다시 시도", run: onRetry } : { label: "내 첫 화면으로", run: () => nav(role ? HOME[role] : "/login") };
   return (
-    <div data-state={t.kind}>
-      <StateView kind={t.kind} audience={role === "parent" ? "parent" : "staff"} title={t.kind === "error" ? (title ?? t.title) : t.title} sub={`${t.sub}${when}`} action={action} />
+    <div data-state="error" data-variant={t.variant}>
+      <StateView kind={t.variant === "forbidden" ? "forbidden" : t.variant === "notfound" ? "empty" : "error"} variant={t.variant} audience={role === "parent" ? "parent" : "staff"} title={retryable ? (title ?? t.title) : t.title} sub={`${t.sub}${when}`} action={action} />
     </div>
   );
 }
