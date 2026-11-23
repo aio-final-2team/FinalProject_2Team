@@ -145,7 +145,7 @@ def test_reject_then_dismiss_keeps_old_card_done(client, parent, teacher):
     next_id = rejected.json()["next_card_id"]
     assert next_id and next_id != cid
     assert detail(client, teacher, next_id)["request"]["status"] == "awaiting_review"
-    assert decision(client, teacher, next_id).status_code == 200
+    assert decision(client, teacher, next_id, "edit_approve", edited_content={"text": "[TEST] 다시 쓴 답"}).status_code == 200
     done = client.get(BASE + "/cards?filter=done&size=100", headers=teacher).json()["items"]
     progress = client.get(BASE + "/cards?filter=in_progress&size=100", headers=teacher).json()["items"]
     assert cid in [c["id"] for c in done] and next_id in [c["id"] for c in progress]
@@ -403,12 +403,27 @@ def test_director_normal_closes_report_and_notifies_returned_reply_once(
     assert client.get(BASE + "/overview", headers=director).json()["waiting"] == baseline
 
 
+def test_reject_redraft_has_no_text_and_needs_teacher_text(client, parent, teacher):
+    """거절 뒤 재초안은 초안 없는 카드(API 5.7, T47 결정 4). 앞 카드의 검사 통과를 물려받아 일반 승인으로 나가면 안 된다."""
+    rid, cid = create(client, parent, teacher, type="inquiry", body="[TEST] 준비물 문의")
+    assert detail(client, teacher, cid)["card"]["check_result"]["passed"] is True
+    next_id = decision(client, teacher, cid, "reject", reason_code="tone").json()["next_card_id"]
+    redraft = detail(client, teacher, next_id)
+    assert redraft["card"]["draft"]["text"] == "" and redraft["card"]["check_result"] is None
+    assert "check_unavailable" in redraft["warnings"]
+    err(decision(client, teacher, next_id), 409, "INVALID_TRANSITION")
+    sent = decision(client, teacher, next_id, "edit_approve", edited_content={"text": "[TEST] 담임이 다시 쓴 답"})
+    assert sent.status_code == 200, sent.text
+    messages = client.get(f"{BASE}/requests/{rid}", headers=parent).text
+    assert "[TEST] 담임이 다시 쓴 답" in messages and "재초안" not in messages
+
+
 def test_rejected_reply_cannot_complete_newer_sent_reply(client, parent, teacher):
     rid, old = create(client, parent, teacher)
     rejected = decision(client, teacher, old, "reject", reason_code="tone")
     assert rejected.status_code == 200, rejected.text
     current = rejected.json()["next_card_id"]
-    assert decision(client, teacher, current).status_code == 200
+    assert decision(client, teacher, current, "edit_approve", edited_content={"text": "[TEST] 다시 쓴 답"}).status_code == 200
     before = detail(client, teacher, old)
     err(decision(client, teacher, old, "complete", version=2, reason_text="[TEST] 옛 카드 완료"),
         409, "INVALID_TRANSITION")

@@ -13,7 +13,7 @@
 | --- | --- |
 | [기획서](../Step1/기획서.md) | 11/18 실측 반영본에 11/20 팀 결정 D02(첫 시연 범위)를 더한 develop 판. 3장 기능 요구사항(FR)과 4장 비기능 요구사항(NFR)의 번호를 쓴다 |
 | [입출력 계약표](입출력_계약표_초안.md) | v0.18 · 2026-11-21 |
-| [DB 스키마 설계서](DB_스키마_설계서.md) | v0.18 · 2026-11-23, 마이그레이션 0001~0010 |
+| [DB 스키마 설계서](DB_스키마_설계서.md) | v0.19.1 · 2026-11-23, 마이그레이션 0001~0010 |
 | OpenAPI 생성물 `contracts/openapi.yaml` | 마지막 생성 커밋 `04c4691`. 앱이 내는 `/openapi.json`과 같은지는 `test_contract_matches_application`으로 확인한다 |
 
 이 문서는 유치온 API 49개(기준 v0.8, develop `24258f2`)와 에이전트 도구 15개의 계약을 담는다. 1~6장은 강사님 'API 설계 문서 작성법'에 나온 '문서에 들어가는 여섯 가지'의 순서를 따르고, 7장에는 API 필드와 DB 컬럼의 대응을, 8장에는 설정값을 적었다. 필드·권한·오류는 입출력 계약표와 같아야 한다. 두 문서가 어긋나면 계약표를 먼저 고친 뒤 두 문서의 판을 함께 올린다. 구현(FastAPI의 `/docs`)과 달라졌을 때도 둘을 대조해 판을 올린다. 모의 API와 생성물 `contracts/openapi.yaml`도 이 문서와 함께 둔다. 모의 API를 쓰는 법과 데모 계정은 [모의 API 안내](../../contracts/mock_api/README.md)에 있다. 제목에 [제안]이 붙은 절은 팀이 아직 계약을 확인하지 않은 내용으로, 투약·귀가(3.27), 상담 지연 입력(3.28), 피드·앨범(3.29)이 여기에 해당한다. API별로 지금 어디까지 동작하는지는 2장 표의 상태 칸에 적었다.
@@ -581,7 +581,7 @@ T12 화면 지도에 나온 화면들이 조회 응답에서 쓰는 칸을 여�
 | `consultation.slots[] { id, period, room, status }` | 목록 | 상담 요청 | 후보 시각과 장소(3.2와 같음). MVP에서는 상담실 대면 한 가지뿐이라 방식(대면·화상) 칸은 두지 않고, 화상상담(FR-18)을 넣을 때 `mode`를 더한다 | `consultation_slots`, `rooms.name` |
 | `request.hold_until` | date | 보류 중 | 보류 예정일(3.2와 같음). 이유는 주지 않음 | `cards.hold_until` |
 | `rejection { reason_code, reason_text }` | 객체 | 반려된 요청 | 반려 이유. T04 2장의 학부모 표시 문구 '처리할 수 없는 요청이에요 (이유)'에 들어간다. 담임이 반려할 때는 이 글이 학부모에게 보인다는 안내를 담임 화면에 띄워야 한다 | `approvals`(`decision = dismiss`) |
-| `sources[] { document_title, location, effective_from }` | 목록 | 회신이 나간 문의·민원 | 답변 출처. 학부모에게 공개된 문서(`visibility`가 `parents`·`all`)만 | 승인된 카드의 `card_evidence` → `document_chunks` → `documents` |
+| `sources[] { document_title, location, effective_from }` | 목록 | 회신이 나간 문의·민원 | 답변 출처. 학부모에게 공개된 문서(`visibility`가 `parents`·`all`)만. 법령(`doc_type = law`) 근거는 담임이 승인한 답변 글에 그 법령 이름이 실제로 들어 있을 때만 나간다(담임 카드에는 항상 보임) | 승인된 카드의 `card_evidence` → `document_chunks` → `documents` |
 
 **알림장** (`GET /api/v1/daily-notes`의 `content`, `open_checks[]`)
 

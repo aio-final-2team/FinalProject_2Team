@@ -221,6 +221,8 @@ def detail(user, request_id):
             WHERE c.request_id=:id AND c.org_id=:org AND (NOT :parent OR d.visibility IN ('parents','all'))
               AND EXISTS (SELECT 1 FROM approvals a WHERE (a.card_id,a.org_id)=(c.id,c.org_id)
                           AND a.decision IN ('approve','edit_approve'))
+              AND (d.doc_type<>'law' OR d.source<>'public_api'
+                   OR (split_part(d.title,' ',1)<>'' AND strpos(coalesce(c.draft->>'text',''),split_part(d.title,' ',1))>0))
             ORDER BY c.created_at,c.id,e.rank,ch.id
         """), values).mappings().all() if req["status"] in ("sent_or_booked", "completed") else []
         care_state = care.view(connection, req) if req["type"] in CARE_REQUEST_TYPES else None

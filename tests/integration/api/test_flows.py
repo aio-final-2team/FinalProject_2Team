@@ -391,7 +391,7 @@ def test_permission_denial_is_audited_without_parent_leak(client, parent_other, 
 def test_rejected_old_draft_stays_done_after_replacement_is_sent(client, parent, teacher):
     rid, cid = create(client, parent)
     replacement = decision(client, teacher, cid, "reject", reason_code="tone").json()["next_card_id"]
-    assert decision(client, teacher, replacement).status_code == 200
+    assert decision(client, teacher, replacement, "edit_approve", edited_content={"text": "[TEST] 다시 쓴 답"}).status_code == 200
     assert cid in [c["id"] for c in client.get(BASE + "/cards?filter=done", headers=teacher).json()["items"]]
     active = client.get(BASE + "/cards?filter=in_progress", headers=teacher).json()["items"]
     assert replacement in [c["id"] for c in active] and cid not in [c["id"] for c in active]

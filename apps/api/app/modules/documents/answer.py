@@ -9,12 +9,16 @@ from agents.graphs.answer import draft_answer, fallback
 from app.modules.documents.search import search_documents
 
 
-def answer_for_request(req, writer=None, checker=None):
+def answer_for_request(req, writer=None, checker=None, forecast=None):
+    """forecast는 run_request가 트랜잭션 밖에서 가져와 저장해 둔 예보 근거(없으면 None)."""
     user = SimpleNamespace(id=req["requester_id"], org_id=req["org_id"], role="parent")
 
     def search(doc_type, query):
-        return search_documents(user, str(req["org_id"]), doc_type, query,
-                                classroom_id=req["classroom_id"], top_k=8)["chunks"]
+        chunks = search_documents(user, str(req["org_id"]), doc_type, query,
+                                  classroom_id=req["classroom_id"], top_k=8)["chunks"]
+        if forecast and doc_type == "schedule":
+            chunks = [{k: v for k, v in forecast.items() if k != "quote"}, *chunks]
+        return chunks
 
     try:
         return draft_answer(req["body"], search, writer=writer, checker=checker)

@@ -1,0 +1,16 @@
+{
+  "infection": {
+    "law_name": "학교보건법",
+    "article": "제8조",
+    "why": "감염병 등교 중지(교육부 학교 감염병 매뉴얼 3차 개정판 근거)",
+    "when": {"topic_keys": ["health_hygiene"],
+             "words": ["독감", "수족구", "코로나", "감염", "전염", "등원중지", "등교중지", "등원 중지", "등교 중지"],
+             "disease_names_file": "school_infection_exclusion.json"}
+  },
+  "child_safety": {
+    "law_name": "아동복지법",
+    "article": "제17조",
+    "why": "아동에 대한 금지행위",
+    "when": {"risk_categories": ["child_safety"]}
+  }
+}
