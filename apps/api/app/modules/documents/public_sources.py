@@ -9,7 +9,6 @@ from pathlib import Path
 from sqlalchemy import text
 
 from app.core.schedule import KST
-from tools.public_apis.common import PublicApiError
 from tools.public_apis.law import get_law_article
 from tools.public_apis.weather import WeatherClient
 
@@ -49,15 +48,25 @@ def store_public(connection, org_id, doc_type, title, source_url, fetched_at, lo
                              {"doc": document})
 
 
-def law_evidence(connection, org_id, topic_key, client=None):
-    """주제표에 있는 주제의 법령 조문을 가져와 저장한다. 표에 없으면 None, 못 가져오면 {"unchecked": True}."""
+def fetch_law(topic_key, client=None):
+    """주제표에 있는 주제의 법령 조문을 가져온다. DB를 쓰지 않으니 트랜잭션 밖에서 불러야 한다.
+    표에 없으면 None, 못 가져오면 {"unchecked": True}."""
     topic = law_topics().get(topic_key)
     if topic is None:
         return None
     result = get_law_article(topic["law_name"], topic["article"], client=client)
     if not result["ok"]:
         return {"unchecked": True}
-    data = result["data"]
+    return {"topic": topic, "data": result["data"]}
+
+
+def law_evidence(connection, org_id, topic_key, client=None, fetched=None):
+    """법령 조문을 저장한다. fetched(fetch_law 결과)가 있으면 다시 부르지 않는다."""
+    if fetched is None:
+        fetched = fetch_law(topic_key, client)
+    if fetched is None or fetched.get("unchecked"):
+        return fetched
+    topic, data = fetched["topic"], fetched["data"]
     chunk_id = store_public(connection, org_id, "law", f"{topic['law_name']} {topic['article']}",
                             data["source_url"], data["fetched_at"], topic["article"], data["text"])
     return {"chunk_id": chunk_id, "quote": data["text"][:QUOTE_LENGTH], "score": 1.0}
@@ -78,20 +87,43 @@ def forecast_line(day, forecast):
     return f"{day.month}월 {day.day}일 예보: " + ", ".join(parts)
 
 
-def forecast_evidence(connection, org_id, day, client=None):
-    """그날 예보를 가져와 저장한다. 어떤 이유로든 못 가져오면 None."""
+def fetch_forecast(day, client=None):
+    """그날 예보를 가져온다. DB를 쓰지 않으니 트랜잭션 밖에서 불러야 한다. 못 가져오면 None."""
     try:
-        forecast = (client or WeatherClient()).get_daily_forecast(day=day)
+        return (client or WeatherClient()).get_daily_forecast(day=day)
+    except Exception:  # 예보 실패가 문의 답변을 막지 않는다
+        return None
+
+
+def forecast_evidence(connection, org_id, day, client=None, forecast=None):
+    """그날 예보를 저장한다. forecast(fetch_forecast 결과)가 있으면 다시 부르지 않는다. 못 하면 None."""
+    try:
+        forecast = forecast or fetch_forecast(day, client)
+        if not forecast:
+            return None
         line = forecast_line(day, forecast)
         title = f"기상청 단기예보 {day}"
         chunk_id = store_public(connection, org_id, "public_data", title, forecast["source_url"],
                                 forecast["fetched_at"], str(day), line, effective_to=day)
-    except PublicApiError:
-        return None
-    except Exception:  # 예보 실패가 문의 답변을 막지 않는다
+    except Exception:
         return None
     return {"chunk_id": chunk_id, "quote": line[:QUOTE_LENGTH], "score": 1.0,
             "document_title": title, "location": str(day), "content": line, "effective_from": None}
+
+
+def prefetch_public(request_type, body, topic_key, today, with_forecast=True):
+    """공공 API 호출(최대 10초)을 DB 트랜잭션·연결을 잡기 전에 끝내 둔다. 결과는 처리 안에서 저장만 한다."""
+    found = {}
+    if request_type == "complaint" and topic_key in law_topics():
+        try:
+            found["law"] = (topic_key, fetch_law(topic_key))
+        except Exception:
+            found["law"] = (topic_key, {"unchecked": True})
+    if request_type == "inquiry" and with_forecast:
+        day = event_day(body, today)
+        if day:
+            found["forecast"] = (day, fetch_forecast(day))
+    return found
 
 
 def event_day(question, today):
@@ -112,12 +144,14 @@ def event_day(question, today):
     return None
 
 
-def attach_law_evidence(connection, card, req):
+def attach_law_evidence(connection, card, req, prefetched=None):
     """민원 답변 카드에 법령 근거를 붙인다. 실패해도 카드 처리는 계속한다."""
     item = None
     try:
         with connection.begin_nested():  # 저장 오류가 바깥 트랜잭션을 망치지 않게 한다
-            item = law_evidence(connection, req["org_id"], req.get("topic_key"))
+            topic_key, fetched = (prefetched or {}).get("law", (None, None))
+            item = law_evidence(connection, req["org_id"], req.get("topic_key"),
+                                fetched=fetched if topic_key == req.get("topic_key") else None)
             if item and item.get("chunk_id"):
                 rank = connection.scalar(text("SELECT coalesce(max(rank),0)+1 FROM card_evidence WHERE card_id=:id"),
                                          {"id": card["id"]})

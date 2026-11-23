@@ -16,12 +16,20 @@ from tests.integration.db.test_answer_t33 import Writer, create_card, setup_grap
 LAW_TEXT = "학교의 장은 감염병에 걸렸거나 걸릴 우려가 있는 학생에게 등교 중지를 명할 수 있다."
 
 
+def held_connections():
+    """지금 풀에서 빌려 간 DB 연결 수. 공공 API를 부를 때 0이어야 한다(연결·잠금을 잡고 기다리지 않음)."""
+    from app.core.db import get_engine
+    return get_engine().pool.checkedout()
+
+
 class FakeLaw:
     fail = False
     calls = 0
+    held = []
 
     def get_article(self, law_name, article):
         FakeLaw.calls += 1
+        FakeLaw.held.append(held_connections())
         if FakeLaw.fail:
             raise upstream("법령 API 점검 중")
         return {"text": f"{law_name} {article}\n{LAW_TEXT}", "source_url": "https://www.law.go.kr/test",
@@ -29,7 +37,15 @@ class FakeLaw:
 
 
 class FakeWeather:
+    calls = 0
+    held = []
+    fail = False
+
     def get_daily_forecast(self, day=None, **_):
+        FakeWeather.calls += 1
+        FakeWeather.held.append(held_connections())
+        if FakeWeather.fail:
+            raise upstream("예보 API 점검 중")
         return {"date": day.isoformat(), "temp_min": 3.0, "temp_max": 11.0, "pop_max": 60,
                 "precipitation": [{"time": "1500", "type": "비"}],
                 "source_url": "https://apis.data.go.kr/test", "fetched_at": "2026-11-23T10:00:00+09:00"}
@@ -37,7 +53,7 @@ class FakeWeather:
 
 def complaint(connection, topic, monkeypatch):
     monkeypatch.setattr(agent_stub, "classify_request", lambda *_: {"topic_key": topic})
-    FakeLaw.fail, FakeLaw.calls = False, 0
+    FakeLaw.fail, FakeLaw.calls, FakeLaw.held = False, 0, []
     monkeypatch.setattr("tools.public_apis.law.LawClient", FakeLaw)
     return connection.scalar(text("""
         INSERT INTO requests (org_id,classroom_id,child_id,requester_id,client_request_id,type,body,title)
@@ -149,3 +165,70 @@ def test_forecast_failure_does_not_block_answer(db_client, seeded_db, monkeypatc
     setup_graph(seeded_db, monkeypatch, {"text": "x", "evidence": [], "no_evidence": True, "conflict": False})
     card, evidence, messages = create_card(db_client, "내일 현장체험 때 비 오나요?")  # 키가 없어 예보 실패
     assert card["draft"]["no_evidence"] and not evidence
+
+
+def inquiry(connection, body):
+    return connection.scalar(text("""
+        INSERT INTO requests (org_id,classroom_id,child_id,requester_id,client_request_id,type,body,title)
+        VALUES (:org,:class,:child,:parent,:key,'inquiry',:body,:body) RETURNING id
+    """), {"org": seed.ORG, "class": seed.CLASS_STAR, "child": seed.CHILD, "parent": seed.PARENT,
+           "key": str(uuid4()), "body": body})
+
+
+def test_law_api_called_without_holding_db_connection(db_client, seeded_db, monkeypatch):
+    """법령 호출(최대 10초)이 카드 저장 트랜잭션·연결·잠금 밖에서 일어나고, 한 번만 부른다."""
+    card, evidence, _ = run(seeded_db, "health_hygiene", monkeypatch)
+    assert evidence and FakeLaw.calls == 1 and FakeLaw.held == [0]
+
+
+def test_law_failure_is_fetched_once_outside_transaction(db_client, seeded_db, monkeypatch):
+    card, evidence, _ = run(seeded_db, "health_hygiene", monkeypatch, fail=True)
+    assert not evidence and card["draft"]["law_unchecked"] is True
+    assert FakeLaw.calls == 1 and FakeLaw.held == [0]  # 실패해도 트랜잭션 안에서 다시 부르지 않음
+
+
+def forecast_run(seeded_db, monkeypatch, fail):
+    setup_graph(seeded_db, monkeypatch, None)
+    monkeypatch.setattr(public_sources, "WeatherClient", FakeWeather)
+    FakeWeather.calls, FakeWeather.held, FakeWeather.fail = 0, [], fail
+    with seeded_db.begin() as connection:
+        request_id = inquiry(connection, "내일 현장체험 때 비 오나요?")
+    agent_stub.run_request(request_id)
+    return request_id
+
+
+def test_forecast_api_called_without_holding_db_connection(db_client, seeded_db, monkeypatch):
+    from agents.graphs import answer as graph
+    import json
+
+    class ForecastWriter(Writer):
+        def json(self, system, user):
+            if self.role == "CHECKER":
+                return {"passed": True, "issues": []}
+            chunk = next(c for c in json.loads(user)["chunks"] if "예보" in c["content"])
+            return {"text": "비 예보가 있어요.", "no_evidence": False, "conflict": False,
+                    "evidence": [{"chunk_id": chunk["chunk_id"], "quote": "강수확률 최대 60%"}]}
+
+    setup_graph(seeded_db, monkeypatch, None)
+    monkeypatch.setattr(graph, "OpenAIModel", ForecastWriter)
+    monkeypatch.setattr(public_sources, "WeatherClient", FakeWeather)
+    FakeWeather.calls, FakeWeather.held, FakeWeather.fail = 0, [], False
+    with seeded_db.begin() as connection:
+        request_id = inquiry(connection, "내일 현장체험 때 비 오나요?")
+    agent_stub.run_request(request_id)
+    assert FakeWeather.calls == 1 and FakeWeather.held == [0]
+    with seeded_db.begin() as connection:
+        quotes = connection.scalars(text("""
+            SELECT e.quote FROM card_evidence e JOIN cards c ON c.id=e.card_id WHERE c.request_id=:id
+        """), {"id": request_id}).all()
+    assert quotes == ["강수확률 최대 60%"]
+
+
+def test_forecast_failure_is_fetched_once_and_card_still_made(db_client, seeded_db, monkeypatch):
+    request_id = forecast_run(seeded_db, monkeypatch, fail=True)
+    assert FakeWeather.calls == 1 and FakeWeather.held == [0]
+    with seeded_db.begin() as connection:
+        draft = connection.scalar(text("SELECT draft FROM cards WHERE request_id=:id AND kind='reply_draft'"),
+                                  {"id": request_id})
+        stored = connection.scalar(text("SELECT count(*) FROM documents WHERE title LIKE '기상청 단기예보%'"))
+    assert draft["no_evidence"] is True and stored == 0
