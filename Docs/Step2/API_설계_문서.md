@@ -162,13 +162,13 @@ FastAPI가 기본으로 내는 422 응답은 예외 처리기에서 위 형식�
 | 37 | POST | `/api/v1/consultations/{booking_id}/delay` | 그 반 예약 담임 | 상담 예상 종료 기록 | 200 | FR-17 | 3.28 | 제안 |
 | 38 | GET | `/api/v1/classrooms/{classroom_id}/posts` | 그 반 아이 보호자 | 반 칸 글 목록 | 200 | FR-22·AC-06 | 3.29 | 제안 |
 | 39 | POST | `/api/v1/classrooms/{classroom_id}/posts` | 그 반 아이 보호자 | 반 칸 글·사진 올리기 | 201 | FR-22·AC-06 | 3.29 | 제안 |
-| 40 | GET | `/api/v1/organizations/{org_id}/posts` | 그 기관 보호자·교직원 | 원 칸 글 목록 | 200 | FR-22·AC-06 | 3.29 | 제안 |
-| 41 | POST | `/api/v1/organizations/{org_id}/posts` | 그 기관 보호자·교직원 | 원 칸 글·사진 올리기 | 201 | FR-22·AC-06 | 3.29 | 제안 |
+| 40 | GET | `/api/v1/organizations/{org_id}/posts` | 그 기관 교직원·연결된 아이가 있는 보호자 | 원 칸 글 목록 | 200 | FR-22·AC-06 | 3.29 | 제안 |
+| 41 | POST | `/api/v1/organizations/{org_id}/posts` | 그 기관 교직원·연결된 아이가 있는 보호자 | 원 칸 글·사진 올리기 | 201 | FR-22·AC-06 | 3.29 | 제안 |
 | 42 | GET | `/api/v1/posts/{post_id}` | 칸 권한 | 글 상세와 볼 수 있는 사진 | 200 | FR-22·AC-06 | 3.29 | 제안 |
 | 43 | DELETE | `/api/v1/posts/{post_id}` | 같은 기관 작성자(반 이동·퇴소 뒤에도) | 글·사진 파일 지우기 | 204 | FR-22·AC-06 | 3.29 | 제안 |
 | 44 | PATCH | `/api/v1/posts/{post_id}` | 그 기관 원장·원 칸 | 원 칸 글 숨기기 | 200 | FR-22·AC-06 | 3.29 | 제안 |
 | 45 | GET | `/api/v1/classrooms/{classroom_id}/albums` | 그 반 아이 보호자 | 반 칸 앨범 | 200 | FR-22·AC-06 | 3.29 | 제안 |
-| 46 | GET | `/api/v1/organizations/{org_id}/albums` | 그 기관 보호자·교직원 | 원 칸 앨범 | 200 | FR-22·AC-06 | 3.29 | 제안 |
+| 46 | GET | `/api/v1/organizations/{org_id}/albums` | 그 기관 교직원·연결된 아이가 있는 보호자 | 원 칸 앨범 | 200 | FR-22·AC-06 | 3.29 | 제안 |
 | 47 | GET | `/api/v1/photos/{photo_id}/file` | 칸·사진 권한 | 사진 파일 받기(인증 필요) | 200 | FR-22·AC-06 | 3.29 | 제안 |
 | 48 | GET | `/api/v1/children/{child_id}/photo-scope` | 그 아이 보호자 | 현재 사진 공개 범위 | 200 | FR-22·AC-06 | 3.29 | 제안 |
 | 49 | PATCH | `/api/v1/children/{child_id}/photo-scope` | 그 아이 보호자 | 사진 공개 범위 바꾸기 | 200 | FR-22·AC-06 | 3.29 | 제안 |
@@ -1439,7 +1439,7 @@ API 38~49는 2장 표의 경로를 쓰며 모두 `/api/v1` 아래에 있다. 사
 | ② 요청 헤더 | JWT 필수. 생성은 multipart/form-data, 숨김·범위 변경은 application/json이다 |
 | ③ 경로·쿼리 | 기관·반·글·사진·아이 ID는 UUID다. 목록은 기존 규칙대로 page=1·size=20(최대 100)·sort=-created_at이고, 오름차순은 created_at이다. 동률이면 같은 방향의 id로 정렬한다. 앨범의 child_id로는 보호자가 자기 아이만 고를 수 있다 |
 | ④ 요청 본문 | 글 생성은 body 1~2,000자(공백만으로는 안 됨), files 0~10장이다. child_ids는 파일 순서대로 아이 UUID 배열을 담은 JSON 문자열이다. 예: [["아이 UUID"],[]]. 기본 []는 모든 사진에 태그가 없다는 뜻이다. 숨김은 {"status":"hidden"}, 범위 변경은 {"photo_scope":"family"}(family·class·org 중 하나)다 |
-| ⑤ 검증·권한 | 칸 권한을 먼저 검사하고, 그다음 사진 공개 범위를 검사한다. class 칸은 그 반 아이의 보호자만 읽고 쓴다. 교직원이나 다른 반 보호자가 접근하면 목록·상세·앨범·파일 모두 403 FORBIDDEN을 돌려주고 permission_denied 이력을 남긴다. org 칸은 같은 기관의 보호자·교직원이 모두 읽고 쓴다. 학부모라도 지금 연결된 아이가 없으면 원 칸 피드·앨범 요청에도 403 FORBIDDEN을 돌려주고 permission_denied를 남긴다(다른 반 보호자와 같은 처리다). 다른 기관이나 없는 자원은 404다. 다른 아이의 범위를 조회·변경하거나, 남의 글을 삭제하거나, 원장이 아닌 사람이 숨기려 해도 403이다 |
+| ⑤ 검증·권한 | 칸 권한을 먼저 검사하고, 그다음 사진 공개 범위를 검사한다. class 칸은 그 반 아이의 보호자만 읽고 쓴다. 교직원이나 다른 반 보호자가 접근하면 목록·상세·앨범·파일 모두 403 FORBIDDEN을 돌려주고 permission_denied 이력을 남긴다. org 칸은 같은 기관의 교직원과, 지금 연결된 아이(`child_guardians`)가 하나라도 있는 보호자가 읽고 쓴다. 연결된 아이가 없는 보호자(퇴소 등)가 접근하면 목록·상세·앨범·파일·글 올리기 모두 403 FORBIDDEN을 돌려주고 permission_denied 이력을 남긴다. 다른 기관이나 없는 자원은 404다. 다른 아이의 범위를 조회·변경하거나, 남의 글을 삭제하거나, 원장이 아닌 사람이 숨기려 해도 403이다 |
 | ⑥ 정상 응답 | 글 생성 201과 상세/숨김 200은 {post: Post}, 목록·앨범은 {items,total,page,size}다. 범위 조회·변경 200은 {child_id,photo_scope}, 삭제는 204다. 파일은 검사한 형식의 바이트를 Cache-Control: private, no-store·X-Content-Type-Options: nosniff·Content-Disposition: inline과 함께 준다 |
 | ⑦ 오류 응답 | 공통 형식으로 401 UNAUTHENTICATED, 403 FORBIDDEN, 404 NOT_FOUND, 422 VALIDATION_FAILED를 준다. 태그한 아이가 다른 반/원 아이이거나, 태그가 중복되거나, 배열 수가 맞지 않아도 422다. 업로드 몸통이 51MiB를 넘으면 413 VALIDATION_FAILED다 |
 | ⑧ 저장·이력 | feed_posts·feed_photos·feed_photo_children, children.photo_scope(0010)를 쓴다. 생성·삭제·숨김·범위 변경은 events에 feed_post_created·feed_post_deleted·feed_post_hidden·photo_scope_changed로 남기며 trace_id·대상 ID를 함께 적는다. 새 알림은 만들지 않는다 |
