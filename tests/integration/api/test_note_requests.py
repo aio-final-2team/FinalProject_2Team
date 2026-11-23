@@ -32,14 +32,6 @@ def test_seed_requests_are_readable_and_scoped(client, teacher, parent, parent_o
             err(client.get(f"{BASE}/requests/{request_id}", headers=headers), 404, "NOT_FOUND")
 
 
-@pytest.mark.parametrize("request_type", ["medication", "pickup"])
-def test_note_link_does_not_enable_t46_registration(client, parent, request_type):
-    before = set(store.state().requests)
-    response = client.post(BASE + "/requests", headers=parent, json={
-        "client_request_id": "not-open-yet", "child_id": str(seed.CHILD), "type": request_type, "body": "요청"})
-    err(response, 422, "VALIDATION_FAILED")
-    assert set(store.state().requests) == before
-
 
 def test_child_requests_input_and_demo_omission(client, teacher):
     child = store.state().children[seed.CHILD]
@@ -54,7 +46,7 @@ def test_child_requests_input_and_demo_omission(client, teacher):
         if note["child_id"] == str(seed.CHILD):
             assert {line["source"]["request_id"] for line in lines} == {str(req["request_id"]) for req in requests}
             cough = next(line for line in lines if line["source"]["request_id"] == str(seed.REQUEST_COUGH))
-            assert (cough["key"], cough["value"]) == ("day", "기침해요")
+            assert (cough["key"], cough["value"]) == ("inquiry", "기침해요")
             assert missed == []
         elif note["child_id"] == str(seed.demo_id("503")):
             assert lines == [] and note["status"] == "needs_check"
@@ -62,10 +54,14 @@ def test_child_requests_input_and_demo_omission(client, teacher):
                                "kind": "request_missed", "problem": "보호자 요청을 초안에 반영해 주세요",
                                "sentence": None, "request_id": str(seed.REQUEST_PICKUP)}]
         else:
-            assert lines == missed == []
+            child_requests = mock_notes.requests_for_child(
+                store.state().children[UUID(note["child_id"])], store.now().date())
+            assert {line["source"]["request_id"] for line in lines} == {
+                str(req["request_id"]) for req in child_requests}
+            assert missed == []
 
 
-@pytest.mark.parametrize("request_type,key", [("inquiry", "day"), ("medication", "medication"), ("pickup", "pickup")])
+@pytest.mark.parametrize("request_type,key", [("inquiry", "inquiry"), ("medication", "medication"), ("pickup", "pickup")])
 def test_non_demo_requests_are_included_verbatim(client, teacher, request_type, key):
     req = store.Request(uuid4(), seed.ORG, seed.CLASS_STAR, seed.demo_id("503"), seed.PARENT_OTHER,
                         "new-note-request", request_type, "  보호자 원문\n그대로  ")

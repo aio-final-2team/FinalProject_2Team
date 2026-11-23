@@ -2,6 +2,7 @@
 
 import os
 import re
+from math import isfinite
 from dataclasses import dataclass
 from datetime import date, time
 
@@ -18,14 +19,22 @@ class Settings:
     mock_stream_delay_ms: int = 300
     work_hours: tuple[time, time] = (time(9), time(18))
     immediate_risk_categories: tuple[str, ...] = ("child_safety",)
+    media_dir: str = "var/media"
     data_backend: str = "mock"
     daily_note_writer: str = "app.modules.daily_notes.stub_writer:write"
+    daily_note_writer_timeout: float = 300.0
+    request_agent: str = "app.modules.requests.agent_stub:run_request"
+    run_in: str = "api"
+    celery_broker_url: str = "redis://redis:6379/0"
 
 
 def load_settings() -> Settings:
     backend = os.getenv("DATA_BACKEND", "mock")
     if backend not in ("mock", "db"):
         raise ValueError("DATA_BACKEND: mock 또는 db 필요")
+    run_in = os.getenv("RUN_IN", "api")
+    if run_in not in ("api", "worker"):
+        raise ValueError("RUN_IN: api 또는 worker 필요")
     jwt_secret = os.getenv("JWT_SECRET", _MOCK_JWT_SECRET)
     if backend == "db" and (jwt_secret in (_MOCK_JWT_SECRET, _EXAMPLE_JWT_SECRET)
                             or len(jwt_secret.encode("utf-8")) < 32):
@@ -40,6 +49,9 @@ def load_settings() -> Settings:
     categories = tuple(c.strip() for c in os.getenv("IMMEDIATE_RISK_CATEGORIES", "child_safety").split(","))
     if any(c not in ("child_safety", "staff_attack", "legal_external", "privacy_leak") for c in categories):
         raise ValueError("IMMEDIATE_RISK_CATEGORIES: 긴급 위험 종류 필요")
+    writer_timeout = float(os.getenv("DAILY_NOTE_WRITER_TIMEOUT", "300"))
+    if not isfinite(writer_timeout) or writer_timeout <= 0:
+        raise ValueError("DAILY_NOTE_WRITER_TIMEOUT: 0보다 큰 초 필요")
     return Settings(
         jwt_secret=jwt_secret,
         jwt_access_ttl_hours=int(os.getenv("JWT_ACCESS_TTL_HOURS", "12")),
@@ -47,8 +59,13 @@ def load_settings() -> Settings:
         holidays=tuple(date.fromisoformat(d.strip()) for d in os.getenv("HOLIDAYS", "").split(",") if d.strip()),
         mock_stream_delay_ms=max(0, int(os.getenv("MOCK_STREAM_DELAY_MS", "300"))),
         work_hours=work_hours, immediate_risk_categories=categories,
+        media_dir=os.getenv("MEDIA_DIR", "var/media"),
         data_backend=backend,
         daily_note_writer=os.getenv("DAILY_NOTE_WRITER", "app.modules.daily_notes.stub_writer:write"),
+        daily_note_writer_timeout=writer_timeout,
+        request_agent=os.getenv("REQUEST_AGENT", "app.modules.requests.agent_stub:run_request"),
+        run_in=run_in,
+        celery_broker_url=os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0"),
     )
 
 

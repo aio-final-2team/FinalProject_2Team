@@ -39,7 +39,7 @@ def write_child(payload, child, index):
             checks.append({"id": "sensitive", "item_key": "child", "kind": "sensitive",
                            "problem": "건강 관련 메모를 확인해 주세요", "sentence": child["memo"]})
     for request in child["requests"]:
-        key = "day" if request["type"] == "inquiry" else request["type"]
+        key = request["type"]
         # 모의 API의 고정 귀가 요청 하나만 누락 확인 시연에 쓴다.
         if str(request["request_id"]) == str(REQUEST_PICKUP):
             checks.append({"id": f"request-{request['request_id']}", "item_key": key,

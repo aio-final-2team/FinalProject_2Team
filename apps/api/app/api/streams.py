@@ -7,6 +7,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import StreamingResponse
 
 from app.core.config import settings
+from app.core.constants import CARE_REQUEST_TYPES
 from app.backend import store
 
 
@@ -14,6 +15,8 @@ def stream(req, card=None):
     async def events():
         sequence = [("stage", {"stage": step, "at": store.now()})
                     for step in ("classifying", "searching", "drafting", "checking")]
+        if req and req.type in CARE_REQUEST_TYPES:
+            sequence = []
         if card:
             text = card.draft.get("text", "")
             sequence += [("token", {"text": text[i:i+12]}) for i in range(0, len(text), 12)]

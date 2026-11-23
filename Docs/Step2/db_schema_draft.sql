@@ -1,6 +1,6 @@
--- 유치온 DB 스키마 초안 (T09) · 문서 버전 v0.8 (알림장 아이별 메모 11/20 반영)
+-- 유치온 DB 스키마 초안 (T09) · 문서 버전 v0.16 ([제안] T54 피드·앨범 11/21 반영)
 -- 설계서: Docs/Step2/DB_스키마_설계서.md
--- 이 파일은 최종 설계 모양이다. 실제 적용은 apps/api/migrations의 0001 → 0002로 한다.
+-- 이 파일은 최종 설계 모양이다. 실제 적용은 apps/api/migrations의 0001 → 0002 → 0003 → 0004 → 0005 → 0006 → 0007 → 0008 → 0009 → 0010으로 한다.
 -- 대상: PostgreSQL 16 + pgvector 0.8 (compose.yaml의 pgvector/pgvector:pg16). Supabase는 쓰지 않는다(설계서 5.1)
 -- 기관 경계: 기관에 속한 표끼리는 (id, org_id) 짝으로 참조해서 다른 원 행을 섞어 넣으면 DB가 거부한다
 
@@ -69,6 +69,8 @@ CREATE TABLE children (
     display_name  text NOT NULL,           -- 가상 이름만
     is_virtual    boolean NOT NULL DEFAULT true,
     created_at    timestamptz NOT NULL DEFAULT now(),
+    photo_scope   text NOT NULL DEFAULT 'family'
+                  CONSTRAINT children_photo_scope_check CHECK (photo_scope IN ('family', 'class', 'org')),
     FOREIGN KEY (classroom_id, org_id) REFERENCES classrooms(id, org_id),
     UNIQUE (id, org_id)
 );
@@ -339,18 +341,23 @@ CREATE TABLE events (
                                    'sent', 'booked', 'completed', 'tool_called',
                                    'tool_failed', 'permission_denied',
                                    'parent_confirmed', 'risk_reclassified', 'dismissed',
-                                   'answered_from_saved', 'slot_hold_expired')),
+                                   'answered_from_saved', 'slot_hold_expired',
+                                   'daily_note_drafted', 'daily_note_edited', 'daily_note_confirmed', 'daily_note_sent', 'agent_requeued',
+                                   'consultation_delay_reported', 'consultation_reminded',
+                                   'feed_post_created', 'feed_post_deleted', 'feed_post_hidden', 'photo_scope_changed')),
     -- 시스템이 한 일(보류 예정일 자동 재개, 상담 시간 잡아 두기 풀림)은 actor_type = 'system', actor_id = NULL
     from_status  text,
     to_status    text,
     detail       jsonb NOT NULL DEFAULT '{}',   -- 비밀값·불필요한 개인정보는 넣지 않음
     created_at   timestamptz NOT NULL DEFAULT now(),
+    daily_note_id uuid,                 -- 아이별 알림장 연결(v0.9)
     FOREIGN KEY (request_id, org_id) REFERENCES requests(id, org_id),
     FOREIGN KEY (card_id, org_id) REFERENCES cards(id, org_id),
     FOREIGN KEY (actor_id, org_id) REFERENCES users(id, org_id)
 );
 CREATE INDEX events_request_idx ON events (request_id, id);
 CREATE INDEX events_card_idx    ON events (card_id, id);
+CREATE INDEX events_daily_note_idx ON events (daily_note_id, id);
 CREATE INDEX events_org_time_idx ON events (org_id, created_at DESC);
 
 -- ─────────────────────────────────────────────
@@ -414,11 +421,18 @@ CREATE TABLE consultation_bookings (
                   CHECK (status IN ('confirmed', 'cancelled', 'done')),
     confirmed_by  uuid NOT NULL,
     created_at    timestamptz NOT NULL DEFAULT now(),
+    expected_end_at timestamptz,          -- 담임이 기록한 예상 종료. NULL이면 지연을 추측하지 않아요.
     FOREIGN KEY (request_id, org_id) REFERENCES requests(id, org_id),
     FOREIGN KEY (slot_id, org_id) REFERENCES consultation_slots(id, org_id),
     FOREIGN KEY (teacher_id, org_id) REFERENCES users(id, org_id),
     FOREIGN KEY (room_id, org_id) REFERENCES rooms(id, org_id),
     FOREIGN KEY (confirmed_by, org_id) REFERENCES users(id, org_id),
+    CONSTRAINT consultation_bookings_expected_end_check
+        CHECK (isfinite(expected_end_at) AND expected_end_at > upper(period)),
+    CONSTRAINT consultation_bookings_delay_bounds_check
+        CHECK (expected_end_at <= upper(period) + interval '3 hours'
+          AND (expected_end_at AT TIME ZONE 'Asia/Seoul')::date
+              = (lower(period) AT TIME ZONE 'Asia/Seoul')::date),
     EXCLUDE USING gist (room_id WITH =, period WITH &&) WHERE (status = 'confirmed'),
     EXCLUDE USING gist (teacher_id WITH =, period WITH &&) WHERE (status = 'confirmed')
 );
@@ -564,6 +578,8 @@ CREATE TABLE daily_notes (
     confirmed_at   timestamptz,
     sent_at        timestamptz,
     created_at     timestamptz NOT NULL DEFAULT now(),
+    ai_original    jsonb NOT NULL DEFAULT '{}',  -- 마지막 AI 초안. 교사 수정 때 유지, 미수정 초안 재생성 때 갱신(v0.9)
+    CONSTRAINT daily_notes_id_org_key UNIQUE (id, org_id),
     FOREIGN KEY (input_id, org_id, note_date) REFERENCES daily_note_inputs(id, org_id, note_date),
     FOREIGN KEY (child_id, org_id) REFERENCES children(id, org_id),
     FOREIGN KEY (confirmed_by, org_id) REFERENCES users(id, org_id),
@@ -571,6 +587,9 @@ CREATE TABLE daily_notes (
     CHECK (status <> 'sent' OR jsonb_array_length(open_checks) = 0),
     CHECK (status NOT IN ('ready', 'sent') OR (confirmed_by IS NOT NULL AND confirmed_at IS NOT NULL))
 );
+
+ALTER TABLE events ADD CONSTRAINT events_daily_note_org_fkey
+    FOREIGN KEY (daily_note_id, org_id) REFERENCES daily_notes(id, org_id);
 
 -- ─────────────────────────────────────────────
 -- 9. 서비스 안 알림
@@ -585,15 +604,17 @@ CREATE TABLE notifications (
     subject_type  text CHECK (subject_type IN ('daily_note')),  -- 요청·카드가 아닌 대상(알림장)
     subject_id    uuid,
     -- T04 9장 알림 시점 11가지 + 계약표 6장 기본값 2가지(⑥ 상담 시간 잡아 두기 풀림, ⑨ 보류 자동 재개)
-    -- 최종 기능(상담 지연 알림 T48 등)은 그때 값을 더함
+    -- T48 상담 예정 종료 10분 전·명시된 지연의 대체 시간 제안 2가지 추가(v0.13)
+    -- T46 투약·귀가 접수·교직원 확인 2가지 추가(v0.14, 팀 확인 전 초안)
     kind          text NOT NULL
                   CHECK (kind IN ('needs_info', 'new_card', 'urgent_complaint', 'uncertain_complaint',
                                   'director_report', 'on_hold', 'sent_or_booked', 'parent_confirmed',
                                   'completed', 'rejected', 'note_sent',
-                                  'slot_hold_expired', 'hold_resumed')),
+                                  'slot_hold_expired', 'hold_resumed',
+                                  'consultation_ending', 'consultation_delayed', 'care_requested', 'care_confirmed')),
     title         text NOT NULL,
     body          text,
-    dedupe_key    text NOT NULL UNIQUE,    -- 'event:<events.id>:<받는 사람 ID>'(설계서 2.6). 같은 알림 두 번 안 감
+    dedupe_key    text NOT NULL UNIQUE,    -- 요청 이력 또는 상담 예약·종류·수신자 키(설계서 2.6). 같은 알림 두 번 안 감
     status        text NOT NULL DEFAULT 'pending'
                   CHECK (status IN ('pending', 'sent', 'failed', 'held')),
     attempts      smallint NOT NULL DEFAULT 0 CHECK (attempts BETWEEN 0 AND 3),
@@ -602,6 +623,7 @@ CREATE TABLE notifications (
     created_at    timestamptz NOT NULL DEFAULT now(),
     sent_at       timestamptz,
     read_at       timestamptz,
+    next_attempt_at timestamptz NOT NULL DEFAULT now(), -- 노출 시각은 유지하고 다음 발송·재시도를 예약해요.
     FOREIGN KEY (recipient_id, org_id) REFERENCES users(id, org_id),
     FOREIGN KEY (request_id, org_id) REFERENCES requests(id, org_id),
     FOREIGN KEY (card_id, org_id) REFERENCES cards(id, org_id),
@@ -655,7 +677,10 @@ SELECT
     r.parent_confirmed_at,
     (r.risk_level = 'urgent') IS TRUE AS is_urgent,
     CASE
-        WHEN c.status IN ('rejected', 'done') OR r.status IN ('completed', 'rejected')
+        WHEN (c.status IN ('rejected', 'done') AND NOT (
+                r.type = 'complaint' AND r.status = 'sent_or_booked'
+                AND c.kind = 'reply_draft' AND c.status <> 'rejected') IS TRUE)
+          OR r.status IN ('completed', 'rejected')
             THEN 'done'
         WHEN c.status = 'on_hold' OR r.status = 'on_hold'
             THEN 'on_hold'
@@ -694,3 +719,44 @@ SELECT
                        AND i.closed_at >= now() - interval '30 days')                 AS completed_unconfirmed
 FROM staff_inbox i
 GROUP BY i.org_id;
+
+-- [제안] T54: 피드·앨범. 사진 바이트는 MEDIA_DIR 파일에만 보관해요.
+CREATE TABLE feed_posts (
+    id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    org_id        uuid NOT NULL REFERENCES organizations(id),
+    classroom_id  uuid,
+    lane          text NOT NULL CHECK (lane IN ('class', 'org')),
+    author_id     uuid NOT NULL,
+    body          text NOT NULL CHECK (char_length(body) BETWEEN 1 AND 2000 AND btrim(body) <> ''),
+    status        text NOT NULL DEFAULT 'published' CHECK (status IN ('published', 'hidden')),
+    created_at    timestamptz NOT NULL DEFAULT now(),
+    deleted_at    timestamptz,
+    CHECK ((lane='class' AND classroom_id IS NOT NULL) OR (lane='org' AND classroom_id IS NULL)),
+    FOREIGN KEY (classroom_id, org_id) REFERENCES classrooms(id, org_id),
+    FOREIGN KEY (author_id, org_id) REFERENCES users(id, org_id),
+    UNIQUE (id, org_id)
+);
+CREATE INDEX feed_posts_lane_time_idx ON feed_posts (org_id, lane, classroom_id, created_at DESC, id DESC)
+    WHERE deleted_at IS NULL AND status='published';
+CREATE TABLE feed_photos (
+    id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    org_id        uuid NOT NULL,
+    post_id       uuid NOT NULL,
+    storage_path  text NOT NULL UNIQUE,
+    media_type    text NOT NULL CHECK (media_type IN ('image/jpeg', 'image/png', 'image/webp')),
+    size_bytes    integer NOT NULL CHECK (size_bytes BETWEEN 1 AND 5242880),
+    sha256        text NOT NULL CHECK (sha256 ~ '^[0-9a-f]{64}$'),
+    created_at    timestamptz NOT NULL DEFAULT now(),
+    FOREIGN KEY (post_id, org_id) REFERENCES feed_posts(id, org_id),
+    UNIQUE (id, org_id)
+);
+CREATE INDEX feed_photos_post_idx ON feed_photos (post_id, created_at, id);
+CREATE TABLE feed_photo_children (
+    org_id    uuid NOT NULL,
+    photo_id  uuid NOT NULL,
+    child_id  uuid NOT NULL,
+    PRIMARY KEY (photo_id, child_id),
+    FOREIGN KEY (photo_id, org_id) REFERENCES feed_photos(id, org_id),
+    FOREIGN KEY (child_id, org_id) REFERENCES children(id, org_id)
+);
+CREATE INDEX feed_photo_children_child_idx ON feed_photo_children (child_id, photo_id);

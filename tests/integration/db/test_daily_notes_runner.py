@@ -3,9 +3,13 @@
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import UTC, datetime, time, timedelta
+from uuid import UUID
+import json
 from threading import Event
 
 import pytest
+from fastapi import BackgroundTasks
+from fastapi.testclient import TestClient
 from sqlalchemy import text
 
 from app.core.auth import issue_token
@@ -45,6 +49,103 @@ def set_writer(monkeypatch, writer):
                                                   daily_note_writer="app.modules.daily_notes.stub_writer:test_write"))
 
 
+def test_startup_recovers_running_and_queued_without_replaying_finished(seeded_db, monkeypatch):
+    from app import backend, main
+    from app.api.schemas.actions import NoteDraftIn
+    from app.modules.daily_notes import notes as db_notes
+
+    monkeypatch.setattr(main, "settings", replace(main.settings, data_backend="db"))
+    monkeypatch.setattr(backend, "users", users)
+    monkeypatch.setattr(backend, "notes", db_notes)
+    user = users.get_user(seed.TEACHER)
+    ids = {}
+    for index, status in enumerate(("running", "queued", "succeeded", "failed")):
+        body = NoteDraftIn.model_validate({**batch(), "note_date": f"2026-11-{16 + index}",
+                                          "activities": "[TEST] 복구", "supplies": "수건"})
+        result, _ = db_notes.draft(user, body, BackgroundTasks())
+        ids[status] = result["input_id"]
+        with seeded_db.begin() as connection:
+            connection.execute(text("UPDATE daily_note_inputs SET draft_status=:status WHERE id=:id"),
+                               {"status": status, "id": result["input_id"]})
+    started, release = Event(), Event()
+    captured = []
+
+    def writer(payload):
+        captured.append(payload["input_id"])
+        started.set()
+        assert release.wait(15)
+        return stub_writer.write(payload)
+
+    set_writer(monkeypatch, writer)
+    with TestClient(main.app) as client:
+        try:
+            assert started.wait(15)
+            # writer가 끝나지 않아도 앱은 요청을 받는다. 두 번째 복구는 아직 queued다.
+            assert client.get("/health").status_code == 200
+            with seeded_db.connect() as connection:
+                states = dict(connection.execute(text("SELECT id, draft_status FROM daily_note_inputs")).all())
+            assert sorted(states[ids[s]] for s in ("running", "queued")) == ["queued", "running"]
+        finally:
+            release.set()
+    assert set(captured) == {str(ids["running"]), str(ids["queued"])} and len(captured) == 2
+    with seeded_db.connect() as connection:
+        states = dict(connection.execute(text("SELECT id, draft_status FROM daily_note_inputs")).all())
+        assert all(states[ids[s]] == "succeeded" for s in ("running", "queued", "succeeded"))
+        assert states[ids["failed"]] == "failed"
+        assert connection.scalar(text("SELECT count(*) FROM daily_notes")) == 40
+        assert connection.scalar(text("SELECT count(*) FROM cards")) == 4
+    with TestClient(main.app):
+        pass
+    assert len(captured) == 2
+
+
+def test_writer_timeout_fails_job_and_discards_late_result(db_client, teacher, seeded_db, monkeypatch):
+    release, finished = Event(), Event()
+
+    def writer(payload):
+        assert release.wait(15)
+        result = stub_writer.write(payload)
+        finished.set()
+        return result
+
+    set_writer(monkeypatch, writer)
+    monkeypatch.setattr(runner, "settings", replace(runner.settings, daily_note_writer_timeout=0.05))
+    try:
+        response = draft(db_client, teacher)
+        status = db_client.get(f"{BASE}/daily-notes/drafts/{response.json()['input_id']}", headers=teacher).json()
+        assert status["draft_status"] == "failed" and status["error"]["code"] == "UPSTREAM_UNAVAILABLE"
+        assert not finished.is_set()
+        blocked = db_client.post(BASE + "/daily-notes/send", headers=teacher, json=batch())
+        assert blocked.status_code == 409 and blocked.json()["error"]["details"]["blocked"] == []
+    finally:
+        release.set()
+        assert finished.wait(15)
+    assert notes(db_client, teacher) == []
+    with seeded_db.connect() as connection:
+        assert connection.scalar(text("SELECT draft_status FROM daily_note_inputs")) == "failed"
+        assert connection.scalar(text("SELECT count(*) FROM daily_notes")) == 0
+
+
+def test_writer_can_round_trip_json_input_and_output(db_client, teacher, monkeypatch):
+    def writer(payload):
+        decoded = json.loads(json.dumps(payload))
+        assert decoded == payload
+        assert isinstance(decoded["input_id"], str) and decoded["note_date"] == batch()["note_date"]
+        assert decoded["classroom"]["id"] == str(seed.CLASS_STAR)
+        child = next(c for c in decoded["children"] if c["child_id"] == str(seed.CHILD))
+        assert child["memo"] == "[TEST] 아이 메모"
+        assert child["requests"] == [{"request_id": str(seed.REQUEST_COUGH), "type": "inquiry", "text": "기침해요"}]
+        assert decoded["menu"]["document_id"] == str(seed.MENU)
+        return json.loads(json.dumps(stub_writer.write(decoded)))
+
+    set_writer(monkeypatch, writer)
+    response = draft(db_client, teacher, child_memos=[{"child_id": str(seed.CHILD), "memo": "[TEST] 아이 메모"}])
+    status = db_client.get(f"{BASE}/daily-notes/drafts/{response.json()['input_id']}", headers=teacher).json()
+    assert status["draft_status"] == "succeeded" and len(notes(db_client, teacher)) == 20
+    child = next(n for n in notes(db_client, teacher) if n["child_id"] == str(seed.CHILD))
+    assert any(l["key"] == "child" and l["value"] == "[TEST] 아이 메모" for l in child["content"]["items"])
+
+
 def test_background_claims_running_and_deduplicates_concurrent_input(db_client, teacher, seeded_db, monkeypatch):
     started, release = Event(), Event()
     captured = []
@@ -78,13 +179,13 @@ def test_background_claims_running_and_deduplicates_concurrent_input(db_client, 
     assert len(captured) == 1 and len(notes(db_client, teacher)) == 20
     payload = captured[0]
     assert set(payload) == {"input_id", "note_date", "classroom", "activities", "supplies", "children", "menu"}
-    assert payload["classroom"] == {"id": seed.CLASS_STAR, "name": "만 4세 별빛반"}
+    assert payload["classroom"] == {"id": str(seed.CLASS_STAR), "name": "만 4세 별빛반"}
     assert set(payload["children"][0]) == {"child_id", "display_name", "memo", "requests"}
-    assert payload["menu"]["document_id"] == seed.MENU
+    assert payload["menu"]["document_id"] == str(seed.MENU)
     with seeded_db.connect() as connection:
         assert connection.scalar(text("SELECT count(*) FROM daily_note_inputs")) == 1
         assert connection.scalar(text("SELECT count(*) FROM cards WHERE kind='daily_note'")) == 1
-        assert connection.scalar(text("SELECT count(*) FROM events")) == 0
+        assert connection.scalar(text("SELECT count(*) FROM events WHERE action='daily_note_drafted'")) == 20
 
 
 @pytest.mark.parametrize("failure", ["child_exception", "missing", "duplicate", "invalid_content", "foreign_source"])
@@ -92,7 +193,7 @@ def test_one_child_failure_keeps_other_children_and_blocks_batch(db_client, teac
     original = stub_writer.write_child
 
     def write_child(payload, child, index):
-        if child["child_id"] == seed.CHILD:
+        if child["child_id"] == str(seed.CHILD):
             raise RuntimeError("[TEST] 아이 하나 실패")
         return original(payload, child, index)
 
@@ -101,7 +202,7 @@ def test_one_child_failure_keeps_other_children_and_blocks_batch(db_client, teac
     else:
         def writer(payload):
             rows = stub_writer.write(payload)
-            target = next(row for row in rows if row["child_id"] == seed.CHILD)
+            target = next(row for row in rows if row["child_id"] == str(seed.CHILD))
             if failure == "missing":
                 rows.remove(target)
             elif failure == "duplicate":
@@ -121,6 +222,8 @@ def test_one_child_failure_keeps_other_children_and_blocks_batch(db_client, teac
     assert len(listed) == 20
     failed = next(n for n in listed if n["child_id"] == str(seed.CHILD))
     assert [c["kind"] for c in failed["open_checks"]] == ["draft_failed"]
+    assert UUID(failed["open_checks"][0]["id"]).version == 4
+    assert failed["open_checks"][0]["request_id"] is None
     assert failed["status"] == "needs_check" and all(l["key"] != "child" for l in failed["content"]["items"])
     success = next(n for n in listed if n["child_id"] == str(seed.demo_id("5401")))
     assert any(l["key"] == "child" and l["value"] == "성공 메모" for l in success["content"]["items"])
@@ -253,5 +356,5 @@ def test_notification_uses_schedule_and_does_not_delay_parent_at_night(db_client
     assert db_client.post(BASE + "/daily-notes/send", headers=teacher, json=batch()).json()["sent_count"] == 20
     with seeded_db.connect() as connection:
         after = connection.scalars(text("SELECT deliver_after FROM notifications")).all()
-    assert calls == ["parent", "parent"] and len(after) == 2
+    assert calls == ["parent"] * 18 and len(after) == 18
     assert all(at == Night.now() for at in after)

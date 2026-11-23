@@ -106,15 +106,17 @@ def test_concurrent_decisions_only_one_succeeds(client, parent, teacher):
 
 def test_slot_collision_is_atomic_and_nonoverlap_is_allowed(client, parent, teacher):
     pairs = [create(client, parent, "consultation", "시간 상담") for _ in range(2)]
-    for rid, cid in pairs:
+    for index, (rid, cid) in enumerate(pairs):
         slots = client.get(f"{BASE}/requests/{rid}", headers=parent).json()["consultation"]["slots"]
-        assert client.post(f"{BASE}/requests/{rid}/slot-choices", headers=parent, json={"slot_ids": [s["id"] for s in slots]}).status_code == 200
+        assert client.post(f"{BASE}/requests/{rid}/slot-choices", headers=parent, json={"slot_ids": [s["id"] for s in slots[index:index+1]]}).status_code == 200
     first = store.slots_of_request(UUID(pairs[0][0]))
     second = store.slots_of_request(UUID(pairs[1][0]))
+    second[1].period = dict(first[0].period)  # 이전 중복 체크를 가정해 최종 제약도 확인해요.
     assert client.post(f"{BASE}/cards/{pairs[0][1]}/bookings", headers=teacher, json={"version": 1, "slot_id": first[0].id}).status_code == 200
-    err(client.post(f"{BASE}/cards/{pairs[1][1]}/bookings", headers=teacher, json={"version": 1, "slot_id": second[0].id}), 409, "SLOT_TAKEN")
+    err(client.post(f"{BASE}/cards/{pairs[1][1]}/bookings", headers=teacher, json={"version": 1, "slot_id": second[1].id}), 409, "SLOT_TAKEN")
     assert store.state().cards[UUID(pairs[1][1])].version == 1
-    assert second[0].status == "chosen_by_parent"
+    assert second[1].status == "chosen_by_parent"
+    second[1].period = dict(first[1].period)
     assert client.post(f"{BASE}/cards/{pairs[1][1]}/bookings", headers=teacher, json={"version": 1, "slot_id": second[1].id}).status_code == 200
 
 
@@ -333,8 +335,9 @@ def test_foreign_scope_paths_and_required_parameters(client, parent, parent_othe
     err(client.post(f"{BASE}/requests/{seed.REQUEST_CONSULT}/confirm", headers=parent), 409, "INVALID_TRANSITION")
 
 
-def test_all_notification_kinds_and_trace_audit(client, parent, teacher):
+def test_request_notification_kinds_and_trace_audit(client, parent, teacher):
     from app.mock.notifications import TITLES
+    from app.core.consultation_alerts import KINDS
     store.reset()
     rid, cid = create(client, parent)
     until = (store.now().date() + timedelta(days=1)).isoformat()
@@ -361,7 +364,16 @@ def test_all_notification_kinds_and_trace_audit(client, parent, teacher):
                             json={"confirm": True, "resolved_checks": [c["id"] for c in note.open_checks]}).status_code == 200
     assert client.post(BASE + "/daily-notes/send", headers=teacher,
                        json={k: body[k] for k in ("classroom_id", "note_date")}).status_code == 200
-    assert {n.kind for n in store.state().notifications.values()} == set(TITLES)
+    care = client.post(BASE + "/requests", headers=parent, json={
+        "client_request_id": "care-notification-test", "type": "medication", "child_id": str(seed.CHILD),
+        "body": "[TEST] 보호자 원문"})
+    assert care.status_code == 202, care.text
+    care_id = care.json()["request"]["id"]
+    for action in ("confirm", "complete"):
+        assert client.post(f"{BASE}/requests/{care_id}/care-decisions", headers=teacher,
+                           json={"decision": action, "version": 1}).status_code == 200
+    # 시간·지연 기록으로 만드는 두 종류는 test_consultation_reminders에서 양쪽 저장소로 검사해요.
+    assert {n.kind for n in store.state().notifications.values()} == set(TITLES) - set(KINDS)
 
 
 def test_permission_denial_is_audited_without_parent_leak(client, parent_other, parent, teacher):

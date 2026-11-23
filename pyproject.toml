@@ -15,3 +15,22 @@ include = ["agents*", "app*"]
 [tool.pytest.ini_options]
 pythonpath = ["apps/api"]
 testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
+
+# 기존 지적만 파일·규칙별 예외로 둬요. 일괄 포맷·자동 수정은 하지 않아요.
+[tool.ruff.lint.per-file-ignores]
+"apps/api/app/api/routes/cards.py" = ["F401"]
+"apps/api/app/backend.py" = ["F401"]
+"apps/api/app/mock/notifications.py" = ["F401"]
+"tests/integration/api/test_flows.py" = ["F401"]
+"tests/integration/api/test_resources.py" = ["F401"]
+"apps/api/app/core/request_id.py" = ["E402"]
+"tests/integration/api/test_daily_notes.py" = ["E741"]
+"tests/integration/db/test_daily_notes_runner.py" = ["E741"]
+"tools/eval_daily_note.py" = ["E731"]

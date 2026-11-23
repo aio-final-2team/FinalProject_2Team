@@ -7,13 +7,13 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from app.api.schemas.common import Page, Period
-from app.api.schemas.requests import MessageOut, RequestStatus, RequestType, RequestReadType, SourceOut, BookingOut, RequestView
-from app.api.schemas.actions import CardKind, NoteContent
+from app.api.schemas.requests import MessageOut, RequestStatus, RequestType, SourceOut, BookingOut, RequestView
+from app.api.schemas.actions import CardKind, NoteLine
 
 
 class RequestItem(BaseModel):
     id: UUID
-    type: RequestReadType
+    type: RequestType
     title: str | None
     status: RequestStatus
     status_label: str
@@ -24,6 +24,16 @@ class RequestItem(BaseModel):
 
 class RequestList(Page):
     items: list[RequestItem]
+
+
+class CareRequestItem(RequestItem):
+    version: int
+    unregistered_pickup: bool
+    missing_fields: list[str]
+
+
+class CareRequestList(Page):
+    items: list[CareRequestItem]
 
 
 class MessageResponse(BaseModel):
@@ -87,7 +97,7 @@ class CardItem(BaseModel):
     status_label: str
     version: int
     request_id: UUID | None
-    request_type: RequestType | None
+    request_type: Literal["inquiry", "consultation", "complaint"] | None
     title: str
     urgency: str | None
     risk_level: str | None
@@ -96,7 +106,7 @@ class CardItem(BaseModel):
     repeat_count: int | None
     check: CheckSummary | None
     parent_choice_count: int | None
-    classroom: ClassroomView
+    classroom: ClassroomView | None
     assignee: Person | None
     due_at: datetime | None
     is_delayed: bool
@@ -229,7 +239,7 @@ class NotificationView(BaseModel):
     id: int
     kind: Literal["needs_info", "new_card", "urgent_complaint", "uncertain_complaint", "director_report",
                   "on_hold", "sent_or_booked", "parent_confirmed", "completed", "rejected", "note_sent",
-                  "slot_hold_expired", "hold_resumed"]
+                  "slot_hold_expired", "hold_resumed", "consultation_ending", "consultation_delayed", "care_requested", "care_confirmed"]
     title: str
     body: str | None
     request_id: UUID | None
@@ -258,6 +268,10 @@ class DraftResponse(BaseModel):
     error: JobError | None = None
 
 
+class RegenerateResponse(DraftResponse):
+    kept_edited: int = Field(ge=0)
+
+
 class OpenCheck(BaseModel):
     id: str
     item_key: str
@@ -267,12 +281,20 @@ class OpenCheck(BaseModel):
     request_id: UUID | None = None
 
 
+class NoteLineOut(NoteLine):
+    request_status: RequestStatus | None = Field(default=None, description="투약·귀가 출처 요청의 현재 상태(읽기 전용)")
+
+
+class NoteContentOut(BaseModel):
+    items: list[NoteLineOut]
+
+
 class NoteView(BaseModel):
     id: UUID
     child_id: UUID
     note_date: date
     status: Literal["draft", "needs_check", "ready", "sent"]
-    content: NoteContent
+    content: NoteContentOut
     open_checks: list[OpenCheck]
     confirmed_at: datetime | None
     sent_at: datetime | None
@@ -284,6 +306,22 @@ class NoteList(Page):
 
 class NoteResponse(BaseModel):
     note: NoteView
+
+
+MemoryKind = Literal["rejection_reason", "preference", "tone"]
+
+
+class MemoryView(BaseModel):
+    id: int
+    kind: MemoryKind
+    reason_code: str | None
+    content: str
+    structured: dict
+    created_at: datetime
+
+
+class MemoryList(Page):
+    items: list[MemoryView]
 
 
 class SendResponse(BaseModel):
@@ -312,3 +350,15 @@ class DocumentResponse(BaseModel):
 
 class DocumentList(Page):
     items: list[DocumentView]
+
+
+class DelayedBooking(BaseModel):
+    id: UUID
+    period: Period
+    status: Literal["confirmed"]
+    expected_end_at: datetime
+
+
+class ConsultationDelayResponse(BaseModel):
+    booking: DelayedBooking
+    affected_bookings: int = Field(ge=0)

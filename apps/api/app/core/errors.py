@@ -16,13 +16,15 @@ log = logging.getLogger("yuchion.api")
 
 DEFAULT_MESSAGES = {
     "UNAUTHENTICATED": "다시 로그인해 주세요.",
+    "FORBIDDEN": "이 칸을 이용할 권한이 없어요.",
     "FORBIDDEN_ROLE": "이 일을 할 권한이 없어요.",
     "NOT_FOUND": "찾는 자료가 없어요.",
     "CARD_VERSION_CONFLICT": "다른 사람이 먼저 카드를 처리했어요. 새로고침해 주세요.",
     "ALREADY_DECIDED": "이미 결정한 카드예요.",
     "INVALID_TRANSITION": "지금 단계에서는 할 수 없는 일이에요.",
     "REASON_REQUIRED": "학부모 확인 전에 끝내려면 마무리한 방법을 적어 주세요.",
-    "SLOT_TAKEN": "그 시간은 이미 다른 상담이 확정됐어요.",
+    "SLOT_TAKEN": "그 시간은 다른 상담이 확정됐거나 다른 보호자가 고르고 있어요.",
+    "SLOT_PAST": "이미 시작한 시간이에요. 다른 시간을 골라 주세요.",
     "SLOT_NOT_CHOSEN": "학부모가 고르지 않은 시간이에요.",
     "NOTE_BATCH_BLOCKED": "확인이 안 끝난 알림장이 있어요.",
     "VALIDATION_FAILED": "입력한 값을 다시 확인해 주세요.",

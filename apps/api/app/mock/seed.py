@@ -1,6 +1,7 @@
 """모의 API의 데모 데이터(계약표 부록 A, API 설계 문서 부록 A).
 
 출처 PR #262 roster_c4.json(가상): 별빛반 18명의 이름과 순서를 옮겼다.
+출처 PR #269 guardian_requests.json(가상): 요청 20개와 해당 아이의 보호자를 옮겼다.
 
 고정 UUID 규칙: 00000000-0000-4000-8000-0000000XXXXX
   0001 기관 · 01xx 반 · 02xx 교사 · 03xx 원장 · 04xx 학부모 · 05xx 아이 · 06xx 상담실
@@ -8,6 +9,7 @@
 로그인 비밀번호는 모의 API 전용 값이다. 실제 계정·원아 정보는 넣지 않는다.
 """
 
+from datetime import datetime
 from uuid import UUID
 
 
@@ -92,8 +94,102 @@ DEMO_NOTE_REQUESTS = [
      "type": "pickup", "body": "오늘 할머니가 데리러 가요"},
 ]
 
+# 출처 PR #269 guardian_requests.json(가상), develop 8d77964. 요청 원문·접수 시각을 유지해요.
+GUARDIAN_REQUEST_DATA = [
+    (1, 12, "mother", "medication",
+     "점심 먹고 약 먹여 주세요. 투약의뢰서 가방에 넣었어요.", "2026-11-18T08:20:00+09:00"),
+    (2, 12, "mother", "medication",
+     "약은 오늘까지만 먹여 주세요. 감사합니다.", "2026-11-20T08:15:00+09:00"),
+    (3, 6, "father", "medication",
+     "어제 다친 무릎에 연고 한 번 발라 주세요. 가방 앞주머니에 있어요.", "2026-11-17T08:30:00+09:00"),
+    (4, 15, "mother", "medication",
+     "콧물약 점심 먹고 먹여 주세요.", "2026-11-18T08:40:00+09:00"),
+    (5, 18, "father", "medication",
+     "점심 먹고 시럽 2.5ml 먹여 주세요. 투약의뢰서 냈어요.", "2026-11-19T08:10:00+09:00"),
+    (6, 1, "mother", "pickup",
+     "오늘은 할머니가 4시에 데리러 가요.", "2026-11-16T08:25:00+09:00"),
+    (7, 5, "mother", "pickup",
+     "병원 예약이 있어서 2시에 일찍 데리러 갈게요.", "2026-11-17T08:05:00+09:00"),
+    (8, 9, "father", "pickup",
+     "오늘은 아빠 대신 이모가 데리러 가요. 이모 연락처는 앱에 적어 뒀어요.", "2026-11-18T08:35:00+09:00"),
+    (9, 11, "mother", "pickup",
+     "오늘은 차량 말고 엄마가 직접 데리러 가요.", "2026-11-19T08:20:00+09:00"),
+    (10, 16, "mother", "pickup",
+     "오늘 할머니가 5시에 데리러 가요.", "2026-11-20T08:30:00+09:00"),
+    (11, 14, "mother", "pickup",
+     "내일은 할머니가 데리러 가요.", "2026-11-19T08:10:00+09:00"),
+    (12, 4, "father", "pickup",
+     "오늘 3시에 일찍 데리러 가요.", "2026-11-18T08:15:00+09:00"),
+    (13, 4, "father", "inquiry",
+     "콧물이 조금 나요. 바깥놀이 때 잘 봐 주세요.", "2026-11-18T08:16:00+09:00"),
+    (14, 7, "mother", "inquiry",
+     "요즘 기침을 조금 해요. 낮잠 때 잘 봐 주세요.", "2026-11-16T08:40:00+09:00"),
+    (15, 2, "mother", "inquiry",
+     "어제 밥 잘 먹었나요?", "2026-11-17T08:30:00+09:00"),
+    (16, 15, "father", "inquiry",
+     "내일 준비물 있나요?", "2026-11-19T08:45:00+09:00"),
+    (17, 11, "mother", "inquiry",
+     "아침을 못 먹고 갔어요. 점심은 많이 먹었는지 알려 주세요.", "2026-11-18T08:05:00+09:00"),
+    (18, 13, "mother", "inquiry",
+     "지아랑 다퉜다고 들었는데 괜찮았나요?", "2026-11-17T08:50:00+09:00"),
+    (19, 8, "mother", "inquiry",
+     "이제 열은 안 나죠? 오늘 점심도 잘 먹었는지 궁금해요.", "2026-11-20T08:20:00+09:00"),
+    (20, 10, "father", "inquiry",
+     "요즘 친구랑 잘 지내나요?", "2026-11-19T08:35:00+09:00"),
+]
+
+# 한 아이당 44NN 계정 하나예요. C4-15는 GR-04(mother)·GR-16(father)가 달라
+# 먼저 나온 mother를 유지해요. 두 요청의 본문·시각은 모두 그대로 보존해요.
+GUARDIAN_RELATIONS = {}
+for request_number, child_number, relation, request_type, body, created_at in GUARDIAN_REQUEST_DATA:
+    child_id, guardian_id = demo_id(f"54{child_number:02d}"), demo_id(f"44{child_number:02d}")
+    child = next(child for child in CHILDREN if child["id"] == child_id)
+    if guardian_id not in child["guardian_ids"]:
+        child["guardian_ids"].append(guardian_id)
+        USERS.append({"id": guardian_id, "role": "parent", "login_id": f"parent-c4-{child_number:02d}",
+                      "display_name": f"{child['display_name']} 보호자"})
+        GUARDIAN_RELATIONS[(child_id, guardian_id)] = relation
+    DEMO_NOTE_REQUESTS.append({
+        "id": demo_id(f"72{request_number:02d}"), "child_id": child_id, "requester_id": guardian_id,
+        "type": request_type, "body": body, "created_at": datetime.fromisoformat(created_at),
+    })
+
+
 DEMO_DOCUMENTS = [
     (MENU, "가상 식단표", "menu", "active", "점심: 카레라이스, 채소와 과일"),
     (NOTICE, "가상 행사 안내", "notice", "active", "행사는 별빛반과 햇님반이 함께 참여해요."),
     (OLD_NOTICE, "가상 행사 안내 옛 판", "notice", "superseded", "지난 행사 안내입니다."),
 ]
+
+# [제안] T54 가상 사진. 반·원 글 두 개씩, 단색 PNG 다섯 장이에요.
+PHOTO_SCOPES = {CHILD: "family", demo_id("503"): "class", demo_id("5401"): "org"}
+FEED_POSTS = [
+    {"id": demo_id("e01"), "lane": "class", "classroom_id": CLASS_STAR, "author_id": PARENT,
+     "body": "함께 블록 놀이를 했어요."},
+    {"id": demo_id("e02"), "lane": "class", "classroom_id": CLASS_STAR, "author_id": PARENT_OTHER,
+     "body": "가상 소풍 사진을 나눠요."},
+    {"id": demo_id("e03"), "lane": "org", "classroom_id": None, "author_id": TEACHER,
+     "body": "우리 원 가상 행사예요."},
+    {"id": demo_id("e04"), "lane": "org", "classroom_id": None, "author_id": PARENT_OTHER,
+     "body": "가상 전시를 구경해요."},
+]
+FEED_PHOTOS = [
+    (demo_id("f01"), demo_id("e01"), [demo_id("503")]),
+    (demo_id("f02"), demo_id("e02"), [CHILD]),
+    (demo_id("f03"), demo_id("e03"), [demo_id("5401")]),
+    (demo_id("f04"), demo_id("e03"), [CHILD, demo_id("503")]),
+    (demo_id("f05"), demo_id("e04"), []),
+]
+FEED_CREATED_AT = datetime.fromisoformat("2026-11-21T09:00:00+09:00")
+
+
+def feed_png():
+    """실제 인물 대신 코드로 만든 2×2 단색 PNG예요."""
+    import struct
+    import zlib
+
+    def chunk(kind, data):
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 2, 2, 8, 2, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress((b"\x00" + b"\x70\xb0\x90" * 2) * 2)) + chunk(b"IEND", b""))

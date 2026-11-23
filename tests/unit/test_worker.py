@@ -1,0 +1,129 @@
+"""기본 API 실행·워커 설정과 큐 장애 경계를 확인해요. 외부 서비스는 부르지 않아요."""
+
+import json
+import os
+from dataclasses import replace
+from pathlib import Path
+import subprocess
+from uuid import uuid4
+
+import anyio
+from fastapi import BackgroundTasks
+import pytest
+
+from app import worker
+from app.core import config, jobs
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+@pytest.mark.parametrize("value,valid", [(None, True), ("api", True), ("worker", True), ("typo", False)])
+def test_run_in_config(monkeypatch, value, valid):
+    monkeypatch.delenv("RUN_IN", raising=False)
+    if value is not None:
+        monkeypatch.setenv("RUN_IN", value)
+    if valid:
+        assert config.load_settings().run_in == (value or "api")
+    else:
+        with pytest.raises(ValueError, match="RUN_IN"):
+            config.load_settings()
+
+
+def test_worker_dispatch_publishes_only_id_after_background_starts(monkeypatch):
+    monkeypatch.setattr(jobs, "settings", replace(jobs.settings, run_in="worker"))
+    captured = []
+    monkeypatch.setattr(worker.daily_note_drafts, "apply_async", lambda **kw: captured.append(kw))
+    object_id, tasks = uuid4(), BackgroundTasks()
+    jobs.dispatch("daily_note", object_id, tasks)
+    assert captured == []
+    anyio.run(tasks)
+    assert captured == [{"args": [str(object_id)], "retry": False}]
+
+
+def test_publish_failure_keeps_private_error_out_of_logs(monkeypatch, caplog):
+    def fail(**kwargs):
+        raise ConnectionError("[TEST] private memo and secret")
+    monkeypatch.setattr(worker.request_agent, "apply_async", fail)
+    jobs.publish("request", uuid4())
+    assert "ConnectionError" in caplog.text
+    assert "private memo" not in caplog.text and "secret" not in caplog.text
+
+
+def test_mock_periodic_tasks_never_open_database(monkeypatch):
+    from app.core import db
+    monkeypatch.setattr(worker, "settings", replace(worker.settings, data_backend="mock", run_in="worker"))
+    def fail():
+        pytest.fail("mock 워커가 DB를 열면 안 돼요")
+    monkeypatch.setattr(db, "get_engine", fail)
+    assert worker.sweep.apply().get() == 0
+    assert worker.deliver_notifications.apply().get() == 0
+    assert worker.consultation_reminders.apply().get() == 0
+    worker.daily_note_drafts.apply(args=[str(uuid4())]).get()
+    worker.request_agent.apply(args=[str(uuid4())]).get()
+
+
+def test_beat_intervals():
+    entries = worker.celery_app.conf.beat_schedule
+    assert {v["task"]: v["schedule"] for v in entries.values()} == {
+        "yuchion.sweep": 300.0, "yuchion.deliver_notifications": 60.0, "yuchion.consultation_reminders": 60.0}
+    assert {v["task"]: v["options"]["expires"] for v in entries.values()} == {
+        "yuchion.sweep": 290, "yuchion.deliver_notifications": 55, "yuchion.consultation_reminders": 55}
+
+
+def test_notes_use_separate_queue_and_requests_and_periodic_tasks_use_default():
+    router = worker.celery_app.amqp.Router()
+    for task, queue in (("yuchion.daily_note_drafts", "notes"), ("yuchion.request_agent", "default"),
+                        ("yuchion.sweep", "default"), ("yuchion.deliver_notifications", "default"),
+                        ("yuchion.consultation_reminders", "default")):
+        assert router.route({}, task)["queue"].name == queue
+
+
+@pytest.mark.parametrize("backend,run_in,warns", [("db", "worker", False), ("db", "api", True),
+                                                ("mock", "worker", True)])
+def test_worker_start_warns_when_configuration_disables_tasks(monkeypatch, caplog, backend, run_in, warns):
+    from celery.signals import worker_init, beat_init
+    monkeypatch.setattr(worker, "settings", replace(worker.settings, data_backend=backend, run_in=run_in))
+    for signal in (worker_init, beat_init):
+        caplog.clear()
+        signal.send(sender=object())
+        assert ("워커 작업 비활성" in caplog.text) == warns
+
+
+def test_startup_broker_check_connects_once_and_warns_without_secret(monkeypatch, caplog):
+    from contextlib import contextmanager
+    from types import SimpleNamespace
+    calls = []
+    def connect(**kwargs):
+        calls.append(kwargs)
+        raise ConnectionError("[TEST] private redis password")
+    @contextmanager
+    def connection(**kwargs):
+        assert kwargs == {"connect_timeout": 2}
+        yield SimpleNamespace(ensure_connection=connect)
+    monkeypatch.setattr(worker.celery_app, "connection_for_write", connection)
+    jobs.check_broker()
+    assert calls == [{"max_retries": 0}]
+    assert "워커 브로커 접속 실패" in caplog.text and "ConnectionError" in caplog.text
+    assert "private redis password" not in caplog.text
+
+
+def test_worker_compose_shares_api_configuration_and_initializes_database_once():
+    result = subprocess.run(["docker", "compose", "--env-file", "/dev/null", "--profile", "worker",
+                             "config", "--format", "json"], cwd=ROOT, capture_output=True, text=True,
+                            env={**os.environ, "DATA_BACKEND": "db", "RUN_IN": "worker"}, check=True)
+    services = json.loads(result.stdout)["services"]
+    assert set(services) == {"api", "db", "web", "redis", "worker", "beat"}
+    for name in ("worker", "beat"):
+        assert services[name]["environment"] == services["api"]["environment"]
+        assert services[name]["entrypoint"] == ["celery"]
+        assert services[name]["depends_on"]["api"]["condition"] == "service_healthy"
+        assert services[name]["depends_on"]["redis"]["condition"] == "service_healthy"
+        assert services[name]["restart"] == "unless-stopped"
+        assert services[name]["image"] == services["api"]["image"] == "yuchion-api:local"
+        assert "build" not in services[name]
+    assert not services["redis"].get("ports")
+    command = services["worker"]["command"]
+    assert "--pool=threads" in command
+    assert command[command.index("-Q")+1] == "default,notes"
+    assert "--concurrency=" + os.getenv("WORKER_CONCURRENCY", "4") in command
+    assert "inspect ping" in services["worker"]["healthcheck"]["test"][1]

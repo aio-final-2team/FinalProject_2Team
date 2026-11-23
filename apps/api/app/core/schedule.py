@@ -32,9 +32,10 @@ def due_at(start: datetime, request_type=None, risk_level=None, kind=None):
         start = midnight
 
 
-def deliver_after(start: datetime, role: str, risk_level=None, risk_category=None):
+def deliver_after(start: datetime, role: str, risk_level=None, risk_category=None, *, request_type=None):
     start = start.astimezone(KST)
-    if role == "parent" or (risk_level == "urgent" and risk_category in settings.immediate_risk_categories):
+    if (request_type == "pickup" or role == "parent"
+            or (risk_level == "urgent" and risk_category in settings.immediate_risk_categories)):
         return start
     opening, closing = settings.work_hours
     while not working_day(start.date()) or start.time() >= closing:

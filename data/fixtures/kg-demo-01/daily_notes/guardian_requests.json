@@ -353,7 +353,7 @@
           "병원",
           "열이"
         ],
-        "teacher_check": null
+        "teacher_check": "sensitive"
       },
       "trap": null
     },
@@ -502,7 +502,7 @@
           "사이좋게",
           "친구들과 잘"
         ],
-        "teacher_check": null
+        "teacher_check": "sensitive"
       },
       "trap": {
         "type": "memo_silent",

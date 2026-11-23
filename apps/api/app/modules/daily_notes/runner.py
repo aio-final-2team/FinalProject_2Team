@@ -1,14 +1,16 @@
-"""T32 영민 그래프로 교체, T29에 Celery 워커로 이동.
+"""T32 영민 그래프 또는 대역을 실행한다. T29에 Celery 워커로 이동.
 
 queued를 한 실행만 가져간다. writer는 트랜잭션 밖에서 호출하고 아이별 결과는 한 번에 저장한다.
-알림장 events 연결은 0003 이전에는 남기지 않는다(SPEC 11).
+입력 행의 xmin으로 이전 실행의 늦은 저장을 막고, 0003의 아이별 이력을 함께 남긴다.
 """
 
 import json
 import logging
+from concurrent.futures import Future
 from datetime import datetime, time, timedelta
 from importlib import import_module
-from uuid import UUID
+from threading import Thread
+from uuid import UUID, uuid4
 
 from sqlalchemy import text
 
@@ -18,6 +20,7 @@ from app.core.config import settings
 from app.core.db import transaction
 from app.core.schedule import KST
 from app.modules.daily_notes.stub_writer import failed_child
+from app.modules.daily_notes.events import edited_child_ids, record
 
 log = logging.getLogger(__name__)
 
@@ -53,13 +56,14 @@ def _payload(connection, entry):
         GROUP BY d.id ORDER BY d.effective_from DESC NULLS LAST, d.created_at DESC, d.id LIMIT 1
     """), values).mappings().one_or_none()
     memos = {m["child_id"]: m["memo"] for m in entry["child_memos"]}
-    return {"input_id": entry["id"], "note_date": entry["note_date"], "classroom": dict(classroom),
+    payload = {"input_id": entry["id"], "note_date": entry["note_date"], "classroom": dict(classroom),
             "activities": entry["activities"], "supplies": entry["supplies"],
             "children": [{"child_id": c["id"], "display_name": c["display_name"],
                           "memo": memos.get(str(c["id"]), ""),
                           "requests": [{k: r[k] for k in ("request_id", "type", "text")}
                                        for r in requests if r["child_id"] == c["id"]]} for c in children],
             "menu": dict(menu) if menu is not None else None}
+    return json.loads(json.dumps(payload, default=str))
 
 
 def _validated(result, payload):
@@ -68,7 +72,7 @@ def _validated(result, payload):
     by_child = {}
     expected = {child["child_id"] for child in payload["children"]}
     for row in result:
-        child_id = UUID(str(row["child_id"]))
+        child_id = str(UUID(str(row["child_id"])))
         if child_id not in expected:
             raise ValueError("입력에 없는 아이")
         by_child.setdefault(child_id, []).append(row)
@@ -101,32 +105,95 @@ def _validated(result, payload):
     return rows
 
 
+def requeue_daily_note_drafts(*, stale_only=False):
+    """API 단독 실행은 시작 때 복구하고, worker 모드는 제한을 넘긴 실행만 복구해요."""
+    with transaction() as connection:
+        connection.execute(text("""
+            UPDATE daily_note_inputs i SET draft_status='queued' WHERE draft_status='running'
+              AND (NOT :stale_only OR coalesce((
+                SELECT (c.draft->>'draft_started_at')::timestamptz FROM cards c
+                WHERE c.subject_type='daily_note_batch' AND c.subject_id=i.id AND c.org_id=i.org_id
+              ), i.created_at) < now()-make_interval(secs=>:timeout))
+        """), {"stale_only": stale_only, "timeout": settings.daily_note_writer_timeout + 60})
+        return connection.scalars(text("""
+            SELECT id FROM daily_note_inputs WHERE draft_status='queued' ORDER BY created_at, id
+        """)).all()
+
+
+def _write(payload):
+    # 시간 초과 뒤 도착한 결과는 버린다. writer에는 DB 저장 책임이 없다.
+    future = Future()
+
+    def invoke():
+        try:
+            path = ("agents.graphs.daily_note:draft_daily_notes" if settings.daily_note_writer == "graph"
+                    else settings.daily_note_writer)
+            module, name = path.split(":", 1)
+            future.set_result(getattr(import_module(module), name)(payload))
+        except BaseException as error:
+            future.set_exception(error)
+
+    Thread(target=invoke, name="daily-note-writer", daemon=True).start()
+    return future.result(timeout=settings.daily_note_writer_timeout)
+
+
 def run_daily_note_drafts(input_id):
     with transaction() as connection:
         entry = connection.execute(text("""
-            UPDATE daily_note_inputs SET draft_status='running' WHERE id=:id AND draft_status='queued' RETURNING *
+            UPDATE daily_note_inputs SET draft_status='running' WHERE id=:id AND draft_status='queued'
+            RETURNING *, xmin::text AS run_token
         """), {"id": input_id}).mappings().one_or_none()
+        if entry is not None:
+            metadata = connection.execute(text("""
+                UPDATE cards SET draft=draft || jsonb_build_object('draft_started_at', CURRENT_TIMESTAMP)
+                WHERE subject_type='daily_note_batch' AND subject_id=:id AND org_id=:org RETURNING draft
+            """), {"id": input_id, "org": entry["org_id"]}).scalar_one()
     if entry is None:
         return
     try:
         with transaction() as connection:
             payload = _payload(connection, entry)
-        module, name = settings.daily_note_writer.split(":", 1)
-        writer = getattr(import_module(module), name)
-        rows = _validated(writer(payload), payload)
+            confirmed = set(connection.scalars(text("""
+                SELECT child_id::text FROM daily_notes WHERE input_id=:id AND status IN ('ready','sent')
+            """), {"id": input_id}))
+            protected = confirmed | edited_child_ids(connection, input_id)
+            payload["children"] = [c for c in payload["children"] if c["child_id"] not in protected]
+        rows = _validated(_write(payload), payload) if payload["children"] else []
         with transaction() as connection:
-            connection.execute(text("SELECT id FROM daily_note_inputs WHERE id=:id FOR UPDATE"), {"id": input_id})
+            current = connection.execute(text("SELECT xmin::text FROM daily_note_inputs WHERE id=:id FOR UPDATE"),
+                                         {"id": input_id}).scalar_one()
+            if current != entry["run_token"]:
+                return
+            edited = edited_child_ids(connection, input_id)
             for row in rows:
-                connection.execute(text("""
-                    INSERT INTO daily_notes (org_id,input_id,child_id,note_date,status,content,open_checks)
-                    VALUES (:org,:input,:child,:date,:status,CAST(:content AS jsonb),CAST(:checks AS jsonb))
+                previous = connection.execute(text("""
+                    SELECT * FROM daily_notes WHERE input_id=:input AND child_id=:child FOR UPDATE
+                """), {"input": input_id, "child": row["child_id"]}).mappings().one_or_none()
+                if previous is not None and (previous["status"] in ("ready", "sent") or row["child_id"] in edited):
+                    continue
+                # c1 같은 writer 내부 ID는 저장 전에 바꾼다. 아이별 실패 확인에도 같은 규칙을 쓴다.
+                checks = [{**check, "id": str(uuid4()), "request_id": check.get("request_id")}
+                          for check in row["open_checks"]]
+                saved = connection.execute(text("""
+                    INSERT INTO daily_notes (org_id,input_id,child_id,note_date,status,content,open_checks,ai_original)
+                    VALUES (:org,:input,:child,:date,:status,CAST(:content AS jsonb),CAST(:checks AS jsonb),CAST(:content AS jsonb))
+                    ON CONFLICT (child_id, note_date) DO UPDATE SET
+                        content=EXCLUDED.content, ai_original=EXCLUDED.ai_original,
+                        open_checks=EXCLUDED.open_checks, status=EXCLUDED.status
+                    WHERE daily_notes.input_id=EXCLUDED.input_id AND daily_notes.status IN ('draft','needs_check')
+                    RETURNING *
                 """), {"org": entry["org_id"], "input": input_id, "child": row["child_id"], "date": entry["note_date"],
                        "status": "needs_check" if row["open_checks"] else "draft",
                        "content": json.dumps(row["content"], default=str),
-                       "checks": json.dumps(row["open_checks"], default=str)})
+                       "checks": json.dumps(checks, default=str)}).mappings().one()
+                record(connection, saved, "daily_note_drafted",
+                       from_status=previous["status"] if previous else None,
+                       **({"regenerated_by": metadata["regenerated_by"]} if metadata.get("regenerated_by") else {}))
             connection.execute(text("UPDATE daily_note_inputs SET draft_status='succeeded' WHERE id=:id"), {"id": input_id})
     except Exception as error:
         # 예외 원문에는 입력 메모가 섞일 수 있어 종류만 기록하고 API에는 고정 오류를 준다.
         log.error("알림장 초안 실패 input_id=%s error_type=%s", input_id, type(error).__name__)
         with transaction() as connection:
-            connection.execute(text("UPDATE daily_note_inputs SET draft_status='failed' WHERE id=:id"), {"id": input_id})
+            connection.execute(text("""
+                UPDATE daily_note_inputs SET draft_status='failed' WHERE id=:id AND xmin::text=:token
+            """), {"id": input_id, "token": entry["run_token"]})

@@ -5,6 +5,7 @@
 """
 
 import json
+from contextlib import nullcontext
 from datetime import datetime
 
 from sqlalchemy import text
@@ -18,7 +19,7 @@ from app.core.schedule import KST
 def _checked(user, row, allowed, resource, resource_id, *, request_id=None, card_id=None):
     if row is not None and allowed:
         return row
-    # 조회 트랜잭션을 닫은 뒤 별도로 기록한다. 이어지는 ApiError로 이력이 롤백되지 않는다.
+    # 호출 쪽 변경 트랜잭션과 별도로 기록한다. 이어지는 ApiError로 이력이 롤백되지 않는다.
     with transaction() as connection:
         connection.execute(text("""
             INSERT INTO events (org_id, request_id, card_id, actor_type, actor_id, action, detail)
@@ -52,16 +53,16 @@ def _guardian(connection, user, child_id):
     """), {"org": user.org_id, "user": user.id, "child": child_id})
 
 
-def classroom_in_scope(user, classroom_id):
-    with transaction() as connection:
+def classroom_in_scope(user, classroom_id, *, connection=None):
+    with (transaction() if connection is None else nullcontext(connection)) as connection:
         row = connection.execute(text("SELECT * FROM classrooms WHERE id=:id AND org_id=:org"),
                                  {"id": classroom_id, "org": user.org_id}).mappings().one_or_none()
         allowed = row is not None and _classroom(connection, user, classroom_id)
     return _checked(user, row, allowed, "classroom", classroom_id)
 
 
-def child_in_scope(user, child_id):
-    with transaction() as connection:
+def child_in_scope(user, child_id, *, connection=None):
+    with (transaction() if connection is None else nullcontext(connection)) as connection:
         row = connection.execute(text("SELECT * FROM children WHERE id=:id AND org_id=:org"),
                                  {"id": child_id, "org": user.org_id}).mappings().one_or_none()
         allowed = row is not None and (
@@ -70,8 +71,8 @@ def child_in_scope(user, child_id):
     return _checked(user, row, allowed, "child", child_id)
 
 
-def request_in_scope(user, request_id):
-    with transaction() as connection:
+def request_in_scope(user, request_id, *, connection=None):
+    with (transaction() if connection is None else nullcontext(connection)) as connection:
         row = connection.execute(text("SELECT * FROM requests WHERE id=:id AND org_id=:org"),
                                  {"id": request_id, "org": user.org_id}).mappings().one_or_none()
         allowed = False
@@ -89,10 +90,10 @@ def request_in_scope(user, request_id):
     return _checked(user, row, allowed, "request", request_id, request_id=request_id)
 
 
-def card_in_scope(user, card_id, *, decision=None):
+def card_in_scope(user, card_id, *, decision=None, connection=None):
     if user.role not in ("teacher", "director"):
         raise ApiError(403, "FORBIDDEN_ROLE")
-    with transaction() as connection:
+    with (transaction() if connection is None else nullcontext(connection)) as connection:
         row = connection.execute(text("""
             SELECT c.*, r.type AS request_type, coalesce(r.classroom_id, n.classroom_id) AS classroom_id
             FROM cards c LEFT JOIN requests r ON (r.id, r.org_id)=(c.request_id, c.org_id)
@@ -113,18 +114,18 @@ def card_in_scope(user, card_id, *, decision=None):
     return row
 
 
-def note_input_in_scope(user, input_id):
+def note_input_in_scope(user, input_id, *, connection=None):
     if user.role not in ("teacher", "director"):
         raise ApiError(403, "FORBIDDEN_ROLE")
-    with transaction() as connection:
+    with (transaction() if connection is None else nullcontext(connection)) as connection:
         row = connection.execute(text("SELECT * FROM daily_note_inputs WHERE id=:id AND org_id=:org"),
                                  {"id": input_id, "org": user.org_id}).mappings().one_or_none()
         allowed = row is not None and _classroom(connection, user, row["classroom_id"])
     return _checked(user, row, allowed, "note_input", input_id)
 
 
-def note_in_scope(user, note_id):
-    with transaction() as connection:
+def note_in_scope(user, note_id, *, connection=None):
+    with (transaction() if connection is None else nullcontext(connection)) as connection:
         row = connection.execute(text("""
             SELECT n.*, i.classroom_id FROM daily_notes n
             JOIN daily_note_inputs i ON (i.id, i.org_id, i.note_date)=(n.input_id, n.org_id, n.note_date)

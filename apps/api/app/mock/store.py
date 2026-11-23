@@ -13,6 +13,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from app.core.errors import ApiError
+from app.core.constants import CARE_REQUEST_TYPES
 from app.mock import seed
 from app.core.schedule import KST, due_at
 from app.mock.records import Approval, Booking, Notification, Document, Chunk, Evidence, Rule, NoteInput, Note
@@ -56,6 +57,7 @@ class Child:
     classroom_id: UUID
     display_name: str
     guardian_ids: list[UUID]
+    photo_scope: str = "family"
 
 
 @dataclass
@@ -142,6 +144,7 @@ class Event:
     action: str
     request_id: UUID | None = None
     card_id: UUID | None = None
+    daily_note_id: UUID | None = None
     actor_type: str = "system"  # user · agent · system
     actor_id: UUID | None = None
     agent_name: str | None = None
@@ -157,7 +160,7 @@ class _State:
         self.users = {u["id"]: User(org_id=org, password=seed.DEMO_PASSWORD, **u) for u in seed.USERS}
         self.classrooms = {c["id"]: Classroom(org_id=org, **c) for c in seed.CLASSROOMS}
         self.classroom_staff = [ClassroomStaff(**s) for s in seed.CLASSROOM_STAFF]
-        self.children = {c["id"]: Child(org_id=org, **c) for c in seed.CHILDREN}
+        self.children = {c["id"]: Child(org_id=org, **{**c, "guardian_ids": list(c["guardian_ids"])}) for c in seed.CHILDREN}
         self.rooms = {r["id"]: Room(org_id=org, **r) for r in seed.ROOMS}
         self.requests: dict[UUID, Request] = {}
         self.messages: list[Message] = []
@@ -174,6 +177,9 @@ class _State:
         self.rules: dict[UUID, Rule] = {}
         self.note_inputs: dict[UUID, NoteInput] = {}
         self.notes: dict[UUID, Note] = {}
+        self.feed_posts = {}
+        self.feed_photos = {}
+        self.memories = {}
         self._seq = 1000
 
     def next_int(self) -> int:
@@ -258,11 +264,12 @@ def request_in_scope(user, request_id: UUID) -> Request:
 
 def add_event(req: Request | None, action: str, *, card: Card | None = None, actor_type: str = "system",
               actor_id: UUID | None = None, agent_name: str | None = None, from_status: str | None = None,
-              to_status: str | None = None, **detail) -> Event:
+              to_status: str | None = None, daily_note_id: UUID | None = None, **detail) -> Event:
     ev = Event(id=_state.next_int(), org_id=(req.org_id if req else card.org_id if card else detail.pop("org_id")), action=action,
                request_id=req.id if req else None, card_id=card.id if card else None,
                actor_type=actor_type, actor_id=actor_id, agent_name=agent_name,
                from_status=from_status, to_status=to_status, detail=detail)
+    ev.daily_note_id = daily_note_id
     from app.core.request_id import active_trace_id
     if ev.detail.get("trace_id") is None:
         ev.detail["trace_id"] = active_trace_id.get()
@@ -282,7 +289,8 @@ def set_request_status(req: Request, to: str, **event_kw) -> None:
 # ---------- 요청 만들기 ----------
 
 def create_request(user, *, client_request_id: str, type: str, body: str, child_id: UUID,
-                   previous_request_id: UUID | None, trace_id: str | None) -> tuple[Request, bool]:
+                   previous_request_id: UUID | None, trace_id: str | None,
+                   pickup_guardian_id: UUID | None = None, **care_fields) -> tuple[Request, bool]:
     """(요청, 새로 만들었는지). 같은 client_request_id면 처음 요청을 돌려준다(6.4)."""
     with _lock:
         for r in _state.requests.values():
@@ -291,6 +299,12 @@ def create_request(user, *, client_request_id: str, type: str, body: str, child_
         child = _state.children.get(child_id)
         if child is None or child.org_id != user.org_id or user.id not in child.guardian_ids:
             raise ApiError(404, "NOT_FOUND")
+        from app.core.care import input_detail
+        from app.core.constants import MEDICATION_FIELDS
+        detail = input_detail(type, pickup_guardian_id=pickup_guardian_id, **care_fields)
+        if type == "pickup" and pickup_guardian_id is not None:
+            from app.mock.care import validate_guardian
+            detail = validate_guardian(user, child_id, pickup_guardian_id)
         if previous_request_id is not None:
             prev = request_in_scope(user, previous_request_id)
             if prev.status not in ("completed", "rejected"):
@@ -298,43 +312,30 @@ def create_request(user, *, client_request_id: str, type: str, body: str, child_
         req = Request(id=uuid4(), org_id=user.org_id, classroom_id=child.classroom_id, child_id=child.id,
                       requester_id=user.id, client_request_id=client_request_id, type=type, body=body,
                       title=body.split("\n")[0][:40], previous_request_id=previous_request_id)
+        if type == "medication":
+            req.missing_fields = [key for key in MEDICATION_FIELDS if not (detail.get(key) or "").strip()]
         _state.requests[req.id] = req
         _state.messages.append(Message(id=_state.next_int(), request_id=req.id, sender_type="user",
                                        sender_id=user.id, body=body))
-        add_event(req, "created", actor_type="user", actor_id=user.id, to_status="received", trace_id=trace_id)
-        _run_mock_ai(req, trace_id)
+        if type in CARE_REQUEST_TYPES:
+            req.assignee_id = homeroom_teacher(req.classroom_id)
+        add_event(req, "created", actor_type="user", actor_id=user.id, to_status="received", trace_id=trace_id,
+                  **detail)
+        if type not in CARE_REQUEST_TYPES:
+            _run_mock_ai(req, trace_id)
         return req, True
 
 
 # 모의 AI 분류 규칙. 실제 분류는 감독 AI(T14)가 한다. 화면 시연용으로 낱말만 본다.
-_URGENT_WORDS = {
-    "child_safety": ("다쳤", "다침", "학대", "때렸", "안전"),
-    "legal_external": ("고소", "신고", "변호사", "언론"),
-    "privacy_leak": ("개인정보", "사진 유출"),
-    "staff_attack": ("가만두지", "협박"),
-}
-_TOPIC_WORDS = {
-    "pickup_bus": ("버스", "등원", "하원"), "meal": ("급식", "밥", "식단", "간식"),
-    "safety": ("안전", "다쳤", "다침"), "fee": ("원비", "비용", "환불"),
-    "belongings": ("소지품", "가방", "옷", "분실"), "peer_conflict": ("친구", "다툼", "싸움"),
-    "health_hygiene": ("열", "아파", "위생", "감기"), "photo_record": ("사진", "앨범"),
-    "communication": ("연락", "답장", "알림장"), "teacher": ("선생님",),
-}
-
-
 def _classify(req: Request) -> None:
-    text = req.body
-    req.topic_key = next((k for k, words in _TOPIC_WORDS.items() if any(w in text for w in words)), "other")
-    req.urgency = "normal"
-    if req.type == "complaint":
-        category = next((k for k, words in _URGENT_WORDS.items() if any(w in text for w in words)), None)
-        req.risk_level = "uncertain" if "판단 필요" in text else ("urgent" if category else "normal")
-        req.risk_category = category
-        if category:
-            req.urgency = "urgent"
+    from app.core.request_rules import classify
+    for key, value in classify(req.type, req.body).items():
+        setattr(req, key, value)
 
 
 def _run_mock_ai(req: Request, trace_id: str | None) -> None:
+    if req.type in CARE_REQUEST_TYPES:
+        return
     _classify(req)
     set_request_status(req, "classified", action="classified", actor_type="agent", agent_name="supervisor",
                        trace_id=trace_id)
@@ -385,21 +386,39 @@ def _next_weekday(d: date) -> date:
 
 
 def _propose_slots(card: Card, teacher: UUID | None, round_no: int = 1) -> list[Slot]:
-    """다음 평일 15:00·16:00, 그다음 평일 15:00 (30분씩, 회차마다 최대 3개)."""
+    """평일 15:00·16:00 중 확정·살아 있는 체크와 겹치지 않는 세 칸을 골라요."""
     first = now().date()
     for _ in range(round_no):
         first = _next_weekday(first)
-    second = _next_weekday(first)
-    starts = [(first, time(15)), (first, time(16)), (second, time(15))]
     room = next(iter(_state.rooms))
+    teacher = teacher or seed.TEACHER
     out = []
-    for rank, (d, t) in enumerate(starts, start=1):
-        start = datetime.combine(d, t, KST)
-        slot = Slot(id=_state.next_int(), card_id=card.id, org_id=card.org_id, teacher_id=teacher or seed.TEACHER,
-                    room_id=room, period={"start": start, "end": start + timedelta(minutes=30)},
-                    round=round_no, rank=rank)
-        _state.slots[slot.id] = slot
-        out.append(slot)
+    day = first
+    for _ in range(14):
+        for hour in (15, 16):
+            start = datetime.combine(day, time(hour), KST)
+            end = start + timedelta(minutes=30)
+
+            def overlaps(period):
+                return start < period["end"] and period["start"] < end
+
+            if any(b.org_id == card.org_id and b.status == "confirmed"
+                   and (b.teacher_id == teacher or b.room_id == room)
+                   and overlaps({"start": b.period["start"], "end": b.expected_end_at or b.period["end"]})
+                   for b in _state.bookings.values()):
+                continue
+            if any(s.org_id == card.org_id and overlaps(s.period) and (
+                    _state.cards[s.card_id].request_id == card.request_id
+                    or (s.status == "chosen_by_parent" and s.chosen_at > now()-timedelta(hours=24)
+                        and (s.teacher_id == teacher or s.room_id == room))) for s in _state.slots.values()):
+                continue
+            slot = Slot(id=_state.next_int(), card_id=card.id, org_id=card.org_id, teacher_id=teacher,
+                        room_id=room, period={"start": start, "end": end}, round=round_no, rank=len(out)+1)
+            _state.slots[slot.id] = slot
+            out.append(slot)
+            if len(out) == 3:
+                return out
+        day = _next_weekday(day)
     return out
 
 
@@ -476,6 +495,8 @@ def expire(request_id=None):
                 card.updated_at = now()
                 if req:
                     set_request_status(req, "awaiting_review", action="resumed", card=card, automatic=True)
+            if req is None or req.status != "awaiting_review":
+                continue
             expired = [s for s in _state.slots.values() if s.card_id == card.id
                        and s.status == "chosen_by_parent" and s.chosen_at + timedelta(hours=24) <= now()]
             for slot in expired:
