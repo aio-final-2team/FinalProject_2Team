@@ -111,32 +111,48 @@ def meal_text(text: str, note_date: str) -> str:
 def draft_child(payload, child, common, names, writer, checker) -> dict:
     memo = (child.get("memo") or "").strip()
     requests = child.get("requests") or []
+    trace: list[dict] = []  # 단계·결과 요약만 남긴다. 모델의 생각 원문은 남기지 않는다(T25 4칸)
     if not memo and not requests:  # 쓸 것이 없으면 AI를 부르지 않는다(빈 메모를 채우지 않음)
-        return result(child, common, [], [])
+        trace.append({"step": "skip", "result": "메모·요청 없음"})
+        return result(child, common, [], [], trace, "done")
 
     issues: list[dict] = []
     for attempt in range(MAX_RETURNS + 1):
         try:
             own = twice(lambda: write(writer, payload, child, issues))
-        except ModelError:
-            return result(child, common, [], [new_check("child", "draft_failed")])
+        except ModelError as error:
+            trace.append({"step": "write", "attempt": attempt, "result": "failed", "error": str(error)})
+            return result(child, common, [], [new_check("child", "draft_failed")], trace, "handoff")
+        trace.append({"step": "write", "attempt": attempt, "result": "ok",
+                      "lines": [{"key": line["key"], "value": line["value"]} for line in own]})
         found = code_checks(own, child, names)
         try:
             found += twice(lambda: review(checker, payload, child, own))
-        except ModelError:
+            review_result = "ok"
+        except ModelError as error:
             found.append(new_check("child", "check_failed"))
+            review_result = f"failed: {error}"
         found = unique(found + memo_left_out(memo, own, found) + unanswered(own))
         issues = [f for f in found if f["kind"] in RETURN_KINDS]
-        if not issues or attempt == MAX_RETURNS or any(f["kind"] == "check_failed" for f in found):
-            return result(child, common, own, found)
+        trace.append({"step": "check", "attempt": attempt, "result": review_result,
+                      "kinds": [f["kind"] for f in found]})
+        if any(f["kind"] == "check_failed" for f in found):
+            return result(child, common, own, found, trace, "handoff")
+        if not issues:
+            return result(child, common, own, found, trace, "needs_check" if found else "done")
+        if attempt == MAX_RETURNS:
+            return result(child, common, own, found, trace, "handoff")
+        trace.append({"step": "return", "attempt": attempt, "kinds": [f["kind"] for f in issues]})
     raise AssertionError("unreachable")
 
 
 def twice(call):
-    """1번 다시(T14 6장). 두 번째도 실패하면 ModelError를 그대로 올린다."""
+    """답 모양이 틀렸을 때만 1번 더 묻는다(T14 6장). 전송 오류 재시도는 llm.py(API 설계 6.2)가 이미 했다."""
     try:
         return call()
-    except ModelError:
+    except ModelError as error:
+        if not error.format:
+            raise
         return call()
 
 
@@ -221,7 +237,7 @@ def review(model: JsonModel, payload, child, own) -> list[dict]:
     answer = model.json(section("checker.md", "## 알림장: 메모와 대조한다") + CHECK_FORMAT, user)
     checks = answer.get("checks")
     if not isinstance(checks, list):
-        raise ModelError("checks 목록이 없어요")
+        raise ModelError("checks 목록이 없어요", format=True)
     found = []
     for check in checks:
         if isinstance(check, dict) and check.get("kind") in MODEL_KINDS:
@@ -250,7 +266,9 @@ def unique(found: list[dict]) -> list[dict]:
     return list(kept.values())
 
 
-def result(child, common, own, found) -> dict:
+def result(child, common, own, found, trace=None, end="done") -> dict:
+    """end: done(확인 없음) · needs_check(선생님 볼 일) · handoff(실패·한도 초과로 사람에게). 백엔드는 trace·end를 저장하지 않는다."""
     items = [common["day"], *own, *(common[k] for k in ("supplies", "meal") if k in common)]
     checks = [{"id": f"c{n}", **f} for n, f in enumerate(found, start=1)]
-    return {"child_id": child["child_id"], "content": {"items": items}, "open_checks": checks}
+    return {"child_id": child["child_id"], "content": {"items": items}, "open_checks": checks,
+            "end": end, "trace": (trace or []) + [{"step": "end", "result": end}]}

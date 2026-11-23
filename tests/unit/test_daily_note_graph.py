@@ -26,7 +26,9 @@ class Script:
         self.calls += 1
         answer = self.answers.pop(0) if len(self.answers) > 1 else self.answers[0]
         if answer is ModelError:
-            raise ModelError("가짜 실패")
+            raise ModelError("가짜 실패", format=True)  # 답 모양 실패: 그래프가 1번 더 묻는다
+        if answer == "transport":
+            raise ModelError("APITimeoutError")  # 전송 실패: llm.py가 이미 다시 했다
         return answer
 
 
@@ -269,3 +271,55 @@ def test_eval_memo_score_ignores_request_checks():
     note = {"content": {"items": [{"key": "child", "value": "블록놀이를 했어요.", "source": {"type": "teacher_input"}}]},
             "open_checks": [{"kind": "sensitive", "item_key": "day", "request_id": "GR-14"}]}
     assert score(case, note)["pass"] is True
+
+
+def test_model_retries_only_retryable_errors_with_backoff():
+    from agents.llm import ModelError, OpenAIModel
+
+    class Timeout(Exception):
+        pass
+
+    Timeout.__name__ = "APITimeoutError"
+
+    class BadRequest(Exception):
+        status_code = 400
+
+    waits = []
+    model = OpenAIModel("DOCUMENT", sleep=waits.append)
+    calls = iter([Timeout(), Timeout(), '{"ok": true}'])
+
+    def fake_call(system, user):
+        value = next(calls)
+        if isinstance(value, Exception):
+            raise value
+        return value
+
+    model._call = fake_call
+    assert model.json("s", "u") == {"ok": True} and waits == [1.0, 2.0]
+
+    model = OpenAIModel("DOCUMENT", sleep=waits.append)
+    model._call = lambda s, u: (_ for _ in ()).throw(BadRequest())
+    waits.clear()
+    try:
+        model.json("s", "u")
+        raise AssertionError("ModelError가 나야 해요")
+    except ModelError:
+        assert waits == []
+
+
+def test_transport_failure_is_not_asked_again_in_graph():
+    writer = Script("transport")
+    [note] = draft_daily_notes(payload([kid("a", "가온", "블록")]), writer, Script(OK))
+    assert writer.calls == 1 and [c["kind"] for c in note["open_checks"]] == ["draft_failed"]
+    assert note["end"] == "handoff"
+
+
+def test_trace_keeps_first_and_final_draft_and_end():
+    writer = Script({"child": "편식이 심해요.", "requests": []}, {"child": "점심을 조금 먹었어요.", "requests": []})
+    checker = Script({"checks": [{"item_key": "child", "kind": "not_in_memo", "problem": "메모에 없는 말", "sentence": "편식이 심해요."}]}, OK)
+    [note] = draft_daily_notes(payload([kid("a", "다온", "점심 조금 먹음")]), writer, checker)
+    steps = [t["step"] for t in note["trace"]]
+    assert steps == ["write", "check", "return", "write", "check", "end"]
+    assert note["trace"][0]["lines"][0]["value"] == "편식이 심해요."
+    assert note["trace"][3]["lines"][0]["value"] == "점심을 조금 먹었어요."
+    assert note["end"] == "done" and "생각" not in str(note["trace"])
