@@ -62,6 +62,21 @@ def test_feed_revision_backfill_constraints_and_previous_revision_roundtrip(db_e
         assert dict(catalog(connection)) == HEAD_CATALOG
 
 
+def test_0010_on_existing_demo_children_fills_every_photo_scope_with_family(db_engine, alembic_config):
+    # 0001~0009를 차례로 올린 DB에 데모 아이를 넣은 뒤 0010만 더 올린다.
+    command.downgrade(alembic_config, "base")
+    command.upgrade(alembic_config, "0009")
+    with db_engine.begin() as connection:
+        seed_demo(connection)
+        existing = set(connection.scalars(text("SELECT id FROM children")))
+    command.upgrade(alembic_config, "0010")
+    with db_engine.connect() as connection:
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0010"
+        scopes = dict(connection.execute(text("SELECT id, photo_scope FROM children")).all())
+    assert len(existing) == 21 and set(scopes) == existing
+    assert set(scopes.values()) == {"family"}
+
+
 def test_seed_upgrade_matches_fresh_db_and_mock_and_restores_missing_files(db_engine, alembic_config, monkeypatch, tmp_path):
     from app.core import media, users
     from app.mock import feed as mock_feed, store

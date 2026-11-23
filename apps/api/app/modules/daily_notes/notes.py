@@ -14,6 +14,7 @@ from app.core.care import note_content
 from app.core.jobs import dispatch
 from app.core.schedule import KST, deliver_after, due_at
 from app.modules.daily_notes.events import edited_child_ids, record
+from app.modules.daily_notes.runner import requeued
 
 input_in_scope = scope.note_input_in_scope
 
@@ -99,6 +100,7 @@ def regenerate(user, input_id, background_tasks):
         entry = connection.execute(text("""
             UPDATE daily_note_inputs SET draft_status='queued' WHERE id=:id AND org_id=:org RETURNING *
         """), values).mappings().one()
+        requeued(connection, input_id, "user", user.id)
         connection.execute(text("""
             UPDATE cards SET draft=draft || CAST(:detail AS jsonb)
             WHERE subject_type='daily_note_batch' AND subject_id=:id AND org_id=:org
