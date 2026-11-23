@@ -13,7 +13,7 @@
 | --- | --- |
 | [기획서](../Step1/기획서.md) | 11/18 실측 반영본에 11/20 팀 결정 D02(첫 시연 범위)를 더한 develop 판. 3장 기능 요구사항(FR)과 4장 비기능 요구사항(NFR)의 번호를 쓴다 |
 | [입출력 계약표](입출력_계약표_초안.md) | v0.18 · 2026-11-21 |
-| [DB 스키마 설계서](DB_스키마_설계서.md) | v0.17 · 2026-11-23, 마이그레이션 0001~0010 |
+| [DB 스키마 설계서](DB_스키마_설계서.md) | v0.18 · 2026-11-23, 마이그레이션 0001~0010 |
 | OpenAPI 생성물 `contracts/openapi.yaml` | 마지막 생성 커밋 `04c4691`. 앱이 내는 `/openapi.json`과 같은지는 `test_contract_matches_application`으로 확인한다 |
 
 이 문서는 유치온 API 49개(기준 v0.8, develop `24258f2`)와 에이전트 도구 15개의 계약을 담는다. 1~6장은 강사님 'API 설계 문서 작성법'에 나온 '문서에 들어가는 여섯 가지'의 순서를 따르고, 7장에는 API 필드와 DB 컬럼의 대응을, 8장에는 설정값을 적었다. 필드·권한·오류는 입출력 계약표와 같아야 한다. 두 문서가 어긋나면 계약표를 먼저 고친 뒤 두 문서의 판을 함께 올린다. 구현(FastAPI의 `/docs`)과 달라졌을 때도 둘을 대조해 판을 올린다. 모의 API와 생성물 `contracts/openapi.yaml`도 이 문서와 함께 둔다. 모의 API를 쓰는 법과 데모 계정은 [모의 API 안내](../../contracts/mock_api/README.md)에 있다. 제목에 [제안]이 붙은 절은 팀이 아직 계약을 확인하지 않은 내용으로, 투약·귀가(3.27), 상담 지연 입력(3.28), 피드·앨범(3.29)이 여기에 해당한다. API별로 지금 어디까지 동작하는지는 2장 표의 상태 칸에 적었다.
@@ -1222,13 +1222,13 @@ HTTP/1.1 200 OK
 | ③ 경로·쿼리 | 없음. |
 | ④ 요청 본문 | 아래 multipart/form-data 필드 표. classroom_ids[]는 같은 이름으로 여러 번 보낸다. |
 | ⑤ 검증·권한 | teacher·director만 호출할 수 있다. 대상 반과 이전 문서가 범위 안에 있는지 검사하고, 새 판으로 올릴 때 이전 문서는 active여야 한다. |
-| ⑥ 정상 응답 | 새 자료면 202 + document, 같은 기관에 바이트가 같은 자료가 이미 있으면 200 + 기존 document. |
+| ⑥ 정상 응답 | 새 자료면 202 + document, 같은 기관에 바이트까지 같은 자료가 이미 있으면 200 + 기존 document를 돌려준다. 다만 DB 모드에서 그 기존 자료가 적재에 실패한 상태라면, 같은 ID로 다시 적재하고 202를 돌려준다. |
 | ⑦ 오류 응답 | 아래 오류 표. |
-| ⑧ 실행 규칙 | 접수한 뒤 성공·실패는 GET /documents/{document_id}(3.23)로 확인한다. 모의 적재는 바로 끝나며, UTF-8로 치환 해독한 뒤 500자씩 나눈다(빈 파일도 1조각). 파일명 [실패]는 ingest_status=failed·chunk_count=0으로 끝난다. 새 판이 적재에 성공했을 때만 이전 자료를 superseded로 바꾸고, 실패하면 옛 판을 그대로 쓰며 supersedes_id도 비운다. DB 모드도 접수 요청 안에서 적재를 끝내므로 202 응답의 ingest_status는 succeeded나 failed다. DB는 `## ` 제목 단위로 나누고, 사용 중인 다른 자료와 같은 항목의 날짜·숫자가 다르면 status를 conflict_pending으로 두고 conflicts[]에 담는다. |
+| ⑧ 실행 규칙 | 적재가 성공했는지 실패했는지는 접수한 뒤 GET /documents/{document_id}(3.23)로 확인한다. 두 모드 모두 접수 요청 안에서 적재를 끝내므로, 202 응답의 ingest_status는 succeeded나 failed다. 이전 자료는 새 판이 적재에 성공했을 때만 superseded로 바꾼다. 새 판의 적재가 실패하면 옛 판을 그대로 쓰고 supersedes_id도 비운다. 모의 적재는 UTF-8로 치환 해독한 뒤 500자씩 나눈다(빈 파일도 1조각). 파일명에 [실패]가 들어 있으면 ingest_status=failed·chunk_count=0으로 끝난다. DB 모드 적재에서는 파일 종류와 내용을 읽고 충돌도 검사한다. 그 결과는 아래 'DB 모드 적재 결과' 표에 있다. |
 
 | 필드 | 위치 | 타입 | 필수 | 빈값 | 제약 | 설명 |
 | --- | --- | --- | --- | --- | --- | --- |
-| `file` | 폼 | binary | 필수 | 빈 파일 허용 | 2MiB(2,097,152바이트) 이하. 확장자·형식 제한은 따로 두지 않음 | title은 파일명, 파일명이 없으면 자료 |
+| `file` | 폼 | binary | 필수 | 접수는 빈 파일 허용 | 2MiB(2,097,152바이트) 이하. 접수 단계에서는 확장자·형식을 보지 않음 | title은 파일명, 파일명이 없으면 자료. DB 모드는 적재 단계에서 .md·.markdown·.txt UTF-8 글만 읽으며, 빈 파일이나 다른 형식은 failed가 된다 |
 | `doc_type` | 폼 | string | 필수 | 불가 | notice·schedule·menu·policy·consult_timetable·law·public_data | 자료 유형 |
 | `visibility` | 폼 | string | 필수 | 불가 | staff·parents·all | 공개 범위 |
 | `classroom_ids[]` | 폼 | string[](UUID) | 선택 | 생략 가능 | 기본 [], 담임은 현재 담당 반 | 비우면 원 전체 |
@@ -1236,7 +1236,7 @@ HTTP/1.1 200 OK
 | `replaces_document_id` | 폼 | string(UUID) | 선택 | 생략 가능 | 범위 안의 active 문서 | 이전 판 |
 | `document` | 응답 | object | 항상 | 불가 | 전체 칸은 3.23 참고 | ID·적재 상태·조각 수·error |
 
-아래 예시는 200을 돌려준다. 올린 파일이 시드 식단표와 바이트가 같기 때문이다. 중복 여부는 같은 기관 안에서 파일 바이트의 SHA-256만 비교해 판단하므로, 이름·유형·공개 범위가 달라도 기존 자료를 돌려준다. 이전 판 상태는 이 중복 검사를 마친 뒤에 검사한다. 예시의 multipart 각 부분은 이름·값을 줄여 적었다.
+아래 예시는 200을 돌려준다. 올린 파일이 시드 식단표와 바이트가 같기 때문이다. 중복 여부는 같은 기관 안에서 파일 바이트의 SHA-256만 비교해 판단하므로, 이름·유형·공개 범위가 달라도 기존 자료를 돌려준다. 모의 모드는 이 중복 검사를 마친 뒤에 이전 판 상태를 검사하고, DB 모드는 이전 판 상태를 먼저 검사한다. 예시의 multipart 각 부분은 이름·값을 줄여 적었다.
 
 ```http
 POST /api/v1/documents
@@ -1256,6 +1256,27 @@ HTTP/1.1 200 OK
 | 413 | `VALIDATION_FAILED` | 파일이 2MiB를 넘음 |
 | 422 | `VALIDATION_FAILED` | 필수 칸·타입·허용 값·길이가 맞지 않음 |
 
+**DB 모드 적재 결과.** DB 모드는 글을 `## ` 제목 단위로 나누고, 그 제목을 근거 위치(location)로 쓴다. 제목이 없는 글은 본문 전체가 한 조각이 되고, 위치는 '본문'이다. 적재에 실패하면 이유와 상관없이 error.code는 `UPSTREAM_UNAVAILABLE`이다. 실패 이유는 error.message로 구분한다. 아래 결과는 2026-11-23 develop `24258f2`를 DB 모드로 띄운 뒤, 파일을 하나씩 직접 올려서 얻은 것이다.
+
+| 올린 파일 | 결과 | error.message와 남는 값 | 시험 |
+| --- | --- | --- | --- |
+| 이름이 .md·.markdown·.txt로 끝나지 않음(예: 식단표.hwp) | 202 · failed · chunk_count 0 | "지금은 .md·.txt 글 파일만 읽을 수 있어요" | `test_upload_unreadable_file_fails_with_message` |
+| UTF-8로 읽히지 않는 글 | 202 · failed | "UTF-8 글 파일이 아니에요" | 직접 호출로만 확인 |
+| 빈 파일, 공백·빈 줄만 있는 파일 | 202 · failed | "읽을 내용이 없어요". 모의 모드에서는 1조각으로 succeeded가 된다 | 직접 호출로만 확인 |
+| 맨 앞이 `---`로 시작함 | 머리말로 읽어 본문과 떼어 낸다 | 필수 키 6개(title·doc_type·kindergarten_id·effective_from·visibility·source)가 빠지거나 값이 허용 범위 밖이면 failed가 된다("머리말에 필수 값이 없습니다: …", "머리말이 닫히지 않았습니다" 등). 통과해도 자료 이름·유형·공개 범위·적용일은 폼 값을 쓴다 | `test_upload_conflicting_notice_is_pending_with_conflicts`, `test_bad_front_matter_is_rejected`(단위 시험) |
+| 사용 중인 다른 자료와 같은 항목의 날짜·숫자가 다름 | 202 · succeeded · conflict_pending | conflicts[]에 충돌 항목을 담는다. 새 판으로 올렸어도 옛 판은 active로 두고 supersedes_id를 비운다. 사람이 확인하기 전에는 근거 검색에 나오지 않는다 | `test_upload_conflicting_notice_is_pending_with_conflicts` |
+| 충돌 없는 새 판(replaces_document_id) | 202 · succeeded · active | supersedes_id에 옛 판 ID가 들어가고, 옛 판은 superseded가 된다 | `test_upload_plain_text_new_version_supersedes_old` |
+| 같은 기관에 바이트가 같은 자료가 있음 | 200 · 기존 자료 | 새 행을 만들지 않는다. 기존 자료가 superseded여도 그대로 돌려준다 | `test_upload_conflicting_notice_is_pending_with_conflicts`, superseded인 경우는 직접 호출로 확인 |
+| 적재에 실패했던 자료와 바이트가 같음 | 202 · 같은 ID로 다시 적재 | title을 새 파일명으로 바꾼다. 두 요청이 겹치면 한쪽만 적재하고, 늦은 쪽은 200을 받는다 | `test_upload_unreadable_file_fails_with_message`, `test_failed_reupload_runs_once_when_two_requests_race` |
+| 2MiB를 넘음 | 413 · `VALIDATION_FAILED` | "자료 파일은 2MiB 이하여야 해요." 자료 행을 만들지 않는다 | `test_upload_duplicate_class_and_size_limit` |
+
+충돌은 모델을 부르지 않고 규칙으로 찾는다. 목록 줄과 표 줄에 적힌 날짜, 그리고 목록 줄에서 ℃·원·분·명이 붙은 숫자를 항목 이름별로 모은다. 비교 대상은 같은 기관에서 사용 중(active)이고 적재가 끝난 다른 자료다. 새 판이 대신할 옛 판은 여기서 뺀다. 항목 이름이 같고 대상 반이 겹치는데 값이 다르면 충돌로 본다. 다만 식단표·상담 시간표(menu·consult_timetable)는 날짜를 비교하지 않는다. 충돌 항목 하나는 아래와 같은 모양이다(DB 모드, 시드 '겨울방학 안내'와 날짜가 다른 글을 올림).
+
+```json
+{"label": "겨울방학", "kind": "date", "value": "2026-12-26~2027-01-03", "location": "1쪽 겨울방학 기간",
+ "other_document_id": "…", "other_document_title": "겨울방학 안내", "other_location": "1쪽 겨울방학 기간", "other_value": "2026-12-24~2027-01-03"}
+```
+
 ### 3.23 자료 목록·상세 — `GET /api/v1/documents`, `GET /api/v1/documents/{document_id}`
 
 | 칸 | 내용 |
@@ -1267,7 +1288,7 @@ HTTP/1.1 200 OK
 | ⑤ 검증·권한 | teacher·director만 볼 수 있다. 같은 기관 안에서 원 전체 자료와 현재 담당 반이 대상인 자료를 보며, 원장은 반 제한 없이 본다. visibility 값은 교직원 조회를 막지 않는다. |
 | ⑥ 정상 응답 | 목록은 200 + items[]·total·page·size, 상세는 200 + document. 적재에 실패한 자료도 조회는 200이다. |
 | ⑦ 오류 응답 | 아래 오류 표. |
-| ⑧ 실행 규칙 | 생성 시각으로 정렬한 뒤 쪽을 나눈다. 모의 구현은 superseded 자료도 목록에 남기며, conflicts는 항상 []다. status와 ingest_status는 따로 움직이므로 적재에 실패한 파일도 status=active일 수 있다. |
+| ⑧ 실행 규칙 | 목록은 생성 시각으로 정렬한 뒤 쪽을 나눈다. 두 모드 모두 superseded 자료도 목록에 남긴다. status와 ingest_status는 서로 따로 바뀌므로, 적재에 실패한 파일도 status=active일 수 있다. 모의 구현에서 conflicts는 늘 []다. DB 모드는 충돌 항목(3.22)을 상세에만 담고, 목록 items[]의 conflicts는 []로 둔다. DB 모드 목록의 error에는 현재 적재 상태가 반영되지 않는다. 그래서 실패한 뒤 다시 적재해 성공한 자료에도 지난 실패 내용이 남는다. 화면에서는 ingest_status가 failed일 때만 error를 보여 준다. |
 
 | 필드 | 위치 | 타입 | 필수 | 빈값 | 제약 | 설명 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -1276,8 +1297,8 @@ HTTP/1.1 200 OK
 | `sort` | 쿼리 | string | 선택 | 불가 | `-created_at`(기본)·`created_at` | 내림차순·오름차순 |
 | `document.id`·`title`·`doc_type`·`visibility`·`classroom_ids[]` | 상세 응답 | UUID·string·UUID[] | 항상 | 빈 classroom_ids 가능 | 목록 items[]도 같은 모양 | 자료 이름·종류·공개 범위·대상 반 |
 | `document.effective_from`·`effective_to`·`supersedes_id` | 상세 응답 | date·UUID | 항상 | effective_to·supersedes_id는 null 가능 | 새 판에만 이전 문서 ID | 적용 기간·판 연결 |
-| `document.status`·`ingest_status` | 상세 응답 | string | 항상 | 불가 | status는 모의 구현에서 active·superseded, ingest_status는 queued·running·succeeded·failed | 사용 상태·적재 진행 |
-| `document.chunk_count`·`conflicts[]`·`error` | 상세 응답 | integer·object[]·object | 항상 | error는 null 가능 | 조각 수, 오류는 {code, message} | 실패면 UPSTREAM_UNAVAILABLE, 충돌 판별은 모의 구현에 없음 |
+| `document.status`·`ingest_status` | 상세 응답 | string | 항상 | 불가 | status는 모의 구현에서 active·superseded이고 DB 모드는 conflict_pending도 쓴다. ingest_status는 queued·running·succeeded·failed | 사용 상태·적재 진행 |
+| `document.chunk_count`·`conflicts[]`·`error` | 상세 응답 | integer·object[]·object | 항상 | error는 null 가능 | 조각 수, 오류는 {code, message}, 충돌 항목 모양은 3.22 | 실패면 code는 UPSTREAM_UNAVAILABLE이고 이유는 message에 있다(3.22 DB 모드 적재 결과). 충돌 판별은 모의 구현에 없음 |
 | `total`·`page`·`size` | 응답 | integer | 항상 | 불가 | 전체 건수·요청한 쪽·크기 | 목록 공통 칸 |
 
 ```http
@@ -1418,7 +1439,7 @@ API 38~49는 2장 표의 경로를 쓰며 모두 `/api/v1` 아래에 있다. 사
 | ② 요청 헤더 | JWT 필수. 생성은 multipart/form-data, 숨김·범위 변경은 application/json이다 |
 | ③ 경로·쿼리 | 기관·반·글·사진·아이 ID는 UUID다. 목록은 기존 규칙대로 page=1·size=20(최대 100)·sort=-created_at이고, 오름차순은 created_at이다. 동률이면 같은 방향의 id로 정렬한다. 앨범의 child_id로는 보호자가 자기 아이만 고를 수 있다 |
 | ④ 요청 본문 | 글 생성은 body 1~2,000자(공백만으로는 안 됨), files 0~10장이다. child_ids는 파일 순서대로 아이 UUID 배열을 담은 JSON 문자열이다. 예: [["아이 UUID"],[]]. 기본 []는 모든 사진에 태그가 없다는 뜻이다. 숨김은 {"status":"hidden"}, 범위 변경은 {"photo_scope":"family"}(family·class·org 중 하나)다 |
-| ⑤ 검증·권한 | 칸 권한을 먼저 검사하고, 그다음 사진 공개 범위를 검사한다. class 칸은 그 반 아이의 보호자만 읽고 쓴다. 교직원이나 다른 반 보호자가 접근하면 목록·상세·앨범·파일 모두 403 FORBIDDEN을 돌려주고 permission_denied 이력을 남긴다. org 칸은 같은 기관의 보호자·교직원이 모두 읽고 쓴다. 다른 기관이나 없는 자원은 404다. 다른 아이의 범위를 조회·변경하거나, 남의 글을 삭제하거나, 원장이 아닌 사람이 숨기려 해도 403이다 |
+| ⑤ 검증·권한 | 칸 권한을 먼저 검사하고, 그다음 사진 공개 범위를 검사한다. class 칸은 그 반 아이의 보호자만 읽고 쓴다. 교직원이나 다른 반 보호자가 접근하면 목록·상세·앨범·파일 모두 403 FORBIDDEN을 돌려주고 permission_denied 이력을 남긴다. org 칸은 같은 기관의 보호자·교직원이 모두 읽고 쓴다. 학부모라도 지금 연결된 아이가 없으면 원 칸 피드·앨범 요청에도 403 FORBIDDEN을 돌려주고 permission_denied를 남긴다(다른 반 보호자와 같은 처리다). 다른 기관이나 없는 자원은 404다. 다른 아이의 범위를 조회·변경하거나, 남의 글을 삭제하거나, 원장이 아닌 사람이 숨기려 해도 403이다 |
 | ⑥ 정상 응답 | 글 생성 201과 상세/숨김 200은 {post: Post}, 목록·앨범은 {items,total,page,size}다. 범위 조회·변경 200은 {child_id,photo_scope}, 삭제는 204다. 파일은 검사한 형식의 바이트를 Cache-Control: private, no-store·X-Content-Type-Options: nosniff·Content-Disposition: inline과 함께 준다 |
 | ⑦ 오류 응답 | 공통 형식으로 401 UNAUTHENTICATED, 403 FORBIDDEN, 404 NOT_FOUND, 422 VALIDATION_FAILED를 준다. 태그한 아이가 다른 반/원 아이이거나, 태그가 중복되거나, 배열 수가 맞지 않아도 422다. 업로드 몸통이 51MiB를 넘으면 413 VALIDATION_FAILED다 |
 | ⑧ 저장·이력 | feed_posts·feed_photos·feed_photo_children, children.photo_scope(0010)를 쓴다. 생성·삭제·숨김·범위 변경은 events에 feed_post_created·feed_post_deleted·feed_post_hidden·photo_scope_changed로 남기며 trace_id·대상 ID를 함께 적는다. 새 알림은 만들지 않는다 |
@@ -2008,4 +2029,4 @@ MVP 설정값은 서버 설정(`.env`)으로 관리한다. `.env.example`에는 
 | v0.7 | 2026-11-21 | 피드·앨범·사진 공개 범위 API(38~49)를 더함 | 태웅 |
 | v0.7.1 | 2026-11-21 | 피드 업로드 크기 제한·권한 검사 순서·파일 삭제 시점을 맞춤 | 태웅 |
 | v0.7.2 | 2026-11-23 | 과정 이야기를 걷어내고 문장을 다듬음. 원에 남은 답은 바로 답하지 않고 담임 카드 초안으로만 쓰도록 기획서·에이전트 명세(T14)에 맞춤 | 태웅 |
-| v0.8 | 2026-11-23 | 11/20 강사 피드백을 반영함. 2장에 첫 시연 순서와 API별 상태 칸을, 3.19.1에 알림장 접수부터 발송 차단까지의 응답 예시를, 5.5에 먼저 쓰는 도구 세 개의 입력·출력·실패 뒤 행동을, 6.7에 인계 카드 저장 실패 사례를 더함. 문서 머리에 기준 판 표를 두고, 자료 올리기 크기 제한(2MiB·413)과 보류 예정일 경계를 코드에 맞춤 | 태웅 |
+| v0.8 | 2026-11-23 | 11/20 강사 피드백을 반영함. 2장에 첫 시연 순서와 API별 상태 칸을, 3.19.1에 알림장 접수부터 발송 차단까지의 응답 예시를, 5.5에 먼저 쓰는 도구 세 개의 입력·출력·실패 뒤 행동을, 6.7에 인계 카드 저장 실패 사례를 더함. 3.22·3.23에 DB 모드 적재 결과(읽는 파일 종류·빈 파일·머리말·충돌·새 판·다시 적재)를 더하고, 3.29에 연결된 아이가 없는 학부모의 원 칸 권한을 더함. 문서 머리에 기준 판 표를 두고, 자료 올리기 크기 제한(2MiB·413)과 보류 예정일 경계를 코드에 맞춤 | 태웅 |
