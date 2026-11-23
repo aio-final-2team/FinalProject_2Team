@@ -12,7 +12,10 @@ from app.core.schedule import KST
 from tools.public_apis.law import get_law_article
 from tools.public_apis.weather import WeatherClient
 
-TOPICS_FILE = Path(__file__).resolve().parents[5] / "data" / "external" / "law_topics.json"
+# 저장소에서는 apps/api/app/… 다섯 단계 위, 이미지에서는 /app 아래에 data/external이 있다. 위로 올라가며 찾는다.
+TOPICS_FILE = next((parent / "data" / "external" / "law_topics.json" for parent in Path(__file__).resolve().parents
+                    if (parent / "data" / "external" / "law_topics.json").is_file()),
+                   Path("data") / "external" / "law_topics.json")
 QUOTE_LENGTH = 200
 EVENT_WORDS = ("날씨", "우산", "추워", "더워", "소풍", "현장체험", "체험", "행사", "운동회", "나들이")
 # '비'·'눈'은 준비물·비용처럼 다른 낱말 속 글자와 섞이지 않게, 앞에 한글이 없고 뒤가 조사·끝일 때만 센다
