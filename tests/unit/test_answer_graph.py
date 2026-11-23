@@ -148,7 +148,7 @@ def test_checker_model_error_goes_to_teacher():
     checker = Checker([ModelError("검사 실패")])
     result = draft_answer("겨울방학", search, writer, checker)
     assert result["text"] == NO_ANSWER and result["no_evidence"]
-    assert len(writer.payloads) == 1 and checker.calls == 1
+    assert len(writer.payloads) == 1 and checker.calls == 2
 
 
 def test_forged_quote_never_reaches_checker():
@@ -156,3 +156,25 @@ def test_forged_quote_never_reaches_checker():
     result = draft_answer("겨울방학", search, Writer({"text": "가짜 답", "evidence": [
         {"chunk_id": 1, "quote": "없는 날짜"}], "no_evidence": False, "conflict": False}), checker)
     assert result["no_evidence"] and checker.calls == 0
+
+
+def test_checker_model_error_recovers_on_second_call():
+    checker = Checker([ModelError("일시 오류"), {"passed": True, "issues": []}])
+    result = draft_answer("겨울방학", search, Writer(answer()), checker)
+    assert result["text"] == "12월 24일부터예요." and checker.calls == 2
+
+
+@pytest.mark.parametrize("bad", [
+    {"passed": True},
+    {"passed": False, "issues": [{"field": "없는 항목", "problem": "확인 필요"}]},
+])
+def test_checker_bad_format_recovers_on_second_call(bad):
+    checker = Checker([bad, {"passed": True, "issues": []}])
+    result = draft_answer("겨울방학", search, Writer(answer()), checker)
+    assert result["text"] == "12월 24일부터예요." and checker.calls == 2
+
+
+def test_checker_bad_format_twice_goes_to_teacher():
+    checker = Checker([{"passed": True}])
+    result = draft_answer("겨울방학", search, Writer(answer()), checker)
+    assert result["text"] == NO_ANSWER and result["no_evidence"] and checker.calls == 2

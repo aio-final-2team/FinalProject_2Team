@@ -63,23 +63,25 @@ def _review(model, question, draft, candidates, attempt, trace):
     prompt = _prompt("checker.md", "## 입력", "## 알림장: 메모와 대조한다") + CHECK_FORMAT
     payload = {"question": question, "draft": draft["text"], "evidence": draft["evidence"],
                "chunks": candidates, "attempt": attempt}
-    try:
-        result = model.json(prompt, json.dumps(payload, ensure_ascii=False, default=str))
-    except ModelError:
+    for _ in range(2):
+        try:
+            result = model.json(prompt, json.dumps(payload, ensure_ascii=False, default=str))
+        except ModelError:
+            trace.append("check")
+            continue
         trace.append("check")
-        return None
-    trace.append("check")
-    if not isinstance(result, dict) or not isinstance(result.get("passed"), bool) or not isinstance(result.get("issues"), list):
-        return None
-    issues = result["issues"]
-    if any(not isinstance(issue, dict) or issue.get("field") not in CHECK_FIELDS
-           or not isinstance(issue.get("problem"), str) or not issue["problem"].strip() for issue in issues):
-        return None
-    if result["passed"] and issues:
-        return None
-    if not result["passed"] and not issues:
-        return None
-    return issues
+        if not isinstance(result, dict) or not isinstance(result.get("passed"), bool) or not isinstance(result.get("issues"), list):
+            continue
+        issues = result["issues"]
+        if any(not isinstance(issue, dict) or issue.get("field") not in CHECK_FIELDS
+               or not isinstance(issue.get("problem"), str) or not issue["problem"].strip() for issue in issues):
+            continue
+        if result["passed"] and issues:
+            continue
+        if not result["passed"] and not issues:
+            continue
+        return issues
+    return None
 
 
 def draft_answer(question: str, search, writer=None, checker=None) -> dict:
