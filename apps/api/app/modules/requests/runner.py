@@ -1,6 +1,7 @@
 """같은 API 프로세스의 백그라운드 입구. T29에서 워커 태스크로도 불러요."""
 
 from concurrent.futures import Future
+from contextvars import copy_context
 from importlib import import_module
 from datetime import timedelta
 from threading import Thread
@@ -32,7 +33,8 @@ def _start_agent(request_id):
         except BaseException as error:  # noqa: BLE001 - 부른 쪽이 future로 받는다
             future.set_exception(error)
 
-    Thread(target=invoke, name="request-agent", daemon=True).start()
+    # 스레드는 contextvars를 물려받지 않는다. 복사해서 넘겨야 이력의 trace_id가 접수 요청과 같다(API 1.3).
+    Thread(target=copy_context().run, args=(invoke,), name="request-agent", daemon=True).start()
     return future
 
 

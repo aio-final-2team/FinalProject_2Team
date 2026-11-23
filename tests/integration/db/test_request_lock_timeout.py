@@ -42,9 +42,12 @@ def use_model(seeded_db, monkeypatch, hook):
     monkeypatch.setattr(graph, "OpenAIModel", SlowModel)
 
 
-def submit(db_client):
+def submit(db_client, trace_id=None):
     login = db_client.post("/api/v1/auth/login", json={"login_id": "parent01", "password": "demo1234"})
-    response = db_client.post("/api/v1/requests", headers={"Authorization": "Bearer " + login.json()["access_token"]},
+    headers = {"Authorization": "Bearer " + login.json()["access_token"]}
+    if trace_id:
+        headers["X-Request-ID"] = trace_id
+    response = db_client.post("/api/v1/requests", headers=headers,
                               json={"client_request_id": str(uuid4()), "type": "inquiry", "body": BODY,
                                     "child_id": str(seed.CHILD)})
     assert response.status_code == 202, response.text
@@ -80,15 +83,27 @@ def test_answer_models_run_outside_request_row_lock(db_client, seeded_db, monkey
         seen.append((role, checked_out, lockable))
 
     use_model(seeded_db, monkeypatch, probe)
-    request_id = submit(db_client)
+    request_id = submit(db_client, trace_id="[TEST]-y065-trace")
     assert seen == [("DOCUMENT", 0, True), ("CHECKER", 0, True)]
     [card] = cards_of(seeded_db, request_id)
     assert card["draft"]["text"] == "[TEST] 자료 확인 답" and card["check_result"]["passed"] is True
+    with seeded_db.connect() as connection:  # 실행기 스레드에서 쓴 이력도 접수 요청과 같은 trace_id(API 1.3)
+        traces = connection.execute(text("""
+            SELECT action, detail->>'trace_id' FROM events WHERE request_id=:id AND actor_type='agent' ORDER BY id
+        """), {"id": request_id}).all()
+    assert {action for action, _ in traces} >= {"classified", "assigned", "drafted"}
+    assert {trace for _, trace in traces} == {"[TEST]-y065-trace"}
 
 
 def test_ai_timeout_hands_off_empty_card_and_drops_late_draft(db_client, seeded_db, monkeypatch):
-    release, finished = threading.Event(), threading.Event()
-    use_model(seeded_db, monkeypatch, lambda role: role == "DOCUMENT" and release.wait(10))
+    entered, release, finished = threading.Event(), threading.Event(), threading.Event()
+
+    def hold(role):
+        if role == "DOCUMENT":
+            entered.set()
+            release.wait(10)
+
+    use_model(seeded_db, monkeypatch, hold)
     original = agent_stub.run_request
 
     def tracked(request_id):
@@ -100,6 +115,7 @@ def test_ai_timeout_hands_off_empty_card_and_drops_late_draft(db_client, seeded_
     monkeypatch.setattr(agent_stub, "run_request", tracked)
     monkeypatch.setattr(runner, "AI_TIMEOUT_SECONDS", 0.3)
     request_id = submit(db_client)  # 실행기는 0.3초 뒤 기다리기를 멈추고 넘긴다. 모델은 아직 도는 중
+    assert entered.wait(5)  # 늦은 실행은 첫 확인을 지나 모델까지 갔다. 버려지는 곳은 저장 직전 재확인이다
     [card] = cards_of(seeded_db, request_id)
     assert card["kind"] == "reply_draft" and card["assignee_id"] is None
     assert not card["draft"].get("text") and card["check_result"] is None
