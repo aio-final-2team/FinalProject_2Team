@@ -581,7 +581,7 @@ T12 화면 지도에 나온 화면들이 조회 응답에서 쓰는 칸을 여�
 | `consultation.slots[] { id, period, room, status }` | 목록 | 상담 요청 | 후보 시각과 장소(3.2와 같음). MVP에서는 상담실 대면 한 가지뿐이라 방식(대면·화상) 칸은 두지 않고, 화상상담(FR-18)을 넣을 때 `mode`를 더한다 | `consultation_slots`, `rooms.name` |
 | `request.hold_until` | date | 보류 중 | 보류 예정일(3.2와 같음). 이유는 주지 않음 | `cards.hold_until` |
 | `rejection { reason_code, reason_text }` | 객체 | 반려된 요청 | 반려 이유. T04 2장의 학부모 표시 문구 '처리할 수 없는 요청이에요 (이유)'에 들어간다. 담임이 반려할 때는 이 글이 학부모에게 보인다는 안내를 담임 화면에 띄워야 한다 | `approvals`(`decision = dismiss`) |
-| `sources[] { document_title, location, effective_from }` | 목록 | 회신이 나간 문의·민원 | 답변 출처. 학부모에게 공개된 문서(`visibility`가 `parents`·`all`)만 | 승인된 카드의 `card_evidence` → `document_chunks` → `documents` |
+| `sources[] { document_title, location, effective_from }` | 목록 | 회신이 나간 문의·민원 | 답변 출처. 학부모에게 공개된 문서(`visibility`가 `parents`·`all`)만. 법령(`doc_type = law`) 근거는 담임이 승인한 답변 글에 그 법령 이름이 실제로 들어 있을 때만 나간다(담임 카드에는 항상 보임) | 승인된 카드의 `card_evidence` → `document_chunks` → `documents` |
 
 **알림장** (`GET /api/v1/daily-notes`의 `content`, `open_checks[]`)
 
