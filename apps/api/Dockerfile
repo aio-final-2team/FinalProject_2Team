@@ -9,6 +9,8 @@ COPY apps/api/requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
 COPY apps/api/app ./app
 COPY agents ./agents
+COPY tools/public_apis ./tools/public_apis
+COPY data/external ./data/external
 COPY apps/api/alembic.ini ./apps/api/alembic.ini
 COPY apps/api/migrations ./apps/api/migrations
 COPY db/seeds ./db/seeds
