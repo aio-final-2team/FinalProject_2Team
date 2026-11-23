@@ -206,20 +206,21 @@ tools/smoke.sh "$API_BASE_URL"
 ```
 `TODO`: ECR 도입 시 이미지 태그 기준 롤백으로 변경
 
-### 7-2. DB 백업 · 복원
-배포 전에 백업을 먼저 받습니다. 상세 절차는 `infra/backup/`에 정리 예정.
-환경 파일과 같은 DB 이름·계정을 사용해요. 백업 파일은 `BACKUP_FILE`, 복원할 파일은 `RESTORE_FILE`로 정해요.
-복원은 배포 담당자가 대상 DB와 백업을 확인한 뒤 진행해요.
+### 7-2. DB·사진 백업 · 복원
+배포하기 전에 먼저 `infra/backup/backup.sh`로 백업을 받아요. DB 덤프와 사진 볼륨, 그리고 만든 시각과 커밋, alembic 판이 `backups/<UTC 시각>/` 폴더 하나에 함께 들어가요.
+보관 개수(`BACKUP_KEEP`, 기본 7)를 넘는 옛 폴더는 지워져요. 환경 파일과 Compose 옵션은 배포 스크립트와 같은 기본값을 써요.
+복원은 배포 담당자가 대상 서버와 백업 폴더를 확인한 뒤에 진행해요. `restore.sh`를 `--yes` 없이 돌리면 할 일만 보여 줘요.
+복원 순서와 복원 뒤에 다시 적용하는 법, 사진 정리는 [infra/backup/README.md](backup/README.md)를 봐요.
 
 ```bash
 # 백업
-docker compose --env-file infra/team-server/.env.server \
-  -f compose.yaml -f infra/team-server/compose.server.yaml \
-  exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' > "$BACKUP_FILE"
-# 복원
-docker compose --env-file infra/team-server/.env.server \
-  -f compose.yaml -f infra/team-server/compose.server.yaml \
-  exec -T db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" "$POSTGRES_DB"' < "$RESTORE_FILE"
+infra/backup/backup.sh
+# 복원: 할 일을 먼저 확인한 뒤 --yes로 실행해요.
+infra/backup/restore.sh backups/<시각>
+infra/backup/restore.sh backups/<시각> --yes
+# 다른 환경 파일을 쓰면 백업은 첫 번째, 복원은 두 번째 인자로 넘겨요.
+# infra/backup/backup.sh "$SERVER_ENV_FILE"
+# infra/backup/restore.sh backups/<시각> "$SERVER_ENV_FILE" --yes
 ```
 
 ## 8. 모바일 앱 배포 (compose와 별개)
@@ -269,3 +270,4 @@ npx cap sync ios
 |---|---|---|
 | 2026-11-17 | `TODO` | 초안 작성 |
 | 2026-11-20 | 태웅 | 기존 구조를 복원하고 환경변수·배포·확인·롤백 절차를 서버 Compose·스크립트에 맞췄어요. |
+| 2026-11-23 | 태웅 | 7-2의 수동 `pg_dump`·`psql` 절차를 사진까지 받는 백업·복원 스크립트로 바꿨어요. |
