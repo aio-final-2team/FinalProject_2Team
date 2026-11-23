@@ -93,6 +93,6 @@ def test_hybrid_score_uses_matching_vector(seeded_db, monkeypatch):
             WHERE id=(SELECT ch.id FROM document_chunks ch JOIN documents d ON d.id=ch.document_id
                       WHERE d.title='겨울방학 안내' AND ch.location='1쪽 겨울방학 기간' LIMIT 1)
         """), {"vector": "[" + ",".join(["1"] + ["0"] * 1023) + "]", "version": embedding.VERSION})
-    user = SimpleNamespace(org_id=seed.ORG, role="parent")
+    user = SimpleNamespace(id=seed.PARENT, org_id=seed.ORG, role="parent")
     result = search_documents(user, str(seed.ORG), "notice", "겨울방학", classroom_id=seed.CLASS_STAR)["chunks"]
     assert result and result[0]["score"] > 0.5

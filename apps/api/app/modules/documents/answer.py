@@ -10,7 +10,7 @@ from app.modules.documents.search import search_documents
 
 
 def answer_for_request(req, writer=None):
-    user = SimpleNamespace(org_id=req["org_id"], role="parent")
+    user = SimpleNamespace(id=req["requester_id"], org_id=req["org_id"], role="parent")
 
     def search(doc_type, query):
         return search_documents(user, str(req["org_id"]), doc_type, query,
