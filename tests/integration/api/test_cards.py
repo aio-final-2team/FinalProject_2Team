@@ -69,6 +69,9 @@ def test_reply_approval_confirmation_completion_and_event_order(client, parent, 
     assert cid in [row["id"] for row in client.get(BASE + "/cards?filter=in_progress", headers=teacher).json()["items"]]
     sent = client.get(f"{BASE}/requests/{rid}", headers=parent).json()
     assert sent["messages"][-1]["body"] == detail(client, teacher, cid)["card"]["draft"]["text"]
+    # 학부모 글과 담임이 승인해 나간 답은 둘 다 user지만, 역할로 말풍선을 나눌 수 있어요.
+    assert [(m["sender_type"], m["sender_role"]) for m in sent["messages"]] == [("user", "parent"), ("user", "teacher")]
+    assert client.get(f"{BASE}/requests/{rid}", headers=teacher).json()["messages"] == sent["messages"]
     confirmed = client.post(f"{BASE}/requests/{rid}/confirm", headers=parent)
     assert confirmed.status_code == 200
     assert client.post(f"{BASE}/requests/{rid}/confirm", headers=parent).json() == confirmed.json()

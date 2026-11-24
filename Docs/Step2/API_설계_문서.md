@@ -5,7 +5,7 @@
 | 작업 | T13 API 설계 문서(FastAPI·Function Calling 도구 계약)·모의 API (#170) |
 | 작성 · 검토 | 태웅 · 인혜 |
 | 계약을 쓰는 쪽 | 화면 T12·T32(성주), 알림장 그래프 T32(프롬프트 검토 영민), 요청 처리 에이전트·자료·근거 검색 T29·T20·T33(영민) |
-| 판 | v0.10 · 2026-11-24 (판마다 바뀐 내용은 맨 끝 변경 이력 참고. 계약을 바꾸면 예시·모의 응답·시험도 함께 고친다) |
+| 판 | v0.10.1 · 2026-11-24 (판마다 바뀐 내용은 맨 끝 변경 이력 참고. 계약을 바꾸면 예시·모의 응답·시험도 함께 고친다) |
 | 2차 검토 링크 | `develop` 브랜치의 [API 설계 문서](https://github.com/aio-final-2team/FinalProject_2Team/blob/develop/Docs/Step2/API_설계_문서.md). API별 상태(2장)는 develop `24258f2` 코드로 판정했다. 이 커밋은 2장 상태 칸의 기준이고, 시연에 쓰는 커밋은 다음 줄에 따로 적는다 |
 | 시연 코드 기준 커밋 | 레포 [README](../../README.md#2차-검토-문서)의 '시연 코드 기준 커밋' 한 줄을 본다(11/24 기준 develop `97fda0b`, 위험 등급 확대 #326·요청 처리 AI 스위치 #321까지 팀 서버에 배포). 11/27 시연 전까지 팀 서버를 다시 배포하면 README 그 한 줄만 고친다 |
 | 함께 보는 문서 | 아래 기준 판 표의 문서들, T04 흐름·권한 명세 |
@@ -333,7 +333,7 @@ X-Request-ID: 6b0f1c2e-9a7d-4c1e-8f3a-2d5b7e9c1a40
     "updated_at": "2026-12-01T09:10:20+09:00"
   },
   "messages": [
-    { "id": 41, "sender_type": "user", "body": "아이 친구 관계로 상담하고 싶어요.", "created_at": "2026-12-01T09:10:00+09:00" }
+    { "id": 41, "sender_type": "user", "sender_role": "parent", "body": "아이 친구 관계로 상담하고 싶어요.", "created_at": "2026-12-01T09:10:00+09:00" }
   ],
   "timeline": [
     { "label": "접수됨", "at": "2026-12-01T09:10:00+09:00" },
@@ -358,6 +358,7 @@ X-Request-ID: 6b0f1c2e-9a7d-4c1e-8f3a-2d5b7e9c1a40
 | `request.hold_until` | date | 아니오 | 보류 예정일. 보류 이유는 학부모에게 주지 않음 |
 | `request.parent_confirmed_at` | datetime | 아니오 | 민원 '확인했어요' 시각 |
 | `messages[]` | 목록 | 예 | 대화. `sender_type`은 `user`(사람)·`agent`(AI)·`system` |
+| `messages[].sender_role` | string | 아니오 | 메시지를 쓴 사람의 역할(`parent`·`teacher`·`director`). AI나 시스템이 쓴 글이면 null이다. 학부모 글과 담임이 승인해 보낸 답은 `sender_type`이 둘 다 `user`여서, 화면에서는 이 값으로 말풍선을 나눈다 |
 | `timeline[]` | 목록 | 예 | 학부모용은 상태가 바뀐 단계만 표시 이름으로 보임 |
 | `consultation` | 객체 | 아니오 | 상담 요청일 때만. 후보 최대 3개와 확정 예약 |
 
@@ -714,12 +715,13 @@ HTTP/1.1 200 OK
 | `body` | 본문 | string | 필수 | 불가 | 1~2,000자 | 추가 설명; 모의 구현은 공백만 있는 글도 길이로만 검사 |
 | `message.id` | 응답 | integer | 항상 | 불가 | 서버 발급 | 메시지 ID |
 | `message.sender_type`·`body`·`created_at` | 응답 | string·datetime | 항상 | 불가 | sender_type은 `user` | 저장한 글과 시각 |
+| `message.sender_role` | 응답 | string | 항상 | 불가 | `parent` | 메시지를 쓴 사람의 역할. 이 API는 학부모만 부르므로 항상 `parent`다 |
 
 ```http
 POST /api/v1/requests/00000000-0000-4000-8000-000000000702/messages
 {"body": "버스 도착 시각을 더 알려드릴게요."}
 HTTP/1.1 201 Created
-{"message": {"id": 1071, "sender_type": "user", "body": "버스 도착 시각을 더 알려드릴게요.", "created_at": "2026-11-18T10:00:00+09:00"}}
+{"message": {"id": 1071, "sender_type": "user", "sender_role": "parent", "body": "버스 도착 시각을 더 알려드릴게요.", "created_at": "2026-11-18T10:00:00+09:00"}}
 ```
 
 | HTTP | `code` | 조건 |
@@ -1932,6 +1934,7 @@ Beat는 1분마다 시작이 하루 이내인 확정 예약을 읽고, 그중 �
 | `request.hold_until` | `cards.hold_until` | 요청의 보류 카드에서 가져옴 |
 | 반(요청) | `requests.classroom_id` | API로 받지 않고 `children.classroom_id`에서 채움 |
 | `messages[]` | `request_messages` | `sender_type`·`body`·`created_at` |
+| `messages[].sender_role` | `users.role` | `request_messages.sender_id`로 쓴 사람을 찾아 그 사람의 역할을 넣음. `sender_type`이 `user`가 아니면 null |
 | `timeline[]` | `events` | `to_status`를 표시 이름으로 바꿈. 학부모용에는 상태 변화만 담음 |
 | `card.version` · `version`(본문) | `cards.version` | 정수 |
 | `decision` · `reason_code` · `reason_text` · `edited_content` | `approvals.decision` · `reason_code` · `reason_text` · `edited_content` | 같음. 본문 `version`은 `approvals.card_version`에 들어감 |
@@ -2051,3 +2054,4 @@ MVP 설정값은 서버 설정(`.env`)으로 관리한다. `.env.example`에는 
 | v0.8 | 2026-11-23 | 11/20 강사 피드백을 반영함. 2장에 첫 시연 순서와 API별 상태 칸을, 3.19.1에 알림장 접수부터 발송 차단까지의 응답 예시를, 5.5에 먼저 쓰는 도구 세 개의 입력·출력·실패 뒤 행동을, 6.7에 인계 카드 저장 실패 사례를 더함. 3.22·3.23에 DB 모드 적재 결과(읽는 파일 종류·빈 파일·머리말·충돌·새 판·다시 적재)를 더하고, 3.29에 연결된 아이가 없는 학부모의 원 칸 권한을 더함. 문서 머리에 기준 판 표를 두고, 자료 올리기 크기 제한(2MiB·413)과 보류 예정일 경계를 코드에 맞춤 | 태웅 |
 | v0.9 | 2026-11-24 | 문서 머리에 2차 검토 링크, 시연 코드 기준 커밋(`ab58b7c`), 1차 검토 뒤 보완 표(바뀐 내용·고친 절·지키는 시험·반영 커밋)를 더함. 코드에 맞춰 6.1에는 요청 처리 3분 마감 때 모델을 잠금 밖에서 부르고 늦은 결과를 버리는 규칙을, 3.3에는 거절 뒤 새 회신 카드를 초안 없이 만들어 직접 쓴 글로만 보내는 규칙을 적음 | 태웅 |
 | v0.10 | 2026-11-24 | 위험 등급을 문의·상담에도 붙임(5.7). 문의·상담은 위험 낱말을 짧은 구로 보고(민원은 낱말 하나도 봄), 문의도 다시 분류할 수 있게 하고(3.14), 위험 기한(6.5)·알림 시각(6.6)·알림 제목(3.11)을 세 유형에 맞춤. 위험 상담의 원장 보고 카드는 예약 확정·반려 때 닫고, 판단 필요 상담도 담임이 확정·반려할 수 있음(3.4) | 태웅 |
+| v0.10.1 | 2026-11-24 | 요청 대화의 메시지마다 쓴 사람의 역할(`sender_role`)을 더해, 화면에서 학부모 글과 담임 답을 나눠 그릴 수 있게 함(3.2·3.10·7장) | 태웅 |

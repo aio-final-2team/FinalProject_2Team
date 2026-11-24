@@ -101,6 +101,12 @@ class Message:
     body: str
     created_at: datetime = field(default_factory=lambda: now())
 
+    @property
+    def sender_role(self) -> str | None:
+        # DB 모드처럼 사람이 쓴 글만 쓴 사람의 역할을 붙여요.
+        user = _state.users.get(self.sender_id) if self.sender_type == "user" else None
+        return user.role if user else None
+
 
 @dataclass
 class Card:

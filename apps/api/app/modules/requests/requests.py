@@ -181,8 +181,9 @@ def detail(user, request_id):
             req = _lock(connection, request_id)
         values = {"id": request_id, "org": user.org_id, "parent": user.role == "parent"}
         messages = connection.execute(text("""
-            SELECT id,sender_type,body,created_at FROM request_messages
-            WHERE request_id=:id AND org_id=:org ORDER BY id
+            SELECT m.id,m.sender_type,CASE WHEN m.sender_type='user' THEN u.role END AS sender_role,m.body,m.created_at
+            FROM request_messages m LEFT JOIN users u ON (u.id,u.org_id)=(m.sender_id,m.org_id)
+            WHERE m.request_id=:id AND m.org_id=:org ORDER BY m.id
         """), values).mappings().all()
         label = parent_label if user.role == "parent" else staff_label
         timeline = []
@@ -269,7 +270,8 @@ def message(user, request_id, body, *, background_tasks):
         msg = dict(connection.execute(text("""
             INSERT INTO request_messages (org_id,request_id,sender_type,sender_id,body)
             VALUES (:org,:id,'user',:user,:body) RETURNING id,sender_type,body,created_at
-        """), {"org": user.org_id, "id": request_id, "user": user.id, "body": body}).mappings().one())
+        """), {"org": user.org_id, "id": request_id, "user": user.id, "body": body}).mappings().one()) | {
+            "sender_role": user.role}
         connection.execute(text("UPDATE requests SET updated_at=clock_timestamp() WHERE id=:id"), {"id": request_id})
         if req["type"] in CARE_REQUEST_TYPES:
             version = care.view(connection, req)["version"] + 1
