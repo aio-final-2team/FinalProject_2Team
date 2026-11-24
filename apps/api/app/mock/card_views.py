@@ -44,7 +44,7 @@ def item(card):
     check = card.check_result
     note_batch = notes.batch_view(card.subject_id, card.org_id) if card.subject_type == "daily_note_batch" else None
     return {"id": card.id, "kind": card.kind, "status": card.status, "version": card.version,
-            "status_label": staff_label(req.status, req.type) if req else note_batch_label(card.status, note_batch["draft_status"])
+            "status_label": staff_label(req.status, req.type) if req else note_batch_label(card.status, note_batch["draft_status"], card.draft.get("validation_result"))
             if note_batch else "확인 필요" if card.status == "pending" else "완료",
             "note_batch": note_batch,
             "request_id": card.request_id, "request_type": req.type if req else None,
@@ -107,7 +107,7 @@ def detail(user, card_id):
         note_batch = notes.batch_view(card.subject_id, card.org_id) if card.subject_type == "daily_note_batch" else None
         return {"card": {k: getattr(card, k) for k in ("id", "kind", "status", "version", "draft", "check_result", "check_attempts")}
                         | {"summary": card.draft.get("summary", ""), "note_batch": note_batch,
-                           "status_label": note_batch_label(card.status, note_batch["draft_status"]) if note_batch else None},
+                           "status_label": note_batch_label(card.status, note_batch["draft_status"], card.draft.get("validation_result")) if note_batch else None},
                 "request": staff_request(req) if req else None,
                 "evidence": evidence, "warnings": warnings,
                 "parent_choices": [{"slot_id": s.id, "period": s.period, "room": store.state().rooms[s.room_id].name,

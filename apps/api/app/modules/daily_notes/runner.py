@@ -79,6 +79,7 @@ def _payload(connection, entry):
     memos = {m["child_id"]: m["memo"] for m in entry["child_memos"]}
     payload = {"input_id": entry["id"], "note_date": entry["note_date"], "classroom": dict(classroom),
             "activities": entry["activities"], "supplies": entry["supplies"],
+            "roster_names": [c["display_name"] for c in children],
             "children": [{"child_id": c["id"], "display_name": c["display_name"],
                           "memo": memos.get(str(c["id"]), ""),
                           "requests": [{k: r[k] for k in ("request_id", "type", "text")}
@@ -143,19 +144,32 @@ def batch_event(connection, input_id, action, actor_type, *, actor_id=None, **de
 
 
 def incident_state(connection, input_id):
-    """(다시 넣은 횟수, 첫 실패 뒤 지난 ms). 실패가 없으면 ms는 None이다."""
+    """(자동 재시도 횟수, 첫 실패 뒤 큐 대기를 뺀 ms). 현재 실행 대기는 호출자가 뺀다."""
     return connection.execute(text("""
-        SELECT count(*) FILTER (WHERE e.action='agent_requeued'),
-               (extract(epoch FROM now() - min(e.created_at) FILTER (WHERE e.action='tool_failed')) * 1000)::bigint
-        FROM events e JOIN cards c ON (c.id,c.org_id)=(e.card_id,e.org_id)
-        WHERE c.subject_type='daily_note_batch' AND c.subject_id=:id
+        WITH history AS (
+            SELECT e.* FROM events e JOIN cards c ON (c.id,c.org_id)=(e.card_id,e.org_id)
+            WHERE c.subject_type='daily_note_batch' AND c.subject_id=:id
+        ), failure AS (
+            SELECT min(created_at) AS at FROM history
+            WHERE action='tool_failed' OR (action='drafted' AND (detail->>'draft_failed')::int>0)
+        )
+        SELECT count(*) FILTER (WHERE action='agent_requeued' AND actor_type='system'),
+               ((extract(epoch FROM clock_timestamp()-(SELECT at FROM failure))*1000)::bigint
+                 - coalesce(sum((detail->>'queue_wait_ms')::bigint)
+                     FILTER (WHERE created_at>(SELECT at FROM failure) AND action IN ('drafted','tool_failed')),0))::bigint
+        FROM history
     """), {"id": input_id}).one()
 
 
 def requeued(connection, input_id, actor_type, actor_id=None):
+    trigger = "teacher_regenerate" if actor_type == "user" else "auto_retry"
+    connection.execute(text("""
+        UPDATE cards SET draft=draft || jsonb_build_object('draft_trigger',CAST(:trigger AS text),'draft_queued_at',clock_timestamp())
+        WHERE subject_type='daily_note_batch' AND subject_id=:id
+    """), {"id": input_id, "trigger": trigger})
     batch_event(connection, input_id, "agent_requeued", actor_type, actor_id=actor_id,
                 selected_strategy="retry_by_teacher" if actor_type == "user" else "requeue_stale",
-                retry_count=incident_state(connection, input_id)[0] + 1)
+                trigger=trigger, retry_count=incident_state(connection, input_id)[0] + int(actor_type == "system"))
 
 
 def queue_failed(input_id):
@@ -164,9 +178,14 @@ def queue_failed(input_id):
             UPDATE daily_note_inputs SET draft_status='failed' WHERE id=:id AND draft_status='queued' RETURNING id
         """), {"id": input_id}).one_or_none()
         if failed is not None:
+            trigger = connection.scalar(text("""
+                SELECT coalesce(draft->>'draft_trigger','initial') FROM cards
+                WHERE subject_type='daily_note_batch' AND subject_id=:id
+            """), {"id": input_id})
             batch_event(connection, input_id, "tool_failed", "system", detected_failure="queue_error",
                         retry_count=incident_state(connection, input_id)[0], detection_ms=0, fallback_used=False,
-                        validation_result="job_failed", recovery_status="pending")
+                        trigger=trigger, queue_wait_ms=0, validation_result="job_failed",
+                        recovery_status="pending" if trigger == "initial" else "handed_off")
 
 
 def requeue_daily_note_drafts(*, stale_only=False):
@@ -220,12 +239,16 @@ def run_daily_note_drafts(input_id):
         """), {"id": input_id}).mappings().one_or_none()
         if entry is not None:
             metadata = connection.execute(text("""
-                UPDATE cards SET draft=draft || jsonb_build_object('draft_started_at', CURRENT_TIMESTAMP)
+                UPDATE cards SET draft=draft || jsonb_build_object(
+                    'queue_wait_ms', greatest(0,round(extract(epoch FROM clock_timestamp()-
+                        coalesce((draft->>'draft_queued_at')::timestamptz,:queued_at))*1000)),
+                    'draft_started_at', clock_timestamp())
                 WHERE subject_type='daily_note_batch' AND subject_id=:id AND org_id=:org RETURNING draft
-            """), {"id": input_id, "org": entry["org_id"]}).scalar_one()
+            """), {"id": input_id, "org": entry["org_id"], "queued_at": entry["created_at"]}).scalar_one()
             retry_count, started = incident_state(connection, input_id)[0], monotonic()
     if entry is None:
         return
+    trigger, queue_wait_ms = metadata.get("draft_trigger", "initial"), metadata["queue_wait_ms"]
     try:
         with transaction() as connection:
             payload = _payload(connection, entry)
@@ -277,6 +300,8 @@ def run_daily_note_drafts(input_id):
                 counts["draft_failed"] += int(any(c["kind"] == "draft_failed" for c in checks))
                 record(connection, saved, "daily_note_drafted",
                        from_status=previous["status"] if previous else None,
+                       draft_failed=any(c["kind"] == "draft_failed" for c in checks), open_check_count=len(checks),
+                       trigger=trigger,
                        **({"regenerated_by": metadata["regenerated_by"]} if metadata.get("regenerated_by") else {}))
             connection.execute(text("UPDATE daily_note_inputs SET draft_status='succeeded' WHERE id=:id"), {"id": input_id})
             # 대체 응답 = 아이별 초안이 실패해 반 공통 줄 템플릿과 draft_failed 확인으로 저장된 아이가 있음.
@@ -284,11 +309,19 @@ def run_daily_note_drafts(input_id):
             outcome = {"fallback_used": counts["draft_failed"] > 0, "validation_result": (
                 "all_children_passed" if not counts["draft_failed"] else
                 "some_children_template" if passed else "all_children_template")}
+            connection.execute(text("""
+                UPDATE cards SET draft=draft || jsonb_build_object('validation_result',CAST(:validation AS text))
+                WHERE subject_type='daily_note_batch' AND subject_id=:id
+            """), {"id": input_id, "validation": outcome["validation_result"]})
             if failed_ms is not None:
                 outcome["recovery_status"] = ("recovered" if not counts["draft_failed"] else
                                               "fallback" if passed else "handed_off")
-                outcome["duration_ms"] = failed_ms if passed else None
-            batch_event(connection, input_id, "drafted", "agent", retry_count=retry_count, **counts, **outcome)
+                outcome["duration_ms"] = max(0, failed_ms - queue_wait_ms) if passed else None
+            elif counts["draft_failed"] and not passed:
+                outcome["recovery_status"] = "handed_off"
+            batch_event(connection, input_id, "drafted", "agent", retry_count=retry_count,
+                        trigger=trigger, queue_wait_ms=queue_wait_ms, detection_ms=round((monotonic()-started)*1000),
+                        **counts, **outcome)
     except Superseded:
         return
     except Exception as error:
@@ -301,6 +334,7 @@ def run_daily_note_drafts(input_id):
             # 다시 만들기에 밀린 옛 실행의 실패는 남기지 않는다.
             if failed is not None:
                 batch_event(connection, input_id, "tool_failed", "system", retry_count=retry_count,
+                            trigger=trigger, queue_wait_ms=queue_wait_ms,
                             detected_failure="writer_timeout" if isinstance(error, TimeoutError) else "writer_error",
                             detection_ms=round((monotonic() - started) * 1000), fallback_used=False,
-                            validation_result="job_failed", recovery_status="handed_off" if retry_count else "pending")
+                            validation_result="job_failed", recovery_status="pending" if trigger == "initial" else "handed_off")

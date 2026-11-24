@@ -127,19 +127,21 @@ def draft(user, body, background_tasks=None):
 
 
 def _generate(entry, children, *, regenerated_by=None):
+    from app.modules.daily_notes.stub_writer import common_content, other_child_checks
+
     menu = next(d for d in store.state().documents.values() if d.org_id == entry.org_id and d.doc_type == "menu" and d.status == "active")
     meal = next(c.content for c in store.state().chunks.values() if c.document_id == menu.id)
     memos = {memo["child_id"]: memo["memo"] for memo in entry.child_memos}
+    payload = {"activities": entry.activities, "supplies": entry.supplies, "note_date": entry.note_date,
+               "roster_names": [c.display_name for c in children], "children": [],
+               "menu": {"document_id": menu.id, "title": menu.title, "text": meal}}
     for index, child in enumerate(children):
         existing = next((n for n in store.state().notes.values() if n.input_id == entry.id and n.child_id == child.id), None)
         if existing is not None and (existing.status in ("ready", "sent") or _edited(existing)):
             continue
         checks = [{"id": "c1", "item_key": "supplies", "kind": "date_check",
                    "problem": "준비물 날짜를 확인해 주세요", "sentence": entry.supplies}] if index == 0 else []
-        content = {"items": [
-            {"key": "day", "label": "오늘 하루", "value": entry.activities, "source": {"type": "teacher_input"}},
-            {"key": "supplies", "label": "준비물", "value": entry.supplies, "source": {"type": "teacher_input"}},
-            {"key": "meal", "label": "식사", "value": meal, "source": {"type": "document", "document_id": menu.id, "document_title": menu.title}}]}
+        content = common_content(payload)
         memo = memos.get(child.id, "")
         if memo.strip():
             content["items"].append({"key": "child", "label": "아이 메모", "value": memo,
@@ -154,6 +156,7 @@ def _generate(entry, children, *, regenerated_by=None):
             else:
                 content["items"].append({"key": key, "label": "보호자 요청", "value": req["text"],
                                          "source": {"type": "request", "request_id": req["request_id"]}})
+        checks.extend(other_child_checks(payload, {"display_name": child.display_name, "memo": memo}, content))
         note = Note(uuid4(), entry.org_id, entry.id, child.id, entry.note_date, content,
                     "needs_check" if checks else "draft", checks)
         previous_status = existing.status if existing else None
@@ -164,6 +167,8 @@ def _generate(entry, children, *, regenerated_by=None):
             note = existing
         store.state().notes[note.id] = note
         record(note, "daily_note_drafted", from_status=previous_status,
+               draft_failed=any(c["kind"] == "draft_failed" for c in checks), open_check_count=len(checks),
+               trigger="teacher_regenerate" if regenerated_by else "initial",
                **({"regenerated_by": regenerated_by} if regenerated_by else {}))
 
 

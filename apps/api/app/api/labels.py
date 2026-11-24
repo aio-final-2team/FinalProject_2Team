@@ -52,9 +52,11 @@ def staff_label(status: str, request_type: str, assignee_id=None) -> str:
     return STAFF_LABELS[status]
 
 
-def note_batch_label(status, draft_status):
+def note_batch_label(status, draft_status, validation_result=None):
     if draft_status == "failed":
         return "만들기 실패 · 다시 만들기"
     if draft_status in ("queued", "running"):
         return "만드는 중"
+    if status != "done" and validation_result == "all_children_template":
+        return "AI가 못 만들었어요 · 직접 쓰거나 다시 만들기"
     return "완료" if status == "done" else "확인 필요"

@@ -102,7 +102,7 @@ def _item(connection, card):
     return {k: card[k] for k in ("id", "kind", "status", "version", "request_id", "due_at", "hold_until")} | {
         "status_label": staff_label(req["status"], req["type"])
         if req
-        else note_batch_label(card["status"], note_batch["draft_status"])
+        else note_batch_label(card["status"], note_batch["draft_status"], card["draft"].get("validation_result"))
         if note_batch
         else "확인 필요"
         if card["status"] == "pending"
@@ -255,7 +255,7 @@ def detail(user, card_id):
         return {
             "card": {k: card[k] for k in ("id", "kind", "status", "version", "draft", "check_result", "check_attempts")}
             | {"summary": card["draft"].get("summary", ""), "note_batch": note_batch,
-               "status_label": note_batch_label(card["status"], note_batch["draft_status"]) if note_batch else None},
+               "status_label": note_batch_label(card["status"], note_batch["draft_status"], card["draft"].get("validation_result")) if note_batch else None},
             "request": staff_request(connection, req) if req else None,
             "evidence": evidence,
             "warnings": warnings,

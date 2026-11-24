@@ -631,7 +631,7 @@ T12 화면 지도에 나온 화면들이 조회 응답에서 쓰는 칸을 여�
 
 알림장 묶음 카드(`daily_note_batch`)는 목록의 `items[].note_batch`와 상세의 `card.note_batch`에 `{ input_id, draft_status, children[] }`를 준다. `children[]`은 현재 같은 기관·반의 아이마다 `{ child_id, display_name, note_id, status }`다. 알림장이 없는 아이도 `note_id = null`, `status = "missing"`으로 포함한다. 실제 알림장 상태는 `draft`·`needs_check`·`ready`·`sent`이고, 다른 종류 카드는 `note_batch = null`이다. 초안 뒤에 들어온 아이를 숨기지 않기 위한 조회 값이며, 가짜 알림장 행을 저장하지 않는다.
 
-목록의 `status_label`과 알림장 상세의 `card.status_label`은 초안 작업이 `queued`·`running`이면 "만드는 중", `failed`면 "만들기 실패 · 다시 만들기", 성공한 미완료 카드는 "확인 필요", 발송 완료 카드는 "완료"다. 다른 종류 카드의 상세 `card.status_label`은 null이다. 작업의 원래 상태는 `note_batch.draft_status`로도 구분한다.
+목록의 `status_label`과 알림장 상세의 `card.status_label`은 초안 작업이 `queued`·`running`이면 "만드는 중", `failed`면 "만들기 실패 · 다시 만들기", 전원 템플릿(`all_children_template`)인 미완료 카드는 "AI가 못 만들었어요 · 직접 쓰거나 다시 만들기", 그 밖에 성공한 미완료 카드는 "확인 필요", 발송 완료 카드는 "완료"다. 다른 종류 카드의 상세 `card.status_label`은 null이다. 작업의 원래 상태는 `note_batch.draft_status`로도 구분한다.
 
 **카드 상세** (`GET /api/v1/cards/{card_id}`)
 
@@ -1187,6 +1187,8 @@ HTTP/1.1 200 OK
 {"total": 0, "page": 1, "size": 20, "items": []}
 ```
 
+**모든 아이가 템플릿인 경우.** 아이별 알림장을 담임이 직접 고칠 수 있어 입력은 `succeeded`지만, `drafted.detail.validation_result=all_children_template`를 실패 incident로 집계한다. 반 카드 목록·상세의 `status_label`은 "AI가 못 만들었어요 · 직접 쓰거나 다시 만들기"이며, 아이별 `draft_failed`를 해결하기 전에는 발송할 수 없다.
+
 **아이 한 명만 실패한 경우.** 작업은 `succeeded`로 끝나지만, 실패한 아이의 알림장에만 `draft_failed` 확인 항목이 남는다. 그 알림장에는 반 공통 줄만 있고 아이 메모 줄은 없다. 화면은 그 아이 알림장에 확인 항목을 띄우고, 담임은 알림장을 직접 써서 항목을 해결하거나 다시 만들기를 부른다. 모의 모드에는 이 경로가 없어서, 아래 응답은 DB 모드에서 아이 한 명의 초안 작성을 일부러 실패시켜 받았다. 응답에 나온 문장은 기본 작성기인 대역이 쓴 것이고, 그래프 작성기는 `problem`에 5.5.1의 문장을 쓴다.
 
 ```json
@@ -1470,7 +1472,7 @@ HTTP/1.1 200 OK
 
 `daily_notes.ai_original`은 선생님이 마지막으로 받은 AI 초안이다. 선생님이 PATCH·확인·발송을 해도 바뀌지 않고, 수정하지 않은 미확인 알림장을 재생성해 저장할 때 새 초안으로 갱신된다. 기존 공개 NoteView에는 이 칸을 추가하지 않는다. 0003 이전 행은 마이그레이션 시점의 content로 채운다. 그 전에 사라진 초안까지 복원했다는 뜻은 아니다. 말투 규칙은 기억 AI가 이 원본과 수정 결과를 이용해 뽑고, 백엔드는 저장·조회·이력만 제공한다.
 
-DB 그래프 실행은 writer·checker를 부르기 직전마다 입력 행의 `xmin`이 실행 토큰과 같은지 확인한다. 다시 만들기로 토큰이 바뀌면 옛 실행은 `Superseded`로 중단하고 작업 실패 이력을 남기지 않는다. 이미 시작한 모델 호출은 끝날 수 있지만 다음 그래프 모델 호출은 막으며, 저장 직전 토큰 검사도 유지한다. 대역 writer의 `write(payload)` 계약은 그대로다.
+DB 그래프 실행은 writer·checker를 부르기 직전마다 입력 행의 `xmin`이 실행 토큰과 같은지 확인한다. 다시 만들기로 토큰이 바뀌면 옛 실행은 `Superseded`로 중단하고 작업 실패 이력을 남기지 않는다. 이미 시작한 모델 호출은 끝날 수 있지만 다음 그래프 모델 호출은 막으며, 저장 직전 토큰 검사도 유지한다. 대역 writer의 `write(payload)` 계약은 그대로다. 입력의 `roster_names`에는 보존할 아이를 포함한 현재 반 전체 이름을 넣고, `children`에는 이번에 쓸 아이만 넣는다. 대역은 전체 이름으로 다른 아이 이름을 검사한다. 그래프의 이름 검사에서 `roster_names`를 우선 읽는 연결은 그래프 담당 후속 작업이다. 반 공통 줄은 대역도 그래프의 같은 함수로 만들며, day(오늘 하루)·supplies(준비물)·meal(식사) 순서, 준비물 없음 생략, 해당 날짜 식단 추출을 공유한다. 실행 이력의 `trigger`·자동 재시도 횟수·큐 대기·아이별 복구 집계는 DB 설계서 2.6을 따른다.
 
 ### 3.27 [제안] 투약·귀가 요청
 

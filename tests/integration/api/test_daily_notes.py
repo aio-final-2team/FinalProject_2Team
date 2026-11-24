@@ -743,3 +743,57 @@ def test_guardian_fixture_accounts_login_and_see_only_their_child(client):
         assert body["user"]["role"] == "parent"
         assert [(child["id"], child["classroom_id"]) for child in body["children"]] == [
             (str(seed.demo_id(f"54{number:02d}")), str(seed.CLASS_STAR))]
+
+
+def test_partial_regenerate_keeps_full_roster_for_other_child_check(
+        client, teacher, note_backend, monkeypatch):
+    other = next(c for c in store.state().children.values() if c.classroom_id == seed.CLASS_STAR and c.id != seed.CHILD)
+    response = draft(client, teacher, activities="[TEST] 반 전체 이름 검사", child_memos=[{
+        "child_id": str(seed.CHILD), "memo": f"[TEST] {other.display_name}와 블록 놀이"}])
+    input_id = response.json()["input_id"]
+    initial = note_list(client, teacher).json()["items"]
+    confirm_all(client, teacher, [n for n in initial if n["child_id"] != str(seed.CHILD)])
+    captured = {}
+    if note_backend == "db":
+        from app.modules.daily_notes import stub_writer
+        original = stub_writer.write
+
+        def capture(payload):
+            captured.update(payload)
+            return original(payload)
+
+        monkeypatch.setattr(stub_writer, "write", capture)
+    assert client.post(f"{BASE}/daily-notes/drafts/{input_id}/regenerate", headers=teacher).status_code == 202
+    target = next(n for n in note_list(client, teacher).json()["items"] if n["child_id"] == str(seed.CHILD))
+    assert target["status"] == "needs_check" and any(c["kind"] == "other_child" for c in target["open_checks"])
+    if note_backend == "db":
+        assert len(captured["children"]) == 1 and len(captured["roster_names"]) == 20
+        assert other.display_name in captured["roster_names"]
+
+
+def test_all_template_batch_label_in_list_and_detail(client, teacher, note_flow_backend, monkeypatch):
+    if note_flow_backend == "db":
+        from app.modules.daily_notes import stub_writer
+        monkeypatch.setattr(stub_writer, "write_child", lambda payload, child, index: stub_writer.failed_child(payload, child))
+    input_id = draft(client, teacher, activities="[TEST] AI 전원 실패 표시").json()["input_id"]
+    if note_flow_backend == "mock":
+        # 모의에는 외부 작성기가 없으므로 DB가 저장하는 같은 결과 메타데이터를 주입한다.
+        card = next(c for c in store.state().cards.values() if str(c.subject_id) == input_id)
+        card.draft["validation_result"] = "all_children_template"
+    card = batch_card(client, teacher)
+    detail = client.get(f"{BASE}/cards/{card['id']}", headers=teacher).json()["card"]
+    assert card["status_label"] == detail["status_label"] == "AI가 못 만들었어요 · 직접 쓰거나 다시 만들기"
+    confirm_all(client, teacher, note_list(client, teacher).json()["items"])
+    assert client.post(BASE + "/daily-notes/send", headers=teacher, json=batch()).status_code == 200
+    assert batch_card(client, teacher, done=True)["status_label"] == "완료"
+
+
+@pytest.mark.parametrize("supplies", ["없음", "", "[TEST] 앞치마"])
+def test_common_note_lines_match_graph_order_and_omissions(client, teacher, note_backend, supplies):
+    assert draft(client, teacher, activities="[TEST] 공통 줄", supplies=supplies).status_code == 202
+    for note in note_list(client, teacher).json()["items"]:
+        common = [(line["key"], line["label"]) for line in note["content"]["items"] if line["key"] in ("day", "supplies", "meal")]
+        expected = [("day", "오늘 하루")]
+        if supplies and supplies != "없음":
+            expected.append(("supplies", "준비물"))
+        assert common == [*expected, ("meal", "식사")]

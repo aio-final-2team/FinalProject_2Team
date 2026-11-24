@@ -34,7 +34,8 @@ def run(client):
 
 def test_rehearsal_with_stub_writer_blocks_on_jia_then_sends_whole_class(client):
     summary = run(client)
-    assert summary["flagged"] == {"하늘": ["date_check", "sensitive"], "노을": ["request_missed"], "지아": ["sensitive"]}
+    assert summary["flagged"] == {"하늘": ["date_check", "sensitive"], "노을": ["request_missed"],
+                                  "지아": ["sensitive"], "지안": ["other_child"]}
     assert summary["blocked"] == {"지아": ["sensitive"]}
     assert summary["sent_count"] == 20
     assert summary["parent_notes"] == [("하늘", "sent")] and summary["parent_child_lines"] == [EDITED_LINE]
