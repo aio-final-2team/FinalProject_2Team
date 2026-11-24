@@ -26,6 +26,7 @@ NO_SUPPLIES = {"", "없음"}
 PROBLEM = {
     "draft_failed": "이 아이 초안을 만들지 못했어요. 다시 시도하거나 직접 써 주세요.",
     "check_failed": "메모와 대조하는 검사가 끝나지 않았어요. 직접 읽고 확인해 주세요.",
+    "return_limit": "AI가 두 번 고쳐도 남은 문제가 있어요. 직접 확인해 주세요.",
     "request_missed": "보호자 요청이 초안에 없어요. 요청 내용을 넣어 주세요.",
     "other_child": "다른 아이 이름이 들어 있어요. 이 아이 알림장에서는 빼 주세요.",
     "memo_left_out": "선생님 메모를 알림장에 옮기지 않았어요. 메모를 보고 직접 확인해 주세요.",
@@ -68,7 +69,9 @@ def draft_daily_notes(payload: dict, writer: JsonModel | None = None, checker: J
     """
     writer = writer or OpenAIModel("DOCUMENT")
     checker = checker or OpenAIModel("CHECKER")
-    names = [child["display_name"] for child in payload["children"]]
+    names = payload.get("roster_names")
+    if names is None:
+        names = [child["display_name"] for child in payload["children"]]
     common = common_lines(payload)
     def run(child):
         return draft_child(payload, child, common, names, writer, checker)
@@ -141,6 +144,7 @@ def draft_child(payload, child, common, names, writer, checker) -> dict:
         if not issues:
             return result(child, common, own, found, trace, "needs_check" if found else "done")
         if attempt == MAX_RETURNS:
+            found.append(new_check("child", "return_limit"))
             return result(child, common, own, found, trace, "handoff", "return_limit")
         trace.append({"step": "return", "attempt": attempt, "kinds": [f["kind"] for f in issues]})
     raise AssertionError("unreachable")
