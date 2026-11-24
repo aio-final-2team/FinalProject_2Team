@@ -266,6 +266,22 @@ function Review({ notes }: { notes: DailyNote[] }) {
   const draftJob = useDraftJob(inputId ?? undefined);
   const [blocked, setBlocked] = useState<{ note_id: string; child_id: string; open_checks?: { problem?: string }[] }[] | null>(null);
 
+  /* 다시 만들기: 보낸 알림장이 하나라도 있으면 서버가 409 INVALID_TRANSITION으로 막는다 (API 3.26) */
+  const runRegen = () => {
+    if (!inputId) return;
+    regen.mutate(inputId, {
+      onSuccess: (r) => {
+        setRegenSheet(false);
+        setBlocked(null);
+        toast({ kind: "ok", title: "초안을 다시 만들고 있어요", sub: r.kept_edited ? `고친 알림장 ${r.kept_edited}개는 그대로 두었어요` : undefined });
+      },
+      onError: (e) => {
+        setRegenSheet(false);
+        if (e instanceof ApiError && e.status === 409) toast({ kind: "error", title: "다시 만들 수 없어요", sub: "이미 보낸 알림장이 있어요. 보낸 알림장은 새로 만들 수 없어요" });
+        else toast({ kind: "error", title: "초안을 다시 만들지 못했어요", sub: "관찰 기록은 그대로 있어요.\n잠시 뒤 다시 눌러 주세요", action: { label: "다시 시도", run: runRegen } });
+      },
+    });
+  };
   const c = { needs_check: 0, draft: 0, ready: 0, sent: 0 };
   notes.forEach((n) => c[n.status]++);
   const allSent = c.sent === notes.length;
@@ -308,8 +324,13 @@ function Review({ notes }: { notes: DailyNote[] }) {
       onError: (e) => {
         setSheet(false);
         const isBlocked = e instanceof ApiError && e.code === "NOTE_BATCH_BLOCKED";
-        if (isBlocked) { setBlocked(((e.details as { blocked?: typeof blocked })?.blocked ?? []) as NonNullable<typeof blocked>); draftJob.refetch(); }
-        toast({ kind: "error", title: isBlocked ? "확인이 안 끝난 알림장이 있어요" : "보내지 못했어요", sub: isBlocked ? "막힌 아이를 목록에서 확인해 주세요" : "잠시 뒤 다시 보내 주세요" });
+        const list = isBlocked ? (((e.details as { blocked?: typeof blocked })?.blocked ?? []) as NonNullable<typeof blocked>) : [];
+        if (isBlocked) { setBlocked(list); draftJob.refetch(); }
+        toast({
+          kind: "error",
+          title: isBlocked ? (list.length ? `확인이 안 끝난 알림장이 ${list.length}개 있어요` : "확인이 안 끝난 알림장이 있어요") : "알림장을 보내지 못했어요",
+          sub: isBlocked ? "표시된 아이를 먼저 확인해 주세요" : "연결을 확인하고 다시 보내 주세요",
+        });
       },
     });
 
@@ -377,8 +398,14 @@ function Review({ notes }: { notes: DailyNote[] }) {
 
       {!allSent && inputId && (
         <div className="mt-3 flex items-center justify-between gap-2 px-1 text-footnote text-ink2">
-          <span>초안이 마음에 안 들면 확인하지 않은 아이만 다시 만들 수 있어요</span>
-          <SubButton small tone="gray" onClick={() => setRegenSheet(true)}>다시 만들기</SubButton>
+          {c.sent > 0 ? (
+            <span>보낸 알림장이 있어서 다시 만들 수 없어요</span>
+          ) : (
+            <>
+              <span>초안이 마음에 안 들면 확인하지 않은 아이만 다시 만들 수 있어요</span>
+              <SubButton small tone="gray" className="shrink-0 whitespace-nowrap" onClick={() => setRegenSheet(true)}>다시 만들기</SubButton>
+            </>
+          )}
         </div>
       )}
 
@@ -494,23 +521,7 @@ function Review({ notes }: { notes: DailyNote[] }) {
         <p className="rounded-md bg-g p-3 text-footnote text-ink2">처음 접수한 반 활동·준비물·아이별 메모로 다시 만들어요. 그 뒤에 새로 쓴 관찰 기록은 반영되지 않으니, 필요한 내용은 아이 상세에서 직접 추가해 주세요. 식단과 보호자 요청은 다시 모아요.</p>
         <div className="grid grid-cols-[1fr_2fr] gap-2">
           <SubButton tone="gray" className="h-[52px]" onClick={() => setRegenSheet(false)}>취소</SubButton>
-          <PrimaryButton
-            loading={regen.isPending}
-            onClick={() =>
-              inputId &&
-              regen.mutate(inputId, {
-                onSuccess: (r) => {
-                  setRegenSheet(false);
-                  setBlocked(null);
-                  toast({ kind: "ok", title: "초안을 다시 만들고 있어요", sub: r.kept_edited ? `고친 알림장 ${r.kept_edited}개는 그대로 두었어요` : undefined });
-                },
-                onError: () => {
-                  setRegenSheet(false);
-                  toast({ kind: "error", title: "다시 만들지 못했어요", sub: "이미 보낸 알림장이 있으면 다시 만들 수 없어요" });
-                },
-              })
-            }
-          >
+          <PrimaryButton loading={regen.isPending} onClick={runRegen}>
             다시 만들기
           </PrimaryButton>
         </div>

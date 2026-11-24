@@ -83,10 +83,10 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
     if (error instanceof ApiError && (error.code === "CARD_VERSION_CONFLICT" || error.code === "ALREADY_DECIDED")) {
       setSheet(null);
       qc.invalidateQueries({ queryKey: ["cards"] });
-      toast({ kind: "error", title: error.code === "ALREADY_DECIDED" ? "이미 처리된 카드예요" : "카드가 방금 바뀌었어요", sub: "최신 내용으로 다시 불러왔어요. 확인하고 다시 처리해 주세요" });
+      toast({ kind: "error", title: error.code === "ALREADY_DECIDED" ? "이미 처리된 카드예요" : "카드가 방금 바뀌었어요", sub: "최신 내용으로 다시 불러왔어요.\n확인하고 다시 처리해 주세요" });
       return;
     }
-    toast({ kind: "error", title: "처리하지 못했어요", sub: error instanceof ApiError ? `${error.message}${error.code ? ` (${error.code})` : ""}` : "연결을 확인하고 다시 눌러 주세요", action: { label: "다시 시도", run: retry } });
+    toast({ kind: "error", title: "처리하지 못했어요", sub: error instanceof ApiError ? "서버에서 처리하지 못했어요.\n잠시 뒤 다시 눌러 주세요" : "연결을 확인하고 다시 눌러 주세요", action: { label: "다시 시도", run: retry } });
   };
   const run = (body: CardAction, ok: { title: string; sub?: string }) =>
     act.mutate(

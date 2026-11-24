@@ -18,6 +18,9 @@ export type CareItem = {
   version: number;
   unregistered_pickup: boolean;
   missing_fields: string[];
+  /** 태웅님이 11/24에 추가하기로 한 칸. 서버에 올라오기 전에는 없다 */
+  child_id?: string;
+  child_name?: string;
 };
 
 export const MISSING_LABEL: Record<string, string> = { medication_name: "약 이름", medication_dose: "용량", medication_time: "먹일 시간" };

@@ -34,8 +34,8 @@ export function CareSection({ classroomId }: { classroomId?: string }) {
           const conflict = e instanceof ApiError && (e.status === 409);
           toast({
             kind: "error",
-            title: conflict ? "보호자가 방금 내용을 바꿨어요" : "처리하지 못했어요",
-            sub: conflict ? "최신 내용으로 다시 불러왔어요. 확인하고 다시 눌러 주세요" : "연결을 확인하고 다시 눌러 주세요",
+            title: conflict ? "보호자가 방금 내용을 바꿨어요" : c.next_action === "confirm" ? "확인 기록을 남기지 못했어요" : "완료 기록을 남기지 못했어요",
+            sub: conflict ? "최신 내용으로 다시 불러왔어요.\n확인하고 다시 눌러 주세요" : "연결을 확인하고 다시 눌러 주세요",
             ...(conflict ? {} : { action: { label: "다시 시도", run: () => run(c) } }),
           });
         },
@@ -64,6 +64,7 @@ export function CareSection({ classroomId }: { classroomId?: string }) {
                     <span className="grid size-9 shrink-0 place-items-center rounded-md bg-tint text-accent-ink"><Icon name={t.icon} className="size-5" /></span>
                     <span className="min-w-0 flex-1">
                       <span className="flex items-center gap-2">
+                        {c.child_name && <b className="text-callout">{c.child_name}</b>}
                         <b className="text-caption font-bold text-accent-ink">{t.label}</b>
                         <span className="text-caption font-semibold text-ink2">{c.status_label}</span>
                       </span>

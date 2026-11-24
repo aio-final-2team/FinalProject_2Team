@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router";
 import { TYPE_LABEL, useConfirmRequest, usePostMessage, useRequest } from "@/api/requests";
 import { Dock, PrimaryButton } from "@/components/Dock";
 import { Icon } from "@/components/Icon";
+import { QueryState } from "@/components/QueryState";
 import { useToast } from "@/components/Toast";
 
 const STEPS = ["접수", "선생님 확인", "답변", "완료"];
@@ -28,11 +29,8 @@ export function RequestDetailPage() {
       <Link to="/parent/requests" className="inline-flex min-h-11 items-center gap-0.5 pt-2 text-body font-medium text-accent">
         <Icon name="chevL" className="size-4" />요청
       </Link>
-      {q.isLoading ? (
-        <p className="py-10 text-center text-callout text-ink2">불러오는 중…</p>
-      ) : q.isError || !r ? (
-        <p className="mt-4 rounded-lg bg-danger-tint p-4 text-callout text-danger">이 요청을 불러오지 못했어요. 내 요청 목록에서 다시 열어 주세요.</p>
-      ) : (
+      <QueryState queries={[q]} skeleton={3} errorTitle="이 요청을 불러오지 못했어요">
+      {r && (
         <>
           <h1 className="text-large-title font-bold tracking-[-0.025em]">{r.title ?? "요청"}</h1>
           <p className="mt-0.5 text-footnote font-medium text-ink2">
@@ -88,7 +86,7 @@ export function RequestDetailPage() {
                 <input value={text} onChange={(e) => setText(e.target.value)} maxLength={2000} placeholder="추가로 알려 줄 내용" className="h-12 min-w-0 flex-1 rounded-md border-[1.5px] border-line bg-card px-3 text-body outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--tint)]" />
                 <button
                   disabled={!text.trim() || post.isPending}
-                  onClick={() => post.mutate(text.trim(), { onSuccess: () => setText(""), onError: () => toast({ kind: "error", title: "보내지 못했어요", sub: "잠시 뒤 다시 눌러 주세요" }) })}
+                  onClick={() => post.mutate(text.trim(), { onSuccess: () => setText(""), onError: () => toast({ kind: "error", title: "답글을 보내지 못했어요", sub: "쓴 내용은 그대로 남아 있어요.\n잠시 뒤 다시 눌러 주세요" }) })}
                   className="h-12 shrink-0 rounded-md bg-tint px-4 text-callout font-semibold text-accent-ink disabled:opacity-50"
                 >
                   보내기
@@ -106,6 +104,7 @@ export function RequestDetailPage() {
           )}
         </>
       )}
+      </QueryState>
     </div>
   );
 }
