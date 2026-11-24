@@ -1,7 +1,7 @@
 """가상 원·계정·반·아이·상담실과 알림장용 식단·보호자 요청 22개.
 
 저장소 루트에서 PYTHONPATH=apps/api python -m db.seeds.demo 로 실행한다.
-모의 seed의 고정 ID를 함께 쓰고, 이미 있는 행은 덮어쓰지 않는다.
+모의 seed의 고정 ID를 함께 쓰고, 옛 단색 피드 사진 외의 기존 행은 덮어쓰지 않는다.
 출처 PR #262 roster_c4.json(가상): 별빛반 18명도 app.mock.seed에서 함께 읽는다.
 출처 PR #269 guardian_requests.json(가상): 20개 요청·16명 보호자도 같은 시드를 쓴다.
 """
@@ -130,28 +130,37 @@ def seed_feed(connection, withdrawn=frozenset()):
                 continue
             connection.execute(text("UPDATE children SET photo_scope=:scope WHERE id=:id AND org_id=:org"),
                                {"id": child_id, "org": seed.ORG, "scope": scope})
-    png = seed.feed_png()
-    metadata = media.inspect(png)
+    legacy_sha = media.inspect(seed.feed_png())["sha256"]
     for photo_id, post_id, tags in seed.FEED_PHOTOS:
         # 작성자가 지운 시드 글과 퇴소한 아이가 태그된 사진은 기동 때도 복원하지 않아요.
-        inserted = not withdrawn.intersection(tags) and connection.scalar(text("""
+        if withdrawn.intersection(tags):
+            continue
+        data = seed.feed_photo(photo_id)
+        metadata = media.inspect(data)
+        values = {**metadata, "id": photo_id, "org": seed.ORG, "post": post_id,
+                  "path": f"{photo_id}.{metadata['extension']}", "now": seed.FEED_CREATED_AT, "legacy_sha": legacy_sha}
+        inserted = connection.scalar(text("""
             INSERT INTO feed_photos(id,org_id,post_id,storage_path,media_type,size_bytes,sha256,created_at)
             SELECT :id,:org,:post,:path,:media_type,:size_bytes,:sha256,:now
             FROM feed_posts WHERE id=:post AND org_id=:org AND deleted_at IS NULL
             ON CONFLICT DO NOTHING RETURNING id
-        """), {**metadata, "id": photo_id, "org": seed.ORG, "post": post_id, "path": f"{photo_id}.png",
-               "now": seed.FEED_CREATED_AT})
+        """), values)
         if inserted:
             for child_id in tags:
                 connection.execute(text("""
                     INSERT INTO feed_photo_children(org_id,photo_id,child_id) VALUES (:org,:photo,:child)
                 """), {"org": seed.ORG, "photo": photo_id, "child": child_id})
+        upgraded = connection.scalar(text("""
+            UPDATE feed_photos p SET storage_path=:path, media_type=:media_type, size_bytes=:size_bytes, sha256=:sha256
+            FROM feed_posts f WHERE (f.id,f.org_id)=(p.post_id,p.org_id)
+              AND p.id=:id AND p.org_id=:org AND f.deleted_at IS NULL AND p.sha256=:legacy_sha RETURNING p.id
+        """), values)
         active = connection.scalar(text("""
             SELECT p.storage_path FROM feed_photos p JOIN feed_posts f ON (f.id,f.org_id)=(p.post_id,p.org_id)
             WHERE p.id=:id AND p.org_id=:org AND f.deleted_at IS NULL AND p.sha256=:sha256
         """), {"id": photo_id, "org": seed.ORG, "sha256": metadata["sha256"]})
-        if active and not media.path(active).is_file():
-            media.save(png, metadata, file_id=photo_id)
+        if active and (upgraded or not media.path(active).is_file()):
+            media.save(data, metadata, file_id=photo_id)
 
 
 if __name__ == "__main__":
