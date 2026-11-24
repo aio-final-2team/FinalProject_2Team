@@ -103,6 +103,8 @@ class RequestView(BaseModel):
 class MessageOut(BaseModel):
     id: int
     sender_type: Literal["user", "agent", "system"]
+    sender_role: Literal["parent", "teacher", "director"] | None = Field(
+        description="사람이 쓴 글이면 쓴 사람의 역할, AI·시스템 글이면 null. 화면은 이 값으로 말풍선을 나눠요")
     body: str
     created_at: datetime
 

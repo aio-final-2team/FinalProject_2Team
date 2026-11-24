@@ -37,8 +37,8 @@ def detail(user, request_id):
                                 missing_fields=care_state["missing_fields"] if care_state else req.missing_fields,
                                 hold_until=store.hold_until_of(req.id), parent_confirmed_at=req.parent_confirmed_at,
                                 created_at=req.created_at, updated_at=req.updated_at),
-            messages=[MessageOut(id=m.id, sender_type=m.sender_type, body=m.body, created_at=m.created_at)
-                      for m in store.messages_of(req.id)],
+            messages=[MessageOut(id=m.id, sender_type=m.sender_type, sender_role=m.sender_role, body=m.body,
+                                 created_at=m.created_at) for m in store.messages_of(req.id)],
             timeline=timeline, consultation=consultation,
             care=care_state,
             rejection=store.rejection_of(req.id) if req.status == "rejected" else None,
@@ -69,7 +69,7 @@ def message(user, request_id, body, *, background_tasks=None):
             store.set_request_status(req, "awaiting_review", action="returned", card=card, actor_type="user", actor_id=user.id)
         elif req.status == "needs_info" and req.type not in (*CARE_REQUEST_TYPES, "consultation"):
             store._run_mock_ai(req, None)
-        return {"message": msg.__dict__}
+        return {"message": msg.__dict__ | {"sender_role": msg.sender_role}}
 
 
 def choices(user, request_id, body):
