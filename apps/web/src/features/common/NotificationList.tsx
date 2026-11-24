@@ -1,7 +1,8 @@
+import { NotificationRow } from "@/components/NotificationRow";
 import { ScreenTop } from "@/components/ScreenTop";
 import { useNavigate } from "react-router";
 import { QueryState, StaleBanner } from "@/components/QueryState";
-import { useAllCards, useCards } from "@/api/cards";
+import { useAllCards } from "@/api/cards";
 import { useNotifications, useReadNotification, type Notification } from "@/api/notifications";
 import { SymbolMark } from "@/components/Brand";
 import { TYPE_LABEL } from "@/domain/status";
@@ -11,20 +12,20 @@ export function TeacherNotifications({ role = "teacher" }: { role?: "teacher" | 
   const nav = useNavigate();
   const list = useNotifications();
   const read = useReadNotification();
-  const cards = useCards("review");
   const allCards = useAllCards();
   /* 알림에는 내용이 없어(title만) 요청 ID로 카드를 찾아 무슨 일인지 한 줄로 보여 준다 */
   const cardOf = (n: Notification) => (n.request_id ? allCards.find((c) => c.requestId === n.request_id) : undefined);
   const items = list.data?.items ?? [];
   const back = role === "teacher" ? "/teacher/home" : "/director/overview";
 
+  /* 종류별로 가는 곳: 돌봄 요청·학부모 취소는 귀가·투약, 알림장은 알림장, 그 밖의 카드 알림은 요청 ID로 카드를 찾는다(상태가 달라도 찾는다) */
   const open = (n: Notification) => {
     if (!n.read_at) read.mutate(n.id);
-    if (n.subject_type === "daily_note") nav("/teacher/notes");
+    if (n.kind === "care_requested" || n.kind === "cancelled") nav(role === "teacher" ? "/teacher/care" : "/director/care");
+    else if (n.subject_type === "daily_note") nav("/teacher/notes");
     else if (n.subject_type === "card" && n.subject_id) nav(`/${role}/inbox/${n.subject_id}`);
     else {
-      /* 카드 알림은 subject_id가 없을 수 있어 요청 ID로 확인 필요 카드를 찾고, 없으면 받은함 목록으로 간다 */
-      const card = n.request_id ? cards.data?.items.find((c) => c.requestId === n.request_id) : undefined;
+      const card = n.request_id ? allCards.find((c) => c.requestId === n.request_id) : undefined;
       nav(card ? `/${role}/inbox/${card.id}` : `/${role}/inbox`);
     }
   };
@@ -44,22 +45,10 @@ export function TeacherNotifications({ role = "teacher" }: { role?: "teacher" | 
         </div>
       ) : (
         <ul className="overflow-hidden rounded-lg bg-card shadow-card">
-          {items.map((n) => (
-            <li key={n.id} className="[&+&]:border-t [&+&]:border-sep">
-              <button onClick={() => open(n)} className="flex min-h-14 w-full items-center gap-3 px-3 py-2.5 text-left">
-                <span aria-hidden className={`size-2 shrink-0 rounded-full ${n.read_at ? "bg-transparent" : "bg-accent"}`} />
-                <span className="min-w-0 flex-1">
-                  <b className={`block text-callout ${n.read_at ? "font-medium text-ink2" : "font-semibold"}`}>{n.title}</b>
-                  {(() => {
-                    const c = cardOf(n);
-                    const line = n.body ?? (c ? `${TYPE_LABEL[c.type]} · ${c.childName ? `${c.childName} · ` : ""}${c.title}` : null);
-                    return line && <span className="block truncate text-footnote text-ink2">{line}</span>;
-                  })()}
-                </span>
-                <time className="shrink-0 text-caption text-ink2 tabular-nums">{new Date(n.deliver_after).toLocaleDateString("ko-KR", { month: "numeric", day: "numeric" })}</time>
-              </button>
-            </li>
-          ))}
+          {items.map((n) => {
+            const c = cardOf(n);
+            return <NotificationRow key={n.id} n={n} line={c ? `${TYPE_LABEL[c.type]} · ${c.childName ? `${c.childName} · ` : ""}${c.title}` : null} onOpen={() => open(n)} />;
+          })}
         </ul>
       )}
     </div>

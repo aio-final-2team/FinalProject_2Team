@@ -99,7 +99,7 @@ const ALL_FILTERS: InboxFilter[] = ["review", "judge", "unassigned", "hold", "pr
 export const useAllCards = () => {
   const results = useQueries({
     queries: ALL_FILTERS.map((filter) => ({
-      queryKey: ["cards", "list", filter, "all"],
+      queryKey: ["cards", "list", filter, "flat"],
       queryFn: async () => (await api<CardList>(`/api/v1/cards?filter=${UI_TO_API_FILTER[filter]}&size=100`)).items.map((item) => cardFromItem(item, filter)),
     })),
   });

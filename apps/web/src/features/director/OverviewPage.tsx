@@ -52,15 +52,14 @@ export function OverviewPage() {
               </div>
             </section>
 
-            <section className="mt-3 rounded-lg bg-card p-3 shadow-card">
-              <div className="flex items-center gap-3">
-                <span className="grid size-10 shrink-0 place-items-center rounded-md bg-tint text-accent-ink"><Icon name="medication" className="size-5" /></span>
-                <span className="min-w-0 flex-1">
-                  <b className="block text-headline">귀가·투약 대기 {careOpen}건</b>
-                  <span className="text-footnote text-ink2">담임이 확인하고 완료하는 요청이에요</span>
-                </span>
-              </div>
-            </section>
+            <Link to="/director/care" className="mt-3 flex items-center gap-3 rounded-lg bg-card p-3 shadow-card active:scale-[.99]">
+              <span className="grid size-10 shrink-0 place-items-center rounded-md bg-tint text-accent-ink"><Icon name="medication" className="size-5" /></span>
+              <span className="min-w-0 flex-1">
+                <b className="block text-headline">귀가·투약 대기 {careOpen}건</b>
+                <span className="text-footnote text-ink2">담임이 확인하고 완료하는 요청이에요</span>
+              </span>
+              <Icon name="chevR" className="size-4 shrink-0 text-ink2" />
+            </Link>
 
             <h2 className="mb-2 mt-6 px-1 text-footnote font-semibold text-ink2">담당 다시 정하기 기록</h2>
             {o.reassignments.length ? (

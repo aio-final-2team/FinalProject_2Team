@@ -10,6 +10,7 @@ import { CarePage } from "@/features/care/CarePage";
 import { ClassPage } from "@/features/teacher/ClassPage";
 import { FeedScreen } from "@/features/feed/FeedScreen";
 import { ChildAlbum } from "@/features/feed/ChildAlbum";
+import { RouteError } from "@/components/RouteError";
 import { OverviewPage } from "@/features/director/OverviewPage";
 import { DocumentPage } from "@/features/teacher/DocumentPage";
 import { TeacherNotifications } from "@/features/common/NotificationList";
@@ -26,9 +27,10 @@ import { StateView } from "@/components/StateView";
 /** 주소 목록: Docs/Step2/유치온_T12_화면지도.md 1.4 */
 export const router = createBrowserRouter([
   { path: "/", element: <Navigate to="/login" replace /> },
-  { path: "/login", element: <LoginPage /> },
+  { path: "/login", element: <LoginPage />, errorElement: <RouteError /> },
   {
     path: "/teacher",
+    errorElement: <RouteError />,
     element: (
       <Guard allow={["teacher"]}>
         <StaffLayout role="teacher" />
@@ -53,6 +55,7 @@ export const router = createBrowserRouter([
   },
   {
     path: "/director",
+    errorElement: <RouteError />,
     element: (
       <Guard allow={["director"]}>
         <StaffLayout role="director" />
@@ -61,6 +64,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <Navigate to="overview" replace /> },
       { path: "overview", element: <OverviewPage /> },
+      { path: "care", element: <CarePage role="director" /> },
       { path: "notifications", element: <TeacherNotifications role="director" /> },
       { path: "feed", element: <FeedScreen role="director" /> },
       { path: "inbox", element: <InboxPage role="director" /> },
@@ -69,6 +73,7 @@ export const router = createBrowserRouter([
   },
   {
     path: "/parent",
+    errorElement: <RouteError />,
     element: (
       <Guard allow={["parent"]}>
         <ParentLayout />

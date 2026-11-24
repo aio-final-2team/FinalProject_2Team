@@ -1,6 +1,7 @@
 import { useNavigate } from "react-router";
 import { useNotifications, useReadNotification, type Notification } from "@/api/notifications";
 import { Buddy } from "@/components/Brand";
+import { NotificationRow } from "@/components/NotificationRow";
 import { ScreenTop } from "@/components/ScreenTop";
 import { QueryState } from "@/components/QueryState";
 
@@ -29,18 +30,7 @@ export function NotificationsPage() {
         </div>
       ) : (
         <ul className="overflow-hidden rounded-lg bg-card shadow-card">
-          {items.map((n) => (
-            <li key={n.id} className="[&+&]:border-t [&+&]:border-sep">
-              <button onClick={() => open(n)} className="flex min-h-14 w-full items-center gap-3 px-3 py-2.5 text-left">
-                <span aria-hidden className={`size-2 shrink-0 rounded-full ${n.read_at ? "bg-transparent" : "bg-accent"}`} />
-                <span className="min-w-0 flex-1">
-                  <b className={`block text-callout ${n.read_at ? "font-medium text-ink2" : "font-semibold"}`}>{n.title}</b>
-                  {n.body && <span className="block truncate text-footnote text-ink2">{n.body}</span>}
-                </span>
-                <time className="shrink-0 text-caption text-ink2 tabular-nums">{new Date(n.deliver_after).toLocaleDateString("ko-KR", { month: "numeric", day: "numeric" })}</time>
-              </button>
-            </li>
-          ))}
+          {items.map((n) => <NotificationRow key={n.id} n={n} onOpen={() => open(n)} />)}
         </ul>
       )}
       </QueryState>
