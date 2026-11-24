@@ -127,11 +127,11 @@ flowchart LR
 | G-11 | 거절 뒤 재초안 카드에 앞 카드의 검사 통과가 이어져 빈 초안을 승인할 수 있었음 | 거절 뒤 카드 `draft.text`와 `check_result`를 비우지 않던 경로 | INJ-01·GRD-01·GRD-03에서 초안 없는 카드 규칙이 깨질 수 있었어요. **#317에서 고침**: 빈 초안·검사 결과 없음, 일반 승인은 409, `edit_approve`만 가능 |
 | G-4 | **구현(커밋: 아래 1차 로컬 커밋)** 코드 주제가 `other`가 아니면 다른 모델 주제를 거부하고 분류 이력에 `topic_model_rejected` 표시 | `supervisor.py`, `agent_stub.py`, 시험 `test_code_topic_cannot_be_replaced` | 모델이 올바른 코드 주제를 덮어쓰지 못함 |
 | G-5 | **구현(커밋: T55 2차 로컬 커밋)** 감독·답변 모델 호출 직전 사용자 글의 전화번호·주민번호·계좌·이메일 가림. G-7 형식 검사를 공용으로 재사용 | `agents/guardrails/sensitive.py`, `supervisor.py`, `answer.py`; 시험 `test_supervisor_model_only_gets_masked_body`, `test_answer_models_get_masked_question` | DB에 저장된 원문은 유지 |
-| G-6 | **구현(커밋: T55 2차 로컬 커밋)** 자료 적재 시 의심 조각 번호를 `events.detail.suspicious_chunk_indexes`에 기록. 검색·답변에서 의심 조각 제외 | `agents/guardrails/injection.py`, `documents/ingest.py`·`search.py`, `answer.py`; 시험 `test_injected_document_chunk_is_marked_and_not_searched`, `test_suspicious_chunk_is_excluded_but_normal_chunk_remains` | DB 구조 변경 없음. 짧은 표현 목록 밖의 우회 문장은 놓칠 수 있음 |
+| G-6 | **구현(커밋: T55 2차 로컬 커밋)** 자료 적재 시 의심 조각 번호를 `events.detail.suspicious_chunk_indexes`에 기록. 검색·답변에서 의심 조각 제외 | `agents/guardrails/injection.py`, `documents/ingest.py`·`search.py`, `answer.py`; 시험 `test_injected_document_chunk_is_marked_and_not_searched`, `test_suspicious_chunk_is_excluded_but_normal_chunk_remains` | DB 구조 변경 없음. 짧은 표현 목록 밖의 우회 문장은 놓칠 수 있음. 의심 조각을 화면에 표시할지는 자료 창고 화면을 만들 때 성주님과 정함 |
 | G-7 | **구현(커밋: 아래 1차 로컬 커밋)** 답변 초안의 전화번호·주민번호·계좌·이메일 형식을 코드로 확인, 모델 검사와 OR | `answer.py`, 시험 `test_sensitive_formats_positive`, `test_sensitive_formats_negative`, `test_code_sensitive_issue_even_when_model_passes` | 발견 시 `check_result.issues`에 `민감정보`를 추가해 담임 확인으로 넘김 |
-| G-8 | 접수 이력(`events.detail`)에 투약 입력 항목이 들어가고 보관·삭제 기준이 문서에 없음 | `requests.py` `record(... **detail)`, `events.py` | 시연에는 문제없음. 실제 적용 시 보관 기간 필요 |
-| G-9 | **구현(커밋: T55 2차 로컬 커밋)** `APP_ENV=production/prod`면 mock 모드에서도 기본·예시·짧은 JWT 키 거부. 서버 Compose가 `APP_ENV=production` 설정 | `core/config.py`, `infra/team-server/compose.server.yaml`; 시험 `test_production_mock_rejects_default_secret`, `test_local_mock_still_uses_default_secret` | 로컬 개발·시험 기본값은 유지 |
-| G-10 | 문의 답변 초안은 `ANSWER_WRITER=graph`일 때만 AI가 씀. 기본값은 모의 초안 | `documents/answer.py` `graph_enabled`, `agent_stub.py:111` | 시연 환경 설정에 따라 이 문서의 L4·L5가 아예 작동하지 않음 |
+| G-8 | 태웅님이 접수 이력에 투약 입력 값을 남기지 않게 줄임(칸 이름만 기록) | `requests.py`, `events.py` | 보관·삭제 기간은 실제 적용 전에 정함 |
+| G-9 | **구현(커밋: T55 2차 로컬 커밋)** `APP_ENV=production` 확정: mock 모드에서도 기본·예시·짧은 JWT 키 거부 | `core/config.py`, `infra/team-server/compose.server.yaml`; 시험 `test_production_mock_rejects_default_secret`, `test_local_mock_still_uses_default_secret` | 서버 `.env.server`에는 태웅님이 배포 때 넣음. 로컬 개발·시험 기본값은 유지 |
+| G-10 | 코드 기본값은 `ANSWER_WRITER=stub` 유지. 팀 서버는 2026-11-24 12:08부터 `graph` | `documents/answer.py` `graph_enabled`, 팀 서버 설정 | 팀 서버에서는 문의 답변의 자료·검사 AI 경로가 작동함 |
 
 ---
 
@@ -163,3 +163,4 @@ flowchart LR
 | v0.3 | 2026-11-24 | 리뷰 반영: 승인 전 발송 통제, 위협·시험 설명 정정, 접근 범위 구분, Q3 영민 결정과 G-3 연결 | 영민 |
 | v0.4 | 2026-11-24 | 팀 결정에 따라 P01~P04 감독 판단과 백엔드 고정 안내의 담당 범위를 구분 | 영민 |
 | v0.5 | 2026-11-24 | G-5 입력 가리기·G-6 의심 자료 표시와 근거 제외·G-9 배포 JWT 키 검사 구현 | 영민 |
+| v0.6 | 2026-11-24 | 태웅님 답 반영: G-8 이력 값 축소, G-10 서버 graph 설정, G-9 배포 설정, G-6 화면 표시 결정 시점 | 영민 |
