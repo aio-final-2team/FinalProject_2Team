@@ -90,7 +90,12 @@
 | `ANSWER_WRITER` | 문의 답변 초안(요청 처리 AI) | 기본 `stub`(대역 문장), 모델을 쓰면 `graph`. 켜고 끄는 법은 5-4 | 서버 `.env.server` |
 | `OPENAI_API_KEY` | OpenAI 호출 | `graph`를 선택할 때 팀 키 | 서버 `.env.server` |
 | `LLM_MODEL_DEFAULT`·`LLM_MODEL_*` | 그래프 모델 선택 | 팀에서 정한 모델, 역할별 값은 예시 파일 참고 | 서버 `.env.server` |
-| `LANGSMITH_API_KEY` | LangSmith 추적 | 추적이 필요할 때 팀 키 | 서버 `.env.server` |
+| `REQUEST_AGENT` | 요청 처리 입구 | 기본은 대역(`agent_stub`). 그래프·체크포인트·승인 대기는 `app.modules.requests.graph_agent:run_request`. 5-5 | 서버 `.env.server` |
+| `REQUEST_COLLAB_GRAPH` | 협업 그래프 | `1`이면 `REQUEST_AGENT`가 그래프일 때 협업 그래프를 써요. 5-5 | 서버 `.env.server` |
+| `LLM_MODEL_SUPERVISOR` | 감독 AI 모델 | **비우면 감독 모델을 부르지 않고 낱말 규칙만 봐요.** 켜려면 모델 이름을 적어요. 5-5 | 서버 `.env.server` |
+| `EMBEDDING_MODEL`·`INSTALL_EMBEDDING` | 자료 검색 임베딩 | `BAAI/bge-m3`와 빌드 인자 `INSTALL_EMBEDDING=1`. 5-5 | 서버 `.env.server` |
+| `LAW_GO_KR_OC` | 법령 조문 조회 | 법제처 OPEN API 신청 ID. 비우면 법령 근거를 붙이지 않아요 | 서버 `.env.server` |
+| `LANGSMITH_API_KEY`·`LANGSMITH_TRACING` | LangSmith 추적 | 추적이 필요할 때 팀 키와 `true` | 서버 `.env.server` |
 
 > ⚠️ `VITE_API_BASE_URL`은 **빌드할 때 결과물에 박힙니다.** 값을 바꾸면 컨테이너 재시작이 아니라 `web` 이미지를 다시 빌드해야 하고, 앱(APK/IPA)도 다시 빌드해야 합니다. 기본값 `http://localhost:8000`으로 빌드하면 브라우저·폰에서 API 호출이 실패합니다.
 
@@ -206,6 +211,29 @@ curl -s -o /dev/null -w '%{http_code} %{time_total}s\n' -H "Authorization: Beare
 - 끈 뒤 새로 들어온 문의 카드에는 지금처럼 대역 초안 문장이 들어가요.
 
 **7-1 이미지 되돌리기와 다른 점.** AI 끄기는 코드와 이미지는 그대로 두고 환경값 하나만 바꿔요. 그래서 모델 때문에 생긴 문제(느림, 3분 초과, DB 연결 증가, 비용)라면 이것부터 해요. 7-1의 `:prev`는 직전 배포의 코드로 돌아가는 방법이라, 새 배포가 뜨지 않거나 코드 오류로 500이 날 때 써요. 다만 `:prev`로 되돌려도 `.env.server`는 바뀌지 않아요. 그래서 `ANSWER_WRITER=graph`가 남아 있으면 AI는 켜진 채예요. 되돌린 판이 `ab58b7c`보다 앞선 코드라면 AI를 먼저 꺼요. 모델 호출을 잠금 밖으로 옮긴 게 `ab58b7c`라서, 그 전 코드는 아직 잠금 안에서 모델을 부르기 때문이에요.
+
+### 5-5. 팀 서버에서 켜 두는 값
+
+기본값은 모두 대역이라, 값을 안 넣으면 실제 모델·그래프 없이 돌아요. 팀 서버는 아래를 켜 두고 확인해요. 하나라도 꺼져 있으면 그 부분은 실제와 다르게 돌아요.
+
+| 값 | 켠 상태 | 꺼져 있으면 |
+|---|---|---|
+| `DAILY_NOTE_WRITER` | `graph` | 알림장 초안이 대역 문장 |
+| `ANSWER_WRITER` | `graph` | 문의·민원 답변 초안이 대역 문장 |
+| `LLM_MODEL_SUPERVISOR` | 모델 이름(지금 `gpt-6-luna`) | 위험·주제를 낱말 규칙만으로 나눠요. 돌려 말한 위험 글을 놓칠 수 있어요 |
+| `REQUEST_AGENT` | `app.modules.requests.graph_agent:run_request` | 그래프·체크포인트·승인 대기(`interrupt`) 없이 대역 입구로 처리 |
+| `LAW_GO_KR_OC` | 신청 ID | 법령 조문 근거 없음 |
+| `REQUEST_COLLAB_GRAPH` | `1` | 기존 요청 그래프(감독 → 자료 → 검사 한 줄) |
+| `EMBEDDING_MODEL` | `BAAI/bge-m3` | 자료를 낱말 점수로만 찾아요 |
+
+값을 바꾼 뒤에는 5-4처럼 api·worker만 다시 만들고 `printenv`로 들어갔는지 봐요. 그다음 학부모 계정으로 문의·권한 밖 요청·위험 민원·상담을 한 건씩 넣어 카드와 원장 보고가 생기는지 확인하고, 확인용 요청은 지워요.
+
+임베딩은 이미지에 패키지가 있어야 해요. `.env.server`에 `INSTALL_EMBEDDING=1`과 `EMBEDDING_MODEL=BAAI/bge-m3`를 넣고 api 이미지를 다시 빌드한 뒤, 빈 조각의 벡터를 채워요. 모델은 api와 worker가 각각 한 번씩 메모리에 읽어요(프로세스마다 약 2GB).
+
+```bash
+"${compose[@]}" build api && "${compose[@]}" up -d --no-deps api worker beat
+"${compose[@]}" exec -T api python -m db.seeds.embed
+```
 
 ## 6. 배포 확인
 
@@ -331,3 +359,4 @@ npx cap sync ios
 | 2026-11-20 | 태웅 | 기존 구조를 복원하고 환경변수·배포·확인·롤백 절차를 서버 Compose·스크립트에 맞췄어요. |
 | 2026-11-23 | 태웅 | 7-2의 수동 `pg_dump`·`psql` 절차를 사진까지 받는 백업·복원 스크립트로 바꿨어요. |
 | 2026-11-24 | 태웅 | 5-4에 요청 처리 AI(`ANSWER_WRITER`)를 켜는 조건, 켜고 끄는 법, 이상 신호를 더하고, Compose가 이 값을 api·worker에 넘기게 했어요. |
+| 2026-11-24 | 태웅 | 5-5에 팀 서버에서 켜 두는 값(감독 모델·요청 그래프·법령 키·협업 그래프·임베딩)과 꺼졌을 때 달라지는 점을 적고, Compose가 `REQUEST_COLLAB_GRAPH`·`EMBEDDING_MODEL`·`LANGSMITH_TRACING`을 넘기게 했어요. |

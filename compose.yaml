@@ -5,6 +5,8 @@ services:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
+      args:
+        INSTALL_EMBEDDING: ${INSTALL_EMBEDDING:-0}
     environment: &api-environment
       MEDIA_DIR: ${MEDIA_DIR:-/media}
       DATA_BACKEND: ${DATA_BACKEND:-mock}
@@ -12,6 +14,7 @@ services:
       RUN_IN: ${RUN_IN:-api}
       CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
       REQUEST_AGENT: ${REQUEST_AGENT:-app.modules.requests.agent_stub:run_request}
+      REQUEST_COLLAB_GRAPH: ${REQUEST_COLLAB_GRAPH:-}
       ANSWER_WRITER: ${ANSWER_WRITER:-stub}
       DATABASE_URL: ${DATABASE_URL:-postgresql://yuchion:yuchion-local@db:5432/yuchion}
       JWT_SECRET: ${JWT_SECRET:-local-dev-only-change-me-32-bytes-min}
@@ -34,6 +37,8 @@ services:
       LLM_MODEL_CHECKER: ${LLM_MODEL_CHECKER:-}
       LLM_MODEL_CODE: ${LLM_MODEL_CODE:-}
       LANGSMITH_API_KEY: ${LANGSMITH_API_KEY:-}
+      LANGSMITH_TRACING: ${LANGSMITH_TRACING:-}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-}
     volumes:
       - media_data:${MEDIA_DIR:-/media}
     depends_on:
