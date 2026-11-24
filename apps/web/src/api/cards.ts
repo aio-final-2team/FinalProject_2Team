@@ -58,13 +58,17 @@ const cardFromItem = (item: CardItem, filter: InboxFilter): Card => ({
 });
 
 const formatPeriod = (period: Period) => new Date(period.start).toLocaleString("ko-KR", { month: "numeric", day: "numeric", weekday: "short", hour: "2-digit", minute: "2-digit" });
-const actorName = (actor: string, agent: string | null) => agent ? `${agent} AI` : actor === "user" ? "교직원" : actor === "agent" ? "AI" : "시스템";
+const AGENT_NAME: Record<string, string> = { supervisor: "감독", document: "자료", checker: "검사", memory: "기억" };
+const actorName = (actor: string, agent: string | null) => agent ? `${AGENT_NAME[agent] ?? ""} AI`.trim() : actor === "user" ? "교직원" : actor === "agent" ? "AI" : "시스템";
+/** 처리 이력의 action 코드를 교직원이 읽는 말로 바꾼다. 모르는 코드는 내부 용어를 그대로 보이지 않는다 */
+const ACTION_LABEL: Record<string, string> = { created: "접수", classified: "분류", assigned: "담당 배정", drafted: "초안 작성", checked: "검사", approved: "승인", sent: "발송", rejected: "반려", dismissed: "반려", held: "보류", resumed: "재개", escalated: "원장 보고", completed: "처리 완료", risk_reclassified: "위험 분류 변경" };
+const actionLabel = (a: string) => ACTION_LABEL[a] ?? "처리 기록";
 
 const cardFromDetail = (data: CardDetail): Card => {
   const req = data.request;
   const sources: Source[] = data.evidence.map((e) => ({ doc: e.document_title, where: e.location ?? "", effective: e.effective_from ?? "", old: !e.is_current }));
   const slots: Slot[] | undefined = data.parent_choices.length ? data.parent_choices.map((s) => ({ id: String(s.slot_id), at: formatPeriod(s.period), mode: "대면", picked: true })) : undefined;
-  const history: HistoryItem[] = data.timeline.map((e) => ({ at: e.created_at, who: actorName(e.actor_type, e.agent_name), what: e.action }));
+  const history: HistoryItem[] = data.timeline.map((e) => ({ at: e.created_at, who: actorName(e.actor_type, e.agent_name), what: actionLabel(e.action) }));
   const draft = typeof data.card.draft.text === "string" ? data.card.draft.text : undefined;
   return {
     id: data.card.id, version: data.card.version, kind: data.card.kind, requestId: req?.id ?? "-", type: requestType(req?.type),

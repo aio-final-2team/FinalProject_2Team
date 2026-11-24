@@ -17,11 +17,12 @@ const EMPTY: Record<InboxFilter, string> = {
   done: "완료한 카드가 없어요",
 };
 
+/** 카드 목록 응답에는 접수 시각이 없고 처리 기한(due_at)만 있다. 기한까지 남은 시간(지났으면 지난 시간)을 보여 준다 */
 function ago(iso: string) {
-  const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
-  if (m < 60) return `${m}분`;
-  if (m < 60 * 24) return `${Math.round(m / 60)}시간`;
-  return `${Math.round(m / 60 / 24)}일`;
+  const m = Math.round((new Date(iso).getTime() - Date.now()) / 60000);
+  const a = Math.abs(m);
+  const unit = a < 60 ? `${a}분` : a < 60 * 24 ? `${Math.round(a / 60)}시간` : `${Math.round(a / 60 / 24)}일`;
+  return m >= 0 ? `${unit} 남음` : `${unit} 지남`;
 }
 
 function weightOf(c: Card) {
