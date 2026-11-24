@@ -5,16 +5,30 @@
 | 작업 | T13 API 설계 문서(FastAPI·Function Calling 도구 계약)·모의 API (#170) |
 | 작성 · 검토 | 태웅 · 인혜 |
 | 계약을 쓰는 쪽 | 화면 T12·T32(성주), 알림장 그래프 T32(프롬프트 검토 영민), 요청 처리 에이전트·자료·근거 검색 T29·T20·T33(영민) |
-| 판 | v0.8 · 2026-11-23 인계 (판마다 바뀐 내용은 맨 끝 변경 이력 참고. 계약을 바꾸면 예시·모의 응답·시험도 함께 고친다) |
-| 검토 기준 | `develop` 브랜치의 [API 설계 문서](https://github.com/aio-final-2team/FinalProject_2Team/blob/develop/Docs/Step2/API_설계_문서.md). API별 상태(2장)는 develop `24258f2` 코드로 판정했다 |
+| 판 | v0.9 · 2026-11-24 (판마다 바뀐 내용은 맨 끝 변경 이력 참고. 계약을 바꾸면 예시·모의 응답·시험도 함께 고친다) |
+| 2차 검토 링크 | `develop` 브랜치의 [API 설계 문서](https://github.com/aio-final-2team/FinalProject_2Team/blob/develop/Docs/Step2/API_설계_문서.md). API별 상태(2장)는 develop `24258f2` 코드로 판정했다 |
+| 시연 코드 기준 커밋 | develop `ab58b7c`. 11/27 알림장 시연에 쓰는 팀 서버에 지금 배포된 커밋이며, DB 스키마 설계서에도 같은 커밋을 적는다. 시연 날 아침에 다시 배포하면 이 칸을 새로 배포한 커밋으로 고친다 |
 | 함께 보는 문서 | 아래 기준 판 표의 문서들, T04 흐름·권한 명세 |
 
 | 함께 맞춘 문서 | 기준 판 |
 | --- | --- |
 | [기획서](../Step1/기획서.md) | 11/18 실측 반영본에 11/20 팀 결정 D02(첫 시연 범위)를 더한 develop 판. 3장 기능 요구사항(FR)과 4장 비기능 요구사항(NFR)의 번호를 쓴다 |
 | [입출력 계약표](입출력_계약표_초안.md) | v0.18 · 2026-11-21 |
-| [DB 스키마 설계서](DB_스키마_설계서.md) | v0.19.1 · 2026-11-23, 마이그레이션 0001~0010 |
+| [DB 스키마 설계서](DB_스키마_설계서.md) | v0.20 · 2026-11-24, 마이그레이션 0001~0010 |
 | OpenAPI 생성물 `contracts/openapi.yaml` | 마지막 생성 커밋 `04c4691`. 앱이 내는 `/openapi.json`과 같은지는 `test_contract_matches_application`으로 확인한다 |
+
+**1차 검토 뒤 보완.** 1차 검토 뒤에 바뀐 내용과 그 내용을 지키는 시험을 표 하나에 모았다. 시험은 모두 시연 코드 기준 커밋에서 다시 돌려 통과했다. DB 시험과 공유 HTTP 시험은 `tools/test_db.sh`로, 계약 시험은 `tests/integration/api/test_openapi.py`로 돌렸다. 표의 시험 파일은 모두 `tests/integration/`(DB는 `db/`, HTTP는 `api/`) 아래에 있고, `api/` 시험 가운데 `test_openapi.py`를 뺀 나머지는 모의·시험 PG 두 모드에서 모두 돈다. 반영 커밋 칸에는 develop에 합쳐진 커밋을 적었다.
+
+| 바뀐 내용 | 고친 절 | 지키는 시험(파일::함수) | 반영 커밋 |
+| --- | --- | --- | --- |
+| **접근 차단.** 지금 연결된 아이가 없는 보호자(퇴소 등)는 원 칸 피드에서도 목록·상세·앨범·사진 파일·글 올리기에 모두 403을 받는다. 다른 기관 사용자는 404를, 다른 반 보호자는 반 칸에서 403을 받는다 | [3.29](#329-제안-피드앨범) ⑤, DB 설계서 [4.4](DB_스키마_설계서.md#44-차단-시험) | `api/test_feed.py::test_org_lane_closes_for_guardian_without_linked_child`, `db/test_scope_cases.py::test_unlinked_guardian_loses_child_notes_requests_and_all_feed_photos`, `db/test_scope_cases.py::test_other_class_guardian_is_blocked_on_read_update_and_file`, `db/test_scope_cases.py::test_other_org_user_gets_404_for_document_and_feed_files_with_denial` | [`bf75f8f`](https://github.com/aio-final-2team/FinalProject_2Team/commit/bf75f8f)(코드), [`c80ee67`](https://github.com/aio-final-2team/FinalProject_2Team/commit/c80ee67)(문서) |
+| **사진 정리.** 퇴소한 아이의 사진·태그·기억 정리, 파일 삭제가 실패해 남은 파일 정리, 백업 복원 뒤 지운 자료를 다시 닫는 일은 관리 작업으로 한다. API 계약은 바뀌지 않았다 | DB 설계서 [사진·기억의 보존과 삭제](DB_스키마_설계서.md#사진기억의-보존과-삭제) | `api/test_feed.py::test_disk_delete_failure_leaves_only_orphan_file_after_commit`, `db/test_maintenance.py::test_withdraw_dry_run_changes_nothing_then_apply_follows_four_steps`, `db/test_maintenance.py::test_sweep_lists_only_orphans_and_deletes_them_only_with_apply`, `db/test_backup_restore.py::test_dump_restore_revives_later_deletions_until_after_restore_applies_them` | [`bf75f8f`](https://github.com/aio-final-2team/FinalProject_2Team/commit/bf75f8f), [`1d2c228`](https://github.com/aio-final-2team/FinalProject_2Team/commit/1d2c228) |
+| **초안 실패 뒤 처리 — 알림장.** 작업 전체가 실패하면 `draft_status = failed`와 `error`로 알리고, 아이 한 명만 실패하면 그 아이에게만 확인 항목 `draft_failed`를 단다. 어느 쪽이든 반 발송은 막힌다. 다시 만들기까지의 복구 이력은 DB 설계서 2.6에 있다 | [3.19.1](#3191-접수부터-결과-조회까지-한-번에-따라가기), [3.26](#326-알림장-다시-만들기--post-apiv1daily-notesdraftsinput_idregenerate), DB 설계서 [2.6](DB_스키마_설계서.md#26-알림장알림평가) | `api/test_daily_notes.py::test_failed_writer_job_is_queryable_without_partial_notes`, `db/test_daily_notes_runner.py::test_one_child_failure_keeps_other_children_and_blocks_batch`, `db/test_daily_note_recovery.py::test_timeout_then_regenerate_is_one_recovered_incident_with_times`, `db/test_daily_note_recovery.py::test_failed_retry_is_handed_off_then_partial_template_is_fallback` | [`c80ee67`](https://github.com/aio-final-2team/FinalProject_2Team/commit/c80ee67), [`bf75f8f`](https://github.com/aio-final-2team/FinalProject_2Team/commit/bf75f8f) |
+| **초안 실패 뒤 처리 — 요청 처리 3분 마감.** 3분이 지나면 초안 없는 미배정 카드로 넘기고(`ai_timeout`), 처리 중에 예외가 나면 `ai_failed`로 넘긴다. 모델 응답을 기다리는 동안에는 요청 행 잠금도 DB 연결도 잡지 않는다. 늦게 끝난 결과는 저장 직전에 다시 확인해서 버린다 | [6.1](#61-타임아웃), [6.3](#63-202로-접수하는-작업의-상태-조회) | `db/test_request_lock_timeout.py::test_answer_models_run_outside_request_row_lock`, `db/test_request_lock_timeout.py::test_ai_timeout_hands_off_empty_card_and_drops_late_draft`, `db/test_request_lock_timeout.py::test_timeout_error_raised_by_agent_is_ai_failed` | [`ab58b7c`](https://github.com/aio-final-2team/FinalProject_2Team/commit/ab58b7c) |
+| **초안 실패 뒤 처리 — 거절 뒤 재초안.** 담임이 회신 초안을 거절하면 새 회신 카드에는 초안 문장도 검사 결과도 없다. 그래서 그대로 승인하면 409가 나고, 담임이 직접 쓴 글(`edit_approve`)만 나간다 | [3.3](#33-카드-결정--post-apiv1cardscard_iddecisions) '결정마다 바뀌는 것' | `api/test_cards.py::test_reject_redraft_has_no_text_and_needs_teacher_text` | [`ab58b7c`](https://github.com/aio-final-2team/FinalProject_2Team/commit/ab58b7c) |
+| 첫 시연 순서, API 49개 목록의 상태 칸(DB 연결·모의만·제안) | [2](#2-api-목록), [2.1](#21-첫-시연-흐름의-연결표와-실제-연결-범위) | `api/test_openapi.py::test_all_49_documented_endpoints_exist`(목록 49행이 앱 경로와 같은지) | [`c80ee67`](https://github.com/aio-final-2team/FinalProject_2Team/commit/c80ee67) |
+| 요청은 접수됐지만 인계 카드 저장에 실패한 경우 | [5.5.3](#553-사람-인계-카드--create_card), [6.7](#67-대표-사례-대조--화면apidb가-같은-상태로-보이는지) | `db/test_requests.py::test_agent_failure_preserves_request_and_hands_off_without_private_error`, `db/test_requests.py::test_sweep_exact_age_states_card_exclusion_and_concurrent_idempotency` | [`c80ee67`](https://github.com/aio-final-2team/FinalProject_2Team/commit/c80ee67) |
+| 기획서·계약표·DB 설계서와 맞춘 기준 판, 생성물이 앱 계약과 같은지 | 위 기준 판 표 | `api/test_openapi.py::test_contract_matches_application` | [`c80ee67`](https://github.com/aio-final-2team/FinalProject_2Team/commit/c80ee67) |
 
 이 문서는 유치온 API 49개(기준 v0.8, develop `24258f2`)와 에이전트 도구 15개의 계약을 담는다. 1~6장은 강사님 'API 설계 문서 작성법'에 나온 '문서에 들어가는 여섯 가지'의 순서를 따르고, 7장에는 API 필드와 DB 컬럼의 대응을, 8장에는 설정값을 적었다. 필드·권한·오류는 입출력 계약표와 같아야 한다. 두 문서가 어긋나면 계약표를 먼저 고친 뒤 두 문서의 판을 함께 올린다. 구현(FastAPI의 `/docs`)과 달라졌을 때도 둘을 대조해 판을 올린다. 모의 API와 생성물 `contracts/openapi.yaml`도 이 문서와 함께 둔다. 모의 API를 쓰는 법과 데모 계정은 [모의 API 안내](../../contracts/mock_api/README.md)에 있다. 제목에 [제안]이 붙은 절은 팀이 아직 계약을 확인하지 않은 내용으로, 투약·귀가(3.27), 상담 지연 입력(3.28), 피드·앨범(3.29)이 여기에 해당한다. API별로 지금 어디까지 동작하는지는 2장 표의 상태 칸에 적었다.
 
@@ -406,7 +420,7 @@ X-Request-ID: 0e7d4a51-2c3b-4f6e-9a18-5b7c9d0e1f23
 | `decision` | 카드 | 요청 | 이력(`events.action`) | 알림 |
 | --- | --- | --- | --- | --- |
 | `approve`·`edit_approve` | `approved` → 발송 뒤 `done` | `approved` → `sent_or_booked` | `approved`, `sent` | 학부모 `sent_or_booked` |
-| `reject` | `rejected`, 같은 요청에 새 초안 카드가 생김 | `awaiting_review` → `assigned`, 새 초안이 나오면 다시 `awaiting_review` | `rejected` | 없음(이유는 기억 AI의 재료로 씀) |
+| `reject` | `rejected`, 같은 요청에 새 초안 카드가 생김. 회신 카드(`reply_draft`)를 거절했다면 새 카드에는 초안 문장도 검사 결과도 없다. 그래서 그대로 `approve`하면 409 `INVALID_TRANSITION`이 나고, 담임이 직접 쓴 글을 `edit_approve`로 보내야 한다 | `awaiting_review` → `assigned`, 새 초안이 나오면 다시 `awaiting_review` | `rejected` | 없음(이유는 기억 AI의 재료로 씀) |
 | `hold` | `on_hold` + `hold_until` | `on_hold` | `held` | 학부모 `on_hold`(예정일만) |
 | `resume` | `pending` | `on_hold` → `awaiting_review` | `resumed` | 없음 |
 | `dismiss` | `rejected` | `rejected` | `dismissed` | 학부모 `rejected` |
@@ -1759,6 +1773,8 @@ def decide(card_id: UUID, body: CardDecision, user: User = Depends(current_staff
 | 요청 하나의 AI 처리 전체(2~5단계) | 3분 | 처리를 멈추고 초안 없는 카드로 사람에게 넘김. 넘긴 이유(`ai_timeout`)는 이력 `events.detail.handoff_reason`에 남김 |
 | SSE 연결 | 처리 끝(`done`·`error`) 또는 5분 | 서버가 연결을 닫음. 화면은 상세를 다시 불러와 상태를 맞춤 |
 
+요청 하나에 주어진 3분은 그래프 바깥의 실행기가 잰다. 분류, 공공 자료 가져오기, 답변 초안 쓰기와 검사는 모두 요청 행 잠금 밖에서 하고, 모델 응답을 기다리는 동안에는 DB 연결도 잡지 않는다. 잠금은 마지막 저장 때만 건다. 짧은 트랜잭션 안에서 요청 행을 잠근 뒤, 요청이 아직 처리 중인지 다시 확인하고 저장한다. 3분이 지나면 실행기는 더 기다리지 않고 초안 없는 미배정 카드를 만들고 요청을 `awaiting_review`로 바꾼다. 3분이 되기 전에 처리가 예외로 멈췄다면 넘긴 이유를 `ai_failed`로 남긴다. 3분 뒤에 늦게 끝난 결과는 저장 직전 재확인 때 요청이 이미 사람에게 넘어가 있으므로 버려진다. 그래서 늦은 결과가 먼저 만든 카드를 덮지 못한다.
+
 ### 6.2 재시도
 
 | 대상 | 다시 하는 것 | 다시 하지 않는 것 | 횟수·간격 |
@@ -2030,3 +2046,4 @@ MVP 설정값은 서버 설정(`.env`)으로 관리한다. `.env.example`에는 
 | v0.7.1 | 2026-11-21 | 피드 업로드 크기 제한·권한 검사 순서·파일 삭제 시점을 맞춤 | 태웅 |
 | v0.7.2 | 2026-11-23 | 과정 이야기를 걷어내고 문장을 다듬음. 원에 남은 답은 바로 답하지 않고 담임 카드 초안으로만 쓰도록 기획서·에이전트 명세(T14)에 맞춤 | 태웅 |
 | v0.8 | 2026-11-23 | 11/20 강사 피드백을 반영함. 2장에 첫 시연 순서와 API별 상태 칸을, 3.19.1에 알림장 접수부터 발송 차단까지의 응답 예시를, 5.5에 먼저 쓰는 도구 세 개의 입력·출력·실패 뒤 행동을, 6.7에 인계 카드 저장 실패 사례를 더함. 3.22·3.23에 DB 모드 적재 결과(읽는 파일 종류·빈 파일·머리말·충돌·새 판·다시 적재)를 더하고, 3.29에 연결된 아이가 없는 학부모의 원 칸 권한을 더함. 문서 머리에 기준 판 표를 두고, 자료 올리기 크기 제한(2MiB·413)과 보류 예정일 경계를 코드에 맞춤 | 태웅 |
+| v0.9 | 2026-11-24 | 문서 머리에 2차 검토 링크, 시연 코드 기준 커밋(`ab58b7c`), 1차 검토 뒤 보완 표(바뀐 내용·고친 절·지키는 시험·반영 커밋)를 더함. 코드에 맞춰 6.1에는 요청 처리 3분 마감 때 모델을 잠금 밖에서 부르고 늦은 결과를 버리는 규칙을, 3.3에는 거절 뒤 새 회신 카드를 초안 없이 만들어 직접 쓴 글로만 보내는 규칙을 적음 | 태웅 |
