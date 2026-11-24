@@ -6,7 +6,7 @@
 | 작성 · 검토 | 태웅 · 영민 |
 | 판 | v0.21 · 2026-11-24 (판마다 바뀐 내용은 맨 끝 변경 이력에 있다) |
 | 2차 검토 링크 | `develop` 브랜치의 [DB 스키마 설계서](https://github.com/aio-final-2team/FinalProject_2Team/blob/develop/Docs/Step2/DB_스키마_설계서.md) |
-| 시연 코드 기준 커밋 | develop `ab58b7c`. 11/27 알림장 시연에 쓰는 팀 서버에 지금 배포된 커밋이며, API 설계 문서에도 같은 커밋을 적는다. 시연 날 아침에 다시 배포하면 이 칸을 새로 배포한 커밋으로 고친다 |
+| 시연 코드 기준 커밋 | 레포 [README](../../README.md#2차-검토-문서)의 '시연 코드 기준 커밋' 한 줄을 본다(11/24 기준 develop `97fda0b`, 위험 등급 확대 #326·요청 처리 AI 스위치 #321까지 팀 서버에 배포). 11/27 시연 전까지 팀 서버를 다시 배포하면 README 그 한 줄만 고친다 |
 | 대상 DB | PostgreSQL 16 + pgvector 0.8 (`compose.yaml`의 `pgvector/pgvector:pg16`). Supabase를 쓰지 않는 이유는 5.1에 있다 |
 | DDL | 최종 모양은 [`db_schema_draft.sql`](db_schema_draft.sql)에 있고, 실제 DB에는 `apps/api/migrations`의 0001~0010을 차례로 적용한다 |
 | 함께 보는 문서 | 기획서 3장(FR-01~FR-13)·4장(NFR)·6장(공통 상태)·7장, T04 흐름·권한 명세, [입출력 계약표](입출력_계약표_초안.md), [API 설계 문서](API_설계_문서.md) |
