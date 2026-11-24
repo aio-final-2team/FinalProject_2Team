@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { QueryState } from "@/components/QueryState";
 import { Link, useNavigate, useParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { ApiError, api } from "@/api/client";
@@ -24,7 +25,12 @@ export function NoteDetail() {
   const names = useMemo(() => Object.fromEntries((kids.data ?? []).map((k) => [k.id, k.display_name])), [kids.data]);
   const note = notes.data?.find((n) => n.id === noteId);
 
-  if (notes.isLoading) return <p className="py-16 text-center text-callout text-ink2">불러오는 중…</p>;
+  if (notes.isLoading || (notes.isError && notes.data === undefined))
+    return (
+      <div className="mx-auto max-w-[680px] px-4 pt-6">
+        <QueryState queries={[notes]} errorTitle="알림장을 불러오지 못했어요">{null}</QueryState>
+      </div>
+    );
   if (!note)
     return (
       <div className="mx-auto max-w-[680px] px-4 pt-10">

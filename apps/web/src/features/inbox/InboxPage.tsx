@@ -1,5 +1,6 @@
 import { Link, useParams, useSearchParams } from "react-router";
-import { useCards } from "@/api/cards";
+import { useCards, type TypeFilter } from "@/api/cards";
+import { dateLabel, todayKST } from "@/domain/notes";
 import { Icon } from "@/components/Icon";
 import { SkeletonRows, StateView } from "@/components/StateView";
 import { Pill, WeightIcon } from "@/components/Tags";
@@ -78,17 +79,19 @@ export function InboxPage({ role }: { role: Exclude<Role, "parent"> }) {
   const { cardId } = useParams();
   const [params, setParams] = useSearchParams();
   const filter = (params.get("filter") as InboxFilter) || "review";
-  const { data, isLoading, isError, refetch, dataUpdatedAt } = useCards(filter);
+  const type = (params.get("type") as TypeFilter) || "all";
+  const { data, isLoading, isError, refetch, dataUpdatedAt } = useCards(filter, type);
   const counts = data?.counts ?? Object.fromEntries(INBOX_FILTERS.map((f) => [f.key, 0]));
   const list = (data?.items ?? [])
     .sort((a, b) => (filter === "review" ? reviewRank(a) - reviewRank(b) : 0) || +new Date(a.createdAt) - +new Date(b.createdAt));
-  const q = `?filter=${filter}`;
+  const q = `?filter=${filter}${type === "all" ? "" : `&type=${type}`}`;
+  const TYPES: { key: TypeFilter; label: string }[] = [{ key: "all", label: "전체" }, { key: "complaint", label: "민원" }, { key: "consultation", label: "상담" }, { key: "inquiry", label: "문의" }];
   const base = `/${role}/inbox`;
 
   const listPane = (
     <section className={`min-w-0 ${cardId ? "hidden lg:block" : ""}`} aria-label="받은함 목록">
       <header className="sticky top-0 z-10 bg-g/90 px-4 pb-3 pt-[max(16px,env(safe-area-inset-top))] backdrop-blur-xl lg:px-5 lg:pt-6">
-        <p className="text-sub text-ink2">{role === "teacher" ? "하늘반" : "원 전체"} · 11/17(월)</p>
+        <p className="text-sub text-ink2">{role === "teacher" ? "우리 반" : "원 전체"} · {dateLabel(todayKST())}</p>
         <h1 className="text-title font-bold tracking-[-0.025em]">받은함</h1>
         {role === "director" && counts.review > 0 && (
           <p className="mt-1 text-sub text-ink2">
@@ -106,6 +109,20 @@ export function InboxPage({ role }: { role: Exclude<Role, "parent"> }) {
             >
               {f.label}
               <span className="ml-1 tabular-nums opacity-60">{counts[f.key]}</span>
+            </button>
+          ))}
+        </div>
+        <div className="mt-2 flex gap-4 border-b border-sep" role="tablist" aria-label="요청 종류">
+          {TYPES.map((t) => (
+            <button
+              key={t.key}
+              role="tab"
+              aria-selected={type === t.key}
+              onClick={() => setParams({ filter, ...(t.key === "all" ? {} : { type: t.key }) })}
+              className={`-mb-px h-10 border-b-2 text-footnote font-semibold ${type === t.key ? "border-accent text-accent-ink" : "border-transparent text-ink2"}`}
+            >
+              {t.label}
+              <span className="ml-1 tabular-nums">{data?.typeCounts[t.key] ?? 0}</span>
             </button>
           ))}
         </div>
