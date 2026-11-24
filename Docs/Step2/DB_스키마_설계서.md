@@ -4,10 +4,23 @@
 | --- | --- |
 | 작업 | T09 데이터베이스 스키마 설계서 (#166) |
 | 작성 · 검토 | 태웅 · 영민 |
-| 판 | v0.19.1 · 2026-11-23 (판마다 바뀐 내용은 맨 끝 변경 이력에 있다) |
+| 판 | v0.21 · 2026-11-24 (판마다 바뀐 내용은 맨 끝 변경 이력에 있다) |
+| 2차 검토 링크 | `develop` 브랜치의 [DB 스키마 설계서](https://github.com/aio-final-2team/FinalProject_2Team/blob/develop/Docs/Step2/DB_스키마_설계서.md) |
+| 시연 코드 기준 커밋 | 레포 [README](../../README.md#2차-검토-문서)의 '시연 코드 기준 커밋' 한 줄을 본다(11/24 기준 develop `97fda0b`, 위험 등급 확대 #326·요청 처리 AI 스위치 #321까지 팀 서버에 배포). 11/27 시연 전까지 팀 서버를 다시 배포하면 README 그 한 줄만 고친다 |
 | 대상 DB | PostgreSQL 16 + pgvector 0.8 (`compose.yaml`의 `pgvector/pgvector:pg16`). Supabase를 쓰지 않는 이유는 5.1에 있다 |
 | DDL | 최종 모양은 [`db_schema_draft.sql`](db_schema_draft.sql)에 있고, 실제 DB에는 `apps/api/migrations`의 0001~0010을 차례로 적용한다 |
 | 함께 보는 문서 | 기획서 3장(FR-01~FR-13)·4장(NFR)·6장(공통 상태)·7장, T04 흐름·권한 명세, [입출력 계약표](입출력_계약표_초안.md), [API 설계 문서](API_설계_문서.md) |
+
+**1차 검토 뒤 보완.** 1차 검토 뒤에 바뀐 내용과 그 내용을 지키는 시험을 표 하나에 모았다. 시험은 모두 시연 코드 기준 커밋에서 `tools/test_db.sh`로 다시 돌려 통과했다. 표의 시험 파일은 모두 `tests/integration/`(DB는 `db/`, HTTP는 `api/`) 아래에 있고, `api/` 시험은 모의·시험 PG 두 모드에서 모두 돈다. 반영 커밋 칸에는 develop에 합쳐진 커밋을 적었다.
+
+| 바뀐 내용 | 고친 절 | 지키는 시험(파일::함수) | 반영 커밋 |
+| --- | --- | --- | --- |
+| **접근 차단.** 다른 기관 사용자, 다른 반 보호자, 연결이 끝난 보호자가 조회·수정·파일 열람을 하는 경우를 나눠 실제 HTTP로 시험했다. 연결된 아이가 없는 보호자는 원 칸 피드에서도 403을 받는다(`core/feed.py`의 `lane_access`) | [4.4](#44-차단-시험) | `db/test_scope_cases.py::test_other_org_user_gets_404_for_document_and_feed_files_with_denial`, `db/test_scope_cases.py::test_other_class_guardian_is_blocked_on_read_update_and_file`, `db/test_scope_cases.py::test_unlinked_guardian_loses_child_notes_requests_and_all_feed_photos`, `api/test_feed.py::test_org_lane_closes_for_guardian_without_linked_child` | [`bf75f8f`](https://github.com/aio-final-2team/FinalProject_2Team/commit/bf75f8f) |
+| **사진 정리.** 공개 범위를 바꾸거나, 아이가 퇴소하거나, 파일 삭제가 실패하거나, 백업을 복원할 때 사진·태그·기억·이력을 어떻게 다룰지 정했다. 관리 작업으로 퇴소(`withdraw_child`), 고아 파일 정리(`media_sweep`), 복원 뒤 다시 적용(`after_restore`)을 두었다. 데모 시드는 퇴소한 아이를 다시 넣지 않는다 | [사진·기억의 보존과 삭제](#사진기억의-보존과-삭제) | `db/test_maintenance.py::test_withdraw_dry_run_changes_nothing_then_apply_follows_four_steps`, `db/test_maintenance.py::test_sweep_lists_only_orphans_and_deletes_them_only_with_apply`, `db/test_backup_restore.py::test_dump_restore_revives_later_deletions_until_after_restore_applies_them`, `db/test_maintenance.py::test_demo_seed_does_not_bring_back_a_withdrawn_child` | [`bf75f8f`](https://github.com/aio-final-2team/FinalProject_2Team/commit/bf75f8f)·[`1d2c228`](https://github.com/aio-final-2team/FinalProject_2Team/commit/1d2c228)(코드·시험). [`783d5b1`](https://github.com/aio-final-2team/FinalProject_2Team/commit/783d5b1)은 시험이 아니라 팀 서버 첫 백업 기록 |
+| **초안 실패 뒤 처리 — 알림장.** 실패 감지부터 다시 시도·검증·저장까지를 같은 작업 ID의 incident 이력으로 남긴다. `tools/daily_note_recovery.py`는 정상 복구·대체 응답·사람 이관이 각각 몇 건인지와 복구 시간을 센다 | [2.6](#26-알림장알림평가) '초안 실패와 복구 기록' | `db/test_daily_note_recovery.py::test_timeout_then_regenerate_is_one_recovered_incident_with_times`, `db/test_daily_note_recovery.py::test_failed_retry_is_handed_off_then_partial_template_is_fallback` | [`bf75f8f`](https://github.com/aio-final-2team/FinalProject_2Team/commit/bf75f8f) |
+| **초안 실패 뒤 처리 — 요청 처리 3분 마감.** 사람에게 넘긴 이유(`ai_timeout`·`ai_failed`·`card_missing`)를 이력에 남긴다. 모델 응답을 기다리는 동안에는 요청 행 잠금을 잡지 않고, 늦게 끝난 결과는 먼저 만든 카드를 덮지 못한다 | [2.2](#22-요청카드승인이력) '처리 이력' | `db/test_request_lock_timeout.py::test_answer_models_run_outside_request_row_lock`, `db/test_request_lock_timeout.py::test_ai_timeout_hands_off_empty_card_and_drops_late_draft`, `db/test_request_lock_timeout.py::test_timeout_error_raised_by_agent_is_ai_failed` | [`ab58b7c`](https://github.com/aio-final-2team/FinalProject_2Team/commit/ab58b7c) |
+| **초안 실패 뒤 처리 — 거절 뒤 재초안.** 회신 카드를 거절하면 새 카드의 `draft.text`는 빈 문자열, `check_result`는 NULL이다 | [2.2](#22-요청카드승인이력) `decision` | `api/test_cards.py::test_reject_redraft_has_no_text_and_needs_teacher_text` | [`ab58b7c`](https://github.com/aio-final-2team/FinalProject_2Team/commit/ab58b7c) |
+| 0010을 기존 데모 아이가 있는 DB에 적용한 기록과 적용 순서 | [9.2](#92-마이그레이션-적용-기록) | `db/test_feed_migration.py::test_0010_on_existing_demo_children_fills_every_photo_scope_with_family`, `db/test_migrations.py::test_upgrade_downgrade_upgrade` | [`bf75f8f`](https://github.com/aio-final-2team/FinalProject_2Team/commit/bf75f8f) |
 
 이 문서는 유치온 DB에 있는 표 30개, 뷰 2개, 트리거 2개를 설명한다. 1~6장은 강사님의 'DB 스키마 설계서 작성법'에 나온 여섯 가지 순서를 따른다. 7장부터는 이 서비스에만 있는 범위·원칙·상태 값·시험 결과를 덧붙였다. 피드·앨범 표처럼 제목에 [제안]이 붙은 절은 아직 팀이 확인하지 않았다.
 
@@ -450,6 +463,7 @@ FK를 걸 수 없는 참조가 두 곳 있다. `cards.subject_id`와 `notificati
 - `check_attempts`: 검사 AI가 돌려보낸 횟수다. 최대 2를 넘으면 DB가 거부하므로, 3번째부터는 코드가 사람에게 넘겨야 한다(FR-08).
 - `version`: 카드가 바뀔 때마다 1씩 올린다. 화면은 결정을 보낼 때 자기가 본 `version`을 함께 보낸다. `approvals`는 한 `(card_id, card_version)`에 결정을 하나만 받으므로, 승인 버튼이나 재개를 여러 번 눌러도 한 번만 처리된다(AC-05).
 - `decision`: `approve`(승인) · `edit_approve`(고쳐서 승인) · `reject`(거절 → 초안 다시) · `hold`(보류) · `resume`(보류 재개 → `awaiting_review`) · `dismiss`(반려 → 요청을 처리하지 않음, `rejected`) · `complete`(민원 처리 완료) · `escalate`(담임이 원장님께 올리기) · `instruct`(원장 지시 → 원장 보고 카드 `done`, 요청 `escalated → awaiting_review`). 거절과 반려를 다른 값으로 나눈 것은 T04 2.1이 둘을 다른 길로 그리기 때문이다.
+- 회신 카드(`reply_draft`)를 거절하면 같은 요청에 새 회신 카드를 만든다. 이때 `draft.text`는 빈 문자열, `check_result`는 NULL로 두어 새 카드가 앞 카드의 검사 통과를 물려받지 않게 한다. 그래서 새 카드는 담임이 직접 쓴 글로 `edit_approve`할 때만 학부모에게 나간다.
 - 결정에 따라 함께 있어야 저장되는 이유가 다르다. 거절·반려에는 `reason_code`가, 보류와 원장 지시에는 `reason_text`(지시 내용)가, 학부모가 확인하지 않은 민원의 처리 완료에는 `reason_text`(마무리한 방법)가 있어야 한다. 이렇게 남긴 거절 이유가 기억과 규칙 제안의 재료가 된다(FR-06).
 - `reason_code` 값 8가지: `wrong_fact`(사실이 틀림) · `tone`(말투) · `missing_info`(근거·정보 부족) · `privacy`(개인정보) · `policy`(원 방침과 다름) · `slot_unavailable`(시간 안 됨) · `room_unavailable`(상담실 없음) · `other`(기타). 목록은 설정값이므로 DB CHECK로 묶지 않고 API가 검사한다. 다만 `other`일 때 `reason_text`가 있어야 저장되는 규칙은 DB CHECK가 지킨다. 같은 사람에게 같은 코드가 3번 쌓이면 규칙을 제안하므로(2.5), 상담을 거절할 때는 시간·상담실 코드로 남겨야 규칙이 생긴다.
 - 원장 보고 카드(`director_report`)에는 원장·원감만 결정을 내릴 수 있다. 카드 종류에 따라 달라지는 이 권한은 API가 검사한다.
@@ -464,6 +478,7 @@ FK를 걸 수 없는 참조가 두 곳 있다. `cards.subject_id`와 `notificati
 - 누가 한 일인지는 행위자 칸으로 나눈다. 사람이 한 일은 `actor_type = 'user'`와 `actor_id`로, AI가 한 일은 `actor_type = 'agent'`와 `agent_name`으로 남긴다. 시스템이 한 일(보류 자동 재개, 상담 시간 잡아 두기 풀림 `slot_hold_expired`)은 `actor_type = 'system'`으로 남기고 `actor_id`는 비운다.
 - 알림장 이력은 `daily_note_drafted`·`daily_note_edited`·`daily_note_confirmed`·`daily_note_sent` 네 가지이고, `daily_note_id`로 해당 알림장에 잇는다. 상태를 바꾸는 트랜잭션 안에서 함께 저장하며, 메모·초안 원문은 이력에 복사하지 않는다.
 - `agent_requeued`: 접수하고 5분이 지나도 카드가 없는 요청을 시스템이 한 번 다시 전달했다는 이력이다. 이 이력의 `created_at`부터 5분이 더 지나도 카드가 없을 때만 `card_missing`으로 인계한다. 요청 상태와 알림은 바꾸지 않는다.
+- 요청을 사람에게 넘긴 이유는 `events.detail.handoff_reason`에 남긴다. 요청 처리 AI가 3분 안에 끝나지 않으면 `ai_timeout`, 처리하다 예외로 멈추면 `ai_failed`, 다시 전달하고도 카드가 생기지 않으면 `card_missing`이다. 세 경우 모두 카드가 아직 없으면 초안 없는 미배정 회신 카드를 만들고 요청을 `awaiting_review`로 바꾼다. 모델 응답을 기다리는 동안에는 요청 행 잠금(`FOR UPDATE`)도 DB 연결도 잡지 않는다. 잠금은 저장할 때만 짧게 걸고, 그때 요청이 아직 처리 중인지 다시 확인한다. 그래서 3분이 지나 사람에게 넘어간 요청에 늦게 끝난 결과는 먼저 만든 카드를 덮지 못하고 버려진다(API 설계 문서 6.1).
 - `events`에는 INSERT만 하고, 고치거나 지우지 않는다. `detail`에는 비밀값이나 불필요한 개인정보를 넣지 않는다(NFR-05).
 
 ### 2.3 자료·검색
@@ -1335,6 +1350,7 @@ T50이 붙기 전까지는 사진을 올린 사람이 아이를 직접 표시한
 | v0.18 | 2026-11-23 | 11/20 강사 피드백 반영. 다른 기관·다른 반·연결이 끝난 보호자 차단 시험(4.4), 알림장 초안 실패·복구 이력(2.6), 사진·기억의 보존과 삭제(피드·앨범 절), 마이그레이션 적용 기록(9.2)을 더함. 연결된 아이가 없는 보호자에게는 원 칸도 닫음 |
 | v0.19 | 2026-11-23 | 백업·복원 스크립트, 복원 뒤 다시 적용, 고아 사진 정리, 퇴소 관리 작업을 더하고 피드·앨범 절의 '지금 상태와 남은 일'을 그에 맞춤. 데모 시드가 퇴소한 아이를 다시 넣지 않게 하고, 지금 DB를 못 읽으면 복원이 멈추게 함 |
 | v0.19.1 | 2026-11-23 | 팀 서버 첫 백업 기록(`backup.sh` 1회, 복원은 할 일만 확인)으로 '지금 상태와 남은 일'을 고침 |
+| v0.20 | 2026-11-24 | 문서 머리에 2차 검토 링크, 시연 코드 기준 커밋(`ab58b7c`), 1차 검토 뒤 보완 표(바뀐 내용·고친 절·지키는 시험·반영 커밋)를 더함. 2.2에 사람에게 넘긴 이유(`ai_timeout`·`ai_failed`·`card_missing`)와 요청 행 잠금 규칙, 거절 뒤 새 회신 카드의 빈 초안을 더함 |
 | v0.21 | 2026-11-24 | 0011: 위험 등급을 문의·상담에도 저장(`requests_check1`), 위험 알림 제목 규칙(2.6)과 받은함 설명(2.7)을 세 유형에 맞춤 |
 
 
