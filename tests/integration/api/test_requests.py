@@ -199,7 +199,8 @@ def test_additional_message_is_stored_with_trace_without_leaking_draft(client, p
                            headers={**parent, "X-Request-ID": "message-trace"}, json={"body": "[TEST] 추가 대화"})
     assert response.status_code == 201
     msg = response.json()["message"]
-    assert set(msg) == {"id", "sender_type", "body", "created_at"} and msg["sender_type"] == "user"
+    assert set(msg) == {"id", "sender_type", "sender_role", "body", "created_at"}
+    assert (msg["sender_type"], msg["sender_role"]) == ("user", "parent")
     data = client.get(f"/api/v1/requests/{rid}", headers=parent).json()
     assert data["messages"][-1] == msg
     assert set(data["timeline"][-1]) == {"label", "at"}

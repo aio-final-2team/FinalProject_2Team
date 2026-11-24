@@ -3,6 +3,7 @@
 from uuid import uuid4
 
 from app.core.errors import ApiError
+from app.core.request_rules import RECLASSIFY_TYPES
 from app.core.schedule import due_at
 from app.mock import store
 from app.mock.records import Approval, Booking
@@ -31,6 +32,13 @@ def in_scope(user, card_id):
                    card=card if card and card.org_id == user.org_id else None)
     store.expire(card.request_id)
     return card
+
+
+def close_reports(req):
+    """DB 백엔드와 같이 요청이 끝날 때(예약 확정·반려) 열린 원장 보고 카드만 닫아요."""
+    for report_card in store.cards_of(req.id):
+        if report_card.kind == "director_report" and report_card.status not in ("done", "rejected"):
+            touch(report_card, "done")
 
 
 def version(card, value, approval=True):
@@ -82,7 +90,9 @@ def decide(user, card_id, body):
             valid = False
         if decision in ("approve", "edit_approve") and card.kind != "reply_draft":
             valid = False
-        if req and req.risk_level == "uncertain" and decision not in ("hold", "resume", "escalate"):
+        # 판단 필요는 재분류로 풀 수 있는 문의·민원만 막아요. 상담은 시간 확정 흐름 그대로예요.
+        if (req and req.risk_level == "uncertain" and req.type in RECLASSIFY_TYPES
+                and decision not in ("hold", "resume", "escalate")):
             valid = False
         if not valid:
             raise ApiError(409, "INVALID_TRANSITION")
@@ -120,6 +130,7 @@ def decide(user, card_id, body):
             store.set_request_status(req, "rejected", action="dismissed", reason_code=body.reason_code,
                                      reason_text=body.reason_text, **actor)
             touch(card, "rejected")
+            close_reports(req)
         elif decision == "escalate":
             next_card = report(req)
             store.set_request_status(req, "escalated", action="escalated", **actor)
@@ -159,7 +170,7 @@ def reclassify(user, card_id, body):
             raise ApiError(403, "FORBIDDEN_ROLE")
         version(card, body.version, approval=False)
         req = store.state().requests.get(card.request_id)
-        if req is None or req.type != "complaint" or req.status not in ("awaiting_review", "escalated"):
+        if req is None or req.type not in RECLASSIFY_TYPES or req.status not in ("awaiting_review", "escalated"):
             raise ApiError(409, "INVALID_TRANSITION")
         previous = req.risk_level
         req.risk_level, req.risk_category = body.risk_level, body.risk_category if body.risk_level == "urgent" else None
@@ -220,6 +231,7 @@ def book(user, card_id, body):
         store.set_request_status(req, "approved", action="approved", card=card, actor_type="user", actor_id=user.id)
         store.set_request_status(req, "sent_or_booked", action="booked", card=card, actor_type="user", actor_id=user.id)
         touch(card, "done")
+        close_reports(req)
         return {"booking": {"id": booking.id, "room": store.state().rooms[booking.room_id].name,
                             "period": booking.period}, "request": request_state(req)}
 

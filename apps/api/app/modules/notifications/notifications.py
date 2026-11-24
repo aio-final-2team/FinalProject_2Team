@@ -4,7 +4,7 @@ from sqlalchemy import text
 
 from app.api.labels import parent_label
 from app.core.care import unregistered_pickup_key
-from app.core.constants import CARE_REQUEST_TYPES, CARE_MESSAGE_NOTICE, UNREGISTERED_PICKUP_CHECK, NOTIFICATION_TITLES as TITLES
+from app.core.constants import CARE_REQUEST_TYPES, CARE_MESSAGE_NOTICE, UNREGISTERED_PICKUP_CHECK, notification_title
 from app.core.schedule import deliver_after
 
 
@@ -20,7 +20,8 @@ def enqueue(connection, event, req, recipient_id, kind, body=None, *, dedupe_key
         VALUES (:org,:recipient,:request,:card,:kind,:title,:body,:key,:deliver)
         ON CONFLICT (dedupe_key) DO NOTHING
     """), {"org": org_id, "recipient": recipient_id, "request": req["id"] if req else None, "card": event["card_id"],
-           "kind": kind, "title": TITLES[kind], "body": body, "key": dedupe_key or f"event:{event['id']}:{recipient_id}",
+           "kind": kind, "title": notification_title(kind, req.get("type") if req else None), "body": body,
+           "key": dedupe_key or f"event:{event['id']}:{recipient_id}",
            "deliver": deliver_after(event["created_at"], recipient["role"], req["risk_level"] if req else None,
                                     req["risk_category"] if req else None, request_type=req.get("type") if req else None)})
 

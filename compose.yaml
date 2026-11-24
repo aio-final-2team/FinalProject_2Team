@@ -12,6 +12,7 @@ services:
       RUN_IN: ${RUN_IN:-api}
       CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
       REQUEST_AGENT: ${REQUEST_AGENT:-app.modules.requests.agent_stub:run_request}
+      ANSWER_WRITER: ${ANSWER_WRITER:-stub}
       DATABASE_URL: ${DATABASE_URL:-postgresql://yuchion:yuchion-local@db:5432/yuchion}
       JWT_SECRET: ${JWT_SECRET:-local-dev-only-change-me-32-bytes-min}
       JWT_ACCESS_TTL_HOURS: ${JWT_ACCESS_TTL_HOURS:-12}

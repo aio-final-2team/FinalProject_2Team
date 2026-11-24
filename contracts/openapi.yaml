@@ -4178,6 +4178,16 @@ components:
           - agent
           - system
           title: Sender Type
+        sender_role:
+          anyOf:
+          - type: string
+            enum:
+            - parent
+            - teacher
+            - director
+          - type: 'null'
+          title: Sender Role
+          description: 사람이 쓴 글이면 쓴 사람의 역할, AI·시스템 글이면 null. 화면은 이 값으로 말풍선을 나눠요
         body:
           type: string
           title: Body
@@ -4189,6 +4199,7 @@ components:
       required:
       - id
       - sender_type
+      - sender_role
       - body
       - created_at
       title: MessageOut
