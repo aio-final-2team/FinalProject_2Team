@@ -10,6 +10,17 @@ NOTIFICATION_TITLES = {
     "care_requested": "투약·귀가 요청이 왔어요", "care_confirmed": "선생님이 요청을 확인했어요",
     "consultation_ending": "상담 종료가 가까워요", "consultation_delayed": "상담 대체 시간을 확인해 주세요",
 }
+# 위험 알림 kind는 계약이라 이름에 complaint가 남아 있어요. 사람이 보는 제목만 요청 유형에 맞춰요.
+RISK_NOTICE_TYPE_NAMES = {"inquiry": "문의", "consultation": "상담", "complaint": "민원"}
+
+
+def notification_title(kind, request_type=None):
+    title = NOTIFICATION_TITLES[kind]
+    if kind in ("urgent_complaint", "uncertain_complaint") and request_type in RISK_NOTICE_TYPE_NAMES:
+        return title.replace("민원", RISK_NOTICE_TYPE_NAMES[request_type])
+    return title
+
+
 CARE_REQUEST_TYPES = ("medication", "pickup")
 MEDICATION_FIELDS = ("medication_name", "medication_dose", "medication_time")
 UNREGISTERED_PICKUP_CHECK = "미등록 인계자 확인"

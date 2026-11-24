@@ -1,5 +1,7 @@
 """감독 모델 제안은 요청 유형과 코드 긴급 판단을 덮어쓰지 않는다."""
 
+import pytest
+
 from agents.llm import ModelError
 from app.core.request_rules import classify
 from app.modules.requests.supervisor import classify_request, validate_proposal
@@ -36,13 +38,22 @@ def test_screen_type_is_fixed_and_code_urgency_cannot_be_weakened(monkeypatch):
     assert "complaint" in model.inputs[0][1]
 
 
-def test_non_complaint_does_not_accept_model_risk(monkeypatch):
+def test_care_request_does_not_accept_model_risk(monkeypatch):
     monkeypatch.setenv("LLM_MODEL_SUPERVISOR", "fake-model")
-    got = validate_proposal("inquiry", "식단 문의", classify_request("inquiry", "식단 문의", FakeModel({
+    got = validate_proposal("medication", "식단 문의", classify_request("medication", "식단 문의", FakeModel({
         "topic_key": "meal", "urgency": "urgent", "risk_level": "urgent",
         "risk_category": "child_safety"})))
     assert got["topic_key"] == "meal" and got["urgency"] == "urgent"
     assert "risk_level" not in got and "risk_category" not in got
+
+
+@pytest.mark.parametrize("request_type", ["inquiry", "consultation"])
+def test_inquiry_and_consultation_accept_model_risk_like_complaint(monkeypatch, request_type):
+    monkeypatch.setenv("LLM_MODEL_SUPERVISOR", "fake-model")
+    model = FakeModel({"topic_key": "meal", "urgency": "normal", "risk_level": "urgent",
+                       "risk_category": "child_safety"})
+    got = validate_proposal(request_type, "식단 문의", classify_request(request_type, "식단 문의", model))
+    assert got == {"topic_key": "meal", "urgency": "urgent", "risk_level": "urgent", "risk_category": "child_safety"}
 
 
 def test_urgent_risk_without_category_becomes_uncertain():

@@ -4,7 +4,7 @@ from dataclasses import replace
 
 from app.api.labels import parent_label
 from app.core.care import unregistered_pickup_key
-from app.core.constants import CARE_REQUEST_TYPES, CARE_MESSAGE_NOTICE, UNREGISTERED_PICKUP_CHECK, NOTIFICATION_TITLES as TITLES
+from app.core.constants import CARE_REQUEST_TYPES, CARE_MESSAGE_NOTICE, UNREGISTERED_PICKUP_CHECK, NOTIFICATION_TITLES as TITLES, notification_title
 from app.core.schedule import deliver_after
 from app.core.errors import ApiError
 from app.mock import store
@@ -22,7 +22,8 @@ def create(ev, recipient_id, kind, body=None, subject_id=None, *, dedupe_key=Non
         return
     req = state.requests.get(ev.request_id)
     notification = Notification(
-        id=state.next_int(), org_id=ev.org_id, recipient_id=recipient_id, kind=kind, title=TITLES[kind],
+        id=state.next_int(), org_id=ev.org_id, recipient_id=recipient_id, kind=kind,
+        title=notification_title(kind, req.type if req else None),
         body=body, dedupe_key=key, request_id=ev.request_id, card_id=ev.card_id,
         subject_type="daily_note" if subject_id else None, subject_id=subject_id, created_at=ev.created_at,
         deliver_after=deliver_after(ev.created_at, recipient.role, req.risk_level if req else None,

@@ -88,9 +88,6 @@ def run_request(request_id, prepared_answer=None, prepared_fields=None):
             # FK가 잡는 반 행 잠금과 충돌하지 않도록 묶음별 트랜잭션 자문 잠금을 써요.
             connection.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))"), {
                 "key": f"complaint:{req['org_id']}:{req['classroom_id']}:{fields['topic_key']}"})
-        forced_inquiry_risk = req["type"] == "inquiry" and fields.get("risk_level") in ("urgent", "uncertain")
-        if req["type"] == "inquiry":
-            fields = {key: value for key, value in fields.items() if key not in ("risk_level", "risk_category")}
         req.update(fields)
         connection.execute(text("""
             UPDATE requests SET topic_key=:topic_key,urgency=:urgency,risk_level=:risk_level,risk_category=:risk_category
@@ -106,13 +103,20 @@ def run_request(request_id, prepared_answer=None, prepared_fields=None):
         req["assignee_id"] = teacher
         connection.execute(text("UPDATE requests SET assignee_id=:teacher WHERE id=:id"), {"teacher": teacher, "id": request_id})
         set_status(connection, req, "assigned", action="assigned", actor_type="agent", agent_name="supervisor")
+        high_risk = req["risk_level"] in ("urgent", "uncertain")
+        director = connection.scalar(text("""
+            SELECT id FROM users WHERE org_id=:org AND role='director' AND is_active ORDER BY id LIMIT 1
+        """), {"org": req["org_id"]})
         if req["type"] == "consultation":
             card = new_card(connection, req, "consult_slots", teacher)
             propose_slots(connection, req, card, teacher)
             set_status(connection, req, "needs_info", action="info_requested", card=card,
                        actor_type="agent", agent_name="code")
+            if high_risk and director:
+                # 상담 시간 고르기·확정은 담임 흐름 그대로 두고, 원장에게 보고 카드와 알림만 더해요.
+                report = new_card(connection, req, "director_report", director, {"summary": req["body"][:60]})
+                record(connection, req, "escalated", card=report, actor_type="agent", agent_name="supervisor")
             return
-        high_risk = forced_inquiry_risk or req["risk_level"] in ("urgent", "uncertain")
         draft = {"summary": req["body"][:60], "no_evidence": True}
         answer, check = None, None
         if not high_risk:
@@ -143,9 +147,6 @@ def run_request(request_id, prepared_answer=None, prepared_fields=None):
             attach_law_evidence(connection, card, req, prefetched)  # 조건에 맞을 때만 법령 근거를 붙임(T52)
         record(connection, req, "drafted", card=card, actor_type="agent", agent_name="document")
         repeated = (repeat_count(connection, req) or 0) >= 3
-        director = connection.scalar(text("""
-            SELECT id FROM users WHERE org_id=:org AND role='director' AND is_active ORDER BY id LIMIT 1
-        """), {"org": req["org_id"]})
         if (high_risk or repeated) and director:
             report = new_card(connection, req, "director_report", director, {"summary": req["body"][:60]})
             set_status(connection, req, "escalated", action="escalated", card=report,

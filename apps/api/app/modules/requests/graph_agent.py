@@ -64,21 +64,11 @@ def _request_context(request_id):
 
 
 def _high_risk_request(request_id):
-    from app.core.request_rules import classify
     from app.modules.requests.supervisor import classify_request, validate_proposal
 
     req = _request_context(request_id)
     proposal = classify_request(req["type"], req["body"])
-    fields = validate_proposal(req["type"], req["body"], proposal)
-    if req["type"] == "inquiry":
-        risk = classify("complaint", req["body"])
-        if risk["risk_level"] in ("urgent", "uncertain"):
-            fields.update(risk_level=risk["risk_level"], risk_category=risk["risk_category"],
-                          urgency=risk["urgency"])
-        if isinstance(proposal, dict) and proposal.get("risk_level") in ("urgent", "uncertain"):
-            fields["risk_level"] = proposal["risk_level"]
-            fields["risk_category"] = proposal.get("risk_category")
-    return fields
+    return validate_proposal(req["type"], req["body"], proposal)
 
 
 def _search_request(request_id):
