@@ -36,9 +36,10 @@ def load_settings() -> Settings:
     if run_in not in ("api", "worker"):
         raise ValueError("RUN_IN: api 또는 worker 필요")
     jwt_secret = os.getenv("JWT_SECRET", _MOCK_JWT_SECRET)
-    if backend == "db" and (jwt_secret in (_MOCK_JWT_SECRET, _EXAMPLE_JWT_SECRET)
+    if (backend == "db" or os.getenv("APP_ENV", "development").lower() in ("production", "prod")) and (
+            jwt_secret in (_MOCK_JWT_SECRET, _EXAMPLE_JWT_SECRET)
                             or len(jwt_secret.encode("utf-8")) < 32):
-        raise ValueError("JWT_SECRET: DB 모드에서는 예시·기본값이 아닌 32바이트 이상 키 필요")
+        raise ValueError("JWT_SECRET: DB·배포 모드에서는 예시·기본값이 아닌 32바이트 이상 키 필요")
     origins = os.getenv("CORS_ORIGINS", "http://localhost:5173")
     hours = os.getenv("WORK_HOURS", "09:00-18:00").strip()
     if not re.fullmatch(r"\d{2}:\d{2}-\d{2}:\d{2}", hours):

@@ -5,6 +5,8 @@ import re
 from pathlib import Path
 
 from agents.llm import ModelError, OpenAIModel
+from agents.guardrails.injection import suspicious_chunk
+from agents.guardrails.sensitive import SENSITIVE, mask_sensitive
 
 NO_ANSWER = "자료에서 확인되지 않아 선생님 확인이 필요해요."
 PROMPTS = Path(__file__).resolve().parents[1] / "prompts"
@@ -12,12 +14,6 @@ WRITE_FORMAT = "\nJSON 하나로 답한다: {\"text\": str, \"evidence\": [{\"ch
 CHECK_FORMAT = "\nJSON 하나로 답한다: {\"passed\": bool, \"issues\": [{\"field\": \"출처|날짜|대상|누락|민감정보\", \"problem\": str}]}"
 CHECK_FIELDS = {"출처", "날짜", "대상", "누락", "민감정보"}
 MAX_REWRITES = 2
-SENSITIVE = re.compile(
-    r"(?<!\d)01[016789][- .]?\d{3,4}[- .]?\d{4}(?!\d)"
-    r"|(?<!\d)\d{6}[- ]?[1-4]\d{6}(?!\d)"
-    r"|(?<!\d)\d{3,6}[- ]\d{2,6}[- ]\d{3,6}(?!\d)"
-    r"|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"
-)
 
 
 def fallback(trace):
@@ -116,7 +112,8 @@ def draft_answer(question: str, search, writer=None, checker=None) -> dict:
                 if attempt:
                     return fallback([*trace, "search"])
     trace.append("search")
-    candidates = sorted(candidates, key=lambda item: item["score"], reverse=True)[:8]
+    candidates = sorted((item for item in candidates if not suspicious_chunk(item["content"])),
+                        key=lambda item: item["score"], reverse=True)[:8]
     if not candidates:
         return fallback(trace)
     common = _prompt("common.md", "# 공통 규칙")
@@ -125,7 +122,7 @@ def draft_answer(question: str, search, writer=None, checker=None) -> dict:
     checker = checker if checker is not None else OpenAIModel("CHECKER")
     issues = []
     for attempt in range(MAX_REWRITES + 1):
-        answer = _ask_writer(writer, write_prompt, {"question": question, "chunks": candidates,
+        answer = _ask_writer(writer, write_prompt, {"question": mask_sensitive(question), "chunks": candidates,
                                                     "review_issues": issues,
                                                     "untrusted_data_fields": ["question", "chunks"]}, trace)
         if answer is None:
@@ -135,7 +132,7 @@ def draft_answer(question: str, search, writer=None, checker=None) -> dict:
             problem = "자료끼리 내용이 달라요." if draft["conflict"] else "자료에서 근거를 찾지 못했어요."
             return {**draft, "check_result": _check_result(False, [{"field": "출처", "problem": problem}], attempt + 1),
                     "trace": [*trace, "end"]}
-        issues = _review(checker, question, draft, candidates, attempt + 1, trace)
+        issues = _review(checker, mask_sensitive(question), draft, candidates, attempt + 1, trace)
         if issues is None:
             return fallback(trace)
         if not issues:

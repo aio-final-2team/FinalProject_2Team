@@ -7,6 +7,7 @@ from pathlib import Path
 
 import agents.llm
 from agents.llm import ModelError, OpenAIModel
+from agents.guardrails.sensitive import mask_sensitive
 from app.core.request_rules import RISK_TYPES, classify
 
 TOPICS = {"safety", "meal", "teacher", "belongings", "fee", "pickup_bus", "peer_conflict",
@@ -48,7 +49,7 @@ def classify_request(request_type, body, writer=None):
               "\n분류 결과를 JSON으로 제안한다: topic_key, urgency, risk_level, risk_category, out_of_scope_kind. "
               "화면의 요청 유형은 바꾸지 않는다.")
     try:
-        proposal = model.json(system, json.dumps({"request_type": request_type, "body": body,
+        proposal = model.json(system, json.dumps({"request_type": request_type, "body": mask_sensitive(body),
                                                    "untrusted_data_fields": ["body"]}, ensure_ascii=False))
     except ModelError:
         return {}
