@@ -14,6 +14,7 @@ COPY data/external ./data/external
 COPY apps/api/alembic.ini ./apps/api/alembic.ini
 COPY apps/api/migrations ./apps/api/migrations
 COPY db/seeds ./db/seeds
+COPY data/fixtures/kg-demo-01 ./data/fixtures/kg-demo-01
 COPY apps/api/entrypoint.sh ./apps/api/entrypoint.sh
 
 EXPOSE 8000
