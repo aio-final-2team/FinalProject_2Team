@@ -87,6 +87,7 @@
 | `DAILY_NOTE_WRITER` | 알림장 초안 함수 | 기본 `app.modules.daily_notes.stub_writer:write`, 그래프는 `graph` | 서버 `.env.server` |
 | `DAILY_NOTE_WRITER_TIMEOUT` | 초안 함수 대기 제한 | 기본 300초 | 서버 `.env.server` |
 | `NOTE_DRAFT_CONCURRENCY` | 아이별 초안 동시 실행 수 | 기본 5, 지원하는 그래프에서 사용 | 서버 `.env.server` |
+| `ANSWER_WRITER` | 문의 답변 초안(요청 처리 AI) | 기본 `stub`(대역 문장), 모델을 쓰면 `graph`. 켜고 끄는 법은 5-4 | 서버 `.env.server` |
 | `OPENAI_API_KEY` | OpenAI 호출 | `graph`를 선택할 때 팀 키 | 서버 `.env.server` |
 | `LLM_MODEL_DEFAULT`·`LLM_MODEL_*` | 그래프 모델 선택 | 팀에서 정한 모델, 역할별 값은 예시 파일 참고 | 서버 `.env.server` |
 | `LANGSMITH_API_KEY` | LangSmith 추적 | 추적이 필요할 때 팀 키 | 서버 `.env.server` |
@@ -155,8 +156,56 @@ DB 모드는 설정 검사 → `alembic upgrade head` → 데모 시드 → API 
 ### 5-3. 주의
 - 루트 `compose.yaml`에 `infra/team-server/compose.server.yaml`을 겹쳐 api·web·db를 실행해요. 서버 설정은 API·웹을 loopback 포트에서만 받고 DB 호스트 포트를 없애요.
 - 기존 80/443 앞단·인증서는 스크립트가 바꾸지 않아요. 앞단이 `/health`·`/api/v1/...`를 그대로 API에 전달하도록 연결해요. 앞단이 별도 컨테이너라면 그 컨테이너의 localhost와 호스트가 다르므로 연결 방식을 먼저 확인해요.
-- API는 한 프로세스·한 컨테이너로 유지해요. worker·Redis·Beat는 뒤 작업에서 붙여요.
+- API는 한 프로세스·한 컨테이너로 유지해요. 팀 서버는 `COMPOSE_PROFILES=worker`로 worker·redis·beat를 함께 띄우고, `RUN_IN=worker`로 요청 처리와 알림장 초안 작업을 worker에 넘겨요.
 - `db` 데이터는 `postgres_data` 볼륨에 저장됩니다. `docker compose down -v`는 **DB 데이터를 삭제**하므로 운영에서 사용 금지.
+
+### 5-4. 요청 처리 AI 켜기·끄기
+
+학부모 문의에 답변 초안을 쓰는 자료 AI·검사 AI는 `ANSWER_WRITER=graph`일 때만 모델을 불러요(`apps/api/app/modules/documents/answer.py`의 `graph_enabled`). 값이 없거나 `stub`이면 모델 없이 대역 문장으로 카드를 만들어요. 알림장 초안(`DAILY_NOTE_WRITER`)은 이 값과 따로 켜고 꺼요. `REQUEST_AGENT`는 기본값(`agent_stub`)을 그대로 둬요. 아래 시험을 이 기본값으로 돌렸기 때문이에요. `graph_agent`는 그래프가 도는 동안 체크포인트용 DB 연결을 하나씩 잡고 있어서, 아래 시험으로는 안전하다고 보장할 수 없어요.
+
+**켜기 전에 확인할 것**
+
+| 확인 | 방법 | 통과 기준 |
+|---|---|---|
+| 모델 호출을 잠금 밖에서 하고 3분에 끊는지 | `tools/test_db.sh`(`tests/integration/db/test_request_lock_timeout.py` 3개 포함) | 모두 통과 |
+| 모델을 기다리는 동안 다른 교사가 조회할 수 있는지 | 추가 예정 | 200 |
+| 마감 뒤 교사가 손댄 카드를 늦은 결과가 덮지 않는지 | 추가 예정 | 카드·상태 그대로 |
+| 모델 키와 모델 이름 | `.env.server`의 `OPENAI_API_KEY`, `LLM_MODEL_DEFAULT`. 역할별 `LLM_MODEL_DOCUMENT`·`LLM_MODEL_CHECKER`는 비워 두면 기본값을 써요. 키가 컨테이너에 들어갔는지는 `exec worker sh -c '[ -n "$OPENAI_API_KEY" ] && echo 있음'`처럼 키 값을 찍지 않는 명령으로 확인해요 | 키가 있고 모델이 팀에서 정한 값 |
+| 켠 직후 대표 문의 1건 | 학부모 계정으로 문의 한 건을 보내고 담임 받은함을 봐요 | 3분 안에 카드가 생기고, 그동안 담임 화면이 느려지지 않음 |
+
+**켜는 법.** `.env.server`에 `ANSWER_WRITER=graph`를 넣고 api·worker만 다시 만들어요. 이미지는 다시 빌드하지 않고 db·redis도 건드리지 않아요. 다만 api가 다시 뜨는 몇 초 동안은 요청이 실패할 수 있어요.
+
+```bash
+compose=(docker compose --env-file infra/team-server/.env.server -f compose.yaml -f infra/team-server/compose.server.yaml)
+"${compose[@]}" up -d --no-build --no-deps api worker
+"${compose[@]}" exec worker printenv ANSWER_WRITER   # graph
+curl "$API_BASE_URL/health"
+```
+
+**이상 신호.** 켠 뒤 아래 신호 가운데 하나라도 나빠지면 바로 꺼요. 나빠졌는지는 평소 값과 비교해야 알 수 있어요. 그러니 켜기 전에 아래 명령을 한 번 돌려 값을 적어 두고, 켠 뒤에 같은 명령으로 다시 재요.
+
+| 신호 | 보는 법 |
+|---|---|
+| 담임 화면이 느리거나 500 | 받은함 `curl`의 응답 시간, api 로그의 500 개수 |
+| `ai_timeout` 카드가 몰림 | 첫 번째 SQL의 `ai_timeout`·`ai_failed` 요청 수(최근 1시간) |
+| DB 연결이 늘고 줄지 않음 | 두 번째 SQL의 `idle in transaction`과 전체 연결 수 |
+
+```bash
+token=$(curl -s "$API_BASE_URL/api/v1/auth/login" -H 'Content-Type: application/json' \
+  -d '{"login_id":"teacher01","password":"demo1234"}' | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')
+curl -s -o /dev/null -w '%{http_code} %{time_total}s\n' -H "Authorization: Bearer $token" "$API_BASE_URL/api/v1/cards"
+"${compose[@]}" logs --since 10m api | grep -c '" 500'
+"${compose[@]}" exec db psql -U yuchion -d yuchion -c "SELECT detail->>'handoff_reason' AS reason, count(DISTINCT request_id) FROM events WHERE detail ? 'handoff_reason' AND created_at > now() - interval '1 hour' GROUP BY 1"
+"${compose[@]}" exec db psql -U yuchion -d yuchion -c "SELECT state, count(*) FROM pg_stat_activity WHERE datname = current_database() GROUP BY 1"
+```
+
+**끄는 법.** `.env.server`의 값을 `ANSWER_WRITER=stub`으로 되돌리고 켤 때와 같은 `up` 명령을 다시 돌려요. `printenv`에 `stub`이 나오고 `/health`가 200이면 꺼진 거예요.
+
+- 이미 만든 카드는 그대로 남아요. 모델이 쓴 초안·근거·검사 결과가 카드에 저장돼 있으니, 담임은 평소처럼 승인하거나 고치거나 거절하면 돼요. 끈다고 학부모에게 저절로 나가는 답은 없어요.
+- worker를 다시 만들면 그때 처리 중이던 요청은 끊기지만 사라지지는 않아요. 요청은 접수할 때 이미 저장되기 때문이에요. 접수하고 5분이 지나도 카드가 없는 요청은 5분마다 도는 점검에서 한 번 다시 들어가고, 이때는 대역으로 처리돼요. 다시 들어가고도 5분 동안 카드가 없으면 초안 없는 미배정 카드(`card_missing`)로 넘어가요.
+- 끈 뒤 새로 들어온 문의 카드에는 지금처럼 대역 초안 문장이 들어가요.
+
+**7-1 이미지 되돌리기와 다른 점.** AI 끄기는 코드와 이미지는 그대로 두고 환경값 하나만 바꿔요. 그래서 모델 때문에 생긴 문제(느림, 3분 초과, DB 연결 증가, 비용)라면 이것부터 해요. 7-1의 `:prev`는 직전 배포의 코드로 돌아가는 방법이라, 새 배포가 뜨지 않거나 코드 오류로 500이 날 때 써요. 다만 `:prev`로 되돌려도 `.env.server`는 바뀌지 않아요. 그래서 `ANSWER_WRITER=graph`가 남아 있으면 AI는 켜진 채예요. 되돌린 판이 `ab58b7c`보다 앞선 코드라면 AI를 먼저 꺼요. 모델 호출을 잠금 밖으로 옮긴 게 `ab58b7c`라서, 그 전 코드는 아직 잠금 안에서 모델을 부르기 때문이에요.
 
 ## 6. 배포 확인
 
@@ -281,3 +330,4 @@ npx cap sync ios
 | 2026-11-17 | `TODO` | 초안 작성 |
 | 2026-11-20 | 태웅 | 기존 구조를 복원하고 환경변수·배포·확인·롤백 절차를 서버 Compose·스크립트에 맞췄어요. |
 | 2026-11-23 | 태웅 | 7-2의 수동 `pg_dump`·`psql` 절차를 사진까지 받는 백업·복원 스크립트로 바꿨어요. |
+| 2026-11-24 | 태웅 | 5-4에 요청 처리 AI(`ANSWER_WRITER`)를 켜는 조건, 켜고 끄는 법, 이상 신호를 더하고, Compose가 이 값을 api·worker에 넘기게 했어요. |
