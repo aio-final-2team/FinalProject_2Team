@@ -10,13 +10,20 @@ from app.core.errors import install_error_handlers
 from app.core.request_id import request_id_middleware
 
 
+async def periodic_maintenance():
+    from app.core.jobs import API_MAINTENANCE_INTERVAL, run_api_maintenance
+    while True:
+        await anyio.sleep(API_MAINTENANCE_INTERVAL)
+        await anyio.to_thread.run_sync(run_api_maintenance)
+
+
 @asynccontextmanager
 async def lifespan(app):
     if settings.data_backend == "mock":
         yield
         return
     from functools import partial
-    from app.core.jobs import check_broker, dispatch
+    from app.core.jobs import check_broker, dispatch, run_api_maintenance
     from app.modules.daily_notes.runner import requeue_daily_note_drafts
     if settings.run_in == "worker":
         await anyio.to_thread.run_sync(check_broker)
@@ -25,9 +32,18 @@ async def lifespan(app):
     tasks = BackgroundTasks()
     for input_id in pending:
         dispatch("daily_note", input_id, tasks)
+    if settings.run_in == "api":
+        await anyio.to_thread.run_sync(run_api_maintenance)
     async with anyio.create_task_group() as group:
         group.start_soon(tasks)
-        yield
+        # 주기 점검만 취소해요. 이미 맡긴 알림장 BackgroundTasks는 끝까지 마쳐요.
+        async with anyio.create_task_group() as periodic:
+            if settings.run_in == "api":
+                periodic.start_soon(periodic_maintenance)
+            try:
+                yield
+            finally:
+                periodic.cancel_scope.cancel()
 
 
 app = FastAPI(

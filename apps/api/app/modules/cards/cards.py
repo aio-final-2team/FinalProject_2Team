@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from app.core import scope
 from app.core.db import transaction
 from app.core.errors import ApiError
+from app.core.constants import REASSIGN_AFTER_INSTRUCTION
 from app.core.request_rules import RECLASSIFY_TYPES
 from app.core.schedule import due_at
 from app.modules.requests.agent_stub import new_card
@@ -237,7 +238,7 @@ def decide(user, card_id, body):
             close_reports(connection, req)
         elif choice == "escalate":
             next_card = report(connection, req)
-            set_status(connection, req, "escalated", action="escalated", **actor)
+            set_status(connection, req, "escalated", action="escalated", reason="manual", **actor)
             touch(connection, card)
         elif choice == "reject":
             touch(connection, card, "rejected")
@@ -395,6 +396,16 @@ def reclassify(user, card_id, body):
             SELECT * FROM cards WHERE request_id=:id AND kind='director_report'
               AND status NOT IN ('done','rejected') ORDER BY id
         """), {"id": req["id"]}).mappings()]
+        if previous != "urgent" and body.risk_level == "urgent":
+            for reply in connection.execute(text("""
+                UPDATE cards SET draft=jsonb_set(draft,'{text}','""'::jsonb),check_result=NULL
+                WHERE request_id=:id AND kind='reply_draft' AND status NOT IN ('done','rejected')
+                RETURNING *
+            """), {"id": req["id"]}).mappings():
+                if reply["id"] == card["id"]:
+                    card.update(reply)
+                else:
+                    touch(connection, dict(reply))
         closed_target = False
         if user.role == "director" and body.risk_level == "normal":
             for report_card in reports:
@@ -424,7 +435,8 @@ def reclassify(user, card_id, body):
         if body.risk_level == "urgent":
             report_card = report(connection, req)
             set_status(
-                connection, req, "escalated", action="escalated", card=report_card, actor_type="user", actor_id=user.id
+                connection, req, "escalated", action="escalated", card=report_card, actor_type="user", actor_id=user.id,
+                reason="manual"
             )
         from app.modules.cards.card_views import staff_request
 
@@ -446,7 +458,7 @@ def instruct(user, card_id, body):
         reply = (
             connection.execute(
                 text(
-                    "SELECT * FROM cards WHERE request_id=:id AND kind=:kind AND status IN ('pending','in_review') "
+                    "SELECT * FROM cards WHERE request_id=:id AND kind=:kind AND status IN ('pending','in_review','unassigned') "
                     "ORDER BY created_at DESC,id DESC LIMIT 1"
                 ),
                 {"id": req["id"], "kind": "consult_slots" if req["type"] == "consultation" else "reply_draft"},
@@ -461,7 +473,10 @@ def instruct(user, card_id, body):
         set_status(
             connection, req, "awaiting_review", action="instructed", card=reply, actor_type="user", actor_id=user.id
         )
-        return result(card, req)
+        response = result(card, req)
+        if reply["assignee_id"] is None:
+            response.update(next_action="reassign", message=REASSIGN_AFTER_INSTRUCTION)
+        return response
 
 
 def reassign(user, card_id, body):

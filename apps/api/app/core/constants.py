@@ -17,6 +17,7 @@ NOTIFICATION_TITLES = {
 }
 # 위험 알림 kind는 계약이라 이름에 complaint가 남아 있어요. 사람이 보는 제목만 요청 유형에 맞춰요.
 RISK_NOTICE_TYPE_NAMES = {"inquiry": "문의", "consultation": "상담", "complaint": "민원"}
+REASSIGN_AFTER_INSTRUCTION = "지시를 남겼어요. 회신 카드를 담당 선생님에게 재배정해 주세요."
 
 
 def notification_title(kind, request_type=None):

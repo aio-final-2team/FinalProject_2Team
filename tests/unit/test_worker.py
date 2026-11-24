@@ -58,6 +58,7 @@ def test_mock_periodic_tasks_never_open_database(monkeypatch):
     assert worker.sweep.apply().get() == 0
     assert worker.deliver_notifications.apply().get() == 0
     assert worker.consultation_reminders.apply().get() == 0
+    assert worker.expire_requests.apply().get() == 0
     worker.daily_note_drafts.apply(args=[str(uuid4())]).get()
     worker.request_agent.apply(args=[str(uuid4())]).get()
 
@@ -65,16 +66,19 @@ def test_mock_periodic_tasks_never_open_database(monkeypatch):
 def test_beat_intervals():
     entries = worker.celery_app.conf.beat_schedule
     assert {v["task"]: v["schedule"] for v in entries.values()} == {
-        "yuchion.sweep": 300.0, "yuchion.deliver_notifications": 60.0, "yuchion.consultation_reminders": 60.0}
+        "yuchion.sweep": 300.0, "yuchion.deliver_notifications": 60.0, "yuchion.consultation_reminders": 60.0,
+        "yuchion.expire_requests": 60.0}
     assert {v["task"]: v["options"]["expires"] for v in entries.values()} == {
-        "yuchion.sweep": 290, "yuchion.deliver_notifications": 55, "yuchion.consultation_reminders": 55}
+        "yuchion.sweep": 290, "yuchion.deliver_notifications": 55, "yuchion.consultation_reminders": 55,
+        "yuchion.expire_requests": 55}
+    assert jobs.API_MAINTENANCE_INTERVAL == 300
 
 
 def test_notes_use_separate_queue_and_requests_and_periodic_tasks_use_default():
     router = worker.celery_app.amqp.Router()
     for task, queue in (("yuchion.daily_note_drafts", "notes"), ("yuchion.request_agent", "default"),
                         ("yuchion.sweep", "default"), ("yuchion.deliver_notifications", "default"),
-                        ("yuchion.consultation_reminders", "default")):
+                        ("yuchion.consultation_reminders", "default"), ("yuchion.expire_requests", "default")):
         assert router.route({}, task)["queue"].name == queue
 
 

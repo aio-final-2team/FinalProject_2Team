@@ -115,6 +115,27 @@ def _hold_until(connection, req):
     """), {"id": req["id"], "org": req["org_id"], "type": req["type"]})
 
 
+def sweep_expired_requests():
+    """조회가 없어도 보류 예정일·상담 체크 만료를 같은 상태 전이로 처리해요."""
+    with transaction() as connection:
+        if not connection.scalar(text(
+            "SELECT pg_try_advisory_xact_lock(hashtextextended('requests:expiry',0))"
+        )):
+            return 0
+        rows = connection.execute(text("""
+            SELECT r.* FROM requests r WHERE EXISTS (
+                SELECT 1 FROM cards c WHERE c.request_id=r.id AND (
+                    (c.status='on_hold' AND c.hold_until<=CURRENT_DATE) OR
+                    (r.status='awaiting_review' AND EXISTS (
+                        SELECT 1 FROM consultation_slots s WHERE s.card_id=c.id
+                          AND s.status='chosen_by_parent' AND s.chosen_at<=now()-interval '24 hours'))))
+            ORDER BY r.id FOR NO KEY UPDATE OF r SKIP LOCKED
+        """)).mappings().all()
+        for row in rows:
+            _expire(connection, dict(row))
+        return len(rows)
+
+
 def choices(user, request_id, body):
     from app.modules.consultations.bookings import lock_resources
     from app.modules.consultations.slots import propose_slots

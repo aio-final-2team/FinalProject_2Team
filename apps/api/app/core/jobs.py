@@ -5,6 +5,28 @@ import logging
 from app.core.config import settings
 
 log = logging.getLogger(__name__)
+API_MAINTENANCE_INTERVAL = 300
+
+
+def run_api_maintenance():
+    """API 단독 실행의 점검. 여러 API 프로세스가 동시에 AI 재전달을 하지 않아요."""
+    from datetime import datetime
+    from sqlalchemy import text
+    from app.core.db import transaction
+    from app.core.schedule import KST
+    from app.modules.requests.requests import sweep_expired_requests
+    from app.modules.requests.runner import sweep_missing_cards
+
+    try:
+        with transaction() as connection:
+            if not connection.scalar(text(
+                "SELECT pg_try_advisory_xact_lock(hashtextextended('api:maintenance',0))"
+            )):
+                return
+            sweep_expired_requests()
+            sweep_missing_cards(datetime.now(KST))
+    except Exception as error:
+        log.error("API 주기 점검 실패 error_type=%s", type(error).__name__)
 
 
 def check_broker():

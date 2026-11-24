@@ -1228,7 +1228,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DecisionResponse'
+                $ref: '#/components/schemas/InstructionResponse'
         '401':
           content:
             application/json:
@@ -4309,6 +4309,35 @@ components:
       - version
       - instruction
       title: InstructionIn
+    InstructionResponse:
+      properties:
+        card:
+          $ref: '#/components/schemas/CardState'
+        request:
+          anyOf:
+          - $ref: '#/components/schemas/RequestState'
+          - type: 'null'
+        next_card_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Next Card Id
+        next_action:
+          anyOf:
+          - type: string
+            const: reassign
+          - type: 'null'
+          title: Next Action
+        message:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Message
+      type: object
+      required:
+      - card
+      title: InstructionResponse
     InstructionView:
       properties:
         text:

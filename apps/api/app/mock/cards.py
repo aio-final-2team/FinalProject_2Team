@@ -3,6 +3,7 @@
 from uuid import uuid4
 
 from app.core.errors import ApiError
+from app.core.constants import REASSIGN_AFTER_INSTRUCTION
 from app.core.request_rules import RECLASSIFY_TYPES
 from app.core.schedule import due_at
 from app.mock import store
@@ -147,7 +148,7 @@ def decide(user, card_id, body):
             close_reports(req)
         elif decision == "escalate":
             next_card = report(req)
-            store.set_request_status(req, "escalated", action="escalated", **actor)
+            store.set_request_status(req, "escalated", action="escalated", reason="manual", **actor)
             touch(card)
         elif decision == "reject":
             touch(card, "rejected")
@@ -192,6 +193,13 @@ def reclassify(user, card_id, body):
             related.due_at = due_at(req.created_at, req.type, req.risk_level, related.kind)
         reports = [c for c in store.cards_of(req.id) if c.kind == "director_report"
                    and c.status not in ("done", "rejected")]
+        if previous != "urgent" and body.risk_level == "urgent":
+            for reply in store.cards_of(req.id):
+                if reply.kind == "reply_draft" and reply.status not in ("done", "rejected"):
+                    reply.draft["text"] = ""
+                    reply.check_result = None
+                    if reply.id != card.id:
+                        touch(reply)
         closed_target = False
         if user.role == "director" and body.risk_level == "normal":
             for report_card in reports:
@@ -207,7 +215,8 @@ def reclassify(user, card_id, body):
                                  actor_type="user", actor_id=user.id, reason=body.reason, previous_risk_level=previous)
         if body.risk_level == "urgent":
             report_card = report(req)
-            store.set_request_status(req, "escalated", action="escalated", card=report_card, actor_type="user", actor_id=user.id)
+            store.set_request_status(req, "escalated", action="escalated", card=report_card, actor_type="user", actor_id=user.id,
+                                     reason="manual")
         from app.mock.card_views import staff_request
         return {"request": staff_request(req)}
 
@@ -266,13 +275,16 @@ def instruct(user, card_id, body):
             raise ApiError(409, "INVALID_TRANSITION")
         kind = "consult_slots" if req.type == "consultation" else "reply_draft"
         reply = next((c for c in reversed(store.cards_of(req.id)) if c.kind == kind
-                      and c.status in ("pending", "in_review")), None)
+                      and c.status in ("pending", "in_review", "unassigned")), None)
         if reply is None:
             raise ApiError(409, "INVALID_TRANSITION")
         record(card, user, "instruct", reason_text=body.instruction)
         touch(card, "done")
         store.set_request_status(req, "awaiting_review", action="instructed", card=reply, actor_type="user", actor_id=user.id)
-        return result(card, req)
+        response = result(card, req)
+        if reply.assignee_id is None:
+            response.update(next_action="reassign", message=REASSIGN_AFTER_INSTRUCTION)
+        return response
 
 
 def reassign(user, card_id, body):

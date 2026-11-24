@@ -942,7 +942,7 @@ data: {"request_status": "awaiting_review"}
 | ⑤ 검증·권한 | 담임·원장만 호출할 수 있고, 원장 보고 카드는 원장만 다룬다. 요청은 문의·민원이면서 awaiting_review·escalated 상태여야 하고, 판도 확인한다. 다만 대상을 uncertain으로만 좁히지는 않는다. 상담은 담임이 시간을 확정하는 흐름이라 재분류하지 않는다. 상담을 재분류하려는 요청에는 409를 돌려준다. |
 | ⑥ 정상 응답 | 200 + 교직원용 request. 응답에 card가 없으니 새 판은 카드 상세에서 받는다. |
 | ⑦ 오류 응답 | 아래 오류 표. |
-| ⑧ 실행 규칙 | 일반으로 바꾸면 risk_category를 지운다. 열린 원장 보고 카드가 있을 때 담임이 호출하면 위험 등급만 바꾸고 escalated는 그대로 둔다. 원장이 일반으로 내리면 열린 원장 보고 카드를 done으로 닫고, risk_reclassified 이력에 그 카드 ID를 남긴 뒤 요청을 awaiting_review로 바꾼다. 이렇게 escalated에서 담임 회신 단계로 돌아오는 경우에는 회신 카드 담당자에게 그 회신 카드로 이어지는 new_card 알림을 한 번 남긴다. 열린 보고 카드가 없으면 일반은 awaiting_review로 바꾸고, 긴급은 원장 보고 카드를 확보한 뒤 escalated로 바꾼다. 공통으로 같은 요청 카드의 due_at을 접수 시각 기준으로 다시 계산하고, 호출한 카드와 이번에 닫은 보고 카드의 판을 각각 1 올린다. 초안은 새로 만들지 않으며, 그 밖의 재분류에서는 new_card 알림을 만들지 않는다. |
+| ⑧ 실행 규칙 | 일반으로 바꾸면 risk_category를 지운다. 열린 원장 보고 카드가 있을 때 담임이 호출하면 위험 등급만 바꾸고 escalated는 그대로 둔다. 원장이 일반으로 내리면 열린 원장 보고 카드를 done으로 닫고, risk_reclassified 이력에 그 카드 ID를 남긴 뒤 요청을 awaiting_review로 바꾼다. 이렇게 escalated에서 담임 회신 단계로 돌아오는 경우에는 회신 카드 담당자에게 그 회신 카드로 이어지는 new_card 알림을 한 번 남긴다. 열린 보고 카드가 없으면 일반은 awaiting_review로 바꾸고, 긴급은 원장 보고 카드를 확보한 뒤 escalated로 바꾼다. 공통으로 같은 요청 카드의 due_at을 접수 시각 기준으로 다시 계산하고, 호출한 카드와 이번에 닫은 보고 카드의 판을 각각 1 올린다. 일반·판단 필요에서 긴급으로 올리면 열린 reply_draft의 text를 비우고 check_result를 null로 지우며 그 회신 카드의 판도 1 올린다(호출 대상이면 한 번만). 완료·반려한 옛 회신은 보존한다. 초안은 새로 만들지 않으며, 그 밖의 재분류에서는 new_card 알림을 만들지 않는다. 사람이 올린 escalated 이력의 detail.reason은 manual이고, risk_reclassified.detail.reason에는 사람이 적은 이유를 그대로 남긴다. |
 
 | 필드 | 위치 | 타입 | 필수 | 빈값 | 제약 | 설명 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -977,9 +977,9 @@ HTTP/1.1 200 OK
 | ③ 경로·쿼리 | card_id(UUID, 원장 보고 카드). |
 | ④ 요청 본문 | version·instruction. |
 | ⑤ 검증·권한 | 역할은 director만. 카드는 같은 기관의 director_report이면서 pending·in_review 상태여야 하고, 요청은 escalated여야 한다. 판과 함께, 같은 판에 이미 내린 결정이 있는지도 확인한다. |
-| ⑥ 정상 응답 | 200 + done 카드(판 +1)·awaiting_review 요청·next_card_id=null. |
+| ⑥ 정상 응답 | 200 + done 카드(판 +1)·awaiting_review 요청·next_card_id=null. 회신 담당이 없으면 next_action="reassign"과 재배정 안내 message, 담당이 있으면 두 칸은 null. |
 | ⑦ 오류 응답 | 아래 오류 표. |
-| ⑧ 실행 규칙 | 결정은 instruct로, 지시 내용은 reason_text로 기록한다. 기존 회신 카드 상세의 director_instruction에는 최신 지시가 붙는다. 다만 회신 카드의 판과 초안은 바꾸지 않고, 승인·발송은 따로 한다. |
+| ⑧ 실행 규칙 | 결정은 instruct로, 지시 내용은 reason_text로 기록한다. 기존 회신 카드 상세의 director_instruction에는 최신 지시가 붙는다. pending·in_review뿐 아니라 unassigned 회신 카드에도 지시를 붙인다. 회신 카드는 미배정 상태·담당 없음 그대로 두고, 응답의 next_action="reassign"과 message="지시를 남겼어요. 회신 카드를 담당 선생님에게 재배정해 주세요."로 다음 행동을 안내한다. 회신 카드의 판과 초안은 바꾸지 않고, 승인·발송은 따로 한다. |
 
 | 필드 | 위치 | 타입 | 필수 | 빈값 | 제약 | 설명 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -988,12 +988,13 @@ HTTP/1.1 200 OK
 | `instruction` | 본문 | string | 필수 | 불가 | 1~500자, 공백만 불가 | 원장 지시 |
 | `card.id`·`status`·`version` | 응답 | UUID·string·integer | 항상 | 불가 | status=`done` | 끝난 보고 카드와 새 판 |
 | `request`·`next_card_id` | 응답 | object·UUID | 항상 | next_card_id는 null | request={id, status, parent_confirmed_at} | 요청 상태는 awaiting_review |
+| `next_action`·`message` | 응답 | string | 항상 | 담당 있으면 null | next_action은 reassign 또는 null | 미배정 회신은 재배정 안내 문구를 함께 돌려줌 |
 
 ```http
 POST /api/v1/cards/{card_id}/instructions
 {"version": 1, "instruction": "운행 시각을 확인하고 보호자에게 안내해 주세요."}
 HTTP/1.1 200 OK
-{"card": {"id": "…", "status": "done", "version": 2}, "request": {"id": "00000000-0000-4000-8000-000000000702", "status": "awaiting_review", "parent_confirmed_at": null}, "next_card_id": null}
+{"card": {"id": "…", "status": "done", "version": 2}, "request": {"id": "00000000-0000-4000-8000-000000000702", "status": "awaiting_review", "parent_confirmed_at": null}, "next_card_id": null, "next_action": null, "message": null}
 ```
 
 
@@ -1911,7 +1912,11 @@ def decide(card_id: UUID, body: CardDecision, user: User = Depends(current_staff
 | 알림장 초안 | `GET /daily-notes/drafts/{input_id}` | `draft_status = queued·running` | `succeeded`. 아이별 초안은 `GET /daily-notes?classroom_id=&date=`로 받음 | `failed` + `error { code, message }`(자세한 이유는 `events`의 `tool_failed`) |
 | 자료 올리기 | `GET /documents/{document_id}` | `ingest_status = queued·running` | `succeeded` + `chunk_count`(조각 수). 충돌이 있으면 `status = conflict_pending` + `conflicts[]` | `failed` + `error { code, message }` |
 
-**카드가 끝내 안 생긴 요청.** 요청은 `POST /requests`에서 먼저 저장된다. 그래서 AI가 카드 만들기(`create_card`)까지 실패하거나 처리 중에 멈춰도 요청은 남는다. 서버 점검 작업은 5분마다 돌면서, 진행 중 상태(`received`·`classified`·`assigned`)인데 5분 넘게 카드가 없는 요청을 찾는다. 처음 찾았을 때는 처리를 한 번 다시 넣고 `agent_requeued` 이력만 남긴다. 다시 넣고 5분이 지나도 카드가 없으면, 코드 규칙으로 위험·분류를 다시 저장하고 정상 경로와 같은 유효한 담임 배정을 적용해 초안 없는 회신 카드를 만든다. 일반은 `awaiting_review`·담임 `new_card` 알림, 긴급·판단 필요는 원장 보고 카드·`escalated`와 담임·원장 위험 알림을 남긴다. 유효한 담임이 없을 때만 회신 카드가 미배정이고, 일반 건의 알림은 원장에게 보낸다. 이때 넘긴 이유 `card_missing`을 이력 `events.detail.handoff_reason`에 남긴다. 그동안 학부모 화면은 `received`·`classified`면 '접수됨', 담당 배정 뒤 `assigned`면 '선생님께 전달됨'으로 보인다. 인계 뒤 일반 건에 담당이 있으면 '선생님 확인 중', 담당이 없으면 '담당 선생님 배정 중'이고, 고위험 건은 '원장님 확인 중'이다. 채팅 안내는 '받았지만 선생님 확인이 늦어질 수 있음'으로 맞출 예정이지만, 이 문장은 아직 코드에 없다. 이 점검 작업은 실제 서버의 백그라운드 워커에서 돌고, 모의 API에서는 돌리지 않는다. 두 모드를 나란히 비교한 결과는 6.7 마지막 사례에 있다.
+**보류·상담 체크 주기 점검.** DB 워커 Beat는 1분마다 보류 예정일과 상담 체크 24시간 만료를 점검한다. 조회와 같은 _expire 경로를 쓰며 advisory lock·요청 잠금으로 이력과 알림을 한 번만 남긴다. 잠긴 요청은 다음 점검에서 처리한다. 미래 보류와 보류·원장 보고 중인 상담 체크는 보존하고, 상담 director_report 자동 재개는 보고 카드만 pending으로 바꾼다.
+
+**보고 사유.** 새 escalated 이력의 detail.reason은 위험 분류·장애 인계면 risk, 같은 주제 민원 세 번째부터의 반복 보고면 repeat, 사람의 올리기·긴급 재분류면 manual이다. 위험과 반복이 겹치면 risk가 먼저다.
+
+**카드가 끝내 안 생긴 요청.** 요청은 `POST /requests`에서 먼저 저장된다. 그래서 AI가 카드 만들기(`create_card`)까지 실패하거나 처리 중에 멈춰도 요청은 남는다. 서버 점검 작업은 5분마다 돌면서, 진행 중 상태(`received`·`classified`·`assigned`)인데 5분 넘게 카드가 없는 요청을 찾는다. 처음 찾았을 때는 처리를 한 번 다시 넣고 `agent_requeued` 이력만 남긴다. 다시 넣고 5분이 지나도 카드가 없으면, 코드 규칙으로 위험·분류를 다시 저장하고 정상 경로와 같은 유효한 담임 배정을 적용해 초안 없는 회신 카드를 만든다. 일반은 `awaiting_review`·담임 `new_card` 알림, 긴급·판단 필요는 원장 보고 카드·`escalated`와 담임·원장 위험 알림을 남긴다. 유효한 담임이 없을 때만 회신 카드가 미배정이고, 일반 건의 알림은 원장에게 보낸다. 이때 넘긴 이유 `card_missing`을 이력 `events.detail.handoff_reason`에 남긴다. 그동안 학부모 화면은 `received`·`classified`면 '접수됨', 담당 배정 뒤 `assigned`면 '선생님께 전달됨'으로 보인다. 인계 뒤 일반 건에 담당이 있으면 '선생님 확인 중', 담당이 없으면 '담당 선생님 배정 중'이고, 고위험 건은 '원장님 확인 중'이다. 채팅 안내는 '받았지만 선생님 확인이 늦어질 수 있음'으로 맞출 예정이지만, 이 문장은 아직 코드에 없다. DB 모드에서 RUN_IN=worker는 Beat가 5분마다 누락 카드 점검을 실행한다. RUN_IN=api는 API 시작 때 한 번, 이후 5분마다 별도 스레드에서 보류·상담 체크 만료와 누락 카드를 점검한다. API 프로세스 사이에는 advisory lock을 얻은 실행만 점검하며, 종료 때 주기 작업을 취소한다. 모의 API는 기존 조회 때 같은 만료 규칙을 적용한다. 두 모드를 나란히 비교한 결과는 6.7 마지막 사례에 있다.
 
 
 ```json

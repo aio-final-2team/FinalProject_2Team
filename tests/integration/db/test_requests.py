@@ -258,6 +258,8 @@ def test_handoff_keeps_code_risk_assignment_and_notifications(
     history = rows(seeded_db, "events", rid)
     changes = [e for e in history if e["to_status"] and e["detail"].get("handoff_reason") == reason]
     assert len(changes) == 1 and changes[0]["action"] == ("escalated" if high_risk else "checked")
+    if high_risk:
+        assert changes[0]["detail"]["reason"] == "risk"
     assert "private model failure" not in str(history)
     assert len(rows(seeded_db, "request_messages", rid)) == 1
     notices = rows(seeded_db, "notifications", rid)

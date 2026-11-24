@@ -77,6 +77,11 @@ class DecisionResponse(BaseModel):
     next_card_id: UUID | None = None
 
 
+class InstructionResponse(DecisionResponse):
+    next_action: Literal["reassign"] | None = None
+    message: str | None = None
+
+
 class Person(BaseModel):
     id: UUID
     display_name: str

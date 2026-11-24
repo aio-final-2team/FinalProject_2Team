@@ -134,7 +134,7 @@ def run_request(request_id, prepared_answer=None, prepared_fields=None):
             if high_risk and director:
                 # 상담 시간 고르기·확정은 담임 흐름 그대로 두고, 원장에게 보고 카드와 알림만 더해요.
                 report = new_card(connection, req, "director_report", director, {"summary": req["body"][:60]})
-                record(connection, req, "escalated", card=report, actor_type="agent", agent_name="supervisor")
+                record(connection, req, "escalated", card=report, actor_type="agent", agent_name="supervisor", reason="risk")
             return
         draft = {"summary": req["body"][:60], "no_evidence": True}
         answer, check = None, None
@@ -169,7 +169,7 @@ def run_request(request_id, prepared_answer=None, prepared_fields=None):
         if (high_risk or repeated) and director:
             report = new_card(connection, req, "director_report", director, {"summary": req["body"][:60]})
             set_status(connection, req, "escalated", action="escalated", card=report,
-                       actor_type="agent", agent_name="supervisor")
+                       actor_type="agent", agent_name="supervisor", reason="risk" if high_risk else "repeat")
         else:
             set_status(connection, req, "awaiting_review", action="checked", card=card,
                        actor_type="agent", agent_name="checker")

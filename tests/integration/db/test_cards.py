@@ -167,6 +167,8 @@ def test_automatic_hold_expiry_on_list_is_once_and_no_human_approval(db_client, 
 
 def test_overview_reads_view_and_eval_and_empty_organization(db_client, seeded_db):
     with seeded_db.begin() as connection:
+        # 시작 점검이 오래된 시드 요청을 복구해도 여기서는 실제 빈 기관을 검사해요.
+        connection.execute(text("TRUNCATE requests CASCADE"))
         connection.execute(
             text(
                 "INSERT INTO eval_runs (suite,requested_model,total,passed,started_at) VALUES ('service','[TEST] model',3,2,now())"

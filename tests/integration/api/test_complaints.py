@@ -83,6 +83,7 @@ def test_third_complaint_counts_other_guardians_closed_cases_and_only_same_class
     assert saved["reply_draft"]["due_at"] == saved["director_report"]["due_at"]
     reply = detail(client, teacher, saved["reply_draft"]["id"])
     assert reply["request"]["status"] == "escalated" and reply["card"]["draft"]["text"]
+    assert [e["detail"]["reason"] for e in reply["timeline"] if e["action"] == "escalated"] == ["repeat"]
     assert len(client.get(f"{BASE}/requests/{third}", headers=parent).json()["messages"]) == 1
     fourth = cards(client, director, create(client, parent))
     assert set(fourth) == {"reply_draft", "director_report"}
@@ -121,6 +122,7 @@ def test_high_risk_handoff_has_two_cards_no_draft_or_automatic_reply(
         assert datetime.fromisoformat(row["due_at"]) == start + timedelta(hours=2)
         assert item["request"]["status"] == "escalated"
     history = detail(client, teacher, saved["reply_draft"]["id"])["timeline"]
+    assert [e["detail"]["reason"] for e in history if e["action"] == "escalated"] == ["risk"]
     assert [e["to_status"] for e in history if e["to_status"]] == ["received", "classified", "assigned", "escalated"]
     assert not {"approved", "sent"} & {e["action"] for e in history}
     bucket = "uncertain" if risk == "uncertain" else "needs_review"

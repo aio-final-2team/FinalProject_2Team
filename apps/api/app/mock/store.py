@@ -372,7 +372,7 @@ def _run_mock_ai(req: Request, trace_id: str | None) -> None:
         if high_risk and director:
             # DB 백엔드와 같이 상담 흐름은 두고 원장 보고 카드와 알림만 더해요.
             report = _new_card(req, "director_report", director, draft={"summary": summary})
-            add_event(req, "escalated", card=report, actor_type="agent", agent_name="supervisor", trace_id=trace_id)
+            add_event(req, "escalated", card=report, actor_type="agent", agent_name="supervisor", trace_id=trace_id, reason="risk")
         return
     card = _new_card(req, "reply_draft", teacher, draft={
         "summary": summary,
@@ -386,7 +386,7 @@ def _run_mock_ai(req: Request, trace_id: str | None) -> None:
     if high_risk or (req.type == "complaint" and (repeat_count(req) or 0) >= 3):
         report = _new_card(req, "director_report", director_of(req.org_id), draft={"summary": summary})
         set_request_status(req, "escalated", action="escalated", card=report, actor_type="agent",
-                           agent_name="supervisor", trace_id=trace_id)
+                           agent_name="supervisor", trace_id=trace_id, reason="risk" if high_risk else "repeat")
         return
     set_request_status(req, "awaiting_review", action="checked", card=card, actor_type="agent",
                        agent_name="checker", trace_id=trace_id)

@@ -34,7 +34,7 @@ def _handoff(connection, req, reason):
     """), {"org": req["org_id"]})
     if req["risk_level"] in ("urgent", "uncertain") and director:
         report = new_card(connection, req, "director_report", director, {"summary": req["body"][:60]})
-        set_status(connection, req, "escalated", action="escalated", card=report, handoff_reason=reason)
+        set_status(connection, req, "escalated", action="escalated", card=report, handoff_reason=reason, reason="risk")
     else:
         set_status(connection, req, "awaiting_review", action="checked", card=card, handoff_reason=reason)
 

@@ -439,7 +439,7 @@ FK를 걸 수 없는 참조가 두 곳 있다. `cards.subject_id`와 `notificati
 | `events` | `action` | `text` / NOT NULL, 값 43가지 | 처리 이력 종류(2.2 글머리). 기존 36가지 + 추가 글·권한 밖 안내·취소·돌봄 수정·알림장 정정·상담 충돌 재제안·보고 확인 7가지(0012) |
 | `events` | `from_status` | `text` / NULL 허용 | 바뀌기 전 상태 |
 | `events` | `to_status` | `text` / NULL 허용 | 바뀐 뒤 상태 |
-| `events` | `detail` | `jsonb` / NOT NULL, 기본값 '{}' | 부가 정보. 비밀값·불필요한 개인정보 금지 |
+| `events` | `detail` | `jsonb` / NOT NULL, 기본값 '{}' | 부가 정보. 비밀값·불필요한 개인정보 금지. 새 escalated의 reason은 risk(위험·장애 인계)·repeat(반복 민원)·manual(사람 올리기·긴급 재분류). risk_reclassified의 reason은 사람이 쓴 재분류 이유 |
 | `events` | `created_at` | `timestamptz` / NOT NULL, 기본값 now() | 일어난 시각 |
 
 - `requests` 표 제약: `CHECK (previous_request_id IS DISTINCT FROM id)` · `CHECK ((risk_level IS NULL) OR (type IN ('inquiry', 'consultation', 'complaint')))` · `CHECK ((risk_level IS DISTINCT FROM 'urgent') OR (risk_category IS NOT NULL))` · `CHECK ((parent_confirmed_at IS NULL) OR (type = 'complaint'))` · `UNIQUE (id, org_id)` · `UNIQUE (requester_id, client_request_id)`

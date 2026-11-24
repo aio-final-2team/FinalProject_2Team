@@ -99,22 +99,25 @@ def test_concurrent_second_and_third_complaints_cannot_miss_report(seeded_db, mo
 def test_persisted_deadlines_skip_holidays_only_for_normal_and_overdue_does_not_escalate(
     db_client, seeded_db, monkeypatch, body, risk, expected
 ):
+    auth = {"Authorization": "Bearer " + issue_token(get_user(seed.DIRECTOR))}
+    baseline_delayed = db_client.get("/api/v1/overview", headers=auth).json()["delayed"]
+    with seeded_db.connect() as connection:
+        baseline_reports = connection.scalar(text("SELECT count(*) FROM cards WHERE kind='director_report'"))
     monkeypatch.setattr(schedule, "settings", replace(schedule.settings, holidays=(date(2026, 11, 16),)))
     start = datetime.fromisoformat("2026-11-13T18:00:00+09:00")
     with seeded_db.begin() as connection:
         rid = save(connection, body=body, created_at=start)["id"]
     agent_stub.run_request(rid)
-    auth = {"Authorization": "Bearer " + issue_token(get_user(seed.DIRECTOR))}
     response = db_client.get("/api/v1/cards?size=100", headers=auth)
     assert response.status_code == 200, response.text
     rows = [c for c in response.json()["items"] if c["request_id"] == str(rid)]
     assert len(rows) == (1 if risk == "normal" else 2)
     assert all(c["due_at"] == expected and c["is_delayed"] for c in rows)
-    assert db_client.get("/api/v1/overview", headers=auth).json()["delayed"] == len(rows)
+    assert db_client.get("/api/v1/overview", headers=auth).json()["delayed"] == baseline_delayed + len(rows)
     for _ in range(2):
         assert db_client.get("/api/v1/cards", headers=auth).status_code == 200
     with seeded_db.connect() as connection:
-        assert connection.scalar(text("SELECT count(*) FROM cards WHERE kind='director_report'")) == (risk != "normal")
+        assert connection.scalar(text("SELECT count(*) FROM cards WHERE kind='director_report'")) == baseline_reports + (risk != "normal")
         assert connection.scalar(text("SELECT count(*) FROM approvals")) == 0
         assert connection.scalar(text("SELECT count(*) FROM request_messages WHERE request_id=:id"), {"id": rid}) == 0
 

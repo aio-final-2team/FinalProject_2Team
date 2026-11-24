@@ -175,6 +175,8 @@ def test_escalation_instruction_reassignment_then_edit_approval(client, parent, 
     report = decision(client, teacher, cid, "escalate")
     assert report.status_code == 200, report.text
     report_id = report.json()["next_card_id"]
+    events = detail(client, director, report_id)["timeline"]
+    assert [e["detail"]["reason"] for e in events if e["action"] == "escalated"] == ["manual"]
     err(decision(client, teacher, report_id), 403, "FORBIDDEN_ROLE")
     err(
         client.post(
@@ -276,6 +278,80 @@ def test_reclassification_updates_deadlines_without_duplicate_report(client, par
     assert next(c for c in cards if c["id"] == cid)["due_at"] == reports[0]["due_at"]
     events = detail(client, teacher, cid)["timeline"]
     assert len([ev for ev in events if ev["action"] == "risk_reclassified"]) == 3
+
+
+@pytest.mark.parametrize("target_report", [False, True])
+def test_urgent_reclassification_clears_reply_and_check_before_fresh_approval(
+    client, parent, teacher, director, target_report
+):
+    rid, cid = create(client, parent, teacher)
+    before = detail(client, teacher, cid)["card"]
+    assert before["draft"]["text"] and before["check_result"]["passed"]
+    target, version = cid, 1
+    if target_report:
+        raised = decision(client, teacher, cid, "escalate")
+        assert raised.status_code == 200, raised.text
+        target, version = raised.json()["next_card_id"], 2
+    response = client.post(f"{BASE}/cards/{target}/reclassify", headers=director, json={
+        "version": 1, "risk_level": "urgent", "risk_category": "child_safety", "reason": "[TEST] 긴급 재분류"})
+    assert response.status_code == 200, response.text
+    saved = detail(client, director, cid)
+    assert saved["card"]["draft"]["text"] == "" and saved["card"]["check_result"] is None
+    assert saved["card"]["version"] == version + 1
+    assert saved["card"]["draft"]["summary"] == before["draft"]["summary"]
+    reports = [c for c in client.get(BASE+"/cards?size=100", headers=director).json()["items"]
+               if c["request_id"] == rid and c["kind"] == "director_report"]
+    assert len(reports) == 1
+    report = detail(client, director, reports[0]["id"])
+    assert [e["detail"]["reason"] for e in report["timeline"] if e["action"] == "escalated"][-1] == "manual"
+    response = client.post(f"{BASE}/cards/{report['card']['id']}/instructions", headers=director, json={
+        "version": report["card"]["version"], "instruction": "[TEST] 새 답변을 직접 작성해 주세요"})
+    assert response.status_code == 200, response.text
+    assert response.json()["next_action"] is None
+    err(decision(client, teacher, cid, version=version), 409, "CARD_VERSION_CONFLICT")
+    err(decision(client, teacher, cid, version=version+1), 409, "INVALID_TRANSITION")
+    assert decision(client, teacher, cid, "edit_approve", version=version+1,
+                    edited_content={"text": "[TEST] 사람이 확인한 새 회신"}).status_code == 200
+
+
+def test_unassigned_high_risk_complaint_accepts_instruction_then_reassignment(
+    client, parent, teacher_other, director, card_backend
+):
+    from uuid import UUID
+    if card_backend == "mock":
+        store.state().classroom_staff[:] = [s for s in store.state().classroom_staff if s.classroom_id != seed.CLASS_STAR]
+    else:
+        with transaction() as connection:
+            connection.execute(text("DELETE FROM classroom_staff WHERE classroom_id=:id"), {"id": seed.CLASS_STAR})
+    response = client.post(BASE+"/requests", headers=parent, json={
+        "client_request_id": str(uuid4()), "child_id": str(seed.CHILD),
+        "type": "complaint", "body": "[TEST] 아이가 다쳤어요"})
+    assert response.status_code == 202, response.text
+    rid = response.json()["request"]["id"]
+    cards = {c["kind"]: c for c in client.get(BASE+"/cards?size=100", headers=director).json()["items"]
+             if c["request_id"] == rid}
+    cid, report = cards["reply_draft"]["id"], cards["director_report"]["id"]
+    response = client.post(f"{BASE}/cards/{report}/instructions", headers=director, json={
+        "version": 1, "instruction": "[TEST] 상황 확인 후 직접 안내해 주세요"})
+    assert response.status_code == 200, response.text
+    assert response.json()["next_action"] == "reassign"
+    assert "재배정" in response.json()["message"]
+    assert response.json()["request"]["status"] == "awaiting_review"
+    reply = detail(client, director, cid)
+    assert reply["card"]["status"] == "unassigned" and reply["card"]["version"] == 1
+    assert reply["director_instruction"]["text"] == "[TEST] 상황 확인 후 직접 안내해 주세요"
+    if card_backend == "mock":
+        assert store.state().cards[UUID(cid)].assignee_id is None
+    else:
+        with transaction() as connection:
+            assert connection.scalar(text("SELECT assignee_id FROM cards WHERE id=:id"), {"id": cid}) is None
+    err(client.post(f"{BASE}/cards/{report}/instructions", headers=director, json={
+        "version": 1, "instruction": "[TEST] 중복 지시"}), 409, "ALREADY_DECIDED")
+    response = client.post(f"{BASE}/cards/{cid}/reassign", headers=director, json={
+        "assignee_id": str(seed.TEACHER_OTHER), "reason": "[TEST] 새 담당"})
+    assert response.status_code == 200, response.text
+    assert decision(client, teacher_other, cid, "edit_approve", version=2,
+                    edited_content={"text": "[TEST] 지시 확인 후 답변"}).status_code == 200
 
 
 def test_inbox_filters_counts_sort_and_large_page(client, parent, teacher):
