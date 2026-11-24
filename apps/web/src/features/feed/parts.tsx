@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { AuthPhoto } from "@/components/AuthPhoto";
 import { Icon } from "@/components/Icon";
 import type { Photo, Post } from "@/api/feed";
@@ -53,23 +53,58 @@ export function PhotoViewer({ photos, index, onIndex, onClose }: { photos: Photo
   );
 }
 
-const when = (iso: string) => new Date(iso).toLocaleDateString("ko-KR", { month: "long", day: "numeric" });
+/** 몇 분 전·몇 시간 전, 하루가 지나면 날짜 */
+function ago(iso: string) {
+  const m = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+  if (m < 1) return "방금 전";
+  if (m < 60) return `${m}분 전`;
+  if (m < 60 * 24) return `${Math.round(m / 60)}시간 전`;
+  return new Date(iso).toLocaleDateString("ko-KR", { month: "long", day: "numeric" });
+}
 
-/** 글 카드. 작성자 이름은 API에 없어서 '내 글' 또는 칸 이름으로 보여 준다 */
-export function PostCard({ post, mine, onOpenPhoto, action }: { post: Post; mine: boolean; onOpenPhoto: (i: number) => void; action?: { label: string; run: () => void } }) {
+/** 사진 슬라이드: 옆으로 밀어 넘기고 오른쪽 위에 몇 번째인지 보여 준다. 누르면 크게 본다 */
+export function PhotoCarousel({ photos, onOpen }: { photos: Photo[]; onOpen: (index: number) => void }) {
+  const [at, setAt] = useState(0);
+  if (!photos.length) return null;
   return (
-    <article className="rounded-lg bg-card p-3 shadow-card">
-      <header className="flex items-center justify-between gap-2">
-        <span className="flex items-center gap-2 text-footnote">
-          <b className={mine ? "text-accent-ink" : ""}>{mine ? "내 글" : post.lane === "class" ? "우리 반 보호자" : "원 소식"}</b>
-          <time className="text-ink2">{when(post.created_at)}</time>
+    <div className="relative">
+      <ul
+        className="flex snap-x snap-mandatory overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        onScroll={(e) => setAt(Math.round(e.currentTarget.scrollLeft / e.currentTarget.clientWidth))}
+        aria-label="사진"
+      >
+        {photos.map((p, i) => (
+          <li key={p.id} className="w-full shrink-0 snap-center">
+            <button type="button" onClick={() => onOpen(i)} aria-label={`사진 ${i + 1}장 크게 보기`} className="block w-full active:opacity-90">
+              <AuthPhoto photo={p} className="aspect-[4/5] w-full" />
+            </button>
+          </li>
+        ))}
+      </ul>
+      {photos.length > 1 && <span aria-hidden className="pointer-events-none absolute right-3 top-3 rounded-full bg-ink/60 px-2 py-0.5 text-caption font-semibold tabular-nums text-card">{at + 1}/{photos.length}</span>}
+    </div>
+  );
+}
+
+/** 글 카드. 작성자 이름은 API에 없어서 '나' 또는 칸 이름으로 보여 준다. 더보기(⋯)는 지우기·숨기기처럼 할 수 있는 일이 있을 때만 나온다 */
+export function PostCard({ post, mine, onOpenPhoto, action }: { post: Post; mine: boolean; onOpenPhoto: (i: number) => void; action?: { label: string; run: () => void } }) {
+  const who = mine ? "나" : post.lane === "class" ? "우리 반 보호자" : "원 소식";
+  return (
+    <article className="overflow-hidden rounded-lg bg-card shadow-card">
+      <header className="flex items-center gap-3 px-3 py-2.5">
+        <span aria-hidden className={`grid size-10 shrink-0 place-items-center rounded-full text-callout font-bold ${mine ? "bg-tint text-accent-ink" : "bg-fill text-ink"}`}>{who.slice(0, 1)}</span>
+        <span className="min-w-0 flex-1">
+          <b className="block truncate text-callout">{who}</b>
+          <time className="text-caption text-ink2">{ago(post.created_at)}</time>
         </span>
         {action && (
-          <button type="button" onClick={action.run} className="h-8 rounded-md px-2 text-footnote font-semibold text-ink2 active:scale-[.97]">{action.label}</button>
+          <button type="button" onClick={action.run} aria-label={action.label} className="grid size-11 place-items-center rounded-full text-ink2 active:scale-95">
+            <svg viewBox="0 0 24 24" className="size-5" fill="currentColor" aria-hidden><circle cx="5" cy="12" r="1.8" /><circle cx="12" cy="12" r="1.8" /><circle cx="19" cy="12" r="1.8" /></svg>
+          </button>
         )}
       </header>
-      <p className="mt-1.5 whitespace-pre-line break-keep text-body">{post.body}</p>
-      {post.photos.length > 0 && <div className="mt-2.5"><PhotoGrid photos={post.photos} onOpen={onOpenPhoto} /></div>}
+      <PhotoCarousel photos={post.photos} onOpen={onOpenPhoto} />
+      <p className="whitespace-pre-line break-keep px-3 py-3 text-body">{post.body}</p>
     </article>
   );
 }

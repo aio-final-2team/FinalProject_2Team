@@ -8,7 +8,7 @@ import { useSession } from "@/app/session";
 import { AuthPhoto } from "@/components/AuthPhoto";
 import { ScreenTop } from "@/components/ScreenTop";
 import { Button } from "@/components/Button";
-import { Dock, PrimaryButton } from "@/components/Dock";
+import { Icon } from "@/components/Icon";
 import { QueryState } from "@/components/QueryState";
 import { Sheet } from "@/components/Sheet";
 import { StateView } from "@/components/StateView";
@@ -74,8 +74,19 @@ export function FeedScreen({ role }: { role: Role }) {
   };
 
   return (
-    <div className="mx-auto max-w-[680px] px-4 pb-48 lg:pb-10">
-      <ScreenTop audience={role === "parent" ? "parent" : "staff"} back={role === "teacher" ? { to: "/teacher/home", label: "홈" } : undefined} title={role === "parent" ? "소식" : "원 소식"} sub={role === "parent" ? "우리 반과 원의 이야기, 사진을 볼 수 있어요" : "원 전체에 올라온 이야기와 사진이에요"} />
+    <div className="mx-auto max-w-[680px] px-4 pb-8">
+      <ScreenTop
+        audience={role === "parent" ? "parent" : "staff"}
+        back={role === "teacher" ? { to: "/teacher/home", label: "홈" } : undefined}
+        title={role === "parent" ? "소식" : "원 소식"}
+        sub={role === "parent" ? "우리 반과 원의 이야기, 사진을 볼 수 있어요" : "원 전체에 올라온 이야기와 사진이에요"}
+        right={
+          <button type="button" disabled={!lane} onClick={() => setCompose(true)} className="mr-1 inline-flex h-10 items-center gap-1.5 rounded-full bg-brand-fill px-4 text-callout font-semibold text-on-brand active:scale-95 disabled:opacity-50">
+            <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M4 8a2 2 0 0 1 2-2h1.5l1.2-1.6A1 1 0 0 1 9.5 4h5a1 1 0 0 1 .8.4L16.5 6H18a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" /><circle cx="12" cy="12.5" r="3.2" /></svg>
+            올리기
+          </button>
+        }
+      />
       <div className="mb-4" />
 
       <div role="tablist" aria-label="소식 종류" className="mb-4 grid grid-flow-col gap-1 rounded-md bg-fill p-1">
@@ -105,6 +116,13 @@ export function FeedScreen({ role }: { role: Role }) {
           </QueryState>
         </>
       ) : (
+        <>
+        {tab === "class" && (
+          <p className="mb-3 flex items-start gap-2 rounded-lg bg-card p-3 text-footnote text-ink2 shadow-card">
+            <Icon name="lock" className="mt-0.5 size-4 shrink-0" />
+            <span className="break-keep">우리 반 부모님끼리만 보는 칸이에요. 선생님·원장님은 이 칸을 볼 수 없어요. 원에 할 말은 요청으로 보내 주세요.</span>
+          </p>
+        )}
         <QueryState queries={[...waiting, posts]} skeleton={3} errorTitle="소식을 불러오지 못했어요">
           {posts.data && posts.data.length > 0 ? (
             <div className="grid gap-3">
@@ -116,11 +134,8 @@ export function FeedScreen({ role }: { role: Role }) {
             <StateView kind="empty" audience={audience} title="아직 올라온 소식이 없어요" sub="첫 글을 올려 보세요" />
           )}
         </QueryState>
+        </>
       )}
-
-      <Dock>
-        <PrimaryButton onClick={() => setCompose(true)} disabled={!lane}>글 올리기</PrimaryButton>
-      </Dock>
 
       <ComposeSheet open={compose} onClose={() => setCompose(false)} lane={lane} kids={kids} laneLabel={laneLabel} />
       {viewer && <PhotoViewer photos={viewer.photos} index={viewer.index} onIndex={(i) => setViewer({ ...viewer, index: i })} onClose={() => setViewer(null)} />}
