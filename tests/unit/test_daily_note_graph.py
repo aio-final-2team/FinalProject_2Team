@@ -371,3 +371,27 @@ def test_trace_keeps_first_and_final_draft_and_end():
     assert note["trace"][0]["lines"][0]["value"] == "편식이 심해요."
     assert note["trace"][3]["lines"][0]["value"] == "점심을 조금 먹었어요."
     assert note["end"] == "done" and "생각" not in str(note["trace"])
+
+
+def test_stub_and_graph_have_same_common_lines_with_fake_models():
+    from app.modules.daily_notes import stub_writer
+
+    for supplies in ("[TEST] 앞치마", "없음", "", "  없음  "):
+        for menu in (None, {**MENU, "text": WEEK}):
+            data = payload([kid("a", "가온", "[TEST] 블록 놀이")], supplies=supplies, menu=menu)
+            graph = draft_daily_notes(data, Script({"child": "[TEST] 블록 놀이", "requests": []}), Script(OK))[0]
+            stub = stub_writer.write(data)[0]
+            def common(row):
+                return [line for line in row["content"]["items"] if line["key"] in ("day", "supplies", "meal")]
+            assert common(stub) == common(graph)
+            assert stub_writer.failed_child(data, data["children"][0])["content"]["items"] == common(graph)
+
+
+def test_stub_checks_protected_roster_name_during_partial_regenerate():
+    from app.modules.daily_notes import stub_writer
+
+    data = payload([kid("a", "가온", "[TEST] 나래와 블록 놀이")])
+    data["roster_names"] = ["가온", "나래"]
+    [note] = stub_writer.write(data)
+    checks = [c for c in note["open_checks"] if c["kind"] == "other_child"]
+    assert len(checks) == 1 and checks[0]["id"] and "나래" in checks[0]["sentence"]

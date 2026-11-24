@@ -4,7 +4,8 @@ from dataclasses import replace
 
 from app.api.labels import parent_label
 from app.core.care import unregistered_pickup_key
-from app.core.constants import CARE_REQUEST_TYPES, CARE_MESSAGE_NOTICE, UNREGISTERED_PICKUP_CHECK, NOTIFICATION_TITLES as TITLES, notification_title
+from app.core.constants import (CARE_REQUEST_TYPES, CARE_MESSAGE_NOTICE, CARE_UPDATED_NOTICE, UNREGISTERED_PICKUP_CHECK,
+                                NOTIFICATION_TITLES as TITLES, consultation_booking_body, notification_title, rejection_body)
 from app.core.schedule import deliver_after
 from app.core.errors import ApiError
 from app.mock import store
@@ -32,6 +33,9 @@ def create(ev, recipient_id, kind, body=None, subject_id=None, *, dedupe_key=Non
 
 
 def notify_event(ev, req, card):
+    if ev.action == "reassigned":
+        create(ev, card.assignee_id, "reassigned")
+        return
     if req is None:
         if card and ev.action in ("created", "drafted"):
             create(ev, card.assignee_id, "new_card")
@@ -39,30 +43,69 @@ def notify_event(ev, req, card):
             note = store.state().notes[ev.daily_note_id]
             for guardian in store.state().children[note.child_id].guardian_ids:
                 create(ev, guardian, "note_sent", subject_id=note.id)
+        if ev.action == "daily_note_corrected" and ev.daily_note_id:
+            note = store.state().notes[ev.daily_note_id]
+            for guardian_id in store.state().children[note.child_id].guardian_ids:
+                guardian = store.state().users.get(guardian_id)
+                if guardian and guardian.role == "parent" and guardian.is_active:
+                    create(ev, guardian_id, "note_corrected", subject_id=note.id,
+                           dedupe_key=f"daily_note_corrected:{note.id}:{note.version}:{guardian_id}")
+        return
+    if req.type == "consultation" and (
+        (ev.action == "created" and card and card.kind == "consult_slots" and not card.assignee_id)
+        or (ev.action == "info_requested" and "preferred_times" in ev.detail)
+    ):
+        create(ev, card.assignee_id or store.director_of(req.org_id),
+               "parent_message" if "preferred_times" in ev.detail else "new_card",
+               ev.detail.get("preferred_times"))
         return
     if req.type in CARE_REQUEST_TYPES:
-        if ev.detail.get("unregistered_pickup"):
+        if ev.action == "cancelled":
+            create(ev, req.assignee_id or store.director_of(req.org_id), "cancelled")
+        elif ev.detail.get("care_decision") == "reject":
+            create(ev, req.requester_id, "care_rejected", ev.detail["reason_text"])
+        elif ev.detail.get("unregistered_pickup"):
             create(ev, store.director_of(req.org_id), "care_requested", UNREGISTERED_PICKUP_CHECK,
                    dedupe_key=unregistered_pickup_key(req.id, ev.detail.get("pickup_snapshot", {})))
-        elif ev.detail.get("care_message"):
-            create(ev, req.assignee_id or store.director_of(req.org_id), "care_requested", CARE_MESSAGE_NOTICE)
+        elif ev.detail.get("care_message") or ev.action == "care_updated":
+            create(ev, req.assignee_id or store.director_of(req.org_id), "care_requested",
+                   CARE_UPDATED_NOTICE if ev.action == "care_updated" else CARE_MESSAGE_NOTICE)
         elif ev.action == "created" and ev.to_status == "received":
             create(ev, req.assignee_id or store.director_of(req.org_id), "care_requested")
         elif ev.detail.get("care_decision") in ("confirm", "complete"):
             create(ev, req.requester_id, "care_confirmed" if ev.to_status == "assigned" else "completed",
-                   parent_label(ev.to_status, req.type))
+                   parent_label(ev.to_status, req.type, req.assignee_id))
+        return
+    if ev.action == "message_added":
+        if req.type == "consultation" and req.status in ("needs_info", "sent_or_booked"):
+            recipients = {req.assignee_id: None} if req.assignee_id else {}
+        elif req.status in ("awaiting_review", "on_hold", "escalated", "needs_info"):
+            recipients = {c.assignee_id: c.id for c in sorted(store.cards_of(req.id), key=lambda c: (c.created_at, c.id))
+                          if c.status not in ("done", "rejected") and c.assignee_id}
+        else:
+            return
+        if not recipients:
+            recipients = {store.director_of(req.org_id): None}
+        for recipient, card_id in recipients.items():
+            create(replace(ev, card_id=card_id), recipient, "parent_message")
         return
     parent_kinds = {"needs_info": "needs_info", "on_hold": "on_hold", "sent_or_booked": "sent_or_booked",
                     "rejected": "rejected"}
     if ev.to_status == "completed" and req.type == "complaint":
         create(ev, req.requester_id, "completed")
     elif ev.to_status in parent_kinds:
-        body = parent_label(ev.to_status, req.type)
+        kind = parent_kinds[ev.to_status]
+        body = parent_label(ev.to_status, req.type, req.assignee_id, req.parent_confirmed_at)
+        if ev.to_status == "sent_or_booked" and req.type == "consultation":
+            booking = store.confirmed_booking_of(req.id)
+            if booking:
+                kind = "consultation_booked"
+                body = consultation_booking_body(booking.period["start"], booking.period["end"])
         if ev.to_status == "on_hold":
             body += f" · 예정일 {card.hold_until}"
         if ev.action == "dismissed":
-            body = ev.detail.get("reason_text") or ev.detail.get("reason_code")
-        create(ev, req.requester_id, parent_kinds[ev.to_status], body)
+            body = rejection_body(ev.detail.get("reason_code"), ev.detail.get("reason_text"))
+        create(ev, req.requester_id, kind, body)
     if ev.action == "escalated":
         if req.risk_level in ("urgent", "uncertain"):
             kind = "urgent_complaint" if req.risk_level == "urgent" else "uncertain_complaint"

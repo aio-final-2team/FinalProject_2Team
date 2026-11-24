@@ -19,7 +19,8 @@ def detail(user, request_id):
         for e in store.events_of(req.id):
             if e.to_status is None:
                 continue
-            text = label(e.to_status, req.type)
+            text = label(e.to_status, req.type, req.assignee_id, req.parent_confirmed_at,
+                         cancelled_by_parent=e.detail.get("cancelled_by_parent", False))
             if not timeline or timeline[-1].label != text:
                 timeline.append(TimelineItem(label=text, at=e.created_at))
         consultation = None
@@ -33,7 +34,8 @@ def detail(user, request_id):
         care_state = care.view(req) if req.type in CARE_REQUEST_TYPES else None
         return RequestDetailOut(
             request=RequestView(id=req.id, type=req.type, title=req.title, status=req.status,
-                                status_label=label(req.status, req.type),
+                                status_label=label(req.status, req.type, req.assignee_id, req.parent_confirmed_at,
+                                                   cancelled_by_parent=bool(care_state and care_state["cancelled_by_parent"])),
                                 missing_fields=care_state["missing_fields"] if care_state else req.missing_fields,
                                 hold_until=store.hold_until_of(req.id), parent_confirmed_at=req.parent_confirmed_at,
                                 created_at=req.created_at, updated_at=req.updated_at),
@@ -41,7 +43,8 @@ def detail(user, request_id):
                                  created_at=m.created_at) for m in store.messages_of(req.id)],
             timeline=timeline, consultation=consultation,
             care=care_state,
-            rejection=store.rejection_of(req.id) if req.status == "rejected" else None,
+            rejection=(care_state["rejection"] if care_state else store.rejection_of(req.id))
+                      if req.status == "rejected" else None,
             sources=[source for card in store.approved_cards_of(req.id)
                      for source in documents.evidence(card, parent=user.role == "parent")]
                      if req.status in ("sent_or_booked", "completed") else [],
@@ -56,19 +59,26 @@ def message(user, request_id, body, *, background_tasks=None):
         msg = store.Message(store.state().next_int(), req.id, "user", user.id, body)
         store.state().messages.append(msg)
         if req.type in CARE_REQUEST_TYPES:
-            store.set_request_status(req, "received", action="returned", actor_type="user", actor_id=user.id,
+            store.set_request_status(req, "received", action="message_added", actor_type="user", actor_id=user.id,
                                      care_message=True, message_id=msg.id, version=care.view(req)["version"] + 1)
         else:
-            store.add_event(req, "created", actor_type="user", actor_id=user.id, message_id=msg.id)
+            store.add_event(req, "message_added", actor_type="user", actor_id=user.id, message_id=msg.id)
         req.updated_at = store.now()
-        if req.type == "complaint" and req.status == "sent_or_booked":
+        if req.type in ("inquiry", "complaint") and req.status == "sent_or_booked":
             req.parent_confirmed_at = None
-            card = next(c for c in reversed(store.cards_of(req.id)) if c.kind == "reply_draft")
-            card.status, card.closed_at = "pending", None
-            card.version += 1
+            card = max((c for c in store.cards_of(req.id) if c.kind == "reply_draft"),
+                       key=lambda c: (c.created_at, c.id), default=None)
+            if card is None:
+                req.assignee_id = store.homeroom_teacher(req.classroom_id)
+                card = store._new_card(req, "reply_draft", req.assignee_id)
+            else:
+                card.draft = {**card.draft, "previous_text": card.draft.get("text", ""), "text": ""}
+                card.check_result = None
+                card.status = "pending" if card.assignee_id else "unassigned"
+                card.closed_at = card.hold_until = None
+                card.updated_at = store.now()
+                card.version += 1
             store.set_request_status(req, "awaiting_review", action="returned", card=card, actor_type="user", actor_id=user.id)
-        elif req.status == "needs_info" and req.type not in (*CARE_REQUEST_TYPES, "consultation"):
-            store._run_mock_ai(req, None)
         return {"message": msg.__dict__ | {"sender_role": msg.sender_role}}
 
 
@@ -78,16 +88,16 @@ def choices(user, request_id, body):
         if req.type != "consultation" or req.status != "needs_info":
             raise ApiError(409, "INVALID_TRANSITION")
         card = next((c for c in reversed(store.cards_of(req.id)) if c.kind == "consult_slots"
-                     and c.status in ("pending", "in_review")), None)
+                     and c.status in ("pending", "in_review", "unassigned")), None)
         if card is None:
             raise ApiError(409, "INVALID_TRANSITION")
         round_no = max((s.round for s in store.slots_of_request(req.id) if s.card_id == card.id), default=0)
         slots = [s for s in store.slots_of_request(req.id) if s.card_id == card.id
-                 and s.round == round_no and s.status == "proposed"]
+                 and s.status in ("proposed", "chosen_by_parent")]
         if body.none_fit:
             for slot in slots:
                 slot.status = "discarded"
-            slots = store._propose_slots(card, card.assignee_id, round_no + 1)
+            slots = store._propose_slots(card, card.assignee_id, round_no + 1, preferred_times=body.preferred_times)
             store.add_event(req, "info_requested", card=card, actor_type="user", actor_id=user.id,
                             preferred_times=body.preferred_times)
         else:
@@ -107,6 +117,9 @@ def choices(user, request_id, body):
                        and slot.period["start"] < (getattr(other, "expected_end_at", None) or other.period["end"])
                        and other.period["start"] < slot.period["end"] for other in others):
                     raise ApiError(409, "SLOT_TAKEN")
+            for slot in slots:
+                if slot.status == "chosen_by_parent":
+                    slot.status, slot.chosen_at = "proposed", None
             for slot in chosen:
                 slot.status, slot.chosen_at = "chosen_by_parent", store.now()
             slots = chosen
@@ -146,7 +159,10 @@ def listing(user, status, page, size, sort):
             if r.type == "complaint" and r.status == "sent_or_booked" and r.parent_confirmed_at is None:
                 action = "답변을 확인해 주세요"
             return {"id": r.id, "type": r.type, "title": r.title, "status": r.status,
-                    "status_label": parent_label(r.status, r.type), "updated_at": r.updated_at,
+                    "status_label": parent_label(r.status, r.type, r.assignee_id, r.parent_confirmed_at,
+                                                 cancelled_by_parent=care.view(r)["cancelled_by_parent"]
+                                                 if r.type in CARE_REQUEST_TYPES and r.status == "rejected" else False),
+                    "updated_at": r.updated_at,
                     "next_action": action, "hold_until": store.hold_until_of(r.id)}
         return {"items": [item(r) for r in requests[(page-1)*size:page*size]], "total": len(requests), "page": page, "size": size}
 

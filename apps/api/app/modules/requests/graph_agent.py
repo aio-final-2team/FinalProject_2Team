@@ -1,12 +1,16 @@
 """LangGraph 요청 입구. REQUEST_AGENT=app.modules.requests.graph_agent:run_request 로 선택한다."""
 
 import logging
+import os
+from types import SimpleNamespace
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import text
 
 from agents.graphs.request import build_graph
 from app.core.db import database_url, transaction
+from app.core.schedule import KST
 from app.modules.requests.agent_stub import run_request as prepare_request
 
 log = logging.getLogger(__name__)
@@ -22,8 +26,11 @@ def _route_request(request_id):
         return connection.scalar(text("SELECT type FROM requests WHERE id=:id"), {"id": request_id})
 
 
-def _prepare_card(request_id, route):
-    prepare_request(UUID(request_id))  # 기존 상태·카드·알림의 트랜잭션 경계를 그대로 쓴다
+def _prepare_card(request_id, route, answer=None, classification=None):
+    if answer is None and classification is None:
+        prepare_request(UUID(request_id))
+    else:
+        prepare_request(UUID(request_id), prepared_answer=answer, prepared_fields=classification)
     kind = "consult_slots" if route == "consultation" else "reply_draft"
     with transaction() as connection:
         card_id = connection.scalar(text("""
@@ -39,6 +46,105 @@ def _prepare_card(request_id, route):
         if saved.rowcount != 1:
             raise ValueError("카드의 그래프 연결이 달라요")
     return str(card_id)
+
+
+def _request_context(request_id):
+    with transaction() as connection:
+        return connection.execute(text("""
+            SELECT r.type,r.body,r.org_id,r.classroom_id,r.requester_id,
+                   (SELECT s.user_id FROM classroom_staff s
+                    JOIN users u ON (u.id,u.org_id)=(s.user_id,s.org_id)
+                    WHERE s.org_id=r.org_id AND s.classroom_id=r.classroom_id
+                      AND u.role='teacher' AND u.is_active
+                      AND (s.valid_from IS NULL OR s.valid_from<=:today)
+                      AND (s.valid_to IS NULL OR s.valid_to>=:today)
+                    ORDER BY s.is_homeroom DESC,s.created_at,s.user_id LIMIT 1) AS teacher_id
+            FROM requests r WHERE r.id=:id
+        """), {"id": request_id, "today": datetime.now(KST).date()}).mappings().one()
+
+
+def _high_risk_request(request_id):
+    from app.modules.requests.supervisor import classify_request, validate_proposal
+
+    req = _request_context(request_id)
+    proposal = classify_request(req["type"], req["body"])
+    return validate_proposal(req["type"], req["body"], proposal)
+
+
+def _search_request(request_id):
+    from app.modules.documents.answer import graph_enabled
+    from app.modules.documents.search import search_documents
+    from app.modules.documents.public_sources import forecast_evidence, prefetch_public
+
+    req = _request_context(request_id)
+    if req["type"] == "inquiry" and not graph_enabled():
+        return [{"skip": True}]
+    if req["type"] not in ("inquiry", "complaint"):
+        return [{"skip": True}]
+    user = SimpleNamespace(id=req["requester_id"], org_id=req["org_id"], role="parent")
+    chunks = []
+    forecast = None
+    if req["type"] == "inquiry":
+        public = prefetch_public("inquiry", req["body"], "other", datetime.now(KST).date())
+        day, fetched = public.get("forecast", (None, None))
+        if fetched:
+            with transaction() as connection:
+                forecast = forecast_evidence(connection, req["org_id"], day, forecast=fetched)
+    types = ("notice", "policy") if req["type"] == "complaint" else ("notice", "schedule", "menu", "policy")
+    for doc_type in types:
+        for attempt in range(2):
+            try:
+                found = search_documents(user, str(req["org_id"]), doc_type, req["body"],
+                                         classroom_id=req["classroom_id"], top_k=8)["chunks"]
+                chunks.extend(([forecast] if forecast and doc_type == "schedule" else []) + found)
+                break
+            except Exception:
+                if attempt:
+                    raise
+    return sorted(chunks, key=lambda item: item["score"], reverse=True)[:8]
+
+
+def _load_request_memory(request_id):
+    req = _request_context(request_id)
+    if req["teacher_id"] is None:
+        return []
+    with transaction() as connection:
+        return [dict(row) for row in connection.execute(text("""
+            SELECT kind,content FROM memories WHERE org_id=:org AND owner_id=:owner
+              AND kind='tone' AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 8
+        """), {"org": req["org_id"], "owner": req["teacher_id"]}).mappings()]
+
+
+def _write_request(state):
+    from agents.graphs import answer as answer_graph
+    from app.modules.documents.answer import graph_enabled
+
+    req = _request_context(state["request_id"])
+    if req["type"] == "inquiry" and not graph_enabled():
+        return {"draft": {}, "passed": True}
+    chunks = state["parallel"]["chunks"]
+    prompt = answer_graph._prompt("documents.md", "## 입력", "## 알림장 초안 쓰기") + answer_graph.WRITE_FORMAT
+    payload = {"question": req["body"], "chunks": chunks, "memories": state["parallel"].get("memories", []),
+               "review_issues": state.get("issues", [])}
+    reply = answer_graph._ask_writer(answer_graph.OpenAIModel("DOCUMENT"), prompt, payload, [])
+    if reply is None:
+        return {"draft": {"text": "", "evidence": [], "no_evidence": True, "conflict": False}}
+    return {"draft": answer_graph._verify(reply, chunks, [])}
+
+
+def _check_request(state):
+    from agents.graphs import answer as answer_graph
+    from app.modules.documents.answer import graph_enabled
+
+    req = _request_context(state["request_id"])
+    if req["type"] == "inquiry" and not graph_enabled():
+        return {"passed": True, "issues": []}
+    issues = answer_graph._review(answer_graph.OpenAIModel("CHECKER"), req["body"], state["draft"],
+                                  state["parallel"]["chunks"], state.get("attempt", 0) + 1, [])
+    if issues is None:
+        return {"passed": False, "issues": [{"field": "출처", "problem": "검사하지 못했어요."}],
+                "attempt": 2}
+    return {"passed": not issues, "issues": issues}
 
 
 def _card_status(card_id):
@@ -57,7 +163,7 @@ def _invoke(request_id, payload, expected_card_id=None):
     from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
     from psycopg.rows import dict_row
 
-    # 체크포인트는 UUID·카드 ID·분기만 저장하고, 임의 Python 객체는 읽지 않는다.
+    # 체크포인트에는 ID·분기·시도 횟수·인계 사유만 남긴다. 임의 Python 객체도 읽지 않는다.
     serializer = JsonPlusSerializer(allowed_msgpack_modules=[])
     request_id = str(UUID(str(request_id)))
     key = f"request-graph:{request_id}"
@@ -68,7 +174,14 @@ def _invoke(request_id, payload, expected_card_id=None):
         # 그래프가 도는 동안 SQLAlchemy 풀 연결은 노드가 쓰는 짧은 순간에만 빌린다.
         checkpoint_connection.execute("SELECT pg_advisory_lock(hashtextextended(%s,0))", (key,))
         try:
-            graph = build_graph(checkpointer, _route_request, _prepare_card, _card_status)
+            graph_builder = build_graph
+            if os.getenv("REQUEST_COLLAB_GRAPH") == "1":
+                from agents.graphs.request_collaboration import build_graph as graph_builder
+                graph = graph_builder(checkpointer, _route_request, _prepare_card, _card_status,
+                                      _search_request, _load_request_memory, _write_request, _check_request,
+                                      _high_risk_request)
+            else:
+                graph = graph_builder(checkpointer, _route_request, _prepare_card, _card_status)
             config = {"configurable": {"thread_id": thread_id(request_id)},
                       "tags": ["request-agent"]}
             if expected_card_id is not None:

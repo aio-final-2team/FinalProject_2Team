@@ -1,6 +1,6 @@
 """상담 후보는 30분씩 계산해요. 후보·학부모 체크는 확정 예약이 아니에요."""
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from math import ceil
 import re
 
@@ -10,7 +10,72 @@ from app.core.config import settings
 from app.core.schedule import KST, working_day
 
 
-def find_consult_slots(connection, teacher_id, date, *, org_id, request_id=None, rules=(), now=None, not_before=None):
+def preference_key(preferred_times, now):
+    """명시한 날짜·요일·시각/오전·오후를 겹침 → 거리 → 시각 순으로 비교해요.
+
+    해석하지 못한 자유 문장은 이력에 보존하고 기존의 빠른 시간 순서를 써요.
+    """
+    value = preferred_times or ""
+    days = None
+    explicit = re.search(r"(\d{4})-(\d{2})-(\d{2})", value)
+    if explicit:
+        try:
+            days = [date(*map(int, explicit.groups()))]
+        except ValueError:
+            pass
+    elif "다음 주" in value or "다음주" in value:
+        first = now.date() + timedelta(days=7-now.weekday())
+        days = [first + timedelta(days=n) for n in range(7)]
+    else:
+        for word, offset in (("모레", 2), ("내일", 1), ("오늘", 0)):
+            if word in value:
+                days = [now.date() + timedelta(days=offset)]
+                break
+    weekdays = [n for n, word in enumerate("월화수목금토일") if word+"요일" in value]
+    if weekdays:
+        days = ([day for day in days if day.weekday() in weekdays] if days else
+                [now.date()+timedelta(days=(n-now.weekday()) % 7 or 7) for n in weekdays])
+    matches = list(re.finditer(r"(?:(오전|오후)\s*)?(\d{1,2})(?::([0-5]\d)|시(?:\s*([0-5]?\d)분)?)", value))
+    minutes = []
+    meridiem = None
+    for match in matches:
+        meridiem = match[1] or meridiem
+        hour, minute = int(match[2]), int(match[3] or match[4] or 0)
+        if meridiem and 1 <= hour <= 12:
+            hour = hour % 12 + (12 if meridiem == "오후" else 0)
+        if hour < 24:
+            minutes.append(hour*60+minute)
+    if len(minutes) >= 2 and re.search(r"[~∼–-]|부터", value[matches[0].end():matches[1].start()]):
+        spans = [(minutes[0], minutes[1])] if minutes[0] < minutes[1] else []
+    elif len(minutes) == 1 and ("이후" in value or "부터" in value):
+        spans = [(minutes[0], 24*60)]
+    elif len(minutes) == 1 and ("이전" in value or "까지" in value):
+        spans = [(0, minutes[0])]
+    elif minutes:
+        spans = [(minute, minute+30) for minute in minutes]
+    elif "오후" in value:
+        spans = [(12*60, 24*60)]
+    elif "오전" in value:
+        spans = [(0, 12*60)]
+    else:
+        spans = [(0, 24*60)]
+
+    def key(candidate):
+        start, end = candidate["start"].astimezone(KST), candidate["end"].astimezone(KST)
+        distances = []
+        for day in days or [start.date()]:
+            for lower, upper in spans:
+                midnight = datetime.combine(day, time(), KST)
+                lo, hi = midnight+timedelta(minutes=lower), midnight+timedelta(minutes=upper)
+                overlaps = start < hi and lo < end
+                distances.append((not overlaps, max(lo-end, start-hi, timedelta(0)), start))
+        return min(distances) if distances else (False, timedelta(0), start)
+
+    return key
+
+
+def find_consult_slots(connection, teacher_id, date, *, org_id, request_id=None, rules=(), now=None, not_before=None,
+                       preferred_times=None):
     """그날의 빈 시간 최대 세 개. 같은 시작 시각에는 상담실 하나만 골라요."""
     now = now or datetime.now(KST)
     if not working_day(date):
@@ -32,7 +97,7 @@ def find_consult_slots(connection, teacher_id, date, *, org_id, request_id=None,
                 end = min(end, bound)
     opening_at = datetime.combine(date, opening, KST)
     start = opening_at + ceil((start-opening_at)/timedelta(minutes=30))*timedelta(minutes=30)
-    return [dict(row) for row in connection.execute(text("""
+    candidates = [dict(row) for row in connection.execute(text("""
         SELECT DISTINCT ON (t.start) t.start, t.start + interval '30 minutes' AS end,
                r.id AS room_id, r.name AS room
         FROM generate_series(CAST(:start AS timestamptz), CAST(:end AS timestamptz)-interval '30 minutes',
@@ -59,12 +124,14 @@ def find_consult_slots(connection, teacher_id, date, *, org_id, request_id=None,
           AND NOT EXISTS (
             SELECT 1 FROM consultation_slots s JOIN cards c ON c.id=s.card_id AND c.org_id=s.org_id
             WHERE c.request_id=:request AND s.period && tstzrange(t.start,t.start+interval '30 minutes','[)'))
-        ORDER BY t.start,r.id LIMIT 3
+        ORDER BY t.start,r.id LIMIT :limit
     """), {"start": start, "end": end, "org": org_id, "teacher": teacher_id,
-           "request": request_id, "now": now, "not_before": not_before}).mappings()]
+           "request": request_id, "now": now, "not_before": not_before,
+           "limit": None if preferred_times else 3}).mappings()]
+    return sorted(candidates, key=preference_key(preferred_times, now))[:3]
 
 
-def propose_slots(connection, req, card, teacher, round_no=None):
+def propose_slots(connection, req, card, teacher, round_no=None, *, preferred_times=None):
     """날짜 칸이 없는 HTTP 대역은 내일부터 14일 안에서 빠른 후보 세 개를 모아요."""
     if teacher is None:
         return []
@@ -76,15 +143,22 @@ def propose_slots(connection, req, card, teacher, round_no=None):
           AND reason_code='slot_unavailable'
         ORDER BY created_at,id
     """), {"org": req["org_id"], "teacher": teacher}).all()
+    if preferred_times is None:
+        preferred_times = connection.scalar(text("""
+            SELECT detail->>'preferred_times' FROM events WHERE request_id=:id AND detail ? 'preferred_times'
+            ORDER BY id DESC LIMIT 1
+        """), {"id": req["id"]})
+    now = datetime.now(KST)
     candidates = []
     for offset in range(1, 15):
-        day = datetime.now(KST).date() + timedelta(days=offset)
+        day = now.date() + timedelta(days=offset)
         candidates.extend(find_consult_slots(connection, teacher, day, org_id=req["org_id"],
-                                             request_id=req["id"], rules=rules))
-        if len(candidates) >= 3:
+                                             request_id=req["id"], rules=rules, now=now,
+                                             preferred_times=preferred_times))
+        if len(candidates) >= 3 and not preferred_times:
             break
     saved = []
-    for rank, candidate in enumerate(candidates[:3], 1):
+    for rank, candidate in enumerate(sorted(candidates, key=preference_key(preferred_times, now))[:3], 1):
         saved.append(dict(connection.execute(text("""
             INSERT INTO consultation_slots (card_id,org_id,teacher_id,room_id,period,round,rank)
             VALUES (:card,:org,:teacher,:room,tstzrange(:start,:end,'[)'),:round,:rank)

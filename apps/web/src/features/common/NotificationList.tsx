@@ -1,9 +1,10 @@
-import { Link, useNavigate } from "react-router";
+import { BackLink } from "@/components/BackLink";
+import { useNavigate } from "react-router";
 import { QueryState, StaleBanner } from "@/components/QueryState";
-import { useCards } from "@/api/cards";
+import { useAllCards, useCards } from "@/api/cards";
 import { useNotifications, useReadNotification, type Notification } from "@/api/notifications";
 import { SymbolMark } from "@/components/Brand";
-import { Icon } from "@/components/Icon";
+import { TYPE_LABEL } from "@/domain/status";
 
 /** 교직원 알림 목록 (API 11). 카드·알림장 알림을 누르면 해당 화면으로 간다 */
 export function TeacherNotifications({ role = "teacher" }: { role?: "teacher" | "director" }) {
@@ -11,6 +12,9 @@ export function TeacherNotifications({ role = "teacher" }: { role?: "teacher" | 
   const list = useNotifications();
   const read = useReadNotification();
   const cards = useCards("review");
+  const allCards = useAllCards();
+  /* 알림에는 내용이 없어(title만) 요청 ID로 카드를 찾아 무슨 일인지 한 줄로 보여 준다 */
+  const cardOf = (n: Notification) => (n.request_id ? allCards.find((c) => c.requestId === n.request_id) : undefined);
   const items = list.data?.items ?? [];
   const back = role === "teacher" ? "/teacher/home" : "/director/inbox";
 
@@ -27,10 +31,7 @@ export function TeacherNotifications({ role = "teacher" }: { role?: "teacher" | 
 
   return (
     <div className="mx-auto max-w-[680px] px-4 pb-10">
-      <Link to={back} className="inline-flex min-h-11 items-center gap-0.5 pt-2 text-body font-medium text-accent">
-        <Icon name="chevL" className="size-4" />
-        {role === "teacher" ? "홈" : "받은함"}
-      </Link>
+      <BackLink to={back} label={role === "teacher" ? "홈" : "받은함"} className="mt-2" />
       <h1 className="text-large-title font-bold tracking-[-0.025em]">알림</h1>
       <StaleBanner queries={[list]} />
       <p className="mb-4 mt-0.5 min-h-4 text-footnote font-medium text-ink2">{list.data ? `${items.filter((n) => !n.read_at).length}개 안 읽음` : ""}</p>
@@ -50,7 +51,11 @@ export function TeacherNotifications({ role = "teacher" }: { role?: "teacher" | 
                 <span aria-hidden className={`size-2 shrink-0 rounded-full ${n.read_at ? "bg-transparent" : "bg-accent"}`} />
                 <span className="min-w-0 flex-1">
                   <b className={`block text-callout ${n.read_at ? "font-medium text-ink2" : "font-semibold"}`}>{n.title}</b>
-                  {n.body && <span className="block truncate text-footnote text-ink2">{n.body}</span>}
+                  {(() => {
+                    const c = cardOf(n);
+                    const line = n.body ?? (c ? `${TYPE_LABEL[c.type]} · ${c.childName ? `${c.childName} · ` : ""}${c.title}` : null);
+                    return line && <span className="block truncate text-footnote text-ink2">{line}</span>;
+                  })()}
                 </span>
                 <time className="shrink-0 text-caption text-ink2 tabular-nums">{new Date(n.deliver_after).toLocaleDateString("ko-KR", { month: "numeric", day: "numeric" })}</time>
               </button>

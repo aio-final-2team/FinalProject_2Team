@@ -6,6 +6,9 @@ import { NoteDetail } from "@/features/notes/NoteDetail";
 import { NotesPage } from "@/features/notes/NotesPage";
 import { TeacherHome } from "@/features/teacher/TeacherHome";
 import { SoonPage } from "@/features/teacher/SoonPage";
+import { CarePage } from "@/features/care/CarePage";
+import { ClassPage } from "@/features/teacher/ClassPage";
+import { FeedScreen } from "@/features/feed/FeedScreen";
 import { TeacherNotifications } from "@/features/common/NotificationList";
 import { RecordsPage } from "@/features/records/RecordsPage";
 import { ParentHome } from "@/features/parent/ParentHome";
@@ -36,6 +39,9 @@ export const router = createBrowserRouter([
       { path: "notes", element: <NotesPage /> },
       { path: "notes/:noteId", element: <NoteDetail /> },
       { path: "soon/:key", element: <SoonPage /> },
+      { path: "class", element: <ClassPage /> },
+      { path: "care", element: <CarePage /> },
+      { path: "feed", element: <FeedScreen role="teacher" /> },
       /* 문의·민원 받은함은 11/27 범위 밖(알림장과 따로). 주소만 남겨 둔다 */
       { path: "inbox", element: <InboxPage role="teacher" /> },
       { path: "inbox/:cardId", element: <InboxPage role="teacher" /> },
@@ -51,6 +57,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <Navigate to="inbox" replace /> },
       { path: "notifications", element: <TeacherNotifications role="director" /> },
+      { path: "feed", element: <FeedScreen role="director" /> },
       { path: "inbox", element: <InboxPage role="director" /> },
       { path: "inbox/:cardId", element: <InboxPage role="director" /> },
     ],
@@ -66,6 +73,7 @@ export const router = createBrowserRouter([
       { index: true, element: <Navigate to="home" replace /> },
       { path: "home", element: <ParentHome /> },
       { path: "notifications", element: <NotificationsPage /> },
+      { path: "feed", element: <FeedScreen role="parent" /> },
       { path: "requests", element: <RequestsPage /> },
       { path: "requests/new", element: <NewRequestPage /> },
       { path: "requests/:requestId", element: <RequestDetailPage /> },

@@ -139,7 +139,7 @@ def test_ai_timeout_hands_off_empty_card_and_drops_late_draft(db_client, seeded_
     request_id = submit(db_client)  # 실행기는 0.3초 뒤 기다리기를 멈추고 넘긴다. 모델은 아직 도는 중
     assert entered.wait(5)  # 늦은 실행은 첫 확인을 지나 모델까지 갔다. 버려지는 곳은 저장 직전 재확인이다
     [card] = cards_of(seeded_db, request_id)
-    assert card["kind"] == "reply_draft" and card["assignee_id"] is None
+    assert card["kind"] == "reply_draft" and card["assignee_id"] == seed.TEACHER and card["status"] == "pending"
     assert not card["draft"].get("text") and card["check_result"] is None
     assert handoff_reasons(seeded_db, request_id) == ["ai_timeout"]
 
@@ -177,11 +177,7 @@ def test_late_draft_keeps_teacher_decision(db_client, seeded_db, monkeypatch, de
         [card] = cards_of(seeded_db, request_id)
         assert handoff_reasons(seeded_db, request_id) == ["ai_timeout"]
         assert not card["draft"].get("text")
-        director = {"Authorization": "Bearer " + issue_token(users.get_user(seed.DIRECTOR))}
-        assigned = db_client.post(f"/api/v1/cards/{card['id']}/reassign", headers=director,
-                                  json={"assignee_id": str(seed.TEACHER), "reason": "[TEST] 담임 확인"})
-        assert assigned.status_code == 200, assigned.text
-        [card] = cards_of(seeded_db, request_id)
+        assert card["assignee_id"] == seed.TEACHER and card["status"] == "pending"
         teacher = {"Authorization": "Bearer " + issue_token(users.get_user(seed.TEACHER))}
         body = {"version": card["version"], "decision": decision}
         if decision == "edit_approve":

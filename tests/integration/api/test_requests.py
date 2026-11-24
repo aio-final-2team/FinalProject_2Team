@@ -11,6 +11,7 @@ from app.core.db import transaction
 from app.mock import request_actions, store
 
 from app.mock import seed
+from tests.integration.api.helpers import decision, err
 
 
 
@@ -20,11 +21,16 @@ def request_backend(request, monkeypatch):
         request.getfixturevalue("seeded_db")
         from app.core import users
         from app.modules.requests import requests
+        from app.modules.cards import cards, card_views
+        from app.modules.notifications import notifications
         modules = users, requests
     else:
+        from app.mock import cards, card_views, notifications
         modules = store, request_actions
     monkeypatch.setattr(backend, "users", modules[0])
     monkeypatch.setattr(backend, "request_actions", modules[1])
+    for name, module in dict(cards=cards, card_views=card_views, notifications=notifications).items():
+        monkeypatch.setattr(backend, name, module)
     return request.param
 
 
@@ -81,6 +87,71 @@ def test_complaint_goes_to_teacher_review_with_topic(client, parent, teacher):
     assert detail["request"]["status_label"] == "선생님 확인 중"
     assert "risk_level" not in detail["request"]            # 학부모에게 위험 등급을 주지 않음
     assert client.get(f"/api/v1/requests/{rid}", headers=teacher).json()["request"]["status_label"] == "확인 필요"
+
+
+@pytest.mark.parametrize("kind,status,assignee,expected", [
+    ("inquiry", "received", None, "접수됨"),
+    ("inquiry", "classified", None, "접수됨"),
+    ("inquiry", "classified", seed.TEACHER, "접수됨"),
+    ("inquiry", "assigned", seed.TEACHER, "선생님께 전달됨"),
+    ("inquiry", "assigned", None, "담당 선생님 배정 중"),
+    ("complaint", "awaiting_review", None, "담당 선생님 배정 중"),
+    ("complaint", "awaiting_review", seed.TEACHER, "선생님 확인 중"),
+    ("consultation", "on_hold", None, "담당 선생님 배정 중"),
+    ("consultation", "on_hold", seed.TEACHER, "확인이 늦어지고 있어요"),
+    ("consultation", "needs_info", None, "시간을 골라 주세요"),
+    ("consultation", "sent_or_booked", seed.TEACHER, "예약 확정"),
+    ("medication", "received", None, "선생님 확인 대기"),
+    ("pickup", "assigned", seed.TEACHER, "선생님 확인 완료"),
+    ("medication", "completed", seed.TEACHER, "투약 완료"),
+    ("pickup", "completed", seed.TEACHER, "인계 완료"),
+])
+def test_parent_labels_follow_assignment_and_keep_type_branches(kind, status, assignee, expected):
+    from app.api.labels import parent_label
+
+    assert parent_label(status, kind, assignee) == expected
+
+
+def test_unassigned_request_label_changes_after_director_reassign(client, parent, director, request_backend, monkeypatch):
+    if request_backend == "mock":
+        from app.mock import cards
+        store.state().classroom_staff[:] = [s for s in store.state().classroom_staff if s.classroom_id != seed.CLASS_STAR]
+    else:
+        from app.modules.cards import cards
+        with transaction() as connection:
+            connection.execute(text("DELETE FROM classroom_staff WHERE classroom_id=:id"), {"id": seed.CLASS_STAR})
+    monkeypatch.setattr(backend, "cards", cards)
+    rid = _create(client, parent, type="inquiry", body="[TEST] 버스 문의").json()["request"]["id"]
+    card = reply_card(request_backend, rid)
+    assert card["status"] == "unassigned" and card["assignee_id"] is None
+
+    def check_label(expected):
+        detail = client.get(f"/api/v1/requests/{rid}", headers=parent).json()
+        assert detail["request"]["status_label"] == expected
+        assert detail["timeline"][-1]["label"] == expected
+        listing = client.get("/api/v1/requests", headers=parent).json()["items"]
+        assert next(r for r in listing if r["id"] == rid)["status_label"] == expected
+
+    check_label("담당 선생님 배정 중")
+    response = client.post(f"/api/v1/cards/{card['id']}/reassign", headers=director,
+                           json={"assignee_id": str(seed.TEACHER), "reason": "[TEST] 담당 배정"})
+    assert response.status_code == 200, response.text
+    check_label("선생님 확인 중")
+
+
+def test_received_request_label_before_agent_runs(client, parent, request_backend, monkeypatch):
+    if request_backend == "mock":
+        monkeypatch.setattr(store, "_run_mock_ai", lambda *args: None)
+    else:
+        from app.modules.requests import requests
+        monkeypatch.setattr(requests, "dispatch", lambda *args: None)
+    created = _create(client, parent, type="inquiry")
+    assert created.status_code == 202 and created.json()["request"]["status"] == "received"
+    rid = created.json()["request"]["id"]
+    detail = client.get(f"/api/v1/requests/{rid}", headers=parent).json()
+    assert detail["request"]["status_label"] == detail["timeline"][-1]["label"] == "접수됨"
+    listing = client.get("/api/v1/requests", headers=parent).json()["items"]
+    assert next(r for r in listing if r["id"] == rid)["status_label"] == "접수됨"
 
 
 def test_consultation_asks_parent_to_choose_time(client, parent):
@@ -206,7 +277,7 @@ def test_additional_message_is_stored_with_trace_without_leaking_draft(client, p
     assert set(data["timeline"][-1]) == {"label", "at"}
     assert data["timeline"][-1]["label"] == "선생님 확인 중"
     assert "모의 초안" not in json.dumps(data, ensure_ascii=False)
-    events = [e for e in audit(request_backend, rid, "created") if e["detail"].get("message_id") == msg["id"]]
+    events = [e for e in audit(request_backend, rid, "message_added") if e["detail"].get("message_id") == msg["id"]]
     assert len(events) == 1 and events[0]["detail"]["trace_id"] == "message-trace"
 
 
@@ -244,6 +315,8 @@ def test_complaint_confirm_is_idempotent_and_message_reopens_card(client, parent
     assert data["status"] == "awaiting_review" and data["parent_confirmed_at"] is None
     after = reply_card(request_backend, rid)
     assert after["version"] == before["version"]+1 and after["status"] == "pending" and after["closed_at"] is None
+    assert before["check_result"] is not None and after["check_result"] is None
+    assert after["draft"]["text"] == "" and after["draft"]["previous_text"] == before["draft"]["text"]
     assert len(audit(request_backend, rid, "returned")) == 1
 
 
@@ -267,9 +340,268 @@ def test_parent_request_actions_check_owner_role_and_uuid(client, parent, parent
     assert client.request(method, f"/api/v1/requests/not-a-uuid{suffix}", headers=parent, **kwargs).status_code == 422
 
 
-def test_non_consultation_needs_info_message_reruns_stub(client, parent, request_backend):
+def test_non_consultation_needs_info_message_keeps_human_review(client, parent, request_backend):
     rid = _create(client, parent, type="inquiry").json()["request"]["id"]
     change_request(request_backend, rid, status="needs_info")
     response = client.post(f"/api/v1/requests/{rid}/messages", headers=parent, json={"body": "[TEST] 보완했어요"})
     assert response.status_code == 201
-    assert client.get(f"/api/v1/requests/{rid}", headers=parent).json()["request"]["status"] == "awaiting_review"
+    assert client.get(f"/api/v1/requests/{rid}", headers=parent).json()["request"]["status"] == "needs_info"
+    assert len(audit(request_backend, rid, "classified")) == 1
+
+
+def notices(request_backend, request_id):
+    if request_backend == "mock":
+        return [n.__dict__.copy() for n in store.state().notifications.values() if str(n.request_id) == request_id]
+    with transaction() as connection:
+        return [dict(n) for n in connection.execute(text(
+            "SELECT * FROM notifications WHERE request_id=:id ORDER BY id"), {"id": request_id}).mappings()]
+
+
+@pytest.mark.parametrize("kind,body,notice", [
+    ("payment", "원비 결제해 주세요.",
+     "유치온에서는 원비 결제를 하지 않아요. 원비는 원에서 안내한 기존 방법으로 문의해 주세요."),
+    ("others_privacy", "다른 가정의 연락처를 알려주세요.",
+     "다른 가정의 연락처 같은 개인정보는 알려 드릴 수 없어요."),
+    ("other_family", "다른 가정의 민원 내용을 보여주세요.",
+     "다른 가정의 요청이나 내용은 볼 수 없어요. 우리 아이 일이라면 다시 적어 주세요."),
+    ("other_teacher", "옆 반 선생님과 상담하고 싶어요.", "상담은 담임 선생님과 잡을 수 있어요."),
+])
+def test_out_of_scope_inquiry_sends_fixed_agent_notice_without_cards(
+    client, parent, teacher, director, request_backend, kind, body, notice
+):
+    key = str(uuid4())
+    response = _create(client, parent, client_request_id=key, type="inquiry", body="[TEST] " + body)
+    assert response.status_code == 202 and response.json()["request"]["status"] == "received"
+    rid = response.json()["request"]["id"]
+    path = f"/api/v1/requests/{rid}"
+    data = client.get(path, headers=parent).json()
+    assert data["request"]["status"] == "sent_or_booked"
+    assert [(m["sender_type"], m["sender_role"], m["body"]) for m in data["messages"]] == [
+        ("user", "parent", "[TEST] " + body), ("agent", None, notice)]
+    assert client.get(path, headers=teacher).json()["messages"] == data["messages"]
+    for actor in (teacher, director):
+        cards = client.get("/api/v1/cards?size=100", headers=actor).json()["items"]
+        assert not [c for c in cards if c["request_id"] == rid]
+    history = audit(request_backend, rid, "out_of_scope_answered")
+    assert len(history) == 1 and history[0]["detail"]["kind"] == kind
+    assert history[0]["actor_type"] == "agent" and history[0]["to_status"] == "sent_or_booked"
+    notifications = notices(request_backend, rid)
+    assert [(n["kind"], n["recipient_id"], n["card_id"]) for n in notifications] == [
+        ("sent_or_booked", seed.PARENT, None)]
+    again = _create(client, parent, client_request_id=key, type="inquiry", body="[TEST] " + body)
+    assert again.status_code == 200 and again.json()["request"]["status"] == "sent_or_booked"
+    assert client.get(path, headers=parent).json() == data
+    assert notices(request_backend, rid) == notifications
+
+
+@pytest.mark.parametrize("body,topic", [
+    ("다른 아이랑 다퉜다는데 무슨 일인지 알려주세요.", "peer_conflict"),
+    ("다른 아이와 친구 관계 내용을 알려주세요.", "peer_conflict"),
+    ("다른 아이 안전 수칙 내용을 알려주세요.", "safety"),
+    ("다른 아이 감기 위생 내용을 알려주세요.", "health_hygiene"),
+    ("우리 아이 반을 옮기려고 다른 반 내용을 알려주세요.", "other"),
+    ("우리 애 반을 옮기려고 다른 반 내용을 알려주세요.", "other"),
+    ("저희 아이 반을 옮기려고 다른 반 내용을 알려주세요.", "other"),
+])
+def test_out_of_scope_child_topics_and_own_child_still_go_to_teacher(
+    client, parent, request_backend, body, topic
+):
+    rid = _create(client, parent, type="inquiry", body="[TEST] " + body).json()["request"]["id"]
+    data = client.get(f"/api/v1/requests/{rid}", headers=parent).json()
+    assert data["request"]["status"] == "awaiting_review" and len(data["messages"]) == 1
+    card = reply_card(request_backend, rid)
+    assert card["assignee_id"] == seed.TEACHER and card["status"] == "pending"
+    assert audit(request_backend, rid, "out_of_scope_answered") == []
+    if request_backend == "mock":
+        req = store.get_request(UUID(rid)).__dict__
+    else:
+        with transaction() as connection:
+            req = connection.execute(text("SELECT * FROM requests WHERE id=:id"), {"id": rid}).mappings().one()
+    assert (req["topic_key"], req["risk_level"]) == (topic, "normal")
+    assert [(n["kind"], n["recipient_id"]) for n in notices(request_backend, rid)] == [("new_card", seed.TEACHER)]
+
+
+@pytest.mark.parametrize("body,risk,notice_kind", [
+    ("원비 결제해 주세요. 아이가 다쳤어요.", "urgent", "urgent_complaint"),
+    ("원비 결제해 주세요. 판단 필요해요.", "uncertain", "uncertain_complaint"),
+])
+def test_out_of_scope_inquiry_prioritizes_risk(client, parent, teacher, director, request_backend, body, risk, notice_kind):
+    rid = _create(client, parent, type="inquiry", body="[TEST] " + body).json()["request"]["id"]
+    data = client.get(f"/api/v1/requests/{rid}", headers=parent).json()
+    assert data["request"]["status"] == "escalated" and len(data["messages"]) == 1
+    card = reply_card(request_backend, rid)
+    assert not card["draft"].get("text") and card["check_result"] is None
+    reports = client.get("/api/v1/cards?size=100", headers=director).json()["items"]
+    assert any(c["request_id"] == rid and c["kind"] == "director_report" for c in reports)
+    detail = client.get(f"/api/v1/cards/{card['id']}", headers=teacher).json()
+    assert detail["request"]["risk_level"] == risk
+    assert audit(request_backend, rid, "out_of_scope_answered") == []
+    assert {(n["kind"], n["recipient_id"]) for n in notices(request_backend, rid)} == {
+        (notice_kind, seed.TEACHER), (notice_kind, seed.DIRECTOR)}
+
+
+def test_out_of_scope_consultation_other_teacher_keeps_homeroom_slot_flow(client, parent, teacher, request_backend):
+    rid = _create(client, parent, type="consultation", body="[TEST] 옆 반 선생님과 상담하고 싶어요.").json()["request"]["id"]
+    path = f"/api/v1/requests/{rid}"
+    data = client.get(path, headers=parent).json()
+    assert data["request"]["status"] == "needs_info" and len(data["consultation"]["slots"]) == 3
+    assert [(m["sender_type"], m["sender_role"]) for m in data["messages"]] == [("user", "parent"), ("agent", None)]
+    assert data["messages"][-1]["body"] == "상담은 담임 선생님과 잡을 수 있어요."
+    cards = client.get("/api/v1/cards?size=100", headers=teacher).json()["items"]
+    cards = [c for c in cards if c["request_id"] == rid]
+    assert len(cards) == 1 and cards[0]["kind"] == "consult_slots" and cards[0]["assignee"]["id"] == str(seed.TEACHER)
+    slot = data["consultation"]["slots"][0]["id"]
+    assert client.post(path + "/slot-choices", headers=parent, json={"slot_ids": [slot]}).status_code == 200
+    booked = client.post(f"/api/v1/cards/{cards[0]['id']}/bookings", headers=teacher, json={"version": 1, "slot_id": slot})
+    assert booked.status_code == 200, booked.text
+    assert len(client.get(path, headers=parent).json()["messages"]) == 2
+    assert [n["kind"] for n in notices(request_backend, rid)] == ["needs_info", "new_card", "consultation_booked"]
+
+
+@pytest.mark.parametrize("kind", ["complaint", "consultation"])
+def test_out_of_scope_payment_keeps_complaint_and_consultation_flow(client, parent, teacher, request_backend, kind):
+    rid = _create(client, parent, type=kind, body="[TEST] 원비 결제해 주세요.").json()["request"]["id"]
+    data = client.get(f"/api/v1/requests/{rid}", headers=parent).json()
+    assert data["request"]["status"] == ("awaiting_review" if kind == "complaint" else "needs_info")
+    assert len(data["messages"]) == 1 and audit(request_backend, rid, "out_of_scope_answered") == []
+    cards = client.get("/api/v1/cards?size=100", headers=teacher).json()["items"]
+    assert [c["kind"] for c in cards if c["request_id"] == rid] == ["reply_draft" if kind == "complaint" else "consult_slots"]
+
+
+@pytest.mark.parametrize("kind,status,notified", [
+    ("inquiry", "received", False), ("inquiry", "classified", False), ("inquiry", "assigned", False),
+    ("inquiry", "awaiting_review", True), ("inquiry", "on_hold", True), ("inquiry", "needs_info", True),
+    ("consultation", "needs_info", True), ("consultation", "awaiting_review", True),
+    ("consultation", "on_hold", True), ("consultation", "sent_or_booked", True),
+])
+def test_parent_message_status_routes_without_rerunning_ai(client, parent, teacher, request_backend, kind, status, notified):
+    rid = _create(client, parent, type=kind, body="[TEST] 준비물 문의").json()["request"]["id"]
+    change_request(request_backend, rid, status=status)
+    cards_before = client.get("/api/v1/cards?size=100", headers=teacher).json()["total"]
+    before = notices(request_backend, rid)
+    response = client.post(f"/api/v1/requests/{rid}/messages", headers=parent, json={"body": "[TEST] 자세한 설명"})
+    assert response.status_code == 201, response.text
+    new = [n for n in notices(request_backend, rid) if n["id"] not in {n["id"] for n in before}]
+    assert [(n["kind"], n["recipient_id"], n["title"]) for n in new] == (
+        [("parent_message", seed.TEACHER, "학부모가 글을 더 남겼어요")] if notified else [])
+    assert client.get(f"/api/v1/requests/{rid}", headers=parent).json()["request"]["status"] == status
+    assert client.get("/api/v1/cards?size=100", headers=teacher).json()["total"] == cards_before
+    assert len(audit(request_backend, rid, "message_added")) == 1
+    assert len(audit(request_backend, rid, "classified")) == 1
+
+
+def test_escalated_parent_message_reaches_both_open_card_owners_once(client, parent, teacher, director, request_backend):
+    rid = _create(client, parent, body="[TEST] 아이가 다쳤어요").json()["request"]["id"]
+    for number in range(2):
+        response = client.post(f"/api/v1/requests/{rid}/messages", headers=parent,
+                               json={"body": f"[TEST] 추가 상황 {number}"})
+        assert response.status_code == 201, response.text
+    new = [n for n in notices(request_backend, rid) if n["kind"] == "parent_message"]
+    assert sorted(str(n["recipient_id"]) for n in new) == sorted([str(seed.TEACHER), str(seed.DIRECTOR)] * 2)
+    assert len({n["dedupe_key"] for n in new}) == 4
+    for actor in (teacher, director):
+        card = next(c for c in client.get("/api/v1/cards?assignee=me&size=100", headers=actor).json()["items"]
+                    if c["request_id"] == rid)
+        conversation = client.get(f"/api/v1/cards/{card['id']}", headers=actor).json()["messages"]
+        assert len(conversation) == 3 and conversation[-1]["body"] == "[TEST] 추가 상황 1"
+    assert client.get(f"/api/v1/requests/{rid}", headers=parent).json()["request"]["status"] == "escalated"
+
+
+def test_booked_consultation_followup_preserves_booking_and_closed_card(client, parent, teacher, request_backend):
+    rid = _create(client, parent, type="consultation", body="[TEST] 상담을 부탁드려요").json()["request"]["id"]
+    path = f"/api/v1/requests/{rid}"
+    slot = client.get(path, headers=parent).json()["consultation"]["slots"][0]["id"]
+    assert client.post(path + "/slot-choices", headers=parent, json={"slot_ids": [slot]}).status_code == 200
+    card = next(c for c in client.get("/api/v1/cards?size=100", headers=teacher).json()["items"]
+                if c["request_id"] == rid and c["kind"] == "consult_slots")
+    booked = client.post(f"/api/v1/cards/{card['id']}/bookings", headers=teacher, json={"version": 1, "slot_id": slot})
+    assert booked.status_code == 200, booked.text
+    before = client.get(f"/api/v1/cards/{card['id']}", headers=teacher).json()["card"]
+    count = len(notices(request_backend, rid))
+    response = client.post(path + "/messages", headers=parent, json={"body": "[TEST] 상담에 참고해 주세요"})
+    assert response.status_code == 201, response.text
+    after = client.get(path, headers=parent).json()
+    assert after["request"]["status"] == "sent_or_booked"
+    assert after["consultation"]["booking"] == booked.json()["booking"]
+    assert client.get(f"/api/v1/cards/{card['id']}", headers=teacher).json()["card"] == before
+    assert len(notices(request_backend, rid)) == count + 1
+    note = notices(request_backend, rid)[-1]
+    assert (note["kind"], note["recipient_id"]) == ("parent_message", seed.TEACHER)
+
+
+@pytest.mark.parametrize("owner", [seed.TEACHER_OTHER, None, "closed"])
+def test_parent_message_uses_open_card_owner_or_director(client, parent, request_backend, owner):
+    rid = _create(client, parent, type="inquiry", body="[TEST] 준비물 문의").json()["request"]["id"]
+    card = reply_card(request_backend, rid)
+    status, assignee = ("done", seed.TEACHER) if owner == "closed" else ("pending" if owner else "unassigned", owner)
+    if request_backend == "mock":
+        target = store.state().cards[card["id"]]
+        target.status, target.assignee_id = status, assignee
+    else:
+        with transaction() as connection:
+            connection.execute(text("UPDATE cards SET status=:status,assignee_id=:owner WHERE id=:id"),
+                               {"id": card["id"], "status": status, "owner": assignee})
+    response = client.post(f"/api/v1/requests/{rid}/messages", headers=parent, json={"body": "[TEST] 더 적어요"})
+    assert response.status_code == 201, response.text
+    new = [n for n in notices(request_backend, rid) if n["kind"] == "parent_message"]
+    assert [n["recipient_id"] for n in new] == [seed.TEACHER_OTHER if owner == seed.TEACHER_OTHER else seed.DIRECTOR]
+
+
+@pytest.mark.parametrize("kind", ["inquiry", "complaint"])
+def test_sent_reply_reopens_latest_card_without_resending_previous_text(client, parent, teacher, request_backend, kind):
+    rid = _create(client, parent, type=kind, body="[TEST] 준비물 문의").json()["request"]["id"]
+    old = reply_card(request_backend, rid)
+    rejected = decision(client, teacher, old["id"], "reject", reason_code="tone")
+    assert rejected.status_code == 200, rejected.text
+    cid = rejected.json()["next_card_id"]
+    assert decision(client, teacher, cid, "edit_approve", edited_content={"text": "[TEST] 지난번 회신"}).status_code == 200
+    before = reply_card(request_backend, rid)
+    count = len(notices(request_backend, rid))
+    response = client.post(f"/api/v1/requests/{rid}/messages", headers=parent, json={"body": "[TEST] 아직 궁금해요"})
+    assert response.status_code == 201, response.text
+    data = client.get(f"/api/v1/cards/{cid}", headers=teacher).json()
+    assert data["request"]["status"] == "awaiting_review"
+    assert data["card"]["status"] == "pending" and data["card"]["version"] == before["version"] + 1
+    assert data["card"]["draft"] == {"previous_text": "[TEST] 지난번 회신", "text": ""}
+    assert data["card"]["check_result"] is None and "check_unavailable" in data["warnings"]
+    assert client.get(f"/api/v1/cards/{old['id']}", headers=teacher).json()["card"]["status"] == "rejected"
+    assert data["messages"] == client.get(f"/api/v1/requests/{rid}", headers=parent).json()["messages"]
+    assert [(m["sender_type"], m["sender_role"]) for m in data["messages"]] == [
+        ("user", "parent"), ("user", "teacher"), ("user", "parent")]
+    assert len(notices(request_backend, rid)) == count + 1
+    latest = notices(request_backend, rid)[-1]
+    assert (latest["kind"], latest["recipient_id"], str(latest["card_id"])) == ("new_card", seed.TEACHER, cid)
+    err(decision(client, teacher, cid, version=data["card"]["version"]), 409, "INVALID_TRANSITION")
+    assert client.get(f"/api/v1/cards/{cid}", headers=teacher).json() == data
+    sent = decision(client, teacher, cid, "edit_approve", version=data["card"]["version"],
+                    edited_content={"text": "[TEST] 새로 쓴 회신"})
+    assert sent.status_code == 200, sent.text
+    messages = client.get(f"/api/v1/requests/{rid}", headers=parent).json()["messages"]
+    assert [m["body"] for m in messages if m["sender_role"] == "teacher"] == ["[TEST] 지난번 회신", "[TEST] 새로 쓴 회신"]
+
+
+@pytest.mark.parametrize("has_teacher", [True, False])
+def test_followup_to_cardless_answer_creates_empty_reply(client, parent, teacher, director, request_backend, has_teacher):
+    rid = _create(client, parent, type="inquiry", body="[TEST] 원비 결제해 주세요.").json()["request"]["id"]
+    assert client.get(f"/api/v1/requests/{rid}", headers=parent).json()["request"]["status"] == "sent_or_booked"
+    before = len(notices(request_backend, rid))
+    if request_backend == "mock":
+        if not has_teacher:
+            store.state().classroom_staff[:] = [s for s in store.state().classroom_staff if s.classroom_id != seed.CLASS_STAR]
+    else:
+        with transaction() as connection:
+            if not has_teacher:
+                connection.execute(text("DELETE FROM classroom_staff WHERE classroom_id=:id"), {"id": seed.CLASS_STAR})
+    response = client.post(f"/api/v1/requests/{rid}/messages", headers=parent, json={"body": "[TEST] 우리 아이 일도 물어요"})
+    assert response.status_code == 201, response.text
+    card = reply_card(request_backend, rid)
+    assert card["status"] == ("pending" if has_teacher else "unassigned")
+    assert card["assignee_id"] == (seed.TEACHER if has_teacher else None)
+    assert not card["draft"].get("text") and card["check_result"] is None
+    data = client.get(f"/api/v1/cards/{card['id']}", headers=teacher if has_teacher else director).json()
+    assert data["request"]["status"] == "awaiting_review"
+    assert [(m["sender_type"], m["sender_role"]) for m in data["messages"]] == [
+        ("user", "parent"), ("agent", None), ("user", "parent")]
+    assert len(notices(request_backend, rid)) == before + 1
+    note = notices(request_backend, rid)[-1]
+    assert (note["kind"], note["recipient_id"]) == ("new_card", seed.TEACHER if has_teacher else seed.DIRECTOR)

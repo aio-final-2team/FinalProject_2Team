@@ -94,3 +94,20 @@ def test_invalid_schedule_settings(monkeypatch, name, value):
     monkeypatch.setenv(name, value)
     with pytest.raises(ValueError):
         config.load_settings()
+
+
+@pytest.mark.parametrize("preferred,expected", [
+    ("[TEST] 오후 4시~5시", ["2026-12-02T16:00:00", "2026-12-01T15:30:00", "2026-12-01T09:00:00"]),
+    ("[TEST] 16:00~17:00", ["2026-12-02T16:00:00", "2026-12-01T15:30:00", "2026-12-01T09:00:00"]),
+    ("[TEST] 2026-12-01 오후", ["2026-12-01T15:30:00", "2026-12-01T09:00:00", "2026-12-02T16:00:00"]),
+    ("[TEST] 수요일 오후", ["2026-12-02T16:00:00", "2026-12-01T15:30:00", "2026-12-01T09:00:00"]),
+    ("[TEST] 내일 오전", ["2026-12-01T09:00:00", "2026-12-01T15:30:00", "2026-12-02T16:00:00"]),
+    ("[TEST] 다른 시간", ["2026-12-01T09:00:00", "2026-12-01T15:30:00", "2026-12-02T16:00:00"]),
+    ("[TEST] 2026-99-99 25:00", ["2026-12-01T09:00:00", "2026-12-01T15:30:00", "2026-12-02T16:00:00"]),
+])
+def test_consultation_preferences_rank_overlap_then_nearest_without_changing_candidates(preferred, expected):
+    from app.modules.consultations.slots import preference_key
+    candidates = [{"start": at(value), "end": at(value)+timedelta(minutes=30)}
+                  for value in ("2026-12-01T09:00:00", "2026-12-01T15:30:00", "2026-12-02T16:00:00")]
+    result = sorted(candidates, key=preference_key(preferred, at("2026-11-30T09:00:00")))
+    assert [s["start"] for s in result] == [at(value) for value in expected]

@@ -23,7 +23,7 @@ export function Buddy({ face, className = "size-24", small }: { face: Expression
 }
 
 /** '온' 심볼: 교사·원장 화면에서만 쓴다. 눈과 눈동자를 나눠 깜빡임·훑기 모션을 줄 수 있다. */
-export function SymbolMark({ motion, className = "size-14" }: { motion?: "blink" | "scan" | "closed"; className?: string }) {
+export function SymbolMark({ motion, className = "size-14" }: { motion?: "blink" | "blink2" | "scan" | "scan2" | "closed"; className?: string }) {
   const id = useId();
   return (
     <svg viewBox="0 0 120 120" aria-hidden className={`sym ${motion ? `sym-${motion}` : ""} rounded-[28%] ${className}`}>

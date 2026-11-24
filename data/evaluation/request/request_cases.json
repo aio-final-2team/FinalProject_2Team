@@ -1,0 +1,164 @@
+{
+  "cases": [
+    {
+      "id": "RQ-01",
+      "request_type": "inquiry",
+      "body": "겨울방학 날짜는 언제인가요?",
+      "expected_route": "inquiry",
+      "expected_evidence_title": "2학기 학사 일정표",
+      "no_evidence": false
+    },
+    {
+      "id": "RQ-02",
+      "request_type": "inquiry",
+      "body": "학부모 상담 주간 신청 방법을 알려 주세요.",
+      "expected_route": "inquiry",
+      "expected_evidence_title": "2학기 학부모 상담 주간 안내",
+      "no_evidence": false
+    },
+    {
+      "id": "RQ-03",
+      "request_type": "inquiry",
+      "body": "가을 소풍 건강검진 안내를 알려 주세요.",
+      "expected_route": "inquiry",
+      "expected_evidence_title": "10월 가정통신문 — 가을 소풍과 건강검진",
+      "no_evidence": false
+    },
+    {
+      "id": "RQ-04",
+      "request_type": "inquiry",
+      "body": "김장 체험 준비물은 무엇인가요?",
+      "expected_route": "inquiry",
+      "expected_evidence_title": "김장 체험 안내 (만 4·5세반)",
+      "no_evidence": false
+    },
+    {
+      "id": "RQ-05",
+      "request_type": "inquiry",
+      "body": "크리스마스 행사 준비물을 알려 주세요.",
+      "expected_route": "inquiry",
+      "expected_evidence_title": "크리스마스 행사 안내",
+      "no_evidence": false
+    },
+    {
+      "id": "RQ-06",
+      "request_type": "inquiry",
+      "body": "재롱잔치 초대장 내용을 알려 주세요.",
+      "expected_route": "inquiry",
+      "expected_evidence_title": "12월 재롱잔치 초대장",
+      "no_evidence": false
+    },
+    {
+      "id": "RQ-07",
+      "request_type": "inquiry",
+      "body": "독감 예방접종 안내를 알려 주세요.",
+      "expected_route": "inquiry",
+      "expected_evidence_title": "독감 예방접종 및 겨울철 감염병 예방 안내",
+      "no_evidence": false
+    },
+    {
+      "id": "RQ-08",
+      "request_type": "inquiry",
+      "body": "귀가 변경 신청 방법이 궁금해요.",
+      "expected_route": "inquiry",
+      "expected_evidence_title": "운영 규정 — 등·하원 및 귀가 변경",
+      "no_evidence": false
+    },
+    {
+      "id": "RQ-09",
+      "request_type": "inquiry",
+      "body": "원비 납부일은 언제인가요?",
+      "expected_route": "inquiry",
+      "expected_evidence_title": "운영 규정 — 원비 및 납부",
+      "no_evidence": false
+    },
+    {
+      "id": "RQ-10",
+      "request_type": "inquiry",
+      "body": "투약 의뢰 절차를 알려 주세요.",
+      "expected_route": "inquiry",
+      "expected_evidence_title": "운영 규정 — 투약 의뢰",
+      "no_evidence": false
+    },
+    {
+      "id": "RQ-11",
+      "request_type": "inquiry",
+      "body": "알레르기 대체식 안내를 알려 주세요.",
+      "expected_route": "inquiry",
+      "expected_evidence_title": "알레르기 유발 식품 표시 및 대체식 안내",
+      "no_evidence": false
+    },
+    {
+      "id": "RQ-12",
+      "request_type": "inquiry",
+      "body": "화성우주선 퀀텀솜사탕을 받을 수 있나요?",
+      "expected_route": "inquiry",
+      "expected_evidence_title": null,
+      "no_evidence": true
+    },
+    {
+      "id": "RQ-13",
+      "request_type": "complaint",
+      "body": "원비 환불 안내가 부족합니다.",
+      "expected_route": "complaint",
+      "expected_evidence_title": "운영 규정 — 원비 및 납부",
+      "no_evidence": false
+    },
+    {
+      "id": "RQ-14",
+      "request_type": "complaint",
+      "body": "귀가 변경 연락이 늦었습니다.",
+      "expected_route": "complaint",
+      "expected_evidence_title": "운영 규정 — 등·하원 및 귀가 변경",
+      "no_evidence": false
+    },
+    {
+      "id": "RQ-15",
+      "request_type": "complaint",
+      "body": "투약 의뢰 안내가 부족합니다.",
+      "expected_route": "complaint",
+      "expected_evidence_title": "운영 규정 — 투약 의뢰",
+      "no_evidence": false
+    },
+    {
+      "id": "RQ-16",
+      "request_type": "complaint",
+      "body": "학부모 상담 주간 공지가 부족합니다.",
+      "expected_route": "complaint",
+      "expected_evidence_title": "2학기 학부모 상담 주간 안내",
+      "no_evidence": false
+    },
+    {
+      "id": "RQ-17",
+      "request_type": "complaint",
+      "body": "김장 체험 안내가 부족합니다.",
+      "expected_route": "complaint",
+      "expected_evidence_title": "김장 체험 안내 (만 4·5세반)",
+      "no_evidence": false
+    },
+    {
+      "id": "RQ-18",
+      "request_type": "complaint",
+      "body": "퀀텀솜사탕 배달이 불만이에요.",
+      "expected_route": "complaint",
+      "expected_evidence_title": null,
+      "no_evidence": true
+    },
+    {
+      "id": "RQ-19",
+      "request_type": "complaint",
+      "body": "아이가 다쳤어요. 처리해 주세요.",
+      "expected_route": "high_risk",
+      "expected_evidence_title": null,
+      "no_evidence": true
+    },
+    {
+      "id": "RQ-20",
+      "request_type": "complaint",
+      "body": "판단 필요: 원비 환불 민원입니다.",
+      "expected_route": "high_risk",
+      "expected_evidence_title": null,
+      "no_evidence": true
+    }
+  ]
+}

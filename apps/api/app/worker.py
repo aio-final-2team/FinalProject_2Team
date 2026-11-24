@@ -25,6 +25,8 @@ celery_app.conf.update(
                           "options": {"expires": 55}},
         "consultation-reminders": {"task": "yuchion.consultation_reminders", "schedule": 60.0,
                                    "options": {"expires": 55}},
+        "request-expiry": {"task": "yuchion.expire_requests", "schedule": 60.0,
+                           "options": {"expires": 55}},
     },
 )
 
@@ -81,4 +83,12 @@ def consultation_reminders():
     if enabled():
         from app.modules.consultations.reminders import sweep_consultation_notifications
         return sweep_consultation_notifications()
+    return 0
+
+
+@celery_app.task(name="yuchion.expire_requests")
+def expire_requests():
+    if enabled():
+        from app.modules.requests.requests import sweep_expired_requests
+        return sweep_expired_requests()
     return 0

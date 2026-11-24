@@ -1,7 +1,7 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { InboxFilter, RequestType, Status } from "@/domain/status";
 import type { Card, CardAction, HistoryItem, Role, Slot, Source } from "@/domain/types";
-import { api } from "./client";
+import { api, uuid } from "./client";
 
 type ApiRequestType = "inquiry" | "consultation" | "complaint";
 type ApiInboxFilter = "unassigned" | "needs_review" | "uncertain" | "on_hold" | "in_progress" | "done";
@@ -58,13 +58,17 @@ const cardFromItem = (item: CardItem, filter: InboxFilter): Card => ({
 });
 
 const formatPeriod = (period: Period) => new Date(period.start).toLocaleString("ko-KR", { month: "numeric", day: "numeric", weekday: "short", hour: "2-digit", minute: "2-digit" });
-const actorName = (actor: string, agent: string | null) => agent ? `${agent} AI` : actor === "user" ? "교직원" : actor === "agent" ? "AI" : "시스템";
+const AGENT_NAME: Record<string, string> = { supervisor: "감독", document: "자료", checker: "검사", memory: "기억" };
+const actorName = (actor: string, agent: string | null) => agent ? `${AGENT_NAME[agent] ?? ""} AI`.trim() : actor === "user" ? "교직원" : actor === "agent" ? "AI" : "시스템";
+/** 처리 이력의 action 코드를 교직원이 읽는 말로 바꾼다. 모르는 코드는 내부 용어를 그대로 보이지 않는다 */
+const ACTION_LABEL: Record<string, string> = { created: "접수", classified: "분류", assigned: "담당 배정", drafted: "초안 작성", checked: "검사", approved: "승인", sent: "발송", rejected: "반려", dismissed: "반려", held: "보류", resumed: "재개", escalated: "원장 보고", completed: "처리 완료", risk_reclassified: "위험 분류 변경" };
+const actionLabel = (a: string) => ACTION_LABEL[a] ?? "처리 기록";
 
 const cardFromDetail = (data: CardDetail): Card => {
   const req = data.request;
   const sources: Source[] = data.evidence.map((e) => ({ doc: e.document_title, where: e.location ?? "", effective: e.effective_from ?? "", old: !e.is_current }));
   const slots: Slot[] | undefined = data.parent_choices.length ? data.parent_choices.map((s) => ({ id: String(s.slot_id), at: formatPeriod(s.period), mode: "대면", picked: true })) : undefined;
-  const history: HistoryItem[] = data.timeline.map((e) => ({ at: e.created_at, who: actorName(e.actor_type, e.agent_name), what: e.action }));
+  const history: HistoryItem[] = data.timeline.map((e) => ({ at: e.created_at, who: actorName(e.actor_type, e.agent_name), what: actionLabel(e.action) }));
   const draft = typeof data.card.draft.text === "string" ? data.card.draft.text : undefined;
   return {
     id: data.card.id, version: data.card.version, kind: data.card.kind, requestId: req?.id ?? "-", type: requestType(req?.type),
@@ -72,7 +76,7 @@ const cardFromDetail = (data: CardDetail): Card => {
     urgentReason: riskLabel(req?.risk_category), title: req?.title ?? data.card.summary, childName: "", guardianName: "보호자",
     className: "담당 반", createdAt: req?.created_at ?? new Date().toISOString(), original: req?.body ?? data.card.summary,
     summary: data.card.summary || undefined, draft, sources,
-    check: data.card.check_result ? { passed: !!data.card.check_result.passed, note: data.card.check_result.note, issues: (data.card.check_result.issues ?? []).map((i: unknown) => (typeof i === "string" ? i : String((i as { message?: string; text?: string })?.message ?? (i as { text?: string })?.text ?? ""))).filter(Boolean), attempt: data.card.check_result.attempt } : undefined,
+    check: data.card.check_result ? { passed: !!data.card.check_result.passed, note: data.card.check_result.note, issues: (data.card.check_result.issues ?? []).map(issueText).filter(Boolean), attempt: data.card.check_result.attempt } : undefined,
     warnings: data.warnings ?? [], noEvidence: !!data.card.draft?.no_evidence,
     repeatCount: req?.repeat_count ?? undefined, escalated: req?.status === "escalated" || data.card.kind === "director_report",
     assigned: true, parentConfirmedAt: req?.parent_confirmed_at ?? undefined, slots, directorNote: data.director_instruction?.text, history,
@@ -90,7 +94,29 @@ export const useCards = (filter: InboxFilter, type: TypeFilter = "all") => useQu
   },
 });
 
+/** 모든 상태의 카드를 한 줄로 합친다 (알림의 요청 ID로 카드를 찾을 때 쓴다). 상태별 목록 캐시를 그대로 같이 쓴다. */
+const ALL_FILTERS: InboxFilter[] = ["review", "judge", "unassigned", "hold", "progress", "done"];
+export const useAllCards = () => {
+  const results = useQueries({
+    queries: ALL_FILTERS.map((filter) => ({
+      queryKey: ["cards", "list", filter, "all"],
+      queryFn: async () => (await api<CardList>(`/api/v1/cards?filter=${UI_TO_API_FILTER[filter]}&size=100`)).items.map((item) => cardFromItem(item, filter)),
+    })),
+  });
+  return results.flatMap((r) => r.data ?? []);
+};
+
 export const useCard = (id: string | undefined) => useQuery({ queryKey: ["cards", "detail", id], queryFn: () => api<CardDetail>(`/api/v1/cards/${id}`).then(cardFromDetail), enabled: !!id });
+/** 검사 결과 issues는 서버에서 [{field, problem}]로 온다 (field: 출처·날짜·대상·누락·민감정보). 옛 모양(문자열·message·text)도 읽는다. */
+function issueText(i: unknown): string {
+  if (typeof i === "string") return i;
+  const o = (i ?? {}) as { field?: string; problem?: string; message?: string; text?: string };
+  const t = o.problem ?? o.message ?? o.text ?? "";
+  return t && o.field ? `${o.field}: ${t}` : t;
+}
+
+/** 반려 이유 칩 → API 이유 코드 (문서 4.1). 칩에 없는 이유는 other + reason_text */
+const REASON_CODE: Record<string, string> = { "개인정보 요청": "privacy", "원 운영 범위 밖": "policy" };
 type ActionResponse = { card?: { id?: string; status?: string; version?: number } };
 
 /** 카드 행동을 API 계약의 기능별 엔드포인트와 요청 본문으로 변환한다. */
@@ -105,7 +131,7 @@ export function useCardAction(id: string, _role: Role) {
       const decision = body.action === "approve_send" ? (body.draft ? "edit_approve" : "approve") : body.action === "reject" ? "dismiss" : body.action;
       const payload: Record<string, unknown> = { version, decision };
       if (body.action === "approve_send" && body.draft) payload.edited_content = { text: body.draft };
-      if (body.action === "reject") Object.assign(payload, { reason_code: "other", reason_text: body.reason });
+      if (body.action === "reject") Object.assign(payload, { reason_code: REASON_CODE[body.reason] ?? "other", reason_text: body.reason });
       if (body.action === "hold") Object.assign(payload, { reason_text: body.reason, hold_until: body.until });
       if (body.action === "complete" && body.reason) payload.reason_text = body.reason;
       return api<ActionResponse>(`/api/v1/cards/${id}/decisions`, { method: "POST", body: JSON.stringify(payload) });
@@ -116,4 +142,4 @@ export function useCardAction(id: string, _role: Role) {
   });
 }
 
-export const newKey = () => crypto.randomUUID();
+export const newKey = () => uuid();

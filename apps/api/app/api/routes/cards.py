@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Query, Response
 from app.api.schemas.actions import (InboxFilter, CardKind, DecisionIn, ReclassifyIn, BookingIn,
                                     InstructionIn, ReassignIn, RuleDecisionIn)
 from app.api.schemas.views import (CardList, CardDetail, DecisionResponse, ReclassifyResponse, BookingResponse,
-                                  ReassignResponse, RuleResponse, Overview)
+                                  ReassignResponse, RuleResponse, Overview, InstructionResponse)
 from app.api.schemas.common import errors
 from app.core.auth import CurrentUser, current_user, require_roles
 from app import backend
@@ -53,7 +53,7 @@ def book(card_id: UUID, body: BookingIn, user: CurrentUser = Depends(require_rol
     return backend.cards.book(user, card_id, body)
 
 
-@router.post("/cards/{card_id}/instructions", response_model=DecisionResponse, responses=errors(401, 403, 404, 409, 422))
+@router.post("/cards/{card_id}/instructions", response_model=InstructionResponse, responses=errors(401, 403, 404, 409, 422))
 def instruct(card_id: UUID, body: InstructionIn, user: CurrentUser = Depends(require_roles("director"))):
     return backend.cards.instruct(user, card_id, body)
 

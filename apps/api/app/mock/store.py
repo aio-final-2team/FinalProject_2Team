@@ -13,7 +13,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from app.core.errors import ApiError
-from app.core.constants import CARE_REQUEST_TYPES
+from app.core.constants import CARE_REQUEST_TYPES, OUT_OF_SCOPE_MESSAGES
 from app.mock import seed
 from app.core.schedule import KST, due_at
 from app.mock.records import Approval, Booking, Notification, Document, Chunk, Evidence, Rule, NoteInput, Note
@@ -85,6 +85,7 @@ class Request:
     topic_key: str | None = None
     parent_confirmed_at: datetime | None = None
     missing_fields: list[str] = field(default_factory=list)
+    care_detail: dict = field(default_factory=dict)
     assignee_id: UUID | None = None
     previous_request_id: UUID | None = None
     created_at: datetime = field(default_factory=lambda: now())
@@ -317,7 +318,7 @@ def create_request(user, *, client_request_id: str, type: str, body: str, child_
                 raise ApiError(409, "INVALID_TRANSITION")
         req = Request(id=uuid4(), org_id=user.org_id, classroom_id=child.classroom_id, child_id=child.id,
                       requester_id=user.id, client_request_id=client_request_id, type=type, body=body,
-                      title=body.split("\n")[0][:40], previous_request_id=previous_request_id)
+                      title=body.split("\n")[0][:40], previous_request_id=previous_request_id, care_detail=detail)
         if type == "medication":
             req.missing_fields = [key for key in MEDICATION_FIELDS if not (detail.get(key) or "").strip()]
         _state.requests[req.id] = req
@@ -325,30 +326,43 @@ def create_request(user, *, client_request_id: str, type: str, body: str, child_
                                        sender_id=user.id, body=body))
         if type in CARE_REQUEST_TYPES:
             req.assignee_id = homeroom_teacher(req.classroom_id)
-        add_event(req, "created", actor_type="user", actor_id=user.id, to_status="received", trace_id=trace_id,
-                  **detail)
+        event = add_event(req, "created", actor_type="user", actor_id=user.id, to_status="received", trace_id=trace_id,
+                  **({"fields": list(detail)} if type in CARE_REQUEST_TYPES else {}))
+        from app.mock.notes import request_received
+        request_received(req, event)
         if type not in CARE_REQUEST_TYPES:
             _run_mock_ai(req, trace_id)
         return req, True
 
 
 # 모의 AI 분류 규칙. 실제 분류는 감독 AI(T14)가 한다. 화면 시연용으로 낱말만 본다.
-def _classify(req: Request) -> None:
-    from app.core.request_rules import classify
-    for key, value in classify(req.type, req.body).items():
-        setattr(req, key, value)
+def _classify(req: Request) -> dict:
+    from app.modules.requests.supervisor import validate_proposal
+    fields = validate_proposal(req.type, req.body, {})
+    for key in ("topic_key", "urgency", "risk_level", "risk_category"):
+        setattr(req, key, fields.get(key))
+    return fields
 
 
 def _run_mock_ai(req: Request, trace_id: str | None) -> None:
     if req.type in CARE_REQUEST_TYPES:
         return
-    _classify(req)
+    from app.core.request_rules import direct_notice_kind
+    fields = _classify(req)
     set_request_status(req, "classified", action="classified", actor_type="agent", agent_name="supervisor",
                        trace_id=trace_id)
     teacher = homeroom_teacher(req.classroom_id)
     req.assignee_id = teacher
     set_request_status(req, "assigned", action="assigned", actor_type="agent", agent_name="supervisor",
                        trace_id=trace_id)
+    notice = direct_notice_kind(req.type, req.body, fields)
+    if notice:
+        _state.messages.append(Message(id=_state.next_int(), request_id=req.id, sender_type="agent",
+                                       sender_id=None, body=OUT_OF_SCOPE_MESSAGES[notice]))
+        if req.type == "inquiry":
+            set_request_status(req, "sent_or_booked", action="out_of_scope_answered", kind=notice,
+                               actor_type="agent", agent_name="supervisor", trace_id=trace_id)
+            return
     summary = req.body[:60]
     high_risk = req.risk_level in ("urgent", "uncertain")
     if req.type == "consultation":
@@ -360,7 +374,7 @@ def _run_mock_ai(req: Request, trace_id: str | None) -> None:
         if high_risk and director:
             # DB 백엔드와 같이 상담 흐름은 두고 원장 보고 카드와 알림만 더해요.
             report = _new_card(req, "director_report", director, draft={"summary": summary})
-            add_event(req, "escalated", card=report, actor_type="agent", agent_name="supervisor", trace_id=trace_id)
+            add_event(req, "escalated", card=report, actor_type="agent", agent_name="supervisor", trace_id=trace_id, reason="risk")
         return
     card = _new_card(req, "reply_draft", teacher, draft={
         "summary": summary,
@@ -374,7 +388,7 @@ def _run_mock_ai(req: Request, trace_id: str | None) -> None:
     if high_risk or (req.type == "complaint" and (repeat_count(req) or 0) >= 3):
         report = _new_card(req, "director_report", director_of(req.org_id), draft={"summary": summary})
         set_request_status(req, "escalated", action="escalated", card=report, actor_type="agent",
-                           agent_name="supervisor", trace_id=trace_id)
+                           agent_name="supervisor", trace_id=trace_id, reason="risk" if high_risk else "repeat")
         return
     set_request_status(req, "awaiting_review", action="checked", card=card, actor_type="agent",
                        agent_name="checker", trace_id=trace_id)
@@ -396,16 +410,18 @@ def _next_weekday(d: date) -> date:
     return d
 
 
-def _propose_slots(card: Card, teacher: UUID | None, round_no: int = 1) -> list[Slot]:
+def _propose_slots(card: Card, teacher: UUID | None, round_no: int = 1, *, preferred_times=None) -> list[Slot]:
     """평일 15:00·16:00 중 확정·살아 있는 체크와 겹치지 않는 세 칸을 골라요."""
-    first = now().date()
-    for _ in range(round_no):
-        first = _next_weekday(first)
+    from app.modules.consultations.slots import preference_key
+    if preferred_times is None:
+        preferred_times = next((e.detail["preferred_times"] for e in reversed(events_of(card.request_id))
+                                if "preferred_times" in e.detail), None)
+    first = _next_weekday(now().date())
     room = next(iter(_state.rooms))
     teacher = teacher or seed.TEACHER
-    out = []
+    candidates = []
     day = first
-    for _ in range(14):
+    while day <= now().date()+timedelta(days=14):
         for hour in (15, 16):
             start = datetime.combine(day, time(hour), KST)
             end = start + timedelta(minutes=30)
@@ -423,13 +439,14 @@ def _propose_slots(card: Card, teacher: UUID | None, round_no: int = 1) -> list[
                     or (s.status == "chosen_by_parent" and s.chosen_at > now()-timedelta(hours=24)
                         and (s.teacher_id == teacher or s.room_id == room))) for s in _state.slots.values()):
                 continue
-            slot = Slot(id=_state.next_int(), card_id=card.id, org_id=card.org_id, teacher_id=teacher,
-                        room_id=room, period={"start": start, "end": end}, round=round_no, rank=len(out)+1)
-            _state.slots[slot.id] = slot
-            out.append(slot)
-            if len(out) == 3:
-                return out
+            candidates.append({"start": start, "end": end})
         day = _next_weekday(day)
+    out = []
+    for rank, period in enumerate(sorted(candidates, key=preference_key(preferred_times, now()))[:3], 1):
+        slot = Slot(id=_state.next_int(), card_id=card.id, org_id=card.org_id, teacher_id=teacher,
+                    room_id=room, period=period, round=round_no, rank=rank)
+        _state.slots[slot.id] = slot
+        out.append(slot)
     return out
 
 
@@ -482,7 +499,8 @@ def slots_of_request(request_id: UUID) -> list[Slot]:
 
 
 def hold_until_of(request_id: UUID) -> date | None:
-    return next((c.hold_until for c in cards_of(request_id) if c.status == "on_hold"), None)
+    return next((c.hold_until for c in cards_of(request_id) if c.status == "on_hold"
+                 and not (c.kind == "director_report" and _state.requests[request_id].type == "consultation")), None)
 
 
 def repeat_count(req):
@@ -504,7 +522,9 @@ def expire(request_id=None):
                 card.status, card.hold_until = "pending", None
                 card.version += 1
                 card.updated_at = now()
-                if req:
+                if req and card.kind == "director_report" and req.type == "consultation":
+                    add_event(req, "resumed", card=card, automatic=True)
+                elif req:
                     set_request_status(req, "awaiting_review", action="resumed", card=card, automatic=True)
             if req is None or req.status != "awaiting_review":
                 continue

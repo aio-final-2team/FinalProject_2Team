@@ -13,8 +13,8 @@ export const useToast = () => useContext(Ctx);
 
 const DEFAULT_MS: Record<Kind, number> = { ok: 3000, undo: 5000, error: 0 };
 const BADGE: Record<Kind, { cls: string; icon: string }> = {
-  ok: { cls: "from-[#5BE0BC] to-[#2FB58C]", icon: "approve" },
-  undo: { cls: "from-[#3D63F2] to-[#2440C8]", icon: "pending" },
+  ok: { cls: "from-[#A8A3F4] to-[#5562F0]", icon: "approve" },
+  undo: { cls: "from-[#A8A3F4] to-[#5562F0]", icon: "pending" },
   error: { cls: "from-[#A8A3F4] to-[#5562F0]", icon: "retry" },
 };
 
@@ -72,7 +72,7 @@ function ToastView({ t, role, onDone }: { t: ToastState; role: Role; onDone: () 
     >
       <span className="relative grid size-9 shrink-0 place-items-center">
         {role === "parent" ? (
-          <Buddy face={t.kind === "error" ? "sorry" : "done"} className="size-9" small />
+          <Buddy face={t.kind === "error" ? "check" : "done"} className="size-9" small />
         ) : (
           <>
             <SymbolMark className="size-8" />
@@ -82,9 +82,9 @@ function ToastView({ t, role, onDone }: { t: ToastState; role: Role; onDone: () 
           </>
         )}
       </span>
-      <span className="grid min-w-0 flex-1">
-        <b className="text-[14px]">{t.title}</b>
-        {t.sub && <span className="text-[12px] text-ink2">{t.sub}</span>}
+      <span className="grid min-w-0 flex-1 break-keep pr-1">
+        <b className="text-balance text-[14px]">{t.title}</b>
+        {t.sub && <span className="whitespace-pre-line text-pretty text-[12px] text-ink2">{t.sub}</span>}
       </span>
       {t.action && (
         <button
@@ -99,6 +99,12 @@ function ToastView({ t, role, onDone }: { t: ToastState; role: Role; onDone: () 
           {t.kind === "undo" ? ` ${left}` : ""}
         </button>
       )}
+      {/* 닫기: 어떤 토스트든 눌러서 닫을 수 있다(누르는 영역 44×44). 아래로 밀어도 닫힌다 */}
+      <button type="button" aria-label="닫기" className="-mr-2 grid size-11 shrink-0 place-items-center rounded-full text-ink2 active:scale-90" onPointerDown={(e) => e.stopPropagation()} onClick={onDone}>
+        <svg viewBox="0 0 24 24" className="size-[18px]" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden>
+          <path d="M6 6l12 12M18 6L6 18" />
+        </svg>
+      </button>
       {ms > 0 && (
         <span className="absolute inset-x-3.5 bottom-1.5 h-[3px] overflow-hidden rounded-full bg-fill2">
           <motion.span className="block h-full origin-left bg-accent" style={{ scaleX: progress }} />

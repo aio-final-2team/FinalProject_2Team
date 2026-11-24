@@ -9,7 +9,7 @@ import json
 
 import pytest
 
-from agents.graphs import daily_note as graph
+from agents import llm
 from agents.llm import OpenAIModel
 from app.core.schedule import KST
 from app.modules.daily_notes import runner
@@ -34,7 +34,8 @@ def run(client):
 
 def test_rehearsal_with_stub_writer_blocks_on_jia_then_sends_whole_class(client):
     summary = run(client)
-    assert summary["flagged"] == {"하늘": ["date_check", "sensitive"], "노을": ["request_missed"], "지아": ["sensitive"]}
+    assert summary["flagged"] == {"하늘": ["date_check", "sensitive"], "노을": ["request_missed"],
+                                  "지아": ["sensitive"], "지안": ["other_child"]}
     assert summary["blocked"] == {"지아": ["sensitive"]}
     assert summary["sent_count"] == 20
     assert summary["parent_notes"] == [("하늘", "sent")] and summary["parent_child_lines"] == [EDITED_LINE]
@@ -58,7 +59,7 @@ def test_rehearsal_with_graph_blocks_on_jia_even_when_checker_finds_nothing(clie
 
     models = {"DOCUMENT": FakeModel(echo), "CHECKER": FakeModel(lambda value: {"checks": []})}
     monkeypatch.setattr(OpenAIModel, "json", forbidden)
-    monkeypatch.setattr(graph, "OpenAIModel", lambda role: models[role])
+    monkeypatch.setattr(llm, "OpenAIModel", lambda role: models[role])
     monkeypatch.setattr(runner, "settings", replace(runner.settings, daily_note_writer="graph"))
     summary = run(client)
     # 지아는 투약 요청, 지안은 메모의 다른 아이 이름(지아) 때문에 코드 규칙으로 걸린다.

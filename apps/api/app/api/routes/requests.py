@@ -13,7 +13,7 @@ from app.core.schedule import KST
 from app import backend
 from app.api.schemas.actions import MessageIn, SlotChoicesIn, ConsultationDelayIn
 from app.api.schemas.requests import RequestStatus
-from app.api.schemas.requests import CareDecisionIn, CareDecisionOut, PickupGuardiansOut
+from app.api.schemas.requests import CareDecisionIn, CareDecisionOut, CareUpdateIn, PickupGuardiansOut
 from app.api.schemas.views import CareRequestList, RequestList, MessageResponse, ChoicesResponse, ConfirmResponse, ConsultationDelayResponse
 from fastapi import Query
 from typing import Literal
@@ -30,7 +30,7 @@ def pickup_guardians(child_id: UUID, user: CurrentUser = Depends(current_user)):
 @router.get("/care-requests", response_model=CareRequestList, responses=errors(401, 403, 404, 422),
             summary="교직원 투약·귀가 요청 목록 (T46 팀 확인 전 초안)")
 def care_requests(classroom_id: UUID | None = None,
-                  status: Literal["received", "assigned", "completed"] | None = None,
+                  status: Literal["received", "assigned", "completed", "rejected"] | None = None,
                   page: int = Query(1, ge=1), size: int = Query(20, ge=1, le=100),
                   sort: Literal["-created_at", "created_at", "-updated_at", "updated_at"] = "-created_at",
                   user: CurrentUser = Depends(require_roles("teacher", "director"))):
@@ -38,10 +38,22 @@ def care_requests(classroom_id: UUID | None = None,
 
 
 @router.post("/requests/{request_id}/care-decisions", response_model=CareDecisionOut,
-             responses=errors(401, 403, 404, 409, 422), summary="투약·인계 실제 확인·완료 기록 (T46 팀 확인 전 초안)")
+             responses=errors(401, 403, 404, 409, 422), summary="투약·인계 실제 확인·완료·반려 기록 (T46 팀 확인 전 초안)")
 def care_decision(request_id: UUID, body: CareDecisionIn,
                   user: CurrentUser = Depends(require_roles("teacher", "director"))):
     return backend.request_actions.care.decision(user, request_id, body)
+
+
+@router.post("/requests/{request_id}/cancel", response_model=CareDecisionOut,
+             responses=errors(401, 403, 404, 409, 422), summary="학부모 투약·귀가 요청 취소 (제안)")
+def cancel_care(request_id: UUID, user: CurrentUser = Depends(require_roles("parent"))):
+    return backend.request_actions.care.cancel(user, request_id)
+
+
+@router.patch("/requests/{request_id}/care", response_model=CareDecisionOut,
+              responses=errors(401, 403, 404, 409, 422), summary="학부모 투약·귀가 입력 수정 (제안)")
+def update_care(request_id: UUID, body: CareUpdateIn, user: CurrentUser = Depends(require_roles("parent"))):
+    return backend.request_actions.care.update(user, request_id, body)
 
 
 def _stream_url(request_id: UUID) -> str:

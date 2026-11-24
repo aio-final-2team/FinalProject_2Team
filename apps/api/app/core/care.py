@@ -2,9 +2,15 @@
 
 from copy import deepcopy
 import json
+from uuid import uuid4
 
 from app.core.errors import ApiError
 from app.core.constants import CARE_REQUEST_TYPES, MEDICATION_FIELDS
+
+
+def missed_request_check(request_type, request_id):
+    return {"id": str(uuid4()), "item_key": request_type, "kind": "request_missed",
+            "problem": "보호자 요청을 초안에 반영해 주세요", "sentence": None, "request_id": str(request_id)}
 
 
 def unregistered_pickup_key(request_id, snapshot):
@@ -23,24 +29,30 @@ def input_detail(req_type, *, pickup_guardian_id=None, pickup_name=None, pickup_
     return {}
 
 
-def care_view(events, req_type):
-    created = next((e for e in events if e["action"] == "created" and e["to_status"] == "received"), None)
-    fields = input_detail(req_type, **{k: created["detail"].get(k) for k in (
-        "pickup_guardian_id", "pickup_name", "pickup_relation", *MEDICATION_FIELDS)}) if created else input_detail(req_type)
+def care_view(events, req_type, care_detail):
+    fields = input_detail(req_type, **{k: care_detail.get(k) for k in (
+        "pickup_guardian_id", "pickup_name", "pickup_relation", *MEDICATION_FIELDS)})
     result = {**fields, "version": 1, "unregistered_pickup": req_type == "pickup" and not fields.get("pickup_guardian_id"),
+              "cancelled_by_parent": False, "rejection": None,
               "confirmed_at": None, "completed_at": None,
               "missing_fields": [key for key in MEDICATION_FIELDS if not (fields.get(key) or "").strip()]
               if req_type == "medication" else []}
     for event in events:
         detail = event["detail"]
-        if detail.get("care_message"):
+        if detail.get("care_message") or event["action"] == "care_updated":
             result["version"] += 1
             result["confirmed_at"] = None
+            if event["action"] == "care_updated":
+                result.update(fields)
         elif detail.get("care_decision") == "confirm":
             result.update(detail.get("pickup_snapshot", {}))
             result["confirmed_at"] = event["created_at"]
         elif detail.get("care_decision") == "complete":
             result["completed_at"] = event["created_at"]
+        elif detail.get("care_decision") == "reject":
+            result["rejection"] = {"reason_code": "other", "reason_text": detail["reason_text"]}
+        elif detail.get("cancelled_by_parent"):
+            result["cancelled_by_parent"] = True
     return result
 
 
@@ -50,6 +62,10 @@ def check_decision(req_type, status, care, body):
     # 요청 행을 잠근 뒤 검사해요. 새 보호자 글 뒤의 옛 확인·완료는 모두 거부해요.
     if body.version != care["version"]:
         raise ApiError(409, "CARD_VERSION_CONFLICT", current_version=care["version"])
+    if body.decision == "reject":
+        if status not in ("received", "assigned"):
+            raise ApiError(409, "INVALID_TRANSITION")
+        return "rejected"
     expected_guardian = care.get("pickup_guardian_id")
     if (str(body.pickup_guardian_id) if body.pickup_guardian_id else None) != expected_guardian:
         raise ApiError(422, "VALIDATION_FAILED", field="pickup_guardian_id")
@@ -61,6 +77,25 @@ def check_decision(req_type, status, care, body):
     if status != expected or (body.decision == "complete" and care["confirmed_at"] is None):
         raise ApiError(409, "INVALID_TRANSITION")
     return target
+
+
+def check_parent_change(req_type, status, care, version=None):
+    if req_type not in CARE_REQUEST_TYPES or status not in ("received", "assigned"):
+        raise ApiError(409, "INVALID_TRANSITION")
+    if version is not None and version != care["version"]:
+        raise ApiError(409, "CARD_VERSION_CONFLICT", current_version=care["version"])
+
+
+def updated_detail(req_type, previous, body):
+    changes = body.model_dump(exclude_unset=True, exclude={"version"}, mode="json")
+    allowed = set(input_detail(req_type))
+    invalid = changes.keys() - allowed
+    if invalid:
+        raise ApiError(422, "VALIDATION_FAILED", field=sorted(invalid)[0])
+    # 등록 인계자를 바꾸면 이전 사람의 이름·관계를 새 사람에게 붙이지 않아요.
+    if "pickup_guardian_id" in changes and changes["pickup_guardian_id"] != previous.get("pickup_guardian_id"):
+        previous = {**previous, "pickup_name": None, "pickup_relation": None}
+    return {**previous, **changes}, list(changes)
 
 
 def note_content(content, requests):

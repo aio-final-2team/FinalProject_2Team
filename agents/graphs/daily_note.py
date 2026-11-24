@@ -167,8 +167,9 @@ def write(model: JsonModel, payload, child, issues) -> list[dict]:
         "menu": (payload.get("menu") or {}).get("text"),
         "child_name": child["display_name"], "child_memo": child.get("memo") or "",
         "requests": child.get("requests") or [], "review_issues": issues,
+        "untrusted_data_fields": ["child_memo", "requests", "menu"],
     }, ensure_ascii=False)
-    answer = model.json(section("documents.md", "## 알림장 초안 쓰기") + WRITE_FORMAT, user)
+    answer = model.json(section("common.md", "# 공통 규칙") + section("documents.md", "## 알림장 초안 쓰기") + WRITE_FORMAT, user)
     by_id = {req["request_id"]: req for req in child.get("requests") or []}
     lines = []
     text = (answer.get("child") or "").strip() if isinstance(answer.get("child"), str) else ""
@@ -237,8 +238,9 @@ def review(model: JsonModel, payload, child, own) -> list[dict]:
         "activities": payload["activities"], "supplies": payload.get("supplies"),
         "menu": (payload.get("menu") or {}).get("text"),
         "child_memo": child.get("memo") or "", "requests": child.get("requests") or [], "draft": own,
+        "untrusted_data_fields": ["child_memo", "requests", "menu", "draft"],
     }, ensure_ascii=False)
-    answer = model.json(section("checker.md", "## 알림장: 메모와 대조한다") + CHECK_FORMAT, user)
+    answer = model.json(section("common.md", "# 공통 규칙") + section("checker.md", "## 알림장: 메모와 대조한다") + CHECK_FORMAT, user)
     checks = answer.get("checks")
     if not isinstance(checks, list):
         raise ModelError("checks 목록이 없어요", format=True)
