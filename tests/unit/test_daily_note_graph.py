@@ -59,6 +59,7 @@ def test_child_line_from_memo():
     line = note["content"]["items"][1]
     assert line == {"key": "child", "label": "아이 메모", "value": "점심을 조금 먹었어요.", "source": {"type": "teacher_input"}}
     assert note["open_checks"] == []
+    assert "handoff_reason" not in note
 
 
 def test_other_child_name_is_caught_by_code_even_if_checker_passes():
@@ -126,6 +127,25 @@ def test_checker_fails_twice_gives_check_failed_and_keeps_draft():
     [note] = draft_daily_notes(payload([kid("a", "가온", "블록")]), Script({"child": "블록 놀이를 했어요."}), checker)
     assert checker.calls == 2 and "child" in keys(note)
     assert [c["kind"] for c in note["open_checks"]] == ["check_failed"]
+
+
+def test_writer_failure_handoff_reason():
+    [note] = draft_daily_notes(payload([kid("a", "가온", "블록")]), Script(ModelError), Script(OK))
+    assert note["end"] == "handoff" and note["handoff_reason"] == "draft_failed"
+
+
+def test_checker_failure_handoff_reason():
+    [note] = draft_daily_notes(payload([kid("a", "가온", "블록")]),
+                               Script({"child": "블록 놀이를 했어요."}), Script(ModelError))
+    assert note["end"] == "handoff" and note["handoff_reason"] == "check_failed"
+
+
+def test_return_limit_handoff_reason():
+    req = {"request_id": "r1", "type": "pickup", "text": "오늘 할머니가 데리러 가요"}
+    writer = Script({"child": "블록 놀이를 했어요.", "requests": []})
+    [note] = draft_daily_notes(payload([kid("a", "가온", "블록", [req])]), writer, Script(OK))
+    assert writer.calls == MAX_RETURNS + 1
+    assert note["end"] == "handoff" and note["handoff_reason"] == "return_limit"
 
 
 def test_one_note_per_child_in_order():
