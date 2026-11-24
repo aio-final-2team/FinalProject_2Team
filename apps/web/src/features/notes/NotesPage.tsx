@@ -353,7 +353,7 @@ function Review({ notes }: { notes: DailyNote[] }) {
 
   const preview = notes.find((n) => hasChild(n)) ?? notes[0];
   return (
-    <Frame title="알림장 확인" sub={`${user?.display_name} · ${notes.length}명 · ${allSent ? "보냄" : "17:00까지"}`}>
+    <Frame title="알림장 확인" sub={`${user?.display_name} · ${notes.length}명 · ${allSent ? "보냈어요" : "17:00까지"}`}>
       <section className="mt-4 rounded-lg bg-card p-3 shadow-card">
         <Meter parts={[[c.sent, "bg-ok"], [c.ready, "bg-lav"], [c.needs_check, "bg-accent"], [c.draft, "bg-ink3"]]} total={notes.length} />
         <div className="flex flex-wrap gap-x-3 text-footnote text-ink2">
@@ -477,7 +477,7 @@ function Review({ notes }: { notes: DailyNote[] }) {
 
       {allSent && (
         <>
-          <Label right={<span>{c.sent}명</span>}>보냄</Label>
+          <Label right={<span>{c.sent}명</span>}>보냈어요</Label>
           <ul className="overflow-hidden rounded-lg bg-card shadow-card">{notes.map((n) => row(n, n.content.items.find((i) => i.key === "child")?.value ?? "반 활동만 들어갔어요"))}</ul>
         </>
       )}
@@ -492,7 +492,7 @@ function Review({ notes }: { notes: DailyNote[] }) {
 
       {/* A-07 일괄 발송 시트 */}
       <Sheet open={sheet} onClose={() => setSheet(false)} title={`${notes.length}명에게 한 번에 보내기`}>
-        <p className="text-footnote text-ink2">{user?.display_name} 보호자 {notes.length}가정 · 보내면 고칠 수 없어요</p>
+        <p className="text-footnote text-ink2">반 전체 {notes.length}명에게 보내요. 보낸 뒤에는 정정으로만 고칠 수 있어요</p>
         {preview && (
           <div className="grid gap-1 rounded-lg bg-g p-3 text-callout">
             <b className="text-headline">{nameI(names[preview.child_id] ?? "아이")}의 오늘</b>

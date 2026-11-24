@@ -54,7 +54,7 @@ export const NOTE_STATUS: Record<NoteStatus, { label: string; cls: string }> = {
   needs_check: { label: "확인 필요", cls: "text-accent" },
   draft: { label: "검사 통과", cls: "text-ink2" },
   ready: { label: "확인함", cls: "text-lav" },
-  sent: { label: "보냄", cls: "text-ok" },
+  sent: { label: "보냈어요", cls: "text-ok" },
 };
 
 /** 확인 항목 종류별 제목과 선생님이 고를 수 있는 일 */

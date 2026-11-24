@@ -135,8 +135,7 @@ export function ChildAlbum() {
 
           <section aria-label="성장 앨범" className="mt-8 rounded-lg bg-tint p-4">
             <p className="flex items-center gap-2 text-callout font-bold">{nameI(name)}의 1년<span className="rounded-full bg-card px-2 py-0.5 text-caption font-semibold text-ink2">준비 중</span></p>
-            <p className="mt-1 text-footnote text-ink2">모인 사진 {total}장 중에서 골라 성장 영상과 앨범을 만들어 둘게요.</p>
-            <button type="button" onClick={() => soon("성장 앨범은")} className="mt-3 h-10 rounded-md bg-card px-4 text-footnote font-semibold text-accent-ink active:scale-[.97]">미리 받아보기 신청</button>
+            <p className="mt-1 text-footnote text-ink2">성장 영상과 앨범은 준비 중이에요.</p>
           </section>
         </div>
       </QueryState>
