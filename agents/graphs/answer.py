@@ -12,6 +12,12 @@ WRITE_FORMAT = "\nJSON 하나로 답한다: {\"text\": str, \"evidence\": [{\"ch
 CHECK_FORMAT = "\nJSON 하나로 답한다: {\"passed\": bool, \"issues\": [{\"field\": \"출처|날짜|대상|누락|민감정보\", \"problem\": str}]}"
 CHECK_FIELDS = {"출처", "날짜", "대상", "누락", "민감정보"}
 MAX_REWRITES = 2
+SENSITIVE = re.compile(
+    r"(?<!\d)01[016789][- .]?\d{3,4}[- .]?\d{4}(?!\d)"
+    r"|(?<!\d)\d{6}[- ]?[1-4]\d{6}(?!\d)"
+    r"|(?<!\d)\d{3,6}[- ]\d{2,6}[- ]\d{3,6}(?!\d)"
+    r"|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"
+)
 
 
 def fallback(trace):
@@ -66,9 +72,10 @@ def _verify(answer, candidates, trace):
 
 
 def _review(model, question, draft, candidates, attempt, trace):
-    prompt = _prompt("checker.md", "## 입력", "## 알림장: 메모와 대조한다") + CHECK_FORMAT
+    prompt = _prompt("common.md", "# 공통 규칙") + _prompt("checker.md", "## 입력", "## 알림장: 메모와 대조한다") + CHECK_FORMAT
     payload = {"question": question, "draft": draft["text"], "evidence": draft["evidence"],
-               "chunks": candidates, "attempt": attempt}
+               "chunks": candidates, "attempt": attempt,
+               "untrusted_data_fields": ["question", "chunks", "draft"]}
     for _ in range(2):
         try:
             result = model.json(prompt, json.dumps(payload, ensure_ascii=False, default=str))
@@ -86,6 +93,8 @@ def _review(model, question, draft, candidates, attempt, trace):
             continue
         if not result["passed"] and not issues:
             continue
+        if SENSITIVE.search(draft["text"]) and not any(i["field"] == "민감정보" for i in issues):
+            issues = [*issues, {"field": "민감정보", "problem": "초안에 민감정보 형식이 있어 담임 확인이 필요해요."}]
         return issues
     return None
 
@@ -110,13 +119,15 @@ def draft_answer(question: str, search, writer=None, checker=None) -> dict:
     candidates = sorted(candidates, key=lambda item: item["score"], reverse=True)[:8]
     if not candidates:
         return fallback(trace)
-    write_prompt = _prompt("documents.md", "## 입력", "## 알림장 초안 쓰기") + WRITE_FORMAT
+    common = _prompt("common.md", "# 공통 규칙")
+    write_prompt = common + _prompt("documents.md", "## 입력", "## 알림장 초안 쓰기") + WRITE_FORMAT
     writer = writer if writer is not None else OpenAIModel("DOCUMENT")
     checker = checker if checker is not None else OpenAIModel("CHECKER")
     issues = []
     for attempt in range(MAX_REWRITES + 1):
         answer = _ask_writer(writer, write_prompt, {"question": question, "chunks": candidates,
-                                                    "review_issues": issues}, trace)
+                                                    "review_issues": issues,
+                                                    "untrusted_data_fields": ["question", "chunks"]}, trace)
         if answer is None:
             return fallback(trace)
         draft = _verify(answer, candidates, trace)
