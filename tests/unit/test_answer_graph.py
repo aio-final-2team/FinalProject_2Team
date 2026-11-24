@@ -190,3 +190,63 @@ def test_checker_bad_format_twice_goes_to_teacher():
     checker = Checker([{"passed": True}])
     result = draft_answer("겨울방학", search, Writer(answer()), checker)
     assert result["text"] == NO_ANSWER and result["no_evidence"] and checker.calls == 2
+
+
+LINES = {"chunk_id": 2, "content": "1. 아침 체온이 37.5℃ 이상이면 등원하지 않습니다.\n2. 열이 내려도 하루는 쉽니다.\n"
+         "3. 해열제 없이 24시간 동안 열이 없으면 다시 등원할 수 있습니다.", "score": 0.8,
+         "document_title": "운영 규정", "location": "건강", "effective_from": "2026-03-02"}
+
+
+class Writers:
+    """부를 때마다 다음 답을 준다."""
+
+    def __init__(self, *answers):
+        self.answers = list(answers)
+        self.calls = 0
+        self.payloads = []
+
+    def json(self, system, user):
+        self.payloads.append(json.loads(user))
+        self.calls += 1
+        return self.answers[min(self.calls - 1, len(self.answers) - 1)]
+
+
+def health_answer(quote, chunk_id=2):
+    return {"text": "37.5℃ 이상이면 쉬어요.", "evidence": [{"chunk_id": chunk_id, "quote": quote}],
+            "no_evidence": False, "conflict": False}
+
+
+def test_quote_stitched_from_separate_lines_is_accepted():
+    # 팀 서버에서 버려졌던 인용(11/25): 1번 줄과 3번 줄을 이어 붙였어요
+    quote = "1. 아침 체온이 37.5℃ 이상이면 등원하지 않습니다.\n3. 해열제 없이 24시간 동안 열이 없으면 다시 등원할 수 있습니다."
+    result = draft_answer("열이 나면 등원해도 되나요", lambda t, q: [LINES] if t == "policy" else [],
+                          Writers(health_answer(quote)), Checker())
+    assert not result["no_evidence"] and result["evidence"][0]["quote"] == quote
+
+
+def test_stitched_quote_with_a_made_up_line_is_rejected():
+    quote = "1. 아침 체온이 37.5℃ 이상이면 등원하지 않습니다.\n열이 나도 등원할 수 있습니다."
+    result = draft_answer("열이 나면", lambda t, q: [LINES] if t == "policy" else [],
+                          Writers(health_answer(quote)), Checker())
+    assert result["no_evidence"] and result["evidence"] == [] and result["text"] == NO_ANSWER
+
+
+def test_misquote_is_asked_again_with_the_reason_then_accepted():
+    writer = Writers(health_answer("체온이 37.5도 넘으면 등원 안 함"), health_answer("아침 체온이 37.5℃ 이상이면 등원하지 않습니다."))
+    result = draft_answer("열이 나면", lambda t, q: [LINES] if t == "policy" else [], writer, Checker())
+    assert writer.calls == 2 and not result["no_evidence"]
+    assert "글자 그대로" in writer.payloads[1]["review_issues"][0]["problem"]
+    assert result["check_result"] == {"passed": True, "issues": [], "attempt": 2}
+
+
+def test_misquote_every_time_ends_as_no_evidence():
+    writer = Writers(health_answer("체온이 37.5도 넘으면 등원 안 함"))
+    result = draft_answer("열이 나면", lambda t, q: [LINES] if t == "policy" else [], writer, Checker())
+    assert writer.calls == 3 and result["no_evidence"] and result["text"] == NO_ANSWER
+    assert result["check_result"]["passed"] is False
+
+
+def test_model_saying_no_evidence_is_not_asked_again():
+    writer = Writers({"text": "", "evidence": [], "no_evidence": True, "conflict": False})
+    result = draft_answer("열이 나면", lambda t, q: [LINES] if t == "policy" else [], writer, Checker())
+    assert writer.calls == 1 and result["no_evidence"]
