@@ -1,6 +1,7 @@
 """LangGraph 요청 입구. REQUEST_AGENT=app.modules.requests.graph_agent:run_request 로 선택한다."""
 
 import logging
+import os
 from uuid import UUID
 
 from sqlalchemy import text
@@ -68,7 +69,10 @@ def _invoke(request_id, payload, expected_card_id=None):
         # 그래프가 도는 동안 SQLAlchemy 풀 연결은 노드가 쓰는 짧은 순간에만 빌린다.
         checkpoint_connection.execute("SELECT pg_advisory_lock(hashtextextended(%s,0))", (key,))
         try:
-            graph = build_graph(checkpointer, _route_request, _prepare_card, _card_status)
+            graph_builder = build_graph
+            if os.getenv("REQUEST_COLLAB_GRAPH") == "1":
+                from agents.graphs.request_collaboration import build_graph as graph_builder
+            graph = graph_builder(checkpointer, _route_request, _prepare_card, _card_status)
             config = {"configurable": {"thread_id": thread_id(request_id)},
                       "tags": ["request-agent"]}
             if expected_card_id is not None:
