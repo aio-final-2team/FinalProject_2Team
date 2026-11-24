@@ -152,7 +152,9 @@ def decide(user, card_id, body):
     with locked(user, card_id, decision=body.decision) as (connection, card, req):
         version(connection, card, body.version)
         choice = body.decision
-        consultation_report = req and req["type"] == "consultation" and card["kind"] == "director_report"
+        # 담임이 원장에게 올린(escalated) 상담은 원장 지시(instruct)로만 풀어요. 확인만 하고 닫으면 요청이 멈춰요.
+        consultation_report = (req and req["type"] == "consultation" and card["kind"] == "director_report"
+                               and req["status"] != "escalated")
         valid = req is not None and req["status"] not in ("completed", "rejected")
         if consultation_report:
             valid = valid and ((choice in ("hold", "acknowledge") and card["status"] in ("pending", "in_review"))

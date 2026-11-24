@@ -97,9 +97,10 @@ def notify_event(ev, req, card):
         kind = parent_kinds[ev.to_status]
         body = parent_label(ev.to_status, req.type, req.assignee_id, req.parent_confirmed_at)
         if ev.to_status == "sent_or_booked" and req.type == "consultation":
-            kind = "consultation_booked"
             booking = store.confirmed_booking_of(req.id)
-            body = consultation_booking_body(booking.period["start"], booking.period["end"])
+            if booking:
+                kind = "consultation_booked"
+                body = consultation_booking_body(booking.period["start"], booking.period["end"])
         if ev.to_status == "on_hold":
             body += f" · 예정일 {card.hold_until}"
         if ev.action == "dismissed":

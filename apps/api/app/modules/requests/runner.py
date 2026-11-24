@@ -12,6 +12,7 @@ from sqlalchemy import text
 from app.core.config import settings
 from app.core.db import transaction
 from app.core.request_rules import classify
+from app.modules.consultations.slots import propose_slots
 from app.modules.requests.agent_stub import homeroom_teacher, new_card
 from app.modules.requests.events import record, set_status
 
@@ -28,11 +29,28 @@ def _handoff(connection, req, reason):
             risk_category=:risk_category,assignee_id=:teacher WHERE id=:id
     """), {"id": req["id"], "teacher": teacher, **fields})
     req.update(fields, assignee_id=teacher)
-    card = new_card(connection, req, "reply_draft", teacher)
     director = connection.scalar(text("""
         SELECT id FROM users WHERE org_id=:org AND role='director' AND is_active ORDER BY id LIMIT 1
     """), {"org": req["org_id"]})
-    if req["risk_level"] in ("urgent", "uncertain") and director:
+    high_risk = req["risk_level"] in ("urgent", "uncertain") and director
+    if req["type"] == "consultation":
+        # 상담 후보는 코드가 계산해요. AI가 실패해도 시간 고르기 흐름으로 넘기고, 위험이면 원장 보고만 더해요.
+        try:
+            with connection.begin_nested():
+                card = new_card(connection, req, "consult_slots", teacher)
+                propose_slots(connection, req, card, teacher)
+        except Exception:  # noqa: BLE001 - 후보 계산까지 실패하면 글로 답하는 카드로 넘겨요
+            card = new_card(connection, req, "reply_draft", teacher)
+            set_status(connection, req, "awaiting_review", action="checked", card=card, handoff_reason=reason)
+        else:
+            set_status(connection, req, "needs_info", action="info_requested", card=card, handoff_reason=reason)
+        if high_risk:
+            # 요청 상태는 담임 흐름 그대로 둬요. escalated로 바꾸면 상담 카드가 없을 때 원장 지시로 풀 수 없어요.
+            report = new_card(connection, req, "director_report", director, {"summary": req["body"][:60]})
+            record(connection, req, "escalated", card=report, handoff_reason=reason, reason="risk")
+        return
+    card = new_card(connection, req, "reply_draft", teacher)
+    if high_risk:
         report = new_card(connection, req, "director_report", director, {"summary": req["body"][:60]})
         set_status(connection, req, "escalated", action="escalated", card=report, handoff_reason=reason, reason="risk")
     else:

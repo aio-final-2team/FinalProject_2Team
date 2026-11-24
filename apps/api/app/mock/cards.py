@@ -75,7 +75,8 @@ def decide(user, card_id, body):
         version(card, body.version)
         req = store.state().requests.get(card.request_id)
         decision = body.decision
-        consultation_report = req and req.type == "consultation" and card.kind == "director_report"
+        consultation_report = (req and req.type == "consultation" and card.kind == "director_report"
+                               and req.status != "escalated")
         # T04 3.2: 민원 회신의 승인·완료는 교사가 한다. 원장은 지시·재배정(API 설계 4.2).
         if (user.role == "director" and req and req.type == "complaint" and card.kind == "reply_draft"
                 and decision in ("approve", "edit_approve", "complete")):

@@ -372,6 +372,9 @@ def test_consultation_escalation_requires_instruction_and_closes_report(
     assert saved["consultation"]["slots"][0]["status"] == "chosen_by_parent"
     err(book(client, teacher, cid, slots[0], version=2), 409, "INVALID_TRANSITION")
     assert detail(client, director, report_id)["card"]["status"] == "pending"
+    # 담임이 올린 보고는 확인만으로 닫지 못해요. 닫히면 요청이 escalated에서 풀 길이 없어요.
+    err(decision(client, director, report_id, "acknowledge"), 409, "INVALID_TRANSITION")
+    assert detail(client, director, report_id)["card"]["status"] == "pending"
     response = client.post(f"{BASE}/cards/{report_id}/instructions", headers=director,
                            json={"version": 1, "instruction": "[TEST] 상담을 진행해 주세요"})
     assert response.status_code == 200, response.text

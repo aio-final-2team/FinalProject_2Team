@@ -105,12 +105,14 @@ def notify_event(connection, event, req, card):
         kind = parent_kinds[to]
         body = parent_label(to, req["type"], req["assignee_id"], req["parent_confirmed_at"])
         if to == "sent_or_booked" and req["type"] == "consultation":
-            kind = "consultation_booked"
             booking = connection.execute(text("""
                 SELECT lower(period) AS start,upper(period) AS end FROM consultation_bookings
                 WHERE request_id=:id AND org_id=:org AND status='confirmed'
-            """), {"id": req["id"], "org": req["org_id"]}).mappings().one()
-            body = consultation_booking_body(booking["start"], booking["end"])
+            """), {"id": req["id"], "org": req["org_id"]}).mappings().one_or_none()
+            # 예약 없이 글로 답한 상담(예전 인계 카드)은 일반 회신 알림으로 보내요.
+            if booking:
+                kind = "consultation_booked"
+                body = consultation_booking_body(booking["start"], booking["end"])
         if to == "on_hold":
             body += f" · 예정일 {card['hold_until']}"
         if action == "dismissed":

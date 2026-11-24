@@ -195,6 +195,54 @@ def test_agent_failure_preserves_request_and_hands_off_without_private_error(
     assert rows(seeded_db, "notifications", rid) == notices
 
 
+@pytest.mark.parametrize("body,risk", [("[TEST] 상담하고 싶어요", "normal"), ("[TEST] 아이가 다쳤어요 상담", "urgent")])
+def test_consultation_handoff_keeps_slot_flow_and_adds_report_only_for_risk(seeded_db, monkeypatch, body, risk):
+    req, _ = requests.create(users.get_user(seed.PARENT), background_tasks=BackgroundTasks(),
+                             client_request_id=str(uuid4()), type="consultation", body=body, child_id=seed.CHILD,
+                             previous_request_id=None, trace_id="[TEST]-consult-handoff")
+    rid = req["id"]
+
+    def fail(*args):
+        raise RuntimeError("[TEST] private model failure")
+    monkeypatch.setattr(agent_stub, "classify_request", fail)
+    runner.run_request(rid)
+    saved = rows(seeded_db, "requests", rid)[0]
+    # 상담은 AI가 실패해도 시간 고르기 흐름으로 넘겨요. 회신 카드로 넘기면 원장 지시·예약 알림이 막혀요.
+    assert saved["status"] == "needs_info" and saved["assignee_id"] == seed.TEACHER and saved["risk_level"] == risk
+    cards = {c["kind"]: c for c in rows(seeded_db, "cards", rid)}
+    assert set(cards) == ({"consult_slots", "director_report"} if risk == "urgent" else {"consult_slots"})
+    with seeded_db.connect() as connection:
+        assert connection.scalar(text("""
+            SELECT count(*) FROM consultation_slots WHERE card_id=:id AND status='proposed'
+        """), {"id": cards["consult_slots"]["id"]}) >= 1
+    history = rows(seeded_db, "events", rid)
+    moved = [e for e in history if e["to_status"] and e["detail"].get("handoff_reason") == "ai_failed"]
+    assert len(moved) == 1 and moved[0]["action"] == "info_requested"
+    assert "private model failure" not in str(history)
+
+
+def test_text_reply_on_consultation_without_booking_sends_plain_reply_notice(db_client, parent, seeded_db):
+    """예전 인계로 남은 상담 회신 카드를 승인해도 예약 알림을 찾다 500이 나지 않아요."""
+    req, _ = requests.create(users.get_user(seed.PARENT), background_tasks=BackgroundTasks(),
+                             client_request_id=str(uuid4()), type="consultation", body="[TEST] 상담 글 회신",
+                             child_id=seed.CHILD, previous_request_id=None, trace_id="[TEST]-consult-reply")
+    rid = req["id"]
+    with seeded_db.begin() as connection:
+        row = dict(connection.execute(text("SELECT * FROM requests WHERE id=:id FOR UPDATE"), {"id": rid}).mappings().one())
+        connection.execute(text("UPDATE requests SET assignee_id=:teacher WHERE id=:id"), {"id": rid, "teacher": seed.TEACHER})
+        row["assignee_id"] = seed.TEACHER
+        card = agent_stub.new_card(connection, row, "reply_draft", seed.TEACHER)
+        events.set_status(connection, row, "awaiting_review", action="checked", card=card)
+    login = db_client.post("/api/v1/auth/login", json={"login_id": "teacher01", "password": "demo1234"})
+    teacher = {"Authorization": "Bearer " + login.json()["access_token"]}
+    response = db_client.post(f"/api/v1/cards/{card['id']}/decisions", headers=teacher, json={
+        "version": 1, "decision": "edit_approve", "edited_content": {"text": "[TEST] 글로 답해요"}})
+    assert response.status_code == 200, response.text
+    assert rows(seeded_db, "requests", rid)[0]["status"] == "sent_or_booked"
+    sent = [n for n in rows(seeded_db, "notifications", rid) if n["recipient_id"] == seed.PARENT]
+    assert [n["kind"] for n in sent] == ["sent_or_booked"]
+
+
 @pytest.mark.parametrize("reason", ["ai_failed", "ai_timeout", "card_missing"])
 @pytest.mark.parametrize("request_type,body,risk,has_teacher", [
     ("inquiry", "[TEST] 아이가 다쳤어요", "urgent", True),
@@ -279,9 +327,11 @@ def test_stub_transaction_rolls_back_then_handoff_once(db_client, parent, seeded
     def fail(*args):
         raise RuntimeError("[TEST] 분류 뒤 실패")
     monkeypatch.setattr(agent_stub, "propose_slots", fail)
+    monkeypatch.setattr(runner, "propose_slots", fail)
     rid = create(db_client, parent, type="consultation").json()["request"]["id"]
+    # 후보 계산까지 실패하면 인계는 글로 답하는 카드로 넘겨요.
     assert [e["action"] for e in rows(seeded_db, "events", rid)] == ["created", "tool_failed", "created", "checked"]
-    assert len(rows(seeded_db, "cards", rid)) == 1
+    assert [c["kind"] for c in rows(seeded_db, "cards", rid)] == ["reply_draft"]
     runner.run_request(UUID(rid))
     assert len(rows(seeded_db, "cards", rid)) == 1
 
