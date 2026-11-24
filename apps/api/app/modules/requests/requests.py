@@ -37,11 +37,11 @@ def create(user, *, background_tasks, client_request_id, type, body, child_id, p
             if prev["status"] not in ("completed", "rejected"):
                 raise ApiError(409, "INVALID_TRANSITION")
         row = connection.execute(text("""
-            INSERT INTO requests (org_id,classroom_id,child_id,requester_id,client_request_id,type,body,title,previous_request_id,missing_fields)
-            VALUES (:org,:class,:child,:user,:key,:type,:body,:title,:previous,CAST(:missing AS jsonb))
+            INSERT INTO requests (org_id,classroom_id,child_id,requester_id,client_request_id,type,body,title,previous_request_id,missing_fields,care_detail)
+            VALUES (:org,:class,:child,:user,:key,:type,:body,:title,:previous,CAST(:missing AS jsonb),CAST(:care AS jsonb))
             ON CONFLICT (requester_id,client_request_id) DO NOTHING RETURNING *
         """), {**values, "class": child["classroom_id"], "child": child_id, "type": type, "body": body,
-               "title": body.split("\n")[0][:40], "previous": previous_request_id,
+               "title": body.split("\n")[0][:40], "previous": previous_request_id, "care": json.dumps(detail),
                "missing": json.dumps([k for k in MEDICATION_FIELDS if not (detail.get(k) or "").strip()]
                                      if type == "medication" else [])}).mappings().one_or_none()
         if row is None:
@@ -65,8 +65,10 @@ def create(user, *, background_tasks, client_request_id, type, body, child_id, p
             req["assignee_id"] = teacher
             connection.execute(text("UPDATE requests SET assignee_id=:teacher WHERE id=:id"),
                                {"id": req["id"], "teacher": teacher})
-        record(connection, req, "created", actor_type="user", actor_id=user.id, to_status="received", trace_id=trace_id,
-               **detail)
+        event = record(connection, req, "created", actor_type="user", actor_id=user.id, to_status="received", trace_id=trace_id,
+               **({"fields": list(detail)} if type in CARE_REQUEST_TYPES else {}))
+        from app.modules.daily_notes.notes import request_received
+        request_received(connection, req, event)
     if type not in CARE_REQUEST_TYPES:
         dispatch("request", req["id"], background_tasks)
     return req, True
@@ -92,7 +94,10 @@ def _expire(connection, req):
                 UPDATE cards SET status='pending',hold_until=NULL,version=version+1,updated_at=clock_timestamp()
                 WHERE id=:id RETURNING *
             """), {"id": card["id"]}).mappings().one())
-            set_status(connection, req, "awaiting_review", action="resumed", card=card, automatic=True)
+            if card["kind"] == "director_report" and req["type"] == "consultation":
+                record(connection, req, "resumed", card=card, automatic=True)
+            else:
+                set_status(connection, req, "awaiting_review", action="resumed", card=card, automatic=True)
         if req["status"] != "awaiting_review":
             continue
         reset = connection.execute(text("""
@@ -107,8 +112,30 @@ def _expire(connection, req):
 def _hold_until(connection, req):
     return connection.scalar(text("""
         SELECT hold_until FROM cards WHERE request_id=:id AND org_id=:org AND status='on_hold'
+          AND (kind<>'director_report' OR :type<>'consultation')
         ORDER BY created_at,id LIMIT 1
-    """), {"id": req["id"], "org": req["org_id"]})
+    """), {"id": req["id"], "org": req["org_id"], "type": req["type"]})
+
+
+def sweep_expired_requests():
+    """조회가 없어도 보류 예정일·상담 체크 만료를 같은 상태 전이로 처리해요."""
+    with transaction() as connection:
+        if not connection.scalar(text(
+            "SELECT pg_try_advisory_xact_lock(hashtextextended('requests:expiry',0))"
+        )):
+            return 0
+        rows = connection.execute(text("""
+            SELECT r.* FROM requests r WHERE EXISTS (
+                SELECT 1 FROM cards c WHERE c.request_id=r.id AND (
+                    (c.status='on_hold' AND c.hold_until<=CURRENT_DATE) OR
+                    (r.status='awaiting_review' AND EXISTS (
+                        SELECT 1 FROM consultation_slots s WHERE s.card_id=c.id
+                          AND s.status='chosen_by_parent' AND s.chosen_at<=now()-interval '24 hours'))))
+            ORDER BY r.id FOR NO KEY UPDATE OF r SKIP LOCKED
+        """)).mappings().all()
+        for row in rows:
+            _expire(connection, dict(row))
+        return len(rows)
 
 
 def choices(user, request_id, body):
@@ -122,7 +149,7 @@ def choices(user, request_id, body):
             raise ApiError(409, "INVALID_TRANSITION")
         card = connection.execute(text("""
             SELECT * FROM cards WHERE request_id=:id AND kind='consult_slots'
-              AND status IN ('pending','in_review') ORDER BY created_at DESC,id DESC
+              AND status IN ('pending','in_review','unassigned') ORDER BY created_at DESC,id DESC
             LIMIT 1 FOR NO KEY UPDATE
         """), {"id": request_id}).mappings().one_or_none()
         if card is None:
@@ -130,13 +157,14 @@ def choices(user, request_id, body):
         current_round = connection.scalar(text("SELECT coalesce(max(round),0) FROM consultation_slots WHERE card_id=:id"),
                                           {"id": card["id"]})
         slots = connection.execute(text("""
-            SELECT * FROM consultation_slots WHERE card_id=:id AND round=:round AND status='proposed'
-            ORDER BY rank FOR NO KEY UPDATE
-        """), {"id": card["id"], "round": current_round}).mappings().all()
+            SELECT * FROM consultation_slots WHERE card_id=:id AND status IN ('proposed','chosen_by_parent')
+            ORDER BY round,rank FOR NO KEY UPDATE
+        """), {"id": card["id"]}).mappings().all()
         if body.none_fit:
             connection.execute(text("UPDATE consultation_slots SET status='discarded' WHERE card_id=:id"),
                                {"id": card["id"]})
-            slots = propose_slots(connection, req, card, card["assignee_id"], current_round + 1)
+            slots = propose_slots(connection, req, card, card["assignee_id"], current_round + 1,
+                                  preferred_times=body.preferred_times)
             record(connection, req, "info_requested", card=card, actor_type="user", actor_id=user.id,
                    preferred_times=body.preferred_times)
         else:
@@ -162,6 +190,10 @@ def choices(user, request_id, body):
                        "room": row["room_id"], "period": row["period"]})
                 if taken:
                     raise ApiError(409, "SLOT_TAKEN")
+            connection.execute(text("""
+                UPDATE consultation_slots SET status='proposed',chosen_at=NULL
+                WHERE card_id=:id AND status='chosen_by_parent'
+            """), {"id": card["id"]})
             slots = [dict(connection.execute(text("""
                 UPDATE consultation_slots SET status='chosen_by_parent',chosen_at=clock_timestamp()
                 WHERE id=:id RETURNING id,status
@@ -188,9 +220,10 @@ def detail(user, request_id):
         label = parent_label if user.role == "parent" else staff_label
         timeline = []
         for event in connection.execute(text("""
-            SELECT to_status,created_at FROM events WHERE request_id=:id AND org_id=:org AND to_status IS NOT NULL ORDER BY id
+            SELECT to_status,detail,created_at FROM events WHERE request_id=:id AND org_id=:org AND to_status IS NOT NULL ORDER BY id
         """), values).mappings():
-            name = label(event["to_status"], req["type"], req["assignee_id"])
+            name = label(event["to_status"], req["type"], req["assignee_id"], req["parent_confirmed_at"],
+                         cancelled_by_parent=event["detail"].get("cancelled_by_parent", False))
             if not timeline or timeline[-1]["label"] != name:
                 timeline.append({"label": name, "at": event["created_at"]})
         consultation = None
@@ -229,9 +262,12 @@ def detail(user, request_id):
         care_state = care.view(connection, req) if req["type"] in CARE_REQUEST_TYPES else None
         if care_state:
             req["missing_fields"] = care_state["missing_fields"]
+            rejection = care_state["rejection"] if req["status"] == "rejected" else None
         return {"request": {**{key: req[key] for key in (
                     "id", "type", "title", "status", "missing_fields", "parent_confirmed_at", "created_at", "updated_at")},
-                    "status_label": label(req["status"], req["type"], req["assignee_id"]), "hold_until": _hold_until(connection, req)},
+                    "status_label": label(req["status"], req["type"], req["assignee_id"], req["parent_confirmed_at"],
+                                          cancelled_by_parent=bool(care_state and care_state["cancelled_by_parent"])),
+                    "hold_until": _hold_until(connection, req)},
                 "messages": [dict(row) for row in messages], "sources": [dict(row) for row in sources],
                 "timeline": timeline, "consultation": consultation,
                 "care": care_state, "rejection": dict(rejection) if rejection else None}
@@ -255,13 +291,15 @@ def listing(user, status, page, size, sort):
             if req["type"] == "complaint" and req["status"] == "sent_or_booked" and req["parent_confirmed_at"] is None:
                 action = "답변을 확인해 주세요"
             items.append({**{key: req[key] for key in ("id", "type", "title", "status", "updated_at")},
-                          "status_label": parent_label(req["status"], req["type"], req["assignee_id"]), "next_action": action,
+                          "status_label": parent_label(req["status"], req["type"], req["assignee_id"], req["parent_confirmed_at"],
+                                                       cancelled_by_parent=care.view(connection, req)["cancelled_by_parent"]
+                                                       if req["type"] in CARE_REQUEST_TYPES and req["status"] == "rejected" else False),
+                          "next_action": action,
                           "hold_until": _hold_until(connection, req)})
         return {"items": items, "total": len(requests), "page": page, "size": size}
 
 
 def message(user, request_id, body, *, background_tasks):
-    rerun = False
     with transaction() as connection:
         scope.request_in_scope(user, request_id, connection=connection)
         req = _expire(connection, _lock(connection, request_id))
@@ -275,27 +313,30 @@ def message(user, request_id, body, *, background_tasks):
         connection.execute(text("UPDATE requests SET updated_at=clock_timestamp() WHERE id=:id"), {"id": request_id})
         if req["type"] in CARE_REQUEST_TYPES:
             version = care.view(connection, req)["version"] + 1
-            set_status(connection, req, "received", action="returned", actor_type="user", actor_id=user.id,
+            set_status(connection, req, "received", action="message_added", actor_type="user", actor_id=user.id,
                        care_message=True, message_id=msg["id"], version=version)
         else:
-            record(connection, req, "created", actor_type="user", actor_id=user.id, message_id=msg["id"])
-        if req["type"] == "complaint" and req["status"] == "sent_or_booked":
+            record(connection, req, "message_added", actor_type="user", actor_id=user.id, message_id=msg["id"])
+        if req["type"] in ("inquiry", "complaint") and req["status"] == "sent_or_booked":
             row = connection.execute(text("""
                 SELECT * FROM cards WHERE request_id=:id AND kind='reply_draft' ORDER BY created_at DESC,id DESC LIMIT 1 FOR UPDATE
             """), {"id": request_id}).mappings().one_or_none()
             if row is None:
-                raise ApiError(409, "INVALID_TRANSITION")
-            card = dict(connection.execute(text("""
-                UPDATE cards SET status='pending',closed_at=NULL,version=version+1,updated_at=clock_timestamp()
-                WHERE id=:id RETURNING *
-            """), {"id": row["id"]}).mappings().one())
+                from app.modules.requests.agent_stub import homeroom_teacher, new_card
+                req["assignee_id"] = homeroom_teacher(connection, req)
+                connection.execute(text("UPDATE requests SET assignee_id=:teacher WHERE id=:id"),
+                                   {"id": request_id, "teacher": req["assignee_id"]})
+                card = new_card(connection, req, "reply_draft", req["assignee_id"])
+            else:
+                draft = {**row["draft"], "previous_text": row["draft"].get("text", ""), "text": ""}
+                card = dict(connection.execute(text("""
+                    UPDATE cards SET status=CASE WHEN assignee_id IS NULL THEN 'unassigned' ELSE 'pending' END,
+                        closed_at=NULL,hold_until=NULL,version=version+1,updated_at=clock_timestamp(),
+                        draft=CAST(:draft AS jsonb),check_result=NULL WHERE id=:id RETURNING *
+                """), {"id": row["id"], "draft": json.dumps(draft)}).mappings().one())
             req["parent_confirmed_at"] = None
             connection.execute(text("UPDATE requests SET parent_confirmed_at=NULL WHERE id=:id"), {"id": request_id})
             set_status(connection, req, "awaiting_review", action="returned", card=card, actor_type="user", actor_id=user.id)
-        elif req["status"] == "needs_info" and req["type"] not in (*CARE_REQUEST_TYPES, "consultation"):
-            rerun = True
-    if rerun:
-        dispatch("request", request_id, background_tasks)
     return {"message": msg}
 
 

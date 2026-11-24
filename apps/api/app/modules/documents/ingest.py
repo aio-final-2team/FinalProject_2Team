@@ -63,7 +63,7 @@ def in_scope(user, document_id):
     return scope._checked(user, row, allowed, "document", document_id)
 
 
-def view(row) -> dict:
+def view(row, *, include_chunks=False) -> dict:
     item = {key: row[key] for key in FIELDS}
     item["effective_from"] = row["effective_from"] or row["created_at"].astimezone(KST).date()
     item["classroom_ids"] = list(row["classroom_ids"] or [])
@@ -71,6 +71,13 @@ def view(row) -> dict:
     error = row["job_error"]
     item["error"] = ({key: error[key] for key in ("code", "message")}
                      if error and row["ingest_status"] == "failed" else None)
+    if include_chunks:
+        with transaction() as connection:
+            chunks = connection.execute(text("""
+                SELECT chunk_index AS index,location,content FROM document_chunks
+                WHERE document_id=:id AND org_id=:org ORDER BY chunk_index
+            """), {"id": row["id"], "org": row["org_id"]}).mappings().all()
+        item["chunks"] = [{**chunk, "suspicious": suspicious_chunk(chunk["content"])} for chunk in chunks]
     return item
 
 
@@ -78,16 +85,15 @@ def upload(user, filename, data, doc_type, visibility, classroom_ids, effective_
     """접수만 한다. 같은 기관에 같은 내용이 이미 있으면 그 문서를 돌려준다(created=False, 200)."""
     digest = hashlib.sha256(data).hexdigest()
     classroom_ids = list(dict.fromkeys(classroom_ids))
-    if replaces_document_id is not None:
-        old = in_scope(user, replaces_document_id)
-        if old["status"] != "active":
-            raise ApiError(409, "INVALID_TRANSITION")
+    old = in_scope(user, replaces_document_id) if replaces_document_id is not None else None
     with transaction() as connection:
         for classroom_id in classroom_ids:
             scope.classroom_in_scope(user, classroom_id, connection=connection)
         existing = connection.scalar(text("SELECT id FROM documents WHERE org_id=:org AND content_sha256=:sha"),
                                      {"org": user.org_id, "sha": digest})
         if existing is None:
+            if old is not None and old["status"] != "active":
+                raise ApiError(409, "INVALID_TRANSITION")
             existing = connection.scalar(text("""
                 INSERT INTO documents (org_id, title, doc_type, visibility, source, effective_from, status,
                                        ingest_status, supersedes_id, uploaded_by, content_sha256, is_virtual)
@@ -111,6 +117,8 @@ def upload(user, filename, data, doc_type, visibility, classroom_ids, effective_
     if not created:
         prior = in_scope(user, existing)
         if prior["ingest_status"] == "failed":
+            if old is not None and old["status"] != "active":
+                raise ApiError(409, "INVALID_TRANSITION")
             # 두 요청이 같이 failed를 읽어도 먼저 running으로 바꾼 쪽만 다시 적재한다.
             with transaction() as connection:
                 created = connection.scalar(text("""

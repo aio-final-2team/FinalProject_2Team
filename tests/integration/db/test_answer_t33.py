@@ -2,6 +2,7 @@
 
 from uuid import uuid4
 
+import pytest
 from sqlalchemy import text
 
 from agents.llm import ModelError
@@ -108,6 +109,51 @@ def test_duplicate_citation_saves_one_evidence_row(db_client, seeded_db, monkeyp
     card, evidence, _ = create_card(db_client, "겨울방학 언제부터인가요?")
     assert card["draft"]["text"] == "겨울방학은 12월 24일부터예요."  # 실행 전체가 롤백되지 않는다
     assert len(evidence) == 1
+
+
+@pytest.mark.parametrize("request_type", ["inquiry", "complaint"])
+@pytest.mark.parametrize("result_kind", ["passed", "failed", "handoff"])
+def test_graph_card_adapter_preserves_check_and_merges_duplicate_chunks(
+        db_client, seeded_db, monkeypatch, request_type, result_kind):
+    from app.core.request_rules import classify
+    from app.modules.requests.graph_agent import _prepare_card
+
+    monkeypatch.setenv("ANSWER_WRITER", "graph")
+    with seeded_db.begin() as connection:
+        chunks = connection.scalars(text("SELECT id FROM document_chunks ORDER BY id LIMIT 2")).all()
+        assert len(chunks) == 2
+        request_id = connection.scalar(text("""
+            INSERT INTO requests(org_id,classroom_id,child_id,requester_id,client_request_id,type,body,title)
+            VALUES (:org,:class,:child,:parent,:key,:type,:body,:body) RETURNING id
+        """), {"org": seed.ORG, "class": seed.CLASS_STAR, "child": seed.CHILD,
+               "parent": seed.PARENT, "key": str(uuid4()), "type": request_type,
+               "body": "[TEST] 준비물 안내를 확인해 주세요."})
+    check = {"passed": result_kind == "passed", "attempt": 3, "memory_unavailable": True,
+             "issues": [] if result_kind == "passed" else [{"field": "출처", "problem": "[TEST] 출처 확인 필요"}]}
+    answer = {"text": "[TEST] 그래프 초안", "no_evidence": False, "conflict": False, "check_result": check,
+              "evidence": [{"chunk_id": chunks[0], "score": 0.8, "quote": "[TEST] 첫 근거"},
+                           {"chunk_id": str(chunks[0]), "score": 0.9, "quote": "[TEST] 중복 근거"},
+                           {"chunk_id": chunks[1], "score": 0.7, "quote": "[TEST] 둘째 근거"}]}
+    if result_kind == "handoff":
+        answer.update(handoff=True, text="", evidence=[], no_evidence=True)
+    card_id = _prepare_card(str(request_id), request_type, answer,
+                            classify(request_type, "[TEST] 준비물 안내를 확인해 주세요."))
+    with seeded_db.connect() as connection:
+        card = connection.execute(text("SELECT * FROM cards WHERE id=:id"), {"id": card_id}).mappings().one()
+        evidence = connection.execute(text("""
+            SELECT chunk_id,rank,quote,score FROM card_evidence WHERE card_id=:id ORDER BY rank
+        """), {"id": card_id}).mappings().all()
+        assert connection.scalar(text("SELECT status FROM requests WHERE id=:id"),
+                                 {"id": request_id}) == "awaiting_review"
+    assert card["graph_thread_id"] == f"request:{request_id}"
+    assert card["check_result"] == check
+    assert card["draft"]["text"] == answer["text"]
+    assert [dict(e) for e in evidence] == ([] if result_kind == "handoff" else [
+        {"chunk_id": chunks[0], "rank": 1, "quote": "[TEST] 첫 근거", "score": 0.8},
+        {"chunk_id": chunks[1], "rank": 2, "quote": "[TEST] 둘째 근거", "score": 0.7}])
+    response = db_client.get(f"/api/v1/cards/{card_id}", headers=teacher_headers())
+    assert response.status_code == 200, response.text
+    assert response.json()["card"]["check_result"] == check
 
 
 def teacher_headers():

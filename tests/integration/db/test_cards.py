@@ -2,7 +2,7 @@
 
 import json
 from datetime import datetime, timedelta
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from alembic import command
@@ -100,6 +100,39 @@ def test_view_migration_roundtrip_preserves_rows_and_complaint_inbox(db_client, 
     assert bucket() == "done"
 
 
+@pytest.mark.parametrize("risk", ["normal", "urgent", "uncertain"])
+def test_0013_escalated_reply_view_roundtrip_preserves_rows(db_client, seeded_db, alembic_config, risk):
+    rid, cid = create(db_client, kind="inquiry")
+    response = db_client.post(f"{BASE}/cards/{cid}/decisions", headers=auth(seed.TEACHER),
+                              json={"version": 1, "decision": "escalate"})
+    assert response.status_code == 200, response.text
+    report_id = response.json()["next_card_id"]
+    with seeded_db.begin() as connection:
+        connection.execute(text("UPDATE requests SET risk_level=:risk,risk_category=:category WHERE id=:id"),
+                           {"id": rid, "risk": risk, "category": "child_safety" if risk == "urgent" else None})
+
+    def snapshot():
+        with seeded_db.connect() as connection:
+            return {table: connection.execute(text(f"SELECT * FROM {table} ORDER BY id")).mappings().all()
+                    for table in ("requests", "cards", "approvals", "events", "notifications")}
+
+    def buckets():
+        with seeded_db.connect() as connection:
+            return dict(connection.execute(text("SELECT card_id,inbox_filter FROM staff_inbox WHERE request_id=:id"),
+                                           {"id": rid}).all())
+
+    before = snapshot()
+    old_bucket = "uncertain" if risk == "uncertain" else "needs_review"
+    expected = {UUID(cid): "in_progress", UUID(report_id): old_bucket}
+    assert buckets() == expected
+    command.downgrade(alembic_config, "0012")
+    assert buckets() == dict.fromkeys(expected, old_bucket)
+    assert snapshot() == before
+    command.upgrade(alembic_config, "head")
+    assert buckets() == expected
+    assert snapshot() == before
+
+
 def test_automatic_hold_expiry_on_list_is_once_and_no_human_approval(db_client, seeded_db):
     rid, cid = create(db_client)
     tomorrow = (datetime.now(KST).date() + timedelta(days=1)).isoformat()
@@ -134,6 +167,8 @@ def test_automatic_hold_expiry_on_list_is_once_and_no_human_approval(db_client, 
 
 def test_overview_reads_view_and_eval_and_empty_organization(db_client, seeded_db):
     with seeded_db.begin() as connection:
+        # 시작 점검이 오래된 시드 요청을 복구해도 여기서는 실제 빈 기관을 검사해요.
+        connection.execute(text("TRUNCATE requests CASCADE"))
         connection.execute(
             text(
                 "INSERT INTO eval_runs (suite,requested_model,total,passed,started_at) VALUES ('service','[TEST] model',3,2,now())"
@@ -182,6 +217,9 @@ def test_unassigned_card_reassign_and_cards_without_request(db_client, seeded_db
     monkeypatch.setattr(runner, "run_request", lambda request_id: None)
 
     with seeded_db.begin() as connection:
+        # 미배정·재배정 경로를 보려면 점검 시점에 유효한 담임이 없어야 해요.
+        connection.execute(text("UPDATE classroom_staff SET valid_from=:start WHERE classroom_id=:id"),
+                           {"id": seed.CLASS_STAR, "start": datetime.now(KST).date()+timedelta(days=1)})
         rid = connection.scalar(
             text("""INSERT INTO requests (org_id,classroom_id,child_id,requester_id,client_request_id,type,body,created_at)
             VALUES (:org,:class,:child,:parent,:key,'inquiry','[TEST] 누락',now()-interval '10 minutes') RETURNING id"""),
@@ -195,6 +233,9 @@ def test_unassigned_card_reassign_and_cards_without_request(db_client, seeded_db
         )
     sweep_missing_cards(datetime.now(KST))
     sweep_missing_cards(datetime.now(KST)+timedelta(minutes=5))
+    with seeded_db.begin() as connection:
+        connection.execute(text("UPDATE classroom_staff SET valid_from=NULL WHERE classroom_id=:id"),
+                           {"id": seed.CLASS_STAR})
     with seeded_db.connect() as connection:
         assert connection.scalar(text("SELECT count(*) FROM cards c JOIN requests r ON r.id=c.request_id WHERE r.type IN ('medication','pickup')")) == 0
     rows = db_client.get(BASE + "/cards?filter=unassigned&size=100", headers=auth(seed.DIRECTOR)).json()["items"]

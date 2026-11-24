@@ -48,7 +48,7 @@ PYTHONPATH=apps/api uvicorn app.main:app --port 8000
 
 `POST /api/v1/daily-notes/drafts`에 `child_memos`를 선택으로 더할 수 있어요. 예를 들어 `"child_memos": [{"child_id": "00000000-0000-4000-8000-000000000501", "memo": "블록으로 높은 탑을 쌓음"}]`처럼 보내요. memo는 1~500자이고, 같은 아이를 두 번 넣거나 그 반 아이가 아니면 422 `VALIDATION_FAILED`예요. 다른 반·다른 기관·없는 아이면 `error.details.child_id`에 보낸 ID가 와요.
 
-모의 초안은 메모를 그대로 `content.items[]`의 `key: child`, `source.type: teacher_input` 줄에 넣어요. 메모를 생략하거나 공백만 보내면 그 아이의 child 줄이 없어요. 확인 항목은 `{ id, item_key, kind, problem, sentence, request_id? }` 모양이에요. request_id는 선택 UUID이고 생략·null이 가능해요. kind는 `not_in_memo`·`sensitive`·`other_child`·`date_check`·`absent`·`draft_failed`·`check_failed`·`request_missed`의 8개 중 하나예요. problem은 설명, sentence는 걸린 문장(없으면 null)이에요. 모의 생성은 첫 아이에게 기존 준비물 확인을 `date_check`로 남겨요. 해결할 때는 지금처럼 `resolved_checks`에 id만 보내요.
+모의 초안은 메모를 그대로 `content.items[]`의 `key: child`, `source.type: teacher_input` 줄에 넣어요. 메모를 생략하거나 공백만 보내면 그 아이의 child 줄이 없어요. 확인 항목은 `{ id, item_key, kind, problem, sentence, request_id? }` 모양이에요. request_id는 선택 UUID이고 생략·null이 가능해요. kind는 `not_in_memo`·`sensitive`·`other_child`·`date_check`·`absent`·`draft_failed`·`check_failed`·`request_missed`·`return_limit`의 9개 중 하나예요. problem은 설명, sentence는 걸린 문장(없으면 null)이에요. 모의 생성은 첫 아이에게 기존 준비물 확인을 `date_check`로 남겨요. 해결할 때는 지금처럼 `resolved_checks`에 id만 보내요.
 
 서버는 같은 기관·반·아이의 보호자가 그날 보낸 문의·투약·귀가 요청을 아이 입력의 `requests: [{request_id, type, text}]`로 모아요. 날짜는 요청 생성 시각을 한국 날짜로 바꿔 비교해요. 클라이언트가 초안 본문에 requests를 보낼 필요는 없어요. 모의 초안은 요청 원문을 `source.type: request`, `source.request_id` 줄로 옮겨요. 문의는 `inquiry`(출처 `request`만 허용), 투약·귀가는 `medication`·`pickup` 줄이에요. 반 공통 활동은 `day`에 남아서 문의와 함께 보여요.
 
@@ -95,6 +95,10 @@ API 31 GET /memories는 담임 본인의 기억만 kind로 걸러 쪽을 나눠�
 API 33 POST /daily-notes/drafts/{input_id}/regenerate는 저장한 반 입력으로 미확인 초안을 다시 만들어요. ready와 교사 수정본(content ≠ ai_original 또는 daily_note_edited 이력)은 유지하고 sent가 하나라도 있으면 409 INVALID_TRANSITION이에요. 응답은 기존 초안 응답에 kept_edited(접수 시 보존한 미확인 수정본 수)를 더해요. failed와 시간 제한을 넘은 queued·running은 다시 받을 수 있고, 제한 안의 실행은 현재 상태를 돌려줘요. 모의는 즉시 처리하며 [실패] 입력은 계속 failed예요. DB는 BackgroundTasks로 queued→running→succeeded/failed를 처리해요.
 
 선생님이 받은 마지막 AI 초안은 내부 ai_original로 보존하고 공개 NoteView는 그대로예요. 교사 수정으로는 원본을 바꾸지 않고, 미수정 초안 재생성 때 새 초안으로 바꿔요. 내용 변경만 daily_note_edited를 남기고 확인 취소는 returned로 ready→draft, 검사 해소는 checked로 needs_check→draft를 기록해요. 새 초안 이력과 반 묶음 카드에 재생성 요청자도 남겨요. 말투 추출·학습은 기억 AI가 맡아요.
+
+## [제안] 보낸 알림장 정정
+
+API 52 `POST /daily-notes/{note_id}/correct`는 현재 담당 반 담임·같은 기관 원장만 쓸 수 있어요. `content` 전체 줄 객체·`reason_text`(1~500자, 공백만 불가)·현재 `version`이 필수예요. sent에서만 200으로 정정하고, 다른 상태는 409 INVALID_TRANSITION, 판 충돌은 409 CARD_VERSION_CONFLICT(details.current_version), 학부모는 403이에요. 출처 검사는 기존 PATCH와 같아요. NoteView에는 정정용 version(기본 1)·corrected_at(정정 전 null)을 더하고, 학부모 목록에도 보내요. 정정 성공마다 판을 1 올리고 마지막 정정 시각을 기록하지만 status=sent·발송/확인 시각·AI 원본은 유지해요. 발송 전 수정·재생성·확인·발송은 이 판을 바꾸지 않아요. daily_note_corrected 이력에 사유·판·행위자를 남기고 활성 학부모마다 note_corrected("알림장이 고쳐졌어요") 알림을 한 건 만들어요. 알림 body에는 사유를 넣지 않고 daily_note 대상으로 연결해요. 같은 판을 다시 보내면 내용·정정 이력·알림이 늘지 않아요. DB는 0015(down_revision=0014)로 version·corrected_at을 추가해요. 두 모드 계약은 T13 3.30·OpenAPI와 같아요.
 
 ## 상담 체크·확정 v0.5.2
 

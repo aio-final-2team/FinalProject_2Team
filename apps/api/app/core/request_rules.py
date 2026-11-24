@@ -16,7 +16,7 @@ _COMPLAINT_WORDS = {"child_safety": ("안전",), "legal_external": ("신고",), 
 _TOPIC_WORDS = {
     "pickup_bus": ("버스", "등원", "하원"), "meal": ("급식", "밥", "식단", "간식"),
     "safety": ("안전", "다쳤", "다침"), "fee": ("원비", "비용", "환불"),
-    "belongings": ("소지품", "가방", "옷", "분실"), "peer_conflict": ("친구", "다툼", "싸움"),
+    "belongings": ("소지품", "가방", "옷", "분실"), "peer_conflict": ("친구", "다툼", "다퉜", "싸움"),
     "health_hygiene": ("열", "아파", "위생", "감기", "수족구"), "photo_record": ("사진", "앨범"),
     "communication": ("연락", "답장", "알림장"), "teacher": ("선생님",),
 }
@@ -35,3 +35,20 @@ def classify(request_type, body):
         if category:
             result["urgency"] = "urgent"
     return result
+
+
+def direct_notice_kind(request_type, body, fields):
+    """아이 일·위험은 사람이 보고, 분명히 못 하는 일만 고정 문구로 안내해요."""
+    from app.core.constants import OUT_OF_SCOPE_MESSAGES
+
+    if fields.get("risk_level") in ("urgent", "uncertain"):
+        return None
+    if fields.get("topic_key") in ("peer_conflict", "safety", "health_hygiene"):
+        return None
+    if any(word in body for word in ("우리 아이", "우리 애", "저희 아이")):
+        return None
+    kind = fields.get("out_of_scope_kind")
+    if kind in OUT_OF_SCOPE_MESSAGES and (request_type == "inquiry"
+                                         or (request_type == "consultation" and kind == "other_teacher")):
+        return kind
+    return None

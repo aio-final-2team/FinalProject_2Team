@@ -29,9 +29,11 @@ STAFF_LABELS = {
 }
 
 
-def parent_label(status: str, request_type: str, assignee_id) -> str:
+def parent_label(status: str, request_type: str, assignee_id, parent_confirmed_at=None, *, cancelled_by_parent=False) -> str:
     """상담은 같은 상태라도 표시가 다르다(needs_info = 시간 고르기, sent_or_booked = 예약 확정)."""
     if request_type in ("medication", "pickup"):
+        if status == "rejected" and cancelled_by_parent:
+            return "취소함"
         return {"received": "선생님 확인 대기", "assigned": "선생님 확인 완료",
                 "completed": "투약 완료" if request_type == "medication" else "인계 완료"}.get(status, PARENT_LABELS[status])
     if status in ("assigned", "awaiting_review", "on_hold") and not assignee_id:
@@ -41,12 +43,27 @@ def parent_label(status: str, request_type: str, assignee_id) -> str:
             return "시간을 골라 주세요"
         if status == "sent_or_booked":
             return "예약 확정"
+    if request_type == "complaint" and status == "sent_or_booked" and parent_confirmed_at:
+        return "확인함 · 선생님이 마무리하고 있어요"
     return PARENT_LABELS[status]
 
 
-def staff_label(status: str, request_type: str, assignee_id=None) -> str:
+def staff_label(status: str, request_type: str, assignee_id=None, parent_confirmed_at=None, *, card_kind=None,
+                cancelled_by_parent=False) -> str:
+    if status == "escalated" and card_kind == "reply_draft":
+        return "원장 확인 중"
     if request_type in ("medication", "pickup"):
-        return parent_label(status, request_type, assignee_id)
+        return parent_label(status, request_type, assignee_id, cancelled_by_parent=cancelled_by_parent)
     if request_type == "consultation" and status == "sent_or_booked":
         return "예약됨"
     return STAFF_LABELS[status]
+
+
+def note_batch_label(status, draft_status, validation_result=None):
+    if draft_status == "failed":
+        return "만들기 실패 · 다시 만들기"
+    if draft_status in ("queued", "running"):
+        return "만드는 중"
+    if status != "done" and validation_result == "all_children_template":
+        return "AI가 못 만들었어요 · 직접 쓰거나 다시 만들기"
+    return "완료" if status == "done" else "확인 필요"

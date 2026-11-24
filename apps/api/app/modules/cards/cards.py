@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from app.core import scope
 from app.core.db import transaction
 from app.core.errors import ApiError
+from app.core.constants import REASSIGN_AFTER_INSTRUCTION
 from app.core.request_rules import RECLASSIFY_TYPES
 from app.core.schedule import due_at
 from app.modules.requests.agent_stub import new_card
@@ -140,7 +141,7 @@ def report(connection, req):
 
 
 def close_reports(connection, req):
-    """위험 상담의 원장 보고 카드는 원장 지시(escalated만 받음)로 닫을 수 없어서, 요청이 끝날 때(예약 확정·반려) 같이 닫아요."""
+    """예약 확정·반려 때 아직 열린 원장 보고 카드도 함께 닫아요."""
     for report_card in connection.execute(text("""
         SELECT * FROM cards WHERE request_id=:id AND kind='director_report' AND status NOT IN ('done','rejected')
     """), {"id": req["id"]}).mappings().all():
@@ -151,8 +152,16 @@ def decide(user, card_id, body):
     with locked(user, card_id, decision=body.decision) as (connection, card, req):
         version(connection, card, body.version)
         choice = body.decision
+        # 담임이 원장에게 올린(escalated) 상담은 원장 지시(instruct)로만 풀어요. 확인만 하고 닫으면 요청이 멈춰요.
+        consultation_report = (req and req["type"] == "consultation" and card["kind"] == "director_report"
+                               and req["status"] != "escalated")
         valid = req is not None and req["status"] not in ("completed", "rejected")
-        if choice == "complete":
+        if consultation_report:
+            valid = valid and ((choice in ("hold", "acknowledge") and card["status"] in ("pending", "in_review"))
+                               or (choice in ("resume", "acknowledge") and card["status"] == "on_hold"))
+        elif choice == "acknowledge":
+            valid = False
+        elif choice == "complete":
             valid = (
                 valid
                 and card["kind"] == "reply_draft"
@@ -164,7 +173,7 @@ def decide(user, card_id, body):
             valid = valid and card["status"] == "on_hold" and req["status"] == "on_hold"
         else:
             valid = valid and card["status"] in ("pending", "in_review") and req["status"] == "awaiting_review"
-        if card["kind"] == "director_report" and choice not in ("hold", "resume"):
+        if card["kind"] == "director_report" and not consultation_report and choice not in ("hold", "resume"):
             valid = False
         if choice in ("approve", "edit_approve") and card["kind"] != "reply_draft":
             valid = False
@@ -186,7 +195,12 @@ def decide(user, card_id, body):
             remember_rejection(connection, user, card, choice, body.reason_code, body.reason_text)
         actor = {"card": card, "actor_type": "user", "actor_id": user.id}
         next_card = None
-        if choice in ("approve", "edit_approve"):
+        if consultation_report:
+            card["hold_until"] = body.hold_until if choice == "hold" else None
+            touch(connection, card, {"hold": "on_hold", "resume": "pending", "acknowledge": "done"}[choice])
+            record(connection, req, {"hold": "held", "resume": "resumed", "acknowledge": "report_acknowledged"}[choice],
+                   reason_text=body.reason_text, **actor)
+        elif choice in ("approve", "edit_approve"):
             card["draft"] = content
             card["status"] = "approved"
             set_status(connection, req, "approved", action="approved", **actor)
@@ -210,6 +224,9 @@ def decide(user, card_id, body):
             touch(connection, card, "pending")
             req = _expire(connection, req)
         elif choice == "dismiss":
+            connection.execute(text("""
+                UPDATE consultation_slots SET status='discarded' WHERE card_id=:id AND status='chosen_by_parent'
+            """), {"id": card["id"]})
             set_status(
                 connection,
                 req,
@@ -223,7 +240,7 @@ def decide(user, card_id, body):
             close_reports(connection, req)
         elif choice == "escalate":
             next_card = report(connection, req)
-            set_status(connection, req, "escalated", action="escalated", **actor)
+            set_status(connection, req, "escalated", action="escalated", reason="manual", **actor)
             touch(connection, card)
         elif choice == "reject":
             touch(connection, card, "rejected")
@@ -297,9 +314,9 @@ def rule_decision(user, rule_id, body):
 
 
 def book(user, card_id, body):
+    conflict = None
     with locked(user, card_id) as (connection, card, req):
-        # 재배정만 받은 다른 반 교사는 조회할 수 있어도 대신 확정하지 못해요.
-        if user.role != "teacher" or not scope._classroom(connection, user, card["classroom_id"]):
+        if user.role != "teacher" or card["assignee_id"] != user.id:
             raise ApiError(403, "FORBIDDEN_ROLE")
         version(connection, card, body.version)
         slot = connection.execute(text("""
@@ -315,22 +332,42 @@ def book(user, card_id, body):
             raise ApiError(409, "SLOT_NOT_CHOSEN")
         if req["status"] != "awaiting_review" or card["status"] != "pending":
             raise ApiError(409, "INVALID_TRANSITION")
-        booking_id = book_slot(connection, slot, request_id=req["id"], confirmed_by=user.id)
-        approval(connection, card, user, "approve")
-        connection.execute(text("""
-            UPDATE consultation_slots SET status=CASE WHEN id=:slot THEN 'confirmed' ELSE 'discarded' END
-            WHERE card_id=:card
-        """), {"slot": slot["id"], "card": card_id})
-        actor = {"card": card, "actor_type": "user", "actor_id": user.id}
-        set_status(connection, req, "approved", action="approved", **actor)
-        set_status(connection, req, "sent_or_booked", action="booked", **actor)
-        touch(connection, card, "done")
-        close_reports(connection, req)
-        response = {"booking": {"id": booking_id, "room": slot["room"],
-                                "period": {"start": slot["period"].lower, "end": slot["period"].upper}},
-                    "request": result(card, req)["request"]}
+        try:
+            # 배제 제약/교착으로 INSERT가 실패해도 재제안은 같은 바깥 트랜잭션에 남겨요.
+            with connection.begin_nested():
+                booking_id = book_slot(connection, slot, request_id=req["id"], confirmed_by=user.id)
+        except ApiError as error:
+            if error.code != "SLOT_TAKEN":
+                raise
+            connection.execute(text("UPDATE consultation_slots SET status='discarded' WHERE id=:id"), {"id": slot["id"]})
+            candidates = propose_slots(connection, req, card, card["assignee_id"])
+            touch(connection, card)
+            set_status(connection, req, "needs_info", action="slot_conflict_reproposed", card=card,
+                       actor_type="user", actor_id=user.id, slot_id=slot["id"],
+                       new_slot_ids=[candidate["id"] for candidate in candidates])
+            conflict = error
+        if conflict is None:
+            response = _finish_booking(connection, card, req, slot, booking_id, user)
+    if conflict:
+        raise conflict
     _resume_graph_after_commit(card)
     return response
+
+
+def _finish_booking(connection, card, req, slot, booking_id, user):
+    approval(connection, card, user, "approve")
+    connection.execute(text("""
+        UPDATE consultation_slots SET status=CASE WHEN id=:slot THEN 'confirmed' ELSE 'discarded' END
+        WHERE card_id=:card
+    """), {"slot": slot["id"], "card": card["id"]})
+    actor = {"card": card, "actor_type": "user", "actor_id": user.id}
+    set_status(connection, req, "approved", action="approved", **actor)
+    set_status(connection, req, "sent_or_booked", action="booked", **actor)
+    touch(connection, card, "done")
+    close_reports(connection, req)
+    return {"booking": {"id": booking_id, "room": slot["room"],
+                        "period": {"start": slot["period"].lower, "end": slot["period"].upper}},
+            "request": result(card, req)["request"]}
 
 
 def reclassify(user, card_id, body):
@@ -361,6 +398,16 @@ def reclassify(user, card_id, body):
             SELECT * FROM cards WHERE request_id=:id AND kind='director_report'
               AND status NOT IN ('done','rejected') ORDER BY id
         """), {"id": req["id"]}).mappings()]
+        if previous != "urgent" and body.risk_level == "urgent":
+            for reply in connection.execute(text("""
+                UPDATE cards SET draft=jsonb_set(draft,'{text}','""'::jsonb),check_result=NULL
+                WHERE request_id=:id AND kind='reply_draft' AND status NOT IN ('done','rejected')
+                RETURNING *
+            """), {"id": req["id"]}).mappings():
+                if reply["id"] == card["id"]:
+                    card.update(reply)
+                else:
+                    touch(connection, dict(reply))
         closed_target = False
         if user.role == "director" and body.risk_level == "normal":
             for report_card in reports:
@@ -390,7 +437,8 @@ def reclassify(user, card_id, body):
         if body.risk_level == "urgent":
             report_card = report(connection, req)
             set_status(
-                connection, req, "escalated", action="escalated", card=report_card, actor_type="user", actor_id=user.id
+                connection, req, "escalated", action="escalated", card=report_card, actor_type="user", actor_id=user.id,
+                reason="manual"
             )
         from app.modules.cards.card_views import staff_request
 
@@ -412,7 +460,7 @@ def instruct(user, card_id, body):
         reply = (
             connection.execute(
                 text(
-                    "SELECT * FROM cards WHERE request_id=:id AND kind=:kind AND status IN ('pending','in_review') "
+                    "SELECT * FROM cards WHERE request_id=:id AND kind=:kind AND status IN ('pending','in_review','unassigned') "
                     "ORDER BY created_at DESC,id DESC LIMIT 1"
                 ),
                 {"id": req["id"], "kind": "consult_slots" if req["type"] == "consultation" else "reply_draft"},
@@ -427,7 +475,10 @@ def instruct(user, card_id, body):
         set_status(
             connection, req, "awaiting_review", action="instructed", card=reply, actor_type="user", actor_id=user.id
         )
-        return result(card, req)
+        response = result(card, req)
+        if reply["assignee_id"] is None:
+            response.update(next_action="reassign", message=REASSIGN_AFTER_INSTRUCTION)
+        return response
 
 
 def reassign(user, card_id, body):
@@ -466,6 +517,17 @@ def reassign(user, card_id, body):
             actor_id=user.id,
             **{"from": str(previous) if previous else None, "to": str(target["id"]), "reason": body.reason},
         )
+        if req and card["kind"] == "consult_slots":
+            connection.execute(text("""
+                UPDATE consultation_slots SET teacher_id=:teacher WHERE card_id=:id
+                  AND status IN ('proposed','chosen_by_parent')
+            """), {"id": card["id"], "teacher": target["id"]})
+        if req and card["kind"] == "consult_slots" and not connection.scalar(text("""
+            SELECT EXISTS (SELECT 1 FROM consultation_slots WHERE card_id=:id
+                           AND status IN ('proposed','chosen_by_parent'))
+        """), {"id": card["id"]}):
+            propose_slots(connection, req, card, target["id"])
+            set_status(connection, req, "needs_info", action="info_requested", card=card)
         return {"card": {"assignee": dict(target), "version": card["version"]}}
 
 

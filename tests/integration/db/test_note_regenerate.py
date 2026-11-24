@@ -140,7 +140,8 @@ def test_confirmation_during_writer_preserves_ready_note(db_client, teacher, see
         finally:
             release.set()
         assert pending.result(timeout=15).status_code == 202
-    assert next(n for n in notes(db_client, teacher) if n["id"] == target["id"]) == confirmed.json()["note"]
+    assert next(n for n in notes(db_client, teacher) if n["id"] == target["id"]) == {
+        **confirmed.json()["note"], "input_id": input_id}
     with seeded_db.connect() as connection:
         assert connection.scalar(text("SELECT draft_status FROM daily_note_inputs")) == "succeeded"
 
@@ -215,7 +216,8 @@ def test_two_regenerates_dispatch_one_writer_and_keep_edit_during_run(db_client,
             release.set()
         assert pending.result(timeout=15).status_code == 202
     assert len(calls) == 1
-    assert next(n for n in notes(db_client, teacher) if n["id"] == target["id"]) == changed.json()["note"]
+    assert next(n for n in notes(db_client, teacher) if n["id"] == target["id"]) == {
+        **changed.json()["note"], "input_id": input_id}
     with seeded_db.connect() as connection:
         assert connection.scalar(text("SELECT count(*) FROM events WHERE action='daily_note_drafted'")) == 39
 

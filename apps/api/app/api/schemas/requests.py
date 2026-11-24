@@ -39,9 +39,34 @@ class RequestCreateIn(BaseModel):
 
 
 class CareDecisionIn(BaseModel):
-    decision: Literal["confirm", "complete"]
-    version: int = Field(ge=1, description="교직원이 본 care.version. 보호자 새 글마다 증가해요")
+    decision: Literal["confirm", "complete", "reject"]
+    version: int = Field(ge=1, description="교직원이 본 care.version. 보호자 새 글·입력 수정마다 증가해요")
     pickup_guardian_id: UUID | None = None
+    reason_text: str | None = Field(default=None, max_length=1000)
+
+    @model_validator(mode="after")
+    def rejection_reason(self):
+        if self.decision == "reject" and not (self.reason_text or "").strip():
+            raise ValueError("반려 사유를 적어 주세요")
+        return self
+
+
+class CareUpdateIn(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    version: int = Field(ge=1, description="학부모가 본 care.version")
+    pickup_guardian_id: UUID | None = None
+    pickup_name: str | None = Field(default=None, max_length=100)
+    pickup_relation: str | None = Field(default=None, max_length=100)
+    medication_name: str | None = Field(default=None, max_length=100)
+    medication_dose: str | None = Field(default=None, max_length=100)
+    medication_time: str | None = Field(default=None, max_length=100)
+
+    @model_validator(mode="after")
+    def changed_fields(self):
+        if not self.model_fields_set - {"version"}:
+            raise ValueError("고칠 칸을 보내 주세요")
+        return self
 
 
 class PickupGuardian(BaseModel):

@@ -114,10 +114,13 @@ def test_slot_collision_is_atomic_and_nonoverlap_is_allowed(client, parent, teac
     second[1].period = dict(first[0].period)  # 이전 중복 체크를 가정해 최종 제약도 확인해요.
     assert client.post(f"{BASE}/cards/{pairs[0][1]}/bookings", headers=teacher, json={"version": 1, "slot_id": first[0].id}).status_code == 200
     err(client.post(f"{BASE}/cards/{pairs[1][1]}/bookings", headers=teacher, json={"version": 1, "slot_id": second[1].id}), 409, "SLOT_TAKEN")
-    assert store.state().cards[UUID(pairs[1][1])].version == 1
-    assert second[1].status == "chosen_by_parent"
-    second[1].period = dict(first[1].period)
-    assert client.post(f"{BASE}/cards/{pairs[1][1]}/bookings", headers=teacher, json={"version": 1, "slot_id": second[1].id}).status_code == 200
+    assert store.state().cards[UUID(pairs[1][1])].version == 2
+    assert second[1].status == "discarded"
+    assert store.state().requests[UUID(pairs[1][0])].status == "needs_info"
+    assert client.post(f"{BASE}/requests/{pairs[1][0]}/slot-choices", headers=parent,
+                       json={"slot_ids": [second[2].id]}).status_code == 200
+    assert client.post(f"{BASE}/cards/{pairs[1][1]}/bookings", headers=teacher,
+                       json={"version": 2, "slot_id": second[2].id}).status_code == 200
 
 
 def test_none_fit_regenerates_and_hold_expires_once(client, parent, teacher):
@@ -198,7 +201,7 @@ def test_director_report_permission_instructions_reassign(client, parent, teache
     overview = client.get(BASE + "/overview", headers=director).json()
     assert overview["reassignments"][-1]["from"] == str(seed.TEACHER)
     assert overview["reassignments"][-1]["to"] == str(seed.TEACHER_OTHER)
-    err(client.post(f"{BASE}/cards/{cid}/bookings", headers=teacher_other, json={"version": 2, "slot_id": 1}), 403, "FORBIDDEN_ROLE")
+    err(client.post(f"{BASE}/cards/{cid}/bookings", headers=teacher_other, json={"version": 2, "slot_id": 1}), 404, "NOT_FOUND")
 
 
 def test_reclassify_uncertain_and_escalate(client, teacher, director):
@@ -206,8 +209,8 @@ def test_reclassify_uncertain_and_escalate(client, teacher, director):
     card = next(c for c in store.cards_of(req.id) if c.kind == "reply_draft")
     result = client.post(f"{BASE}/cards/{card.id}/reclassify", headers=teacher, json={"version": 1, "risk_level": "normal", "reason": "일반 문의 수준"})
     assert result.status_code == 200 and result.json()["request"]["risk_level"] == "normal"
-    review = client.get(BASE + "/cards?filter=needs_review", headers=teacher).json()
-    assert str(card.id) in [c["id"] for c in review["items"]]
+    progress = client.get(BASE + "/cards?filter=in_progress", headers=teacher).json()
+    assert next(c for c in progress["items"] if c["id"] == str(card.id))["status_label"] == "원장 확인 중"
     result = client.post(f"{BASE}/cards/{card.id}/reclassify", headers=teacher,
                          json={"version": 2, "risk_level": "urgent", "risk_category": "child_safety", "reason": "추가 확인"})
     assert result.status_code == 200 and req.status == "escalated"
@@ -335,7 +338,7 @@ def test_foreign_scope_paths_and_required_parameters(client, parent, parent_othe
     err(client.post(f"{BASE}/requests/{seed.REQUEST_CONSULT}/confirm", headers=parent), 409, "INVALID_TRANSITION")
 
 
-def test_request_notification_kinds_and_trace_audit(client, parent, teacher):
+def test_request_notification_kinds_and_trace_audit(client, parent, teacher, director):
     from app.mock.notifications import TITLES
     from app.core.consultation_alerts import KINDS
     store.reset()
@@ -350,6 +353,8 @@ def test_request_notification_kinds_and_trace_audit(client, parent, teacher):
     assert client.post(f"{BASE}/requests/{rid}/confirm", headers=parent).status_code == 200
     assert decision(client, teacher, cid, "complete", version=4).status_code == 200
     rid, cid = create(client, parent, body="별도 사항")
+    assert client.post(f"{BASE}/requests/{rid}/messages", headers=parent,
+                       json={"body": "[TEST] 확인할 내용을 더 남겨요"}).status_code == 201
     assert decision(client, teacher, cid, "escalate").status_code == 200
     rid, cid = create(client, parent, body="추가 사항")
     assert decision(client, teacher, cid, "dismiss", reason_code="policy").status_code == 200
@@ -357,6 +362,13 @@ def test_request_notification_kinds_and_trace_audit(client, parent, teacher):
     assert client.post(f"{BASE}/requests/{seed.REQUEST_CONSULT}/slot-choices", headers=parent, json={"slot_ids": [slot.id]}).status_code == 200
     slot.chosen_at = store.now() - timedelta(hours=25)
     assert client.get(f"{BASE}/requests/{seed.REQUEST_CONSULT}", headers=parent).status_code == 200
+    assert client.post(f"{BASE}/requests/{seed.REQUEST_CONSULT}/slot-choices", headers=parent,
+                       json={"slot_ids": [slot.id]}).status_code == 200
+    assert client.post(f"{BASE}/cards/{slot.card_id}/bookings", headers=teacher,
+                       json={"version": 1, "slot_id": slot.id}).status_code == 200
+    _, reassigned_id = create(client, parent, "inquiry", "[TEST] 재배정 알림")
+    assert client.post(f"{BASE}/cards/{reassigned_id}/reassign", headers=director,
+                       json={"assignee_id": str(seed.TEACHER_OTHER), "reason": "[TEST] 담당 부재"}).status_code == 200
     body = {"classroom_id": str(seed.CLASS_STAR), "note_date": store.now().date().isoformat(), "activities": "산책", "supplies": "실내화"}
     assert client.post(BASE + "/daily-notes/drafts", headers=teacher, json=body).status_code == 202
     for note in store.state().notes.values():
@@ -364,6 +376,11 @@ def test_request_notification_kinds_and_trace_audit(client, parent, teacher):
                             json={"confirm": True, "resolved_checks": [c["id"] for c in note.open_checks]}).status_code == 200
     assert client.post(BASE + "/daily-notes/send", headers=teacher,
                        json={k: body[k] for k in ("classroom_id", "note_date")}).status_code == 200
+    listed = client.get(BASE + "/daily-notes", headers=teacher,
+                        params={"classroom_id": str(seed.CLASS_STAR), "date": body["note_date"]}).json()["items"]
+    note = next(n for n in listed if n["child_id"] == str(seed.CHILD))
+    assert client.post(f"{BASE}/daily-notes/{note['id']}/correct", headers=teacher, json={
+        "version": note["version"], "content": note["content"], "reason_text": "[TEST] 알림장 기록 정정"}).status_code == 200
     care = client.post(BASE + "/requests", headers=parent, json={
         "client_request_id": "care-notification-test", "type": "medication", "child_id": str(seed.CHILD),
         "body": "[TEST] 보호자 원문"})
@@ -372,6 +389,18 @@ def test_request_notification_kinds_and_trace_audit(client, parent, teacher):
     for action in ("confirm", "complete"):
         assert client.post(f"{BASE}/requests/{care_id}/care-decisions", headers=teacher,
                            json={"decision": action, "version": 1}).status_code == 200
+    for action in ("reject", "cancel"):
+        created = client.post(BASE + "/requests", headers=parent, json={
+            "client_request_id": f"care-notification-{action}", "type": "medication", "child_id": str(seed.CHILD),
+            "body": "[TEST] 반려·취소 알림"})
+        assert created.status_code == 202, created.text
+        care_id = created.json()["request"]["id"]
+        if action == "cancel":
+            result = client.post(f"{BASE}/requests/{care_id}/cancel", headers=parent)
+        else:
+            result = client.post(f"{BASE}/requests/{care_id}/care-decisions", headers=teacher,
+                                 json={"decision": "reject", "version": 1, "reason_text": "[TEST] 재확인 필요"})
+        assert result.status_code == 200, result.text
     # 시간·지연 기록으로 만드는 두 종류는 test_consultation_reminders에서 양쪽 저장소로 검사해요.
     assert {n.kind for n in store.state().notifications.values()} == set(TITLES) - set(KINDS)
 

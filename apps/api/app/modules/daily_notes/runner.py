@@ -11,6 +11,7 @@ from datetime import datetime, time, timedelta
 from importlib import import_module
 from threading import Thread
 from time import monotonic
+from typing import get_args
 from uuid import UUID, uuid4
 
 from sqlalchemy import text
@@ -18,12 +19,31 @@ from sqlalchemy import text
 from app.api.schemas.actions import NoteContent
 from app.api.schemas.views import OpenCheck
 from app.core.config import settings
+from app.core.care import missed_request_check
+from app.core.constants import NOTE_REQUEST_TYPES
 from app.core.db import transaction
 from app.core.schedule import KST
 from app.modules.daily_notes.stub_writer import failed_child
 from app.modules.daily_notes.events import edited_child_ids, record
 
 log = logging.getLogger(__name__)
+
+
+class Superseded(Exception):
+    """다시 만들기에 밀린 실행. 그래프의 ModelError 재시도 대상이 아니다."""
+
+
+class _CurrentRunModel:
+    def __init__(self, model, input_id, run_token):
+        self.model, self.input_id, self.run_token = model, input_id, run_token
+
+    def json(self, system, user):
+        with transaction() as connection:
+            current = connection.scalar(text("SELECT xmin::text FROM daily_note_inputs WHERE id=:id"),
+                                        {"id": self.input_id})
+        if current != self.run_token:
+            raise Superseded()
+        return self.model.json(system, user)
 
 
 def _payload(connection, entry):
@@ -37,12 +57,12 @@ def _payload(connection, entry):
     start = datetime.combine(entry["note_date"], time.min, KST)
     requests = connection.execute(text("""
         SELECT r.id AS request_id, r.child_id, r.type, r.body AS text FROM requests r
-        WHERE r.org_id=:org AND r.classroom_id=:class AND r.type IN ('medication','pickup','inquiry')
+        WHERE r.org_id=:org AND r.classroom_id=:class AND r.type=ANY(CAST(:types AS text[]))
           AND r.created_at>=:start AND r.created_at<:end
           AND EXISTS (SELECT 1 FROM child_guardians g
                       WHERE (g.child_id,g.org_id,g.user_id)=(r.child_id,r.org_id,r.requester_id))
         ORDER BY r.created_at, r.id
-    """), {**values, "start": start, "end": start + timedelta(days=1)}).mappings().all()
+    """), {**values, "types": list(NOTE_REQUEST_TYPES), "start": start, "end": start + timedelta(days=1)}).mappings().all()
     menu = connection.execute(text("""
         SELECT d.id AS document_id, d.title,
                string_agg(c.content, E'\n' ORDER BY c.chunk_index) AS text
@@ -59,6 +79,7 @@ def _payload(connection, entry):
     memos = {m["child_id"]: m["memo"] for m in entry["child_memos"]}
     payload = {"input_id": entry["id"], "note_date": entry["note_date"], "classroom": dict(classroom),
             "activities": entry["activities"], "supplies": entry["supplies"],
+            "roster_names": [c["display_name"] for c in children],
             "children": [{"child_id": c["id"], "display_name": c["display_name"],
                           "memo": memos.get(str(c["id"]), ""),
                           "requests": [{k: r[k] for k in ("request_id", "type", "text")}
@@ -85,7 +106,13 @@ def _validated(result, payload):
                 raise ValueError("아이 결과 누락 또는 중복")
             row = candidates[0]
             content = NoteContent.model_validate(row["content"])
-            checks = [OpenCheck.model_validate(c).model_dump(mode="json") for c in row["open_checks"]]
+            checks = []
+            for check in row["open_checks"]:
+                if (isinstance(check, dict) and isinstance(check.get("kind"), str)
+                        and check["kind"] not in get_args(OpenCheck.model_fields["kind"].annotation)):
+                    log.warning("알림장 확인 종류 미지원 kind=%s", check["kind"])
+                    check = {**check, "kind": "check_failed"}
+                checks.append(OpenCheck.model_validate(check).model_dump(mode="json"))
             if len({c["id"] for c in checks}) != len(checks):
                 raise ValueError("확인 ID 중복")
             request_ids = {str(r["request_id"]) for r in child["requests"]}
@@ -117,19 +144,48 @@ def batch_event(connection, input_id, action, actor_type, *, actor_id=None, **de
 
 
 def incident_state(connection, input_id):
-    """(다시 넣은 횟수, 첫 실패 뒤 지난 ms). 실패가 없으면 ms는 None이다."""
+    """(자동 재시도 횟수, 첫 실패 뒤 큐 대기를 뺀 ms). 현재 실행 대기는 호출자가 뺀다."""
     return connection.execute(text("""
-        SELECT count(*) FILTER (WHERE e.action='agent_requeued'),
-               (extract(epoch FROM now() - min(e.created_at) FILTER (WHERE e.action='tool_failed')) * 1000)::bigint
-        FROM events e JOIN cards c ON (c.id,c.org_id)=(e.card_id,e.org_id)
-        WHERE c.subject_type='daily_note_batch' AND c.subject_id=:id
+        WITH history AS (
+            SELECT e.* FROM events e JOIN cards c ON (c.id,c.org_id)=(e.card_id,e.org_id)
+            WHERE c.subject_type='daily_note_batch' AND c.subject_id=:id
+        ), failure AS (
+            SELECT min(created_at) AS at FROM history
+            WHERE action='tool_failed' OR (action='drafted' AND (detail->>'draft_failed')::int>0)
+        )
+        SELECT count(*) FILTER (WHERE action='agent_requeued' AND actor_type='system'),
+               ((extract(epoch FROM clock_timestamp()-(SELECT at FROM failure))*1000)::bigint
+                 - coalesce(sum((detail->>'queue_wait_ms')::bigint)
+                     FILTER (WHERE created_at>(SELECT at FROM failure) AND action IN ('drafted','tool_failed')),0))::bigint
+        FROM history
     """), {"id": input_id}).one()
 
 
 def requeued(connection, input_id, actor_type, actor_id=None):
+    trigger = "teacher_regenerate" if actor_type == "user" else "auto_retry"
+    connection.execute(text("""
+        UPDATE cards SET draft=draft || jsonb_build_object('draft_trigger',CAST(:trigger AS text),'draft_queued_at',clock_timestamp())
+        WHERE subject_type='daily_note_batch' AND subject_id=:id
+    """), {"id": input_id, "trigger": trigger})
     batch_event(connection, input_id, "agent_requeued", actor_type, actor_id=actor_id,
                 selected_strategy="retry_by_teacher" if actor_type == "user" else "requeue_stale",
-                retry_count=incident_state(connection, input_id)[0] + 1)
+                trigger=trigger, retry_count=incident_state(connection, input_id)[0] + int(actor_type == "system"))
+
+
+def queue_failed(input_id):
+    with transaction() as connection:
+        failed = connection.execute(text("""
+            UPDATE daily_note_inputs SET draft_status='failed' WHERE id=:id AND draft_status='queued' RETURNING id
+        """), {"id": input_id}).one_or_none()
+        if failed is not None:
+            trigger = connection.scalar(text("""
+                SELECT coalesce(draft->>'draft_trigger','initial') FROM cards
+                WHERE subject_type='daily_note_batch' AND subject_id=:id
+            """), {"id": input_id})
+            batch_event(connection, input_id, "tool_failed", "system", detected_failure="queue_error",
+                        retry_count=incident_state(connection, input_id)[0], detection_ms=0, fallback_used=False,
+                        trigger=trigger, queue_wait_ms=0, validation_result="job_failed",
+                        recovery_status="pending" if trigger == "initial" else "handed_off")
 
 
 def requeue_daily_note_drafts(*, stale_only=False):
@@ -150,7 +206,7 @@ def requeue_daily_note_drafts(*, stale_only=False):
         """)).all()
 
 
-def _write(payload):
+def _write(payload, run_token):
     # 시간 초과 뒤 도착한 결과는 버린다. writer에는 DB 저장 책임이 없다.
     future = Future()
 
@@ -159,7 +215,15 @@ def _write(payload):
             path = ("agents.graphs.daily_note:draft_daily_notes" if settings.daily_note_writer == "graph"
                     else settings.daily_note_writer)
             module, name = path.split(":", 1)
-            future.set_result(getattr(import_module(module), name)(payload))
+            write = getattr(import_module(module), name)
+            if settings.daily_note_writer == "graph":
+                from agents.llm import OpenAIModel
+
+                future.set_result(write(payload,
+                                        writer=_CurrentRunModel(OpenAIModel("DOCUMENT"), payload["input_id"], run_token),
+                                        checker=_CurrentRunModel(OpenAIModel("CHECKER"), payload["input_id"], run_token)))
+            else:
+                future.set_result(write(payload))
         except BaseException as error:
             future.set_exception(error)
 
@@ -175,12 +239,16 @@ def run_daily_note_drafts(input_id):
         """), {"id": input_id}).mappings().one_or_none()
         if entry is not None:
             metadata = connection.execute(text("""
-                UPDATE cards SET draft=draft || jsonb_build_object('draft_started_at', CURRENT_TIMESTAMP)
+                UPDATE cards SET draft=draft || jsonb_build_object(
+                    'queue_wait_ms', greatest(0,round(extract(epoch FROM clock_timestamp()-
+                        coalesce((draft->>'draft_queued_at')::timestamptz,:queued_at))*1000)),
+                    'draft_started_at', clock_timestamp())
                 WHERE subject_type='daily_note_batch' AND subject_id=:id AND org_id=:org RETURNING draft
-            """), {"id": input_id, "org": entry["org_id"]}).scalar_one()
+            """), {"id": input_id, "org": entry["org_id"], "queued_at": entry["created_at"]}).scalar_one()
             retry_count, started = incident_state(connection, input_id)[0], monotonic()
     if entry is None:
         return
+    trigger, queue_wait_ms = metadata.get("draft_trigger", "initial"), metadata["queue_wait_ms"]
     try:
         with transaction() as connection:
             payload = _payload(connection, entry)
@@ -189,13 +257,15 @@ def run_daily_note_drafts(input_id):
             """), {"id": input_id}))
             protected = confirmed | edited_child_ids(connection, input_id)
             payload["children"] = [c for c in payload["children"] if c["child_id"] not in protected]
-        rows = _validated(_write(payload), payload) if payload["children"] else []
+        rows = _validated(_write(payload, entry["run_token"]), payload) if payload["children"] else []
         with transaction() as connection:
             current = connection.execute(text("SELECT xmin::text FROM daily_note_inputs WHERE id=:id FOR UPDATE"),
                                          {"id": input_id}).scalar_one()
             if current != entry["run_token"]:
                 return
             edited = edited_child_ids(connection, input_id)
+            current_children = {c["child_id"]: c for c in _payload(connection, entry)["children"]}
+            input_children = {c["child_id"]: c for c in payload["children"]}
             counts = {"saved": 0, "needs_check": 0, "draft_failed": 0}
             for row in rows:
                 previous = connection.execute(text("""
@@ -206,6 +276,13 @@ def run_daily_note_drafts(input_id):
                 # c1 같은 writer 내부 ID는 저장 전에 바꾼다. 아이별 실패 확인에도 같은 규칙을 쓴다.
                 checks = [{**check, "id": str(uuid4()), "request_id": check.get("request_id")}
                           for check in row["open_checks"]]
+                # 모델이 입력을 읽은 뒤 접수된 요청은 새 초안에도 확인으로 남긴다.
+                known = {r["request_id"] for r in input_children[row["child_id"]]["requests"]}
+                previous_checks = {c.get("request_id"): c for c in previous["open_checks"]} if previous else {}
+                for request in current_children.get(row["child_id"], {}).get("requests", []):
+                    if request["request_id"] not in known:
+                        checks.append(previous_checks.get(request["request_id"]) or
+                                      missed_request_check(request["type"], request["request_id"]))
                 saved = connection.execute(text("""
                     INSERT INTO daily_notes (org_id,input_id,child_id,note_date,status,content,open_checks,ai_original)
                     VALUES (:org,:input,:child,:date,:status,CAST(:content AS jsonb),CAST(:checks AS jsonb),CAST(:content AS jsonb))
@@ -215,7 +292,7 @@ def run_daily_note_drafts(input_id):
                     WHERE daily_notes.input_id=EXCLUDED.input_id AND daily_notes.status IN ('draft','needs_check')
                     RETURNING *
                 """), {"org": entry["org_id"], "input": input_id, "child": row["child_id"], "date": entry["note_date"],
-                       "status": "needs_check" if row["open_checks"] else "draft",
+                       "status": "needs_check" if checks else "draft",
                        "content": json.dumps(row["content"], default=str),
                        "checks": json.dumps(checks, default=str)}).mappings().one()
                 counts["saved"] += 1
@@ -223,6 +300,8 @@ def run_daily_note_drafts(input_id):
                 counts["draft_failed"] += int(any(c["kind"] == "draft_failed" for c in checks))
                 record(connection, saved, "daily_note_drafted",
                        from_status=previous["status"] if previous else None,
+                       draft_failed=any(c["kind"] == "draft_failed" for c in checks), open_check_count=len(checks),
+                       trigger=trigger,
                        **({"regenerated_by": metadata["regenerated_by"]} if metadata.get("regenerated_by") else {}))
             connection.execute(text("UPDATE daily_note_inputs SET draft_status='succeeded' WHERE id=:id"), {"id": input_id})
             # 대체 응답 = 아이별 초안이 실패해 반 공통 줄 템플릿과 draft_failed 확인으로 저장된 아이가 있음.
@@ -230,11 +309,21 @@ def run_daily_note_drafts(input_id):
             outcome = {"fallback_used": counts["draft_failed"] > 0, "validation_result": (
                 "all_children_passed" if not counts["draft_failed"] else
                 "some_children_template" if passed else "all_children_template")}
+            connection.execute(text("""
+                UPDATE cards SET draft=draft || jsonb_build_object('validation_result',CAST(:validation AS text))
+                WHERE subject_type='daily_note_batch' AND subject_id=:id
+            """), {"id": input_id, "validation": outcome["validation_result"]})
             if failed_ms is not None:
                 outcome["recovery_status"] = ("recovered" if not counts["draft_failed"] else
                                               "fallback" if passed else "handed_off")
-                outcome["duration_ms"] = failed_ms if passed else None
-            batch_event(connection, input_id, "drafted", "agent", retry_count=retry_count, **counts, **outcome)
+                outcome["duration_ms"] = max(0, failed_ms - queue_wait_ms) if passed else None
+            elif counts["draft_failed"] and not passed:
+                outcome["recovery_status"] = "handed_off"
+            batch_event(connection, input_id, "drafted", "agent", retry_count=retry_count,
+                        trigger=trigger, queue_wait_ms=queue_wait_ms, detection_ms=round((monotonic()-started)*1000),
+                        **counts, **outcome)
+    except Superseded:
+        return
     except Exception as error:
         # 예외 원문에는 입력 메모가 섞일 수 있어 종류만 기록하고 API에는 고정 오류를 준다.
         log.error("알림장 초안 실패 input_id=%s error_type=%s", input_id, type(error).__name__)
@@ -245,6 +334,7 @@ def run_daily_note_drafts(input_id):
             # 다시 만들기에 밀린 옛 실행의 실패는 남기지 않는다.
             if failed is not None:
                 batch_event(connection, input_id, "tool_failed", "system", retry_count=retry_count,
+                            trigger=trigger, queue_wait_ms=queue_wait_ms,
                             detected_failure="writer_timeout" if isinstance(error, TimeoutError) else "writer_error",
                             detection_ms=round((monotonic() - started) * 1000), fallback_used=False,
-                            validation_result="job_failed", recovery_status="handed_off" if retry_count else "pending")
+                            validation_result="job_failed", recovery_status="pending" if trigger == "initial" else "handed_off")
