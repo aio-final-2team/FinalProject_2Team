@@ -10,6 +10,7 @@
 """
 
 from datetime import datetime
+from pathlib import Path
 from uuid import UUID
 
 
@@ -161,7 +162,7 @@ DEMO_DOCUMENTS = [
     (OLD_NOTICE, "가상 행사 안내 옛 판", "notice", "superseded", "지난 행사 안내입니다."),
 ]
 
-# [제안] T54 가상 사진. 반·원 글 두 개씩, 단색 PNG 다섯 장이에요.
+# [제안] T54 가상 사진. 반·원 글 두 개씩, 가상 아이 JPEG 다섯 장이에요.
 PHOTO_SCOPES = {CHILD: "family", demo_id("503"): "class", demo_id("5401"): "org"}
 FEED_POSTS = [
     {"id": demo_id("e01"), "lane": "class", "classroom_id": CLASS_STAR, "author_id": PARENT,
@@ -181,6 +182,14 @@ FEED_PHOTOS = [
     (demo_id("f05"), demo_id("e04"), []),
 ]
 FEED_CREATED_AT = datetime.fromisoformat("2026-11-21T09:00:00+09:00")
+
+
+def feed_photo(photo_id) -> bytes:
+    for parent in Path(__file__).resolve().parents:
+        fixtures = parent / "data/fixtures/kg-demo-01"
+        if fixtures.is_dir():
+            return (fixtures / "feed_photos" / f"{str(photo_id)[-3:]}.jpg").read_bytes()
+    raise FileNotFoundError("data/fixtures/kg-demo-01")
 
 
 def feed_png():
