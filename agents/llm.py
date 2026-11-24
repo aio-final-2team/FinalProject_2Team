@@ -5,8 +5,11 @@
 
 LANGSMITH_TRACING=true이고 LANGSMITH_API_KEY가 있으면 모델 호출마다 보낸 글·받은 답·토큰 수를 LangSmith에 남긴다.
 추적 이름은 "역할:모델"(예: SUPERVISOR:gpt-6-luna)이다. 추적 준비가 실패해도 모델 호출은 그대로 한다.
+feature("알림장 초안")을 붙인 함수 안의 모델 호출은 LangSmith에서 그 기능 이름 아래 한 묶음으로 보인다.
 """
 
+import contextvars
+import functools
 import json
 import os
 import time
@@ -48,6 +51,38 @@ def traced(client, role: str, name: str):
                            tracing_extra={"tags": [role.lower()], "metadata": {"role": role}})
     except Exception:  # noqa: BLE001 - 추적은 덤이라 실패해도 호출은 한다
         return client
+
+
+def feature(name: str):
+    """기능 하나에서 일어난 모델 호출을 LangSmith에서 한 묶음으로 보이게 한다. 묶음에는 이름만 남기고 입력·결과는 남기지 않는다."""
+
+    def wrap(func):
+        @functools.wraps(func)
+        def inner(*args, **kwargs):
+            if not tracing_on():
+                return func(*args, **kwargs)
+            try:
+                from langsmith import traceable
+
+                grouped = traceable(name=name, run_type="chain", process_inputs=lambda _: {},
+                                    process_outputs=lambda _: {})(func)
+            except Exception:  # noqa: BLE001 - 추적은 덤이라 준비가 실패해도 일은 한다
+                return func(*args, **kwargs)
+            return grouped(*args, **kwargs)
+
+        return inner
+
+    return wrap
+
+
+def keep_trace(func):
+    """다른 스레드에서 돌려도 지금 묶음에 남도록 지금 문맥을 실어 준다."""
+    context = contextvars.copy_context()
+
+    def inner(*args, **kwargs):
+        return context.copy().run(func, *args, **kwargs)
+
+    return inner
 
 
 def retryable(error: Exception) -> bool:

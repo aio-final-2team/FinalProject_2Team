@@ -4,7 +4,7 @@ import json
 import re
 from pathlib import Path
 
-from agents.llm import ModelError, OpenAIModel
+from agents.llm import ModelError, OpenAIModel, feature
 from agents.guardrails.injection import suspicious_chunk
 from agents.guardrails.sensitive import SENSITIVE, mask_sensitive
 
@@ -108,6 +108,7 @@ def _check_result(passed, issues, attempt):
                                          for issue in issues], "attempt": attempt}
 
 
+@feature("문의 답변 초안")
 def draft_answer(question: str, search, writer=None, checker=None) -> dict:
     trace = []
     candidates = []
