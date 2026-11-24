@@ -8,7 +8,7 @@
 | 2차 검토 링크 | `develop` 브랜치의 [DB 스키마 설계서](https://github.com/aio-final-2team/FinalProject_2Team/blob/develop/Docs/Step2/DB_스키마_설계서.md) |
 | 시연 코드 기준 커밋 | 레포 [README](../../README.md#2차-검토-문서)의 '시연 코드 기준 커밋' 한 줄을 본다(11/24 기준 develop `97fda0b`, 위험 등급 확대 #326·요청 처리 AI 스위치 #321까지 팀 서버에 배포). 11/27 시연 전까지 팀 서버를 다시 배포하면 README 그 한 줄만 고친다 |
 | 대상 DB | PostgreSQL 16 + pgvector 0.8 (`compose.yaml`의 `pgvector/pgvector:pg16`). Supabase를 쓰지 않는 이유는 5.1에 있다 |
-| DDL | 최종 모양은 [`db_schema_draft.sql`](db_schema_draft.sql)에 있고, 실제 DB에는 `apps/api/migrations`의 0001~0011을 차례로 적용한다 |
+| DDL | 최종 모양은 [`db_schema_draft.sql`](db_schema_draft.sql)에 있고, 실제 DB에는 `apps/api/migrations`의 0001~0012를 차례로 적용한다 |
 | 함께 보는 문서 | 기획서 11/23 develop 판(`8f45d51`, #319) 3장(FR-01~FR-13)·4장(NFR)·6장(공통 상태)·7장, T04 흐름·권한 명세, [입출력 계약표 v0.20](입출력_계약표_초안.md), [API 설계 문서 v0.11](API_설계_문서.md) |
 
 **1차 검토 뒤 보완.** 1차 검토 뒤에 바뀐 내용과 그 내용을 지키는 시험을 표 하나에 모았다. 시험은 모두 시연 코드 기준 커밋에서 `tools/test_db.sh`로 다시 돌려 통과했다. 표의 시험 파일은 모두 `tests/integration/`(DB는 `db/`, HTTP는 `api/`) 아래에 있고, `api/` 시험은 모의·시험 PG 두 모드에서 모두 돈다. 반영 커밋 칸에는 develop에 합쳐진 커밋을 적었다.
@@ -286,7 +286,7 @@ FK를 걸 수 없는 참조가 두 곳 있다. `cards.subject_id`와 `notificati
 
 ## 2. 엔터티 정의
 
-이 장은 컬럼마다 타입 / 제약 / 의미를 적는다(표 27개, 컬럼 271개). 피드·앨범 표 3개와 `children.photo_scope`는 맨 끝 절에 있다. 표는 DDL을 적용한 DB 카탈로그에서 뽑았으므로 DDL과 내용이 같다. 값이 정해진 컬럼에는 허용 값을 적었고, 여러 컬럼에 걸친 제약은 영역마다 표 아래 '표 제약'에 모았다.
+이 장은 컬럼마다 타입 / 제약 / 의미를 적는다(표 27개, 컬럼 272개). 피드·앨범 표 3개와 `children.photo_scope`는 맨 끝 절에 있다. 표는 DDL을 적용한 DB 카탈로그에서 뽑았으므로 DDL과 내용이 같다. 값이 정해진 컬럼에는 허용 값을 적었고, 여러 컬럼에 걸친 제약은 영역마다 표 아래 '표 제약'에 모았다.
 
 ### 2.0 공통 규칙과 ID 형식
 
@@ -380,6 +380,7 @@ FK를 걸 수 없는 참조가 두 곳 있다. `cards.subject_id`와 `notificati
 | `requests` | `topic_key` | `text` / NULL 허용 | 감독 AI가 정해진 목록(2.2 글머리)에서 고른 민원 주제. 같은 주제 반복 수를 셈(`other`는 안 셈) |
 | `requests` | `parent_confirmed_at` | `timestamptz` / NULL 허용 | 학부모가 '확인했어요'를 누른 시각(민원만) |
 | `requests` | `missing_fields` | `jsonb` / NOT NULL, 기본값 '[]' | 빠진 필수 정보 목록(FR-02) |
+| `requests` | `care_detail` | `jsonb` / NOT NULL, 기본값 '{}' | 투약·귀가 입력 값. 투약명·용량·시간 또는 인계자 UUID·이름·관계(0012) |
 | `requests` | `assignee_id` | `uuid` / NULL 허용, FK (assignee_id, org_id) → users | 요청 담당 교직원 |
 | `requests` | `previous_request_id` | `uuid` / NULL 허용, FK (previous_request_id, org_id) → requests | 다시 연 요청이면 이전 요청 |
 | `requests` | `created_at` | `timestamptz` / NOT NULL, 기본값 now() | 접수 시각 |
@@ -435,7 +436,7 @@ FK를 걸 수 없는 참조가 두 곳 있다. `cards.subject_id`와 `notificati
 | `events` | `actor_id` | `uuid` / NULL 허용, FK (actor_id, org_id) → users | 한 사람(사람일 때만. 시스템·AI면 비움) |
 | `events` | `agent_name` | `text` / NULL 허용 | 한 AI(감독·자료·기억·검사 등) |
 | `events` | `daily_note_id` | `uuid` / NULL 허용, FK (daily_note_id, org_id) → daily_notes | 아이별 알림장 이력 |
-| `events` | `action` | `text` / NOT NULL, 값 36가지 | 처리 이력 종류(2.2 글머리). 기본 25가지, 알림장 4가지, 요청 재전달 1가지, 상담 지연 기록·알림 2가지(`consultation_delay_reported`·`consultation_reminded`), 피드 4가지(맨 끝 절) |
+| `events` | `action` | `text` / NOT NULL, 값 43가지 | 처리 이력 종류(2.2 글머리). 기존 36가지 + 추가 글·권한 밖 안내·취소·돌봄 수정·알림장 정정·상담 충돌 재제안·보고 확인 7가지(0012) |
 | `events` | `from_status` | `text` / NULL 허용 | 바뀌기 전 상태 |
 | `events` | `to_status` | `text` / NULL 허용 | 바뀐 뒤 상태 |
 | `events` | `detail` | `jsonb` / NOT NULL, 기본값 '{}' | 부가 정보. 비밀값·불필요한 개인정보 금지 |
@@ -447,7 +448,8 @@ FK를 걸 수 없는 참조가 두 곳 있다. `cards.subject_id`와 `notificati
 
 **요청**
 
-- `type`: `inquiry`(안내 문의) · `consultation`(상담) · `complaint`(민원) · `medication`(투약) · `pickup`(귀가). 투약·귀가(T46, 팀 확인 전 초안)는 세부 칸을 따로 두지 않고 이력에 남긴다. 접수 내용(등록된 인계자 UUID `pickup_guardian_id` 등)은 접수 이력의 `events.detail`에 넣고, 교직원이 실제로 확인·완료한 일은 이력의 `care_decision`·행위자·`created_at`으로 남긴다. 상태는 `received → assigned → completed` 순서로 바뀐다. 알림장 줄에 보이는 `request_status`는 따로 저장하지 않고, 조회할 때 요청 상태를 읽어 온다.
+- `type`: `inquiry`(안내 문의) · `consultation`(상담) · `complaint`(민원) · `medication`(투약) · `pickup`(귀가). 투약·귀가(T46, 팀 확인 전 초안)의 접수 입력은 0012에서 `requests.care_detail`로 옮긴다. 교직원이 실제로 확인·완료한 일은 이력의 `care_decision`·행위자·`created_at`으로 남긴다. 상태는 `received → assigned → completed` 순서로 바뀐다. 알림장 줄에 보이는 `request_status`는 따로 저장하지 않고, 조회할 때 요청 상태를 읽어 온다.
+- `care_detail`: 투약은 `medication_name`·`medication_dose`·`medication_time`, 귀가는 `pickup_guardian_id`·`pickup_name`·`pickup_relation`을 담는다. 0012는 기존 투약·귀가의 첫 접수 이력(`created`, `to_status = received`, 요청 자체 이력)의 값을 백필한다. 접수 이력에서는 값 키를 빼고 `fields`에 키 이름 목록만 남기며, `trace_id` 등 다른 정보는 보존한다. SQL NULL은 허용하지 않고, 입력이나 접수 이력이 없으면 빈 객체다. JSON null과 빠진 키는 구별해 그대로 옮긴다. 새 접수·조회 코드가 이 칸을 사용하는 변경은 후속 A1에서 한다.
 - `client_request_id`: 화면이 제출할 때 만드는 키다. 같은 사람이 같은 키로 다시 보내면 DB가 거부하므로, 네트워크 재시도로 요청이 두 번 생기지 않는다.
 - `urgency`: 모든 요청에 붙는 급한 정도(`low`·`normal`·`high`·`urgent`)로, 받은함을 정렬할 때 쓴다.
 - `risk_level`: 보호자 글을 받는 문의·상담·민원에 붙이는 위험 등급으로(기획서 FR-03), `normal`(일반) · `urgent`(긴급) · `uncertain`(판단 필요) 중 하나다. 긴급으로 저장하려면 `risk_category`에 다음 네 가지 중 어느 것인지도 넣어야 한다: `child_safety`(아이 안전) · `staff_attack`(교직원 비난·위협) · `legal_external`(법적 조치·외부 기관) · `privacy_leak`(개인정보 유출 주장). 감독 AI가 얼마나 확신했는지는 `risk_confidence`(0~1)에 남기고, 긴급과 판단 필요를 가르는 기준값은 T06 평가로 정한다. 판단 필요였던 문의·민원을 사람이 일반이나 긴급으로 다시 나누면, `events`에 `risk_reclassified`로 이전 값·새 값·이유를 남긴다. 투약·귀가 요청에는 위험 등급이 없으므로 이 값을 NULL로 둔다. 이 CHECK는 0001에서 이름 없이 만들었기 때문에 PostgreSQL이 붙인 `requests_check1`이라는 이름을 갖고 있다. 0011에서는 이 이름은 그대로 두고 조건만 바꾼다.
@@ -486,11 +488,13 @@ FK를 걸 수 없는 참조가 두 곳 있다. `cards.subject_id`와 `notificati
 **처리 이력**
 
 - `events.action`: 생성·분류·정보 요청·배정·재배정·초안·검사·돌려보내기·승인·거절·보류·보류 재개(`resumed`)·원장 보고·원장 지시(`instructed`)·발송·예약·완료·도구 호출·도구 실패·권한 거부·학부모 확인·위험 등급 다시 분류·반려·원에 남은 답으로 답함. 부재로 담당을 바꾼 일(FR-19)은 `reassigned`로 남기고, 이전 담당·새 담당·이유를 `detail`에 넣는다. 권한이 없는 요청도 `permission_denied`로 남긴다(NFR-01).
+- 0012는 `message_added`(학부모 추가 글) · `out_of_scope_answered`(권한 밖 안내) · `cancelled`(취소) · `care_updated`(투약·귀가 수정) · `daily_note_corrected`(알림장 정정) · `slot_conflict_reproposed`(상담 충돌 뒤 재제안) · `report_acknowledged`(원장 보고 확인)를 허용한다. 발생 시점의 애플리케이션 변경은 후속 묶음에서 한다.
+- 0012를 0011로 되돌리면 `care_detail` 값을 첫 접수 이력의 `detail`로 돌려놓고 `fields`와 칸을 없앤다. 새 action·kind를 쓴 이력·알림 행은 삭제하거나 값을 바꾸지 않는다. 해당 행이 남아 있으면 이전 CHECK를 `NOT VALID`로 복구해 기존 행을 보존하고 이후 쓰기에는 이전 값 목록을 적용한다. 새 값이 없으면 제약 검증도 마쳐 원래 0011 스키마로 돌아간다. 다시 0012를 올리면 전체 제약을 검증한다.
 - 누가 한 일인지는 행위자 칸으로 나눈다. 사람이 한 일은 `actor_type = 'user'`와 `actor_id`로, AI가 한 일은 `actor_type = 'agent'`와 `agent_name`으로 남긴다. 시스템이 한 일(보류 자동 재개, 상담 시간 잡아 두기 풀림 `slot_hold_expired`)은 `actor_type = 'system'`으로 남기고 `actor_id`는 비운다.
 - 알림장 이력은 `daily_note_drafted`·`daily_note_edited`·`daily_note_confirmed`·`daily_note_sent` 네 가지이고, `daily_note_id`로 해당 알림장에 잇는다. 상태를 바꾸는 트랜잭션 안에서 함께 저장하며, 메모·초안 원문은 이력에 복사하지 않는다.
 - `agent_requeued`: 접수하고 5분이 지나도 카드가 없는 요청을 시스템이 한 번 다시 전달했다는 이력이다. 이 이력의 `created_at`부터 5분이 더 지나도 카드가 없을 때만 `card_missing`으로 인계한다. 요청 상태와 알림은 바꾸지 않는다.
 - 요청을 사람에게 넘긴 이유는 `events.detail.handoff_reason`에 남긴다. 요청 처리 AI가 3분 안에 끝나지 않으면 `ai_timeout`, 처리하다 예외로 멈추면 `ai_failed`, 다시 전달하고도 카드가 생기지 않으면 `card_missing`이다. 세 경우 모두 카드가 아직 없으면 초안 없는 미배정 회신 카드를 만들고 요청을 `awaiting_review`로 바꾼다. 모델 응답을 기다리는 동안에는 요청 행 잠금(`FOR UPDATE`)도 DB 연결도 잡지 않는다. 잠금은 저장할 때만 짧게 걸고, 그때 요청이 아직 처리 중인지 다시 확인한다. 그래서 3분이 지나 사람에게 넘어간 요청에 늦게 끝난 결과는 먼저 만든 카드를 덮지 못하고 버려진다(API 설계 문서 6.1).
-- `events`에는 INSERT만 하고, 고치거나 지우지 않는다. `detail`에는 비밀값이나 불필요한 개인정보를 넣지 않는다(NFR-05).
+- 애플리케이션은 `events`에 INSERT만 하고, 고치거나 지우지 않는다. 0012 데이터 이관·되돌리기에서는 접수 입력 위치만 옮긴다. `detail`에는 비밀값이나 불필요한 개인정보를 넣지 않는다(NFR-05).
 
 ### 2.3 자료·검색
 
@@ -684,7 +688,7 @@ FK를 걸 수 없는 참조가 두 곳 있다. `cards.subject_id`와 `notificati
 | `notifications` | `card_id` | `uuid` / NULL 허용, FK (card_id, org_id) → cards | 관련 카드 |
 | `notifications` | `subject_type` | `text` / NULL 허용 | 요청·카드가 아닌 대상 종류 |
 | `notifications` | `subject_id` | `uuid` / NULL 허용 | 그 대상 ID |
-| `notifications` | `kind` | `text` / NOT NULL, 값 17가지 | 알림 종류 17가지(2.6 글머리) |
+| `notifications` | `kind` | `text` / NOT NULL, 값 23가지 | 기존 17가지 + 추가 글·재배정·상담 확정·알림장 정정·취소·돌봄 반려 6가지(0012, 2.6 글머리) |
 | `notifications` | `title` | `text` / NOT NULL | 제목 |
 | `notifications` | `body` | `text` / NULL 허용 | 내용 |
 | `notifications` | `dedupe_key` | `text` / NOT NULL, UNIQUE | 중복 막는 키(2.6 글머리) |
@@ -758,7 +762,8 @@ T58에서 채울 기록도 남아 있다. 아이별 이력은 현재 `to_status`
 
 - `notifications.dedupe_key`: 알림은 처리 이력 한 건에서 생기므로 키를 `event:<events.id>:<받는 사람 ID>`로 만든다. 같은 이력으로 발송을 다시 시도하면 키가 같아서 한 번만 들어간다. 반대로 같은 카드가 다시 보류되는 것처럼 새 이력이 생기면 새 알림이 된다. 상담 종료·지연 알림(T48)은 `consultation:<예약 ID>:<종류>:<받는 사람 ID>`로 만들어, 같은 예약의 같은 안내를 한 번만 남긴다.
 - 발송 시도: 한 알림은 최대 3번까지 보낸다(FR-12, `attempts`). 보내기에 실패하면 60초 뒤, 그다음 실패면 120초 뒤로 `next_attempt_at`을 미뤄 다시 보낸다. 이때 `deliver_after`와 목록에 보이는 시각은 바꾸지 않는다.
-- `notifications.kind`: 다음 17가지만 받는다. `needs_info` · `new_card`(새 카드) · `urgent_complaint`(긴급 요청) · `uncertain_complaint`(판단 필요 요청) · `director_report`(반복 3번째 원장 보고) · `on_hold` · `sent_or_booked` · `parent_confirmed`(학부모가 확인함) · `completed`(민원 완료) · `rejected` · `note_sent`(오늘 알림장) · `slot_hold_expired`(잡아 둔 상담 시간이 풀림 → 담임) · `hold_resumed`(보류 카드가 예정일에 자동 재개 → 담당) · `care_requested`(투약·귀가 요청 접수) · `care_confirmed`(교직원이 투약·귀가 요청을 확인함). 나머지 두 가지는 상담 알림이다. `consultation_ending`은 예정 종료 10분 이내에 담임에게 가는 알림이고, `consultation_delayed`는 앞 상담의 명시된 예상 종료와 겹치는 예약의 담임·학부모에게 대체 시간을 제안하는 알림이다. 자세한 기준은 API 설계 6.6.2에 있다. 두 위험 알림(`urgent_complaint`·`uncertain_complaint`)은 이름에 complaint가 남아 있지만 문의·상담 위험에도 그대로 쓴다. 요청 유형에 따라 달라지는 것은 제목(`title`)뿐이라 '긴급 문의'·'긴급 상담'처럼 붙는다.
+- `notifications.kind`: 다음 23가지만 받는다. `needs_info` · `new_card`(새 카드) · `urgent_complaint`(긴급 요청) · `uncertain_complaint`(판단 필요 요청) · `director_report`(반복 3번째 원장 보고) · `on_hold` · `sent_or_booked` · `parent_confirmed`(학부모가 확인함) · `completed`(민원 완료) · `rejected` · `note_sent`(오늘 알림장) · `slot_hold_expired`(잡아 둔 상담 시간이 풀림 → 담임) · `hold_resumed`(보류 카드가 예정일에 자동 재개 → 담당) · `care_requested`(투약·귀가 요청 접수) · `care_confirmed`(교직원이 투약·귀가 요청을 확인함). 기존 상담 알림 두 가지도 있다. `consultation_ending`은 예정 종료 10분 이내에 담임에게 가는 알림이고, `consultation_delayed`는 앞 상담의 명시된 예상 종료와 겹치는 예약의 담임·학부모에게 대체 시간을 제안하는 알림이다. 자세한 기준은 API 설계 6.6.2에 있다. 두 위험 알림(`urgent_complaint`·`uncertain_complaint`)은 이름에 complaint가 남아 있지만 문의·상담 위험에도 그대로 쓴다. 요청 유형에 따라 달라지는 것은 제목(`title`)뿐이라 '긴급 문의'·'긴급 상담'처럼 붙는다.
+- 0012에서 더한 알림은 `parent_message`(학부모 추가 글) · `reassigned`(재배정받음) · `consultation_booked`(상담 예약 확정) · `note_corrected`(알림장 정정) · `cancelled`(취소) · `care_rejected`(투약·귀가 반려)다. 실제 발송 흐름은 후속 묶음에서 연결한다.
 - `subject_type`·`subject_id`: 요청·카드가 아닌 대상을 가리킨다. 지금은 `note_sent` 알림이 아이별 알림장(`daily_note`)을 가리킬 때만 쓴다.
 - `deliver_after`: 이 시각이 지나야 보낸다. 근무 시간(평일 09~18시) 밖에 생긴 알림에는 다음 근무 시작 시각을 넣는다. 긴급 민원 가운데 **아이 안전(`risk_category = child_safety`)만** 지금 시각을 넣어 바로 보내고, 나머지 긴급 3가지와 판단 필요 민원은 다음 근무 시간에 보낸다(FR-21). 발송기는 `status = 'pending' AND deliver_after <= now()`인 알림만 꺼낸다(9.1 F3-5).
 
@@ -1273,6 +1278,8 @@ WHERE type = 'complaint' AND classroom_id = :classroom_id AND topic_key = :topic
 | `develop` `d82b81a` + v0.21 변경 | 0011 → 0010 → 0011 | 되돌리면 문의·상담의 위험 등급만 지우고 민원 등급은 남김. 다시 올리면 문의에 위험 등급을 저장할 수 있음 | `test_request_risk_types.py::test_0011_round_trip_keeps_complaint_risk_and_clears_other_types` | 통과 |
 | `develop` `d82b81a` + v0.21 변경 | 0011 | 답변 그래프를 켜도 위험 문의는 자료·검사 AI를 부르지 않고, 요청에 `risk_level = urgent`·`risk_category = legal_external`이 저장됨 | `test_request_risk_types.py::test_risky_inquiry_skips_answer_model_and_saves_risk` | 통과 |
 
+**0012 기반 마이그레이션 확인(2026-11-24, `taewoong-flow-fix` A0 커밋).** `tools/test_db.sh -p no:cacheprovider`의 임시 PG에서 DB 통합 367개가 통과했다. `test_migrations.py::test_upgrade_downgrade_upgrade`는 base 왕복과 설계 DDL의 `pg_dump` 일치를 확인했다(표 30·뷰 2·트리거 2·FK 64·컬럼 293). `test_0012_care_backfill_and_round_trip_preserve_events_and_notifications`는 투약·귀가 값·JSON null·빈 입력의 이관, 일반 문의·확인 이력 보존, 새 action 7개·kind 6개, 새 값을 쓰는 행을 남긴 0012 → 0011 → 0012 왕복과 새 값이 없을 때의 원래 스키마 복원을 확인했다. 정확한 커밋·공유 HTTP 결과·로그 위치는 루프 A `REPORT.md`에 남긴다. 앞의 0011 기록과 수치를 합치지 않는다.
+
 **다시 확인하는 방법.** 기준 커밋을 받은 뒤 레포 루트에서 `tools/test_db.sh`를 실행하면 된다. 이 스크립트는 `pgvector/pgvector:pg16` 임시 컨테이너를 빈 포트에 띄우며, 공용 DB는 쓰지 않는다. 그 컨테이너에서 `tests/integration/db` 전체와 공유 HTTP 시험을 모의·시험 PG 두 모드로 돌리고, 끝나면 컨테이너와 볼륨을 지운다. 실행 환경은 Python 3.12, 그리고 pgvector를 얹은 PostgreSQL 16이다. 실행 로그에는 시험 이름과 통과 수가 남는다. 현재 판의 통과 개수는 위 이번 실행 표를 따른다. 로컬 기록이며 CI 실행 URL은 없다. 명령·정확한 최종 커밋과 실행 로그 위치는 작업 보고서에도 함께 남긴다.
 
 ## 10. LangGraph 체크포인트
@@ -1408,7 +1415,7 @@ MVP에서 이미 적용되는 삭제는 담임 기억의 내용 비우기·`dele
 | 체크리스트(가이드 22쪽) | 이 문서 |
 | --- | --- |
 | ERD 그림과 관계 명세 표가 서로 일치한다 | 1.2·1.3. ERD 선 58개 = 관계 표 58행 = DDL FK 제약 64개 중 피드·앨범 표의 6개를 뺀 58개(1.3) |
-| 모든 컬럼에 타입·제약·의미가 적혀 있다 | 2장, 표 27개의 컬럼 271개 전부. 피드·앨범 표와 `children.photo_scope`는 맨 끝 [제안] 절 |
+| 모든 컬럼에 타입·제약·의미가 적혀 있다 | 2장, 표 27개의 컬럼 272개 전부. 피드·앨범 표와 `children.photo_scope`는 맨 끝 [제안] 절 |
 | 모든 테이블에 기본키와 created_at이 있다 | 2장. 표 27개 모두(9장 C1·C2). 피드·앨범 표 중 `feed_photo_children`에는 created_at이 없다 |
 | API 설계 문서와 필드명·ID 형식이 같다 | 2.0 ID 형식 표. 필드와 DB 컬럼 대응표는 API 설계 문서 7장 |
 | 벡터 차원, 인덱스 연산자, 임베딩 모델이 적혀 있다 | 3장 |
