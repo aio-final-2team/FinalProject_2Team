@@ -31,6 +31,10 @@ export type Card = {
   /** 초안 AI가 근거를 못 찾아 초안 없이 담임에게 넘긴 카드 (draft.no_evidence) */
   noEvidence?: boolean;
   repeatCount?: number;
+  /** 학부모와 주고받은 글 전체(카드 상세 messages[]) */
+  messages?: { id: number; fromParent: boolean; body: string; at: string }[];
+  /** 학부모가 글을 더 남겨 카드가 다시 열렸을 때 지난 답 (draft.previous_text). 이때 초안은 비어 있다 */
+  previousText?: string;
   escalated: boolean;
   assigned: boolean;
   parentConfirmedAt?: string;

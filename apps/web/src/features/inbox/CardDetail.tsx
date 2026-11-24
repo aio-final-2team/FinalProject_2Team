@@ -56,6 +56,7 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
   const [reason, setReason] = useState("");
   const [text, setText] = useState("");
   const [draft, setDraft] = useState("");
+  const reopened = !!c?.previousText && !c?.draft;
   const [slot, setSlot] = useState("");
   const [pendingSend, setPendingSend] = useState(false);
   const key = useRef(newKey());
@@ -191,10 +192,30 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
         </div>
       )}
 
-      <Section title="학부모 원문">
-        <blockquote className="rounded-2xl bg-card px-4 py-3.5 text-[15px] leading-relaxed">{c.original}</blockquote>
-        {c.summary && <p className="px-1 text-sub text-ink2">AI 요약: {c.summary}</p>}
-      </Section>
+      {c.messages && c.messages.length > 1 ? (
+        <Section title="주고받은 글">
+          <ul className="grid gap-2" aria-label="주고받은 글">
+            {c.messages.map((m) => (
+              <li key={m.id} className={`max-w-[88%] rounded-2xl px-3.5 py-2.5 text-callout ${m.fromParent ? "rounded-bl-sm bg-card shadow-card" : "ml-auto rounded-br-sm bg-brand-fill text-on-brand"}`}>
+                <span className="mb-0.5 block text-caption font-semibold opacity-70">{m.fromParent ? "학부모" : "선생님"}</span>
+                <span className="whitespace-pre-line break-keep">{m.body}</span>
+              </li>
+            ))}
+          </ul>
+          {c.summary && <p className="px-1 text-sub text-ink2">AI 요약: {c.summary}</p>}
+        </Section>
+      ) : (
+        <Section title="학부모 원문">
+          <blockquote className="rounded-2xl bg-card px-4 py-3.5 text-[15px] leading-relaxed">{c.original}</blockquote>
+          {c.summary && <p className="px-1 text-sub text-ink2">AI 요약: {c.summary}</p>}
+        </Section>
+      )}
+      {reopened && (
+        <Section title="지난 답">
+          <p className="rounded-2xl bg-g px-4 py-3 text-[14.5px] text-ink2">{c.previousText}</p>
+          <p className="px-1 text-sub text-ink2">학부모가 글을 더 남겨서 카드가 다시 열렸어요. 새 답을 써 주세요.</p>
+        </Section>
+      )}
 
       {c.sources.length > 0 && (
         <Section title="근거">
@@ -241,9 +262,9 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
           </div>
         </Section>
       )}
-      {(c.risk === "urgent" || (c.noEvidence && !c.draft)) && isOpen && !director && (
-        <Section title="직접 답 쓰기">
-          <textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={4} placeholder={c.noEvidence ? "자료에서 근거를 찾지 못했어요. 확인한 내용을 직접 써 주세요" : "확인한 내용을 직접 써 주세요"} className="rounded-2xl border-[1.5px] border-transparent bg-card px-4 py-3 text-[15px] outline-none focus:border-accent focus:shadow-[0_0_0_4px_var(--tint)]" />
+      {(c.risk === "urgent" || (c.noEvidence && !c.draft) || reopened) && isOpen && !director && (
+        <Section title={reopened ? "새 답 쓰기" : "직접 답 쓰기"}>
+          <textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={4} placeholder={reopened ? "보호자의 새 글에 대한 답을 써 주세요" : c.noEvidence ? "자료에서 근거를 찾지 못했어요. 확인한 내용을 직접 써 주세요" : "확인한 내용을 직접 써 주세요"} className="rounded-2xl border-[1.5px] border-transparent bg-card px-4 py-3 text-[15px] outline-none focus:border-accent focus:shadow-[0_0_0_4px_var(--tint)]" />
         </Section>
       )}
 

@@ -24,6 +24,7 @@ type CardDetail = {
   request: null | { id: string; type: ApiRequestType | "pickup"; title: string | null; body: string; status: Status; risk_level: string | null; risk_category: string | null; repeat_count: number | null; parent_confirmed_at: string | null; classroom_id: string; created_at: string; updated_at: string };
   evidence: Array<{ document_title: string; location: string | null; effective_from: string | null; quote: string; is_current: boolean }>;
   warnings: string[];
+  messages?: Array<{ id: number; sender_type: string; sender_role?: string | null; body: string; created_at: string }>;
   parent_choices: Array<{ slot_id: number; period: Period; room: string; chosen_at: string; hold_expires_at: string }>;
   director_instruction: null | { text: string; by: Person; at: string };
   timeline: Array<{ action: string; actor_type: string; agent_name: string | null; created_at: string }>;
@@ -75,7 +76,9 @@ const cardFromDetail = (data: CardDetail): Card => {
     status: req?.status ?? (data.card.status === "done" ? "completed" : "awaiting_review"), risk: risk(req?.risk_level),
     urgentReason: riskLabel(req?.risk_category), title: req?.title ?? data.card.summary, childName: "", guardianName: "보호자",
     className: "담당 반", createdAt: req?.created_at ?? new Date().toISOString(), original: req?.body ?? data.card.summary,
-    summary: data.card.summary || undefined, draft, sources,
+    summary: data.card.summary || undefined, draft: draft || undefined, sources,
+    messages: data.messages?.map((m) => ({ id: m.id, fromParent: m.sender_role === "parent", body: m.body, at: m.created_at })),
+    previousText: typeof data.card.draft.previous_text === "string" && data.card.draft.previous_text ? data.card.draft.previous_text : undefined,
     check: data.card.check_result ? { passed: !!data.card.check_result.passed, note: data.card.check_result.note, issues: (data.card.check_result.issues ?? []).map(issueText).filter(Boolean), attempt: data.card.check_result.attempt } : undefined,
     warnings: data.warnings ?? [], noEvidence: !!data.card.draft?.no_evidence,
     repeatCount: req?.repeat_count ?? undefined, escalated: req?.status === "escalated" || data.card.kind === "director_report",
