@@ -206,6 +206,16 @@ tools/smoke.sh "$API_BASE_URL"
 ```
 `TODO`: ECR 도입 시 이미지 태그 기준 롤백으로 변경
 
+**바로 직전 판으로 되돌리기.** `deploy.sh`는 새로 빌드하기 전에 api·web 이미지의 지금 판을 `:prev` 태그로 남겨요. 새 판이 뜨지 않으면 다시 빌드하지 말고 그 태그를 원래 이름으로 돌려 기동해요. 스키마가 바뀐 배포였다면 위와 같이 호환성부터 확인해요. 아래 이미지 이름은 기본값(`API_IMAGE` 없음, 프로젝트 `yuchion-server`)이에요.
+
+```bash
+docker tag yuchion-api:prev yuchion-api:local
+docker tag yuchion-server-web:prev yuchion-server-web:latest
+docker compose --env-file infra/team-server/.env.server \
+  -f compose.yaml -f infra/team-server/compose.server.yaml up -d --no-build
+tools/smoke.sh "$API_BASE_URL"
+```
+
 ### 7-2. DB·사진 백업 · 복원
 배포하기 전에 먼저 `infra/backup/backup.sh`로 백업을 받아요. DB 덤프와 사진 볼륨, 그리고 만든 시각과 커밋, alembic 판이 `backups/<UTC 시각>/` 폴더 하나에 함께 들어가요.
 보관 개수(`BACKUP_KEEP`, 기본 7)를 넘는 옛 폴더는 지워져요. 환경 파일과 Compose 옵션은 배포 스크립트와 같은 기본값을 써요.

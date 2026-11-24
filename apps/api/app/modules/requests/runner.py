@@ -1,7 +1,10 @@
 """같은 API 프로세스의 백그라운드 입구. T29에서 워커 태스크로도 불러요."""
 
+from concurrent.futures import Future
+from contextvars import copy_context
 from importlib import import_module
 from datetime import timedelta
+from threading import Thread
 import logging
 
 from sqlalchemy import text
@@ -12,6 +15,7 @@ from app.modules.requests.agent_stub import new_card
 from app.modules.requests.events import record, set_status
 
 log = logging.getLogger(__name__)
+AI_TIMEOUT_SECONDS = 180  # API 6.1·T14 6.1 ⑤: 요청 하나의 AI 처리 전체 3분
 
 
 def _handoff(connection, req, reason):
@@ -19,23 +23,49 @@ def _handoff(connection, req, reason):
     set_status(connection, req, "awaiting_review", action="checked", card=card, handoff_reason=reason)
 
 
+def _start_agent(request_id):
+    future = Future()
+
+    def invoke():
+        try:
+            module, name = settings.request_agent.split(":", 1)
+            future.set_result(getattr(import_module(module), name)(request_id))
+        except BaseException as error:  # noqa: BLE001 - 부른 쪽이 future로 받는다
+            future.set_exception(error)
+
+    # 스레드는 contextvars를 물려받지 않는다. 복사해서 넘겨야 이력의 trace_id가 접수 요청과 같다(API 1.3).
+    Thread(target=copy_context().run, args=(invoke,), name="request-agent", daemon=True).start()
+    return future
+
+
 def run_request(request_id):
+    # 3분을 재는 곳은 그래프 바깥 이 실행기다. 넘으면 기다리지 않고 초안 없는 카드로 넘긴다.
+    # 늦게 끝난 실행은 저장 트랜잭션의 재확인(요청 상태·카드 유무)에서 버려진다.
+    future = _start_agent(request_id)
     try:
-        module, name = settings.request_agent.split(":", 1)
-        getattr(import_module(module), name)(request_id)
+        future.result(timeout=AI_TIMEOUT_SECONDS)
+        return
     except Exception:
-        # 예외 본문은 개인정보·키를 담을 수 있어 저장·응답에 옮기지 않아요.
-        with transaction() as connection:
-            row = connection.execute(text("SELECT * FROM requests WHERE id=:id FOR UPDATE"),
-                                     {"id": request_id}).mappings().one_or_none()
-            if row is None:
-                return
-            req = dict(row)
+        pass
+    if not future.done():
+        reason = "ai_timeout"
+    elif future.exception() is not None:
+        reason = "ai_failed"
+    else:
+        return  # 마감과 거의 같은 때 정상으로 끝났다
+    # 예외 본문은 개인정보·키를 담을 수 있어 저장·응답에 옮기지 않아요.
+    with transaction() as connection:
+        row = connection.execute(text("SELECT * FROM requests WHERE id=:id FOR UPDATE"),
+                                 {"id": request_id}).mappings().one_or_none()
+        if row is None:
+            return
+        req = dict(row)
+        if reason == "ai_failed":
             record(connection, req, "tool_failed", code="UPSTREAM_UNAVAILABLE", handoff_reason="ai_failed")
-            if req["status"] in ("received", "classified", "assigned", "needs_info") and not connection.scalar(text("""
-                SELECT EXISTS (SELECT 1 FROM cards WHERE request_id=:id)
-            """), {"id": request_id}):
-                _handoff(connection, req, "ai_failed")
+        if req["status"] in ("received", "classified", "assigned", "needs_info") and not connection.scalar(text("""
+            SELECT EXISTS (SELECT 1 FROM cards WHERE request_id=:id)
+        """), {"id": request_id}):
+            _handoff(connection, req, reason)
 
 
 def sweep_missing_cards(now):
