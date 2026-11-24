@@ -65,6 +65,8 @@ function ago(iso: string) {
 /** 사진 슬라이드: 옆으로 밀어 넘기고 오른쪽 위에 몇 번째인지 보여 준다. 누르면 크게 본다 */
 export function PhotoCarousel({ photos, onOpen }: { photos: Photo[]; onOpen: (index: number) => void }) {
   const [at, setAt] = useState(0);
+  /* 칸 비율은 첫 사진을 따르되 세로 4:5, 가로 1.91:1을 넘지 않게 한다(얼굴이 너무 잘리지 않도록) */
+  const [ratio, setRatio] = useState(4 / 5);
   if (!photos.length) return null;
   return (
     <div className="relative">
@@ -74,9 +76,9 @@ export function PhotoCarousel({ photos, onOpen }: { photos: Photo[]; onOpen: (in
         aria-label="사진"
       >
         {photos.map((p, i) => (
-          <li key={p.id} className="w-full shrink-0 snap-center">
-            <button type="button" onClick={() => onOpen(i)} aria-label={`사진 ${i + 1}장 크게 보기`} className="block w-full active:opacity-90">
-              <AuthPhoto photo={p} className="aspect-[4/5] w-full" />
+          <li key={p.id} className="w-full shrink-0 snap-center" style={{ aspectRatio: ratio }}>
+            <button type="button" onClick={() => onOpen(i)} aria-label={`사진 ${i + 1}장 크게 보기`} className="block size-full active:opacity-90">
+              <AuthPhoto photo={p} className="size-full" onSize={i === 0 ? (w, h) => setRatio(Math.min(1.91, Math.max(4 / 5, w / h))) : undefined} />
             </button>
           </li>
         ))}
