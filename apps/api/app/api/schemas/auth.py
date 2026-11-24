@@ -16,6 +16,7 @@ class UserOut(BaseModel):
     role: Literal["parent", "teacher", "director"]
     display_name: str
     org_id: UUID
+    consents_complete: bool
     classroom_ids: list[UUID] = Field(default_factory=list, description="담임만. 대체 담임은 기간 안인 반만")
 
 

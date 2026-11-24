@@ -6,6 +6,7 @@ from app.api.schemas.auth import ChildOut, LoginIn, LoginOut, MeOut, UserOut
 from app.api.schemas.common import errors
 from app.core.auth import CurrentUser, current_user, issue_token
 from app.core.errors import ApiError
+from app.core.consents import complete
 from app import backend
 
 router = APIRouter(tags=["인증"])
@@ -16,6 +17,7 @@ def _me(user) -> MeOut:
     children = backend.users.children_of(user.id) if user.role == "parent" else []
     return MeOut(
         user=UserOut(id=user.id, role=user.role, display_name=user.display_name, org_id=user.org_id,
+                     consents_complete=complete(user),
                      classroom_ids=classroom_ids),
         children=[ChildOut(id=c.id, display_name=c.display_name, classroom_id=c.classroom_id) for c in children],
     )

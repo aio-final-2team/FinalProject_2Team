@@ -10,6 +10,7 @@ from app.core.constants import CARE_REQUEST_TYPES, MEDICATION_FIELDS
 from app.core.care import input_detail
 from app.core.db import transaction
 from app.core.errors import ApiError
+from app.core.consents import require_complete
 from app.modules.requests.events import record, set_status
 from app.core.jobs import dispatch
 from app.modules.requests import care
@@ -27,6 +28,7 @@ def create(user, *, background_tasks, client_request_id, type, body, child_id, p
                                  values).mappings().one_or_none()
         if old is not None:
             scope.request_in_scope(user, old["id"], connection=connection)
+            require_complete(user)
             return old, False
         child = scope.child_in_scope(user, child_id, connection=connection)
         detail = input_detail(type, pickup_guardian_id=pickup_guardian_id, **care_fields)
@@ -36,6 +38,7 @@ def create(user, *, background_tasks, client_request_id, type, body, child_id, p
             prev = scope.request_in_scope(user, previous_request_id, connection=connection)
             if prev["status"] not in ("completed", "rejected"):
                 raise ApiError(409, "INVALID_TRANSITION")
+        require_complete(user)
         row = connection.execute(text("""
             INSERT INTO requests (org_id,classroom_id,child_id,requester_id,client_request_id,type,body,title,previous_request_id,missing_fields,care_detail)
             VALUES (:org,:class,:child,:user,:key,:type,:body,:title,:previous,CAST(:missing AS jsonb),CAST(:care AS jsonb))
@@ -302,6 +305,7 @@ def listing(user, status, page, size, sort):
 def message(user, request_id, body, *, background_tasks):
     with transaction() as connection:
         scope.request_in_scope(user, request_id, connection=connection)
+        require_complete(user)
         req = _expire(connection, _lock(connection, request_id))
         if req["status"] in ("completed", "rejected"):
             raise ApiError(409, "INVALID_TRANSITION")

@@ -3000,6 +3000,112 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
           description: Unprocessable Entity
+  /api/v1/consents:
+    get:
+      tags:
+      - '[제안] 필수 동의'
+      summary: Get Consents
+      operationId: get_consents_api_v1_consents_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConsentOut'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security:
+      - HTTPBearer: []
+    post:
+      tags:
+      - '[제안] 필수 동의'
+      summary: Agree Consents
+      operationId: agree_consents_api_v1_consents_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConsentIn'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConsentOut'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security:
+      - HTTPBearer: []
+  /api/v1/classrooms/{classroom_id}/consents:
+    get:
+      tags:
+      - '[제안] 필수 동의'
+      summary: Classroom Consents
+      operationId: classroom_consents_api_v1_classrooms__classroom_id__consents_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: classroom_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Classroom Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClassroomConsents'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
   /health:
     get:
       tags:
@@ -3733,6 +3839,32 @@ components:
       - passed
       - issue_count
       title: CheckSummary
+    ChildConsent:
+      properties:
+        child_id:
+          type: string
+          format: uuid
+          title: Child Id
+        display_name:
+          type: string
+          title: Display Name
+        guardians_total:
+          type: integer
+          title: Guardians Total
+        guardians_complete:
+          type: integer
+          title: Guardians Complete
+        complete:
+          type: boolean
+          title: Complete
+      type: object
+      required:
+      - child_id
+      - display_name
+      - guardians_total
+      - guardians_complete
+      - complete
+      title: ChildConsent
     ChildList:
       properties:
         items:
@@ -3793,6 +3925,17 @@ components:
       - request
       - slots
       title: ChoicesResponse
+    ClassroomConsents:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/ChildConsent'
+          type: array
+          title: Items
+      type: object
+      required:
+      - items
+      title: ClassroomConsents
     ClassroomView:
       properties:
         id:
@@ -3815,6 +3958,66 @@ components:
       required:
       - request
       title: ConfirmResponse
+    ConsentIn:
+      properties:
+        items:
+          items:
+            type: string
+          type: array
+          title: Items
+        terms_version:
+          type: string
+          title: Terms Version
+      additionalProperties: false
+      type: object
+      required:
+      - items
+      - terms_version
+      title: ConsentIn
+    ConsentItem:
+      properties:
+        item:
+          type: string
+          title: Item
+        label:
+          type: string
+          title: Label
+        required:
+          type: boolean
+          const: true
+          title: Required
+        agreed_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Agreed At
+      type: object
+      required:
+      - item
+      - label
+      - required
+      - agreed_at
+      title: ConsentItem
+    ConsentOut:
+      properties:
+        terms_version:
+          type: string
+          title: Terms Version
+        complete:
+          type: boolean
+          title: Complete
+        items:
+          items:
+            $ref: '#/components/schemas/ConsentItem'
+          type: array
+          title: Items
+      type: object
+      required:
+      - terms_version
+      - complete
+      - items
+      title: ConsentOut
     ConsultationDelayIn:
       properties:
         expected_end_at:
@@ -6232,6 +6435,9 @@ components:
           type: string
           format: uuid
           title: Org Id
+        consents_complete:
+          type: boolean
+          title: Consents Complete
         classroom_ids:
           items:
             type: string
@@ -6245,6 +6451,7 @@ components:
       - role
       - display_name
       - org_id
+      - consents_complete
       title: UserOut
   securitySchemes:
     HTTPBearer:

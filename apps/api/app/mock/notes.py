@@ -5,6 +5,7 @@ from datetime import datetime
 from uuid import uuid4
 
 from app.core.errors import ApiError
+from app.core.consents import require_complete
 from app.core.care import missed_request_check, note_content
 from app.core.constants import LATE_NOTE_REQUEST_NOTICE, NOTE_REQUEST_TYPES
 from app.core.config import settings
@@ -70,6 +71,7 @@ def _edited(note):
 def regenerate(user, input_id, background_tasks=None):
     with store._lock:
         entry = input_in_scope(user, input_id)
+        require_complete(user)
         if any(n.input_id == input_id and n.status == "sent" for n in store.state().notes.values()):
             raise ApiError(409, "INVALID_TRANSITION")
         kept_edited = sum(n.input_id == input_id and n.status in ("draft", "needs_check") and _edited(n)
@@ -100,6 +102,7 @@ def requests_for_child(child, note_date):
 def draft(user, body, background_tasks=None):
     with store._lock:
         children = store.classroom_children(user, body.classroom_id)
+        require_complete(user)
         child_ids = {child.id for child in children}
         for memo in body.child_memos:
             if memo.child_id not in child_ids:
