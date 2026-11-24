@@ -79,6 +79,11 @@ def validate_proposal(request_type, body, proposal):
             category = None
         if result["risk_level"] == "urgent" and category is None:
             result["risk_level"] = "uncertain"
+        # 문의에서 모델이 '판단 필요'라고만 하고 위험 종류 네 가지 중 하나를 대지 못하면 올리지 않는다.
+        # 열·알레르기·투약 같은 건강 문의가 원장 보고로 가던 것을 막는다(모델이 '긴급'이라 한 글은 그대로 올린다).
+        elif (request_type == "inquiry" and level == "uncertain" and base["risk_level"] == "normal"
+                and category is None):
+            result["risk_level"] = "normal"
         result["risk_category"] = category
     suggested = proposal.get("out_of_scope_kind")
     if result["out_of_scope_kind"] is None and suggested in OUT_OF_SCOPE_KINDS:
