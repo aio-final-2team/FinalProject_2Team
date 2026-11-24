@@ -5,18 +5,32 @@
 | 작업 | T13 API 설계 문서(FastAPI·Function Calling 도구 계약)·모의 API (#170) |
 | 작성 · 검토 | 태웅 · 인혜 |
 | 계약을 쓰는 쪽 | 화면 T12·T32(성주), 알림장 그래프 T32(프롬프트 검토 영민), 요청 처리 에이전트·자료·근거 검색 T29·T20·T33(영민) |
-| 판 | v0.8 · 2026-11-23 인계 (판마다 바뀐 내용은 맨 끝 변경 이력 참고. 계약을 바꾸면 예시·모의 응답·시험도 함께 고친다) |
-| 검토 기준 | `develop` 브랜치의 [API 설계 문서](https://github.com/aio-final-2team/FinalProject_2Team/blob/develop/Docs/Step2/API_설계_문서.md). API별 상태(2장)는 develop `24258f2` 코드로 판정했다 |
+| 판 | v0.10.1 · 2026-11-24 (판마다 바뀐 내용은 맨 끝 변경 이력 참고. 계약을 바꾸면 예시·모의 응답·시험도 함께 고친다) |
+| 2차 검토 링크 | `develop` 브랜치의 [API 설계 문서](https://github.com/aio-final-2team/FinalProject_2Team/blob/develop/Docs/Step2/API_설계_문서.md). API별 상태(2장)는 develop `24258f2` 코드로 판정했다. 이 커밋은 2장 상태 칸의 기준이고, 시연에 쓰는 커밋은 다음 줄에 따로 적는다 |
+| 시연 코드 기준 커밋 | 레포 [README](../../README.md#2차-검토-문서)의 '시연 코드 기준 커밋' 한 줄을 본다(11/24 기준 develop `97fda0b`, 위험 등급 확대 #326·요청 처리 AI 스위치 #321까지 팀 서버에 배포). 11/27 시연 전까지 팀 서버를 다시 배포하면 README 그 한 줄만 고친다 |
 | 함께 보는 문서 | 아래 기준 판 표의 문서들, T04 흐름·권한 명세 |
 
 | 함께 맞춘 문서 | 기준 판 |
 | --- | --- |
 | [기획서](../Step1/기획서.md) | 11/18 실측 반영본에 11/20 팀 결정 D02(첫 시연 범위)를 더한 develop 판. 3장 기능 요구사항(FR)과 4장 비기능 요구사항(NFR)의 번호를 쓴다 |
 | [입출력 계약표](입출력_계약표_초안.md) | v0.18 · 2026-11-21 |
-| [DB 스키마 설계서](DB_스키마_설계서.md) | v0.19.1 · 2026-11-23, 마이그레이션 0001~0010 |
+| [DB 스키마 설계서](DB_스키마_설계서.md) | v0.20 · 2026-11-24, 마이그레이션 0001~0010 |
 | OpenAPI 생성물 `contracts/openapi.yaml` | 마지막 생성 커밋 `04c4691`. 앱이 내는 `/openapi.json`과 같은지는 `test_contract_matches_application`으로 확인한다 |
 
-이 문서는 유치온 API 49개(기준 v0.8, develop `24258f2`)와 에이전트 도구 15개의 계약을 담는다. 1~6장은 강사님 'API 설계 문서 작성법'에 나온 '문서에 들어가는 여섯 가지'의 순서를 따르고, 7장에는 API 필드와 DB 컬럼의 대응을, 8장에는 설정값을 적었다. 필드·권한·오류는 입출력 계약표와 같아야 한다. 두 문서가 어긋나면 계약표를 먼저 고친 뒤 두 문서의 판을 함께 올린다. 구현(FastAPI의 `/docs`)과 달라졌을 때도 둘을 대조해 판을 올린다. 모의 API와 생성물 `contracts/openapi.yaml`도 이 문서와 함께 둔다. 모의 API를 쓰는 법과 데모 계정은 [모의 API 안내](../../contracts/mock_api/README.md)에 있다. 제목에 [제안]이 붙은 절은 팀이 아직 계약을 확인하지 않은 내용으로, 투약·귀가(3.27), 상담 지연 입력(3.28), 피드·앨범(3.29)이 여기에 해당한다. API별로 지금 어디까지 동작하는지는 2장 표의 상태 칸에 적었다.
+**1차 검토 뒤 보완.** 1차 검토 뒤에 바뀐 내용과 그 내용을 지키는 시험을 표 하나에 모았다. 시험은 모두 시연 코드 기준 커밋에서 다시 돌려 통과했다. DB 시험과 공유 HTTP 시험은 `tools/test_db.sh`로, 계약 시험은 `tests/integration/api/test_openapi.py`로 돌렸다. 표의 시험 파일은 모두 `tests/integration/`(DB는 `db/`, HTTP는 `api/`) 아래에 있고, `api/` 시험 가운데 `test_openapi.py`를 뺀 나머지는 모의·시험 PG 두 모드에서 모두 돈다. 반영 커밋 칸에는 develop에 합쳐진 커밋을 적었다.
+
+| 바뀐 내용 | 고친 절 | 지키는 시험(파일::함수) | 반영 커밋 |
+| --- | --- | --- | --- |
+| **접근 차단.** 지금 연결된 아이가 없는 보호자(퇴소 등)는 원 칸 피드에서도 목록·상세·앨범·사진 파일·글 올리기에 모두 403을 받는다. 다른 기관 사용자는 404를, 다른 반 보호자는 반 칸에서 403을 받는다 | [3.29](#329-제안-피드앨범) ⑤, DB 설계서 [4.4](DB_스키마_설계서.md#44-차단-시험) | `api/test_feed.py::test_org_lane_closes_for_guardian_without_linked_child`, `db/test_scope_cases.py::test_unlinked_guardian_loses_child_notes_requests_and_all_feed_photos`, `db/test_scope_cases.py::test_other_class_guardian_is_blocked_on_read_update_and_file`, `db/test_scope_cases.py::test_other_org_user_gets_404_for_document_and_feed_files_with_denial` | [`bf75f8f`](https://github.com/aio-final-2team/FinalProject_2Team/commit/bf75f8f)(코드), [`c80ee67`](https://github.com/aio-final-2team/FinalProject_2Team/commit/c80ee67)(문서) |
+| **사진 정리.** 퇴소한 아이의 사진·태그·기억 정리, 파일 삭제가 실패해 남은 파일 정리, 백업 복원 뒤 지운 자료를 다시 닫는 일은 관리 작업으로 한다. API 계약은 바뀌지 않았다 | DB 설계서 [사진·기억의 보존과 삭제](DB_스키마_설계서.md#사진기억의-보존과-삭제) | `api/test_feed.py::test_disk_delete_failure_leaves_only_orphan_file_after_commit`, `db/test_maintenance.py::test_withdraw_dry_run_changes_nothing_then_apply_follows_four_steps`, `db/test_maintenance.py::test_sweep_lists_only_orphans_and_deletes_them_only_with_apply`, `db/test_backup_restore.py::test_dump_restore_revives_later_deletions_until_after_restore_applies_them` | [`bf75f8f`](https://github.com/aio-final-2team/FinalProject_2Team/commit/bf75f8f), [`1d2c228`](https://github.com/aio-final-2team/FinalProject_2Team/commit/1d2c228) |
+| **초안 실패 뒤 처리 — 알림장.** 작업 전체가 실패하면 `draft_status = failed`와 `error`로 알리고, 아이 한 명만 실패하면 그 아이에게만 확인 항목 `draft_failed`를 단다. 어느 쪽이든 반 발송은 막힌다. 다시 만들기까지의 복구 이력은 DB 설계서 2.6에 있다 | [3.19.1](#3191-접수부터-결과-조회까지-한-번에-따라가기), [3.26](#326-알림장-다시-만들기--post-apiv1daily-notesdraftsinput_idregenerate), DB 설계서 [2.6](DB_스키마_설계서.md#26-알림장알림평가) | `api/test_daily_notes.py::test_failed_writer_job_is_queryable_without_partial_notes`, `db/test_daily_notes_runner.py::test_one_child_failure_keeps_other_children_and_blocks_batch`, `db/test_daily_note_recovery.py::test_timeout_then_regenerate_is_one_recovered_incident_with_times`, `db/test_daily_note_recovery.py::test_failed_retry_is_handed_off_then_partial_template_is_fallback` | [`c80ee67`](https://github.com/aio-final-2team/FinalProject_2Team/commit/c80ee67), [`bf75f8f`](https://github.com/aio-final-2team/FinalProject_2Team/commit/bf75f8f) |
+| **초안 실패 뒤 처리 — 요청 처리 3분 마감.** 3분이 지나면 초안 없는 미배정 카드로 넘기고(`ai_timeout`), 처리 중에 예외가 나면 `ai_failed`로 넘긴다. 모델 응답을 기다리는 동안에는 요청 행 잠금도 DB 연결도 잡지 않는다. 늦게 끝난 결과는 저장 직전에 다시 확인해서 버린다 | [6.1](#61-타임아웃), [6.3](#63-202로-접수하는-작업의-상태-조회) | `db/test_request_lock_timeout.py::test_answer_models_run_outside_request_row_lock`, `db/test_request_lock_timeout.py::test_ai_timeout_hands_off_empty_card_and_drops_late_draft`, `db/test_request_lock_timeout.py::test_timeout_error_raised_by_agent_is_ai_failed` | [`ab58b7c`](https://github.com/aio-final-2team/FinalProject_2Team/commit/ab58b7c) |
+| **초안 실패 뒤 처리 — 거절 뒤 재초안.** 담임이 회신 초안을 거절하면 새 회신 카드에는 초안 문장도 검사 결과도 없다. 그래서 그대로 승인하면 409가 나고, 담임이 직접 쓴 글(`edit_approve`)만 나간다 | [3.3](#33-카드-결정--post-apiv1cardscard_iddecisions) '결정마다 바뀌는 것' | `api/test_cards.py::test_reject_redraft_has_no_text_and_needs_teacher_text` | [`ab58b7c`](https://github.com/aio-final-2team/FinalProject_2Team/commit/ab58b7c) |
+| 첫 시연 순서, API 49개 목록의 상태 칸(DB 연결·모의만·제안) | [2](#2-api-목록), [2.1](#21-첫-시연-흐름의-연결표와-실제-연결-범위) | `api/test_openapi.py::test_all_49_documented_endpoints_exist`(목록 49행이 앱 경로와 같은지) | [`c80ee67`](https://github.com/aio-final-2team/FinalProject_2Team/commit/c80ee67) |
+| 요청은 접수됐지만 인계 카드 저장에 실패한 경우 | [5.5.3](#553-사람-인계-카드--create_card), [6.7](#67-대표-사례-대조--화면apidb가-같은-상태로-보이는지) | `db/test_requests.py::test_agent_failure_preserves_request_and_hands_off_without_private_error`, `db/test_requests.py::test_sweep_exact_age_states_card_exclusion_and_concurrent_idempotency` | [`c80ee67`](https://github.com/aio-final-2team/FinalProject_2Team/commit/c80ee67) |
+| 기획서·계약표·DB 설계서와 맞춘 기준 판, 생성물이 앱 계약과 같은지 | 위 기준 판 표 | `api/test_openapi.py::test_contract_matches_application` | [`c80ee67`](https://github.com/aio-final-2team/FinalProject_2Team/commit/c80ee67) |
+
+이 문서는 유치온 API 49개(목록은 v0.8 때 develop `24258f2` 코드로 확인)와 에이전트 도구 15개의 계약을 담는다. 1~6장은 강사님 'API 설계 문서 작성법'에 나온 '문서에 들어가는 여섯 가지'의 순서를 따르고, 7장에는 API 필드와 DB 컬럼의 대응을, 8장에는 설정값을 적었다. 필드·권한·오류는 입출력 계약표와 같아야 한다. 두 문서가 어긋나면 계약표를 먼저 고친 뒤 두 문서의 판을 함께 올린다. 구현(FastAPI의 `/docs`)과 달라졌을 때도 둘을 대조해 판을 올린다. 모의 API와 생성물 `contracts/openapi.yaml`도 이 문서와 함께 둔다. 모의 API를 쓰는 법과 데모 계정은 [모의 API 안내](../../contracts/mock_api/README.md)에 있다. 제목에 [제안]이 붙은 절은 팀이 아직 계약을 확인하지 않은 내용으로, 투약·귀가(3.27), 상담 지연 입력(3.28), 피드·앨범(3.29)이 여기에 해당한다. API별로 지금 어디까지 동작하는지는 2장 표의 상태 칸에 적었다.
 
 **목차.** 1. 공통 정보와 인증 · 2. API 목록 · 3. 엔드포인트 상세 명세 · 4. 검증과 권한 규칙 · 5. Tool 정의와 호출 흐름 · 6. 실행 규칙 · 7. API 필드와 DB 컬럼 대응 · 8. 설정값 · 부록 A. 예시 ID · 부록 B. 강사 가이드 체크리스트 대조 · 변경 이력
 
@@ -105,7 +119,7 @@ FastAPI가 기본으로 내는 422 응답은 예외 처리기에서 위 형식�
 
 첫 시연은 알림장 흐름으로 고정한다. 담임이 반 활동과 아이별 메모를 입력하면 AI가 초안을 만들고, 담임이 이를 확인·수정한 뒤 반 전체에 보낸다(기획서 2.3, 결정 D02). 이때 화면은 로그인·내 정보(3.8), 반 아이 목록(3.24), 초안 만들기·진행 상태(3.19), 알림장 보기(3.20), 고치기·확인(3.21), 반 알림장 보내기(3.6) 순서로 API를 부른다. 초안을 만들지 못했거나 다시 써야 하면 다시 만들기(3.26)를 부른다. 알림장을 보내면 학부모는 알림 목록(3.11)에서 `note_sent` 알림을 받고, 알림장 보기(3.20)에서 자기 아이 알림장을 연다.
 
-아래 표에 API 49개(기준 v0.8, develop `24258f2`)를 모았다. 인증·역할 열의 '자기 것'·'우리 반'은 4.2의 범위 규칙을 뜻한다. 상세 열에는 각 API를 자세히 설명한 3장의 절 번호를 적었다. 상태 칸은 develop 코드를 DB 모드(`DATA_BACKEND=db`)로 띄운 뒤 49개를 한 번씩 호출해 보고 정했다.
+아래 표에 API 49개(목록은 v0.8 때 develop `24258f2` 코드로 확인)를 모았다. 인증·역할 열의 '자기 것'·'우리 반'은 4.2의 범위 규칙을 뜻한다. 상세 열에는 각 API를 자세히 설명한 3장의 절 번호를 적었다. 상태 칸은 develop 코드를 DB 모드(`DATA_BACKEND=db`)로 띄운 뒤 49개를 한 번씩 호출해 보고 정했다.
 
 | 상태 | 뜻 | 개수 |
 | --- | --- | --- |
@@ -138,7 +152,7 @@ FastAPI가 기본으로 내는 422 응답은 예외 처리기에서 위 형식�
 | 13 | GET | `/api/v1/cards/{card_id}` | 담임(우리 반)·원장 | 카드 상세(초안·근거·반복 수·이력) | 200 | FR-04, FR-07, FR-09, FR-11 | 3.13, 3.7 | DB 연결 |
 | 14 | GET | `/api/v1/cards/{card_id}/stream` | 담임(우리 반)·원장 | 카드 AI 진행 스트림(초안 글자 포함) | 200 | NFR-10 | 3.13 | DB 연결 |
 | 15 | POST | `/api/v1/cards/{card_id}/decisions` | 담임(우리 반)·원장 | 카드 결정(승인·거절·보류·재개·반려·처리 완료·원장님께 올리기) | 200 | FR-05~FR-09 | 3.3 | DB 연결 |
-| 16 | POST | `/api/v1/cards/{card_id}/reclassify` | 담임(우리 반)·원장 | 민원 위험 등급 다시 분류 | 200 | FR-03, FR-07 | 3.14 | DB 연결 |
+| 16 | POST | `/api/v1/cards/{card_id}/reclassify` | 담임(우리 반)·원장 | 문의·민원 위험 등급 다시 분류 | 200 | FR-03, FR-07 | 3.14 | DB 연결 |
 | 17 | POST | `/api/v1/cards/{card_id}/bookings` | 담임(우리 반) | 상담 확정 | 200 | FR-05 | 3.4 | DB 연결 |
 | 18 | POST | `/api/v1/cards/{card_id}/instructions` | 원장·원감 | 원장 보고 지시 | 200 | FR-07 | 3.15 | DB 연결 |
 | 19 | POST | `/api/v1/cards/{card_id}/reassign` | 원장·원감 | 담당 재배정 | 200 | FR-09, FR-19 | 3.16 | DB 연결 |
@@ -407,7 +421,7 @@ X-Request-ID: 0e7d4a51-2c3b-4f6e-9a18-5b7c9d0e1f23
 | `decision` | 카드 | 요청 | 이력(`events.action`) | 알림 |
 | --- | --- | --- | --- | --- |
 | `approve`·`edit_approve` | `approved` → 발송 뒤 `done` | `approved` → `sent_or_booked` | `approved`, `sent` | 학부모 `sent_or_booked` |
-| `reject` | `rejected`, 같은 요청에 새 초안 카드가 생김 | `awaiting_review` → `assigned`, 새 초안이 나오면 다시 `awaiting_review` | `rejected` | 없음(이유는 기억 AI의 재료로 씀) |
+| `reject` | `rejected`, 같은 요청에 새 초안 카드가 생김. 회신 카드(`reply_draft`)를 거절했다면 새 카드에는 초안 문장도 검사 결과도 없다. 그래서 그대로 `approve`하면 409 `INVALID_TRANSITION`이 나고, 담임이 직접 쓴 글을 `edit_approve`로 보내야 한다 | `awaiting_review` → `assigned`, 새 초안이 나오면 다시 `awaiting_review` | `rejected` | 없음(이유는 기억 AI의 재료로 씀) |
 | `hold` | `on_hold` + `hold_until` | `on_hold` | `held` | 학부모 `on_hold`(예정일만) |
 | `resume` | `pending` | `on_hold` → `awaiting_review` | `resumed` | 없음 |
 | `dismiss` | `rejected` | `rejected` | `dismissed` | 학부모 `rejected` |
@@ -444,6 +458,7 @@ X-Request-ID: 0e7d4a51-2c3b-4f6e-9a18-5b7c9d0e1f23
 체크할 때 상담실이나 담임의 시간이 다른 요청의 확정 예약 또는 24시간 안의 체크와 겹치면 409 `SLOT_TAKEN`이다.
 24시간이 지난 체크는 요청이 `awaiting_review`일 때만 풀고 `needs_info`로 돌린다. 이때 담임에게 `slot_hold_expired` 알림을 남긴다.
 보류나 원장 보고 중에는 체크와 요청 상태를 그대로 두고, 재개되거나 원장이 지시한 뒤에 만료를 검사한다.
+긴급·판단 필요 상담에는 원장 보고 카드가 함께 생기지만 요청은 `escalated`가 되지 않는다(5.7). 원장 지시는 `escalated`인 요청만 받으므로, 담임이 예약을 확정하거나 상담을 반려(`dismiss`)할 때 같은 요청의 열린 원장 보고 카드도 함께 닫는다. 이때 알림을 더 보내지는 않는다. 판단 필요(`uncertain`)로 결정을 막는 규칙은 재분류로 풀 수 있는 문의·민원에만 쓰고, 상담은 판단 필요여도 담임이 그대로 확정·반려한다.
 `escalated`에서는 원장이 지시하기 전에 확정할 수 없다. 원장이 지시하면 보고 카드를 닫고 상담 후보 카드로 돌려보낸다.
 최종 확정은 담임 → 상담실 순서로 거는 자문 잠금과 DB 배제 제약으로 한 건만 받는다(DB 설계서 9.1 F1-7).
 
@@ -558,7 +573,7 @@ T12 화면 지도에 나온 화면들이 조회 응답에서 쓰는 칸을 여�
 | 화면용 필드(`items[]`) | 타입 | 언제 | 설명 | DB |
 | --- | --- | --- | --- | --- |
 | `request_id` | string(UUID) | 요청이 있는 카드 | 알림장 묶음·규칙 제안 카드는 `null` | `cards.request_id` |
-| `risk_category` | string | 긴급 민원만 | 긴급 사유 4가지(`child_safety`·`staff_attack`·`legal_external`·`privacy_leak`) | `requests.risk_category` |
+| `risk_category` | string | 긴급 요청만 | 긴급 사유 4가지(`child_safety`·`staff_attack`·`legal_external`·`privacy_leak`) | `requests.risk_category` |
 | `repeat_count` | integer | 민원만 | 같은 반에서 최근 30일 안에 들어온 같은 주제 민원 수. `topic_key = other`면 `null` | 조회 때 셈(`requests_repeat_idx`) |
 | `check { passed, issue_count }` | 객체 | 검사가 끝난 카드 | 검사 AI 결과 요약. 검사를 못 했으면 `null` | `cards.check_result` |
 | `parent_choice_count` | integer | 상담 후보 카드 | 학부모가 체크한 시간 수(지금 회차) | `consultation_slots`(`status = chosen_by_parent`) 개수 |
@@ -735,7 +750,7 @@ HTTP/1.1 201 Created
 | `page`·`size` | 쿼리 | integer | 선택 | 불가 | 기본 1·20, page ≥ 1, size 1~100 | 쪽 나누기 |
 | `sort` | 쿼리 | string | 선택 | 불가 | `-created_at`(기본)·`created_at` | 내림차순·오름차순 |
 | `notification_id` | 읽음 경로 | integer | 필수 | 불가 | 목록에서 받은 ID | 0 이하도 형식상 정수로 보고, 해당 알림이 없으면 404 |
-| `items[].id`·`kind`·`title` | 목록 응답 | integer·string | 항상 | 불가 | kind는 17종(상담 알림 consultation_ending·consultation_delayed, 투약·귀가 알림 care_requested·care_confirmed 포함) | 알림 종류와 제목 |
+| `items[].id`·`kind`·`title` | 목록 응답 | integer·string | 항상 | 불가 | kind는 17종(상담 알림 consultation_ending·consultation_delayed, 투약·귀가 알림 care_requested·care_confirmed 포함). 문의·상담 위험에도 urgent_complaint·uncertain_complaint라는 이름을 그대로 쓴다. 제목만 '긴급 문의'·'AI 판단 불확실 상담'처럼 요청 유형에 맞춘다 | 알림 종류와 제목 |
 | `items[].body`·`request_id`·`subject_type`·`subject_id` | 목록 응답 | string·UUID | 항상 | null 가능 | 알림장 알림은 subject_type=`daily_note` | 내용과 연결 대상 |
 | `items[].read_at`·`deliver_after` | 목록 응답 | datetime | 항상 | read_at만 null 가능 | 한국 시간 포함 | 읽은 시각과 노출 시각; 읽음 응답의 notification도 같은 모양 |
 | `total`·`page`·`size` | 응답 | integer | 항상 | 불가 | 전체 건수·요청한 쪽·크기 | 목록 공통 칸 |
@@ -845,11 +860,11 @@ data: {"request_status": "awaiting_review"}
 
 | 칸 | 내용 |
 | --- | --- |
-| ① 호출 목적 | 교직원이 민원의 위험 등급을 일반 또는 긴급으로 다시 정한다(FR-03·07). |
+| ① 호출 목적 | 교직원이 문의·민원의 위험 등급을 일반 또는 긴급으로 다시 정한다(FR-03·07). |
 | ② 요청 헤더 | `Authorization`(필수), `X-Request-ID`(권장), `Content-Type: application/json`. |
 | ③ 경로·쿼리 | card_id(UUID, 필수). |
 | ④ 요청 본문 | 아래 필드 표. |
-| ⑤ 검증·권한 | 담임·원장만 호출할 수 있고, 원장 보고 카드는 원장만 다룬다. 요청은 민원이면서 awaiting_review·escalated 상태여야 하고, 판도 확인한다. 다만 대상을 uncertain으로만 좁히지는 않는다. |
+| ⑤ 검증·권한 | 담임·원장만 호출할 수 있고, 원장 보고 카드는 원장만 다룬다. 요청은 문의·민원이면서 awaiting_review·escalated 상태여야 하고, 판도 확인한다. 다만 대상을 uncertain으로만 좁히지는 않는다. 상담은 담임이 시간을 확정하는 흐름이라 재분류하지 않는다. 상담을 재분류하려는 요청에는 409를 돌려준다. |
 | ⑥ 정상 응답 | 200 + 교직원용 request. 응답에 card가 없으니 새 판은 카드 상세에서 받는다. |
 | ⑦ 오류 응답 | 아래 오류 표. |
 | ⑧ 실행 규칙 | 일반으로 바꾸면 risk_category를 지운다. 열린 원장 보고 카드가 있을 때 담임이 호출하면 위험 등급만 바꾸고 escalated는 그대로 둔다. 원장이 일반으로 내리면 열린 원장 보고 카드를 done으로 닫고, risk_reclassified 이력에 그 카드 ID를 남긴 뒤 요청을 awaiting_review로 바꾼다. 이렇게 escalated에서 담임 회신 단계로 돌아오는 경우에는 회신 카드 담당자에게 그 회신 카드로 이어지는 new_card 알림을 한 번 남긴다. 열린 보고 카드가 없으면 일반은 awaiting_review로 바꾸고, 긴급은 원장 보고 카드를 확보한 뒤 escalated로 바꾼다. 공통으로 같은 요청 카드의 due_at을 접수 시각 기준으로 다시 계산하고, 호출한 카드와 이번에 닫은 보고 카드의 판을 각각 1 올린다. 초안은 새로 만들지 않으며, 그 밖의 재분류에서는 new_card 알림을 만들지 않는다. |
@@ -1716,7 +1731,9 @@ def decide(card_id: UUID, body: CardDecision, user: User = Depends(current_staff
 
 ### 5.7 업무 흐름 세 개 — 경로·도구·권한·DB 상태
 
-**사람에게 넘기고 자동 답변하지 않는 기준.** 다음 경우에는 학부모에게 답을 보내지 않고, 초안 없는 사람 카드로 넘긴다. 긴급(`risk_level = urgent`)이거나 판단 필요(`uncertain`)인 민원, 근거 없음(`no_evidence`), 문서 충돌, 검사 AI가 2번 돌려보낸 뒤에도 통과하지 못한 경우(3번째, FR-08), 권한 밖인 경우다. 권한 밖 자료는 읽지 않으며, 카드도 현재 사용자의 범위 안에서만 만든다. 학부모에게 나가는 답은 모두 담임 결정 API가 승인 기록(`approvals`)을 남긴 뒤에만 나간다(5.3 ④). 접수 안내와 정보 되묻기는 여기서 말하는 답변 발송과 구분한다. **원에 남은 답도 예외가 아니다.** 원에 남은 답은 담임이 이미 승인해 저장해 둔 문의 답이다(FR-20). 감독 AI가 `find_saved_answer`로 찾은 답의 `similarity`가 기준 이상이고 `sources_current = true`이며 요청이 긴급·판단 필요가 아니면, 그 답과 출처를 담임 카드의 답변 초안으로 쓴다. 학부모에게는 담임이 승인한 뒤에 나가고, 어느 답을 썼는지는 이력에 `saved_answer_id`로 남긴다. `similarity` 기준값은 평가 뒤에 정한다.
+**사람에게 넘기고 자동 답변하지 않는 기준.** 다음 경우에는 학부모에게 답을 보내지 않고, 초안 없는 사람 카드로 넘긴다. 긴급(`risk_level = urgent`)이거나 판단 필요(`uncertain`)인 문의·민원, 근거 없음(`no_evidence`), 문서 충돌, 검사 AI가 2번 돌려보낸 뒤에도 통과하지 못한 경우(3번째, FR-08), 권한 밖인 경우다. 권한 밖 자료는 읽지 않으며, 카드도 현재 사용자의 범위 안에서만 만든다. 학부모에게 나가는 답은 모두 담임 결정 API가 승인 기록(`approvals`)을 남긴 뒤에만 나간다(5.3 ④). 접수 안내와 정보 되묻기는 여기서 말하는 답변 발송과 구분한다. **원에 남은 답도 예외가 아니다.** 원에 남은 답은 담임이 이미 승인해 저장해 둔 문의 답이다(FR-20). 감독 AI가 `find_saved_answer`로 찾은 답의 `similarity`가 기준 이상이고 `sources_current = true`이며 요청이 긴급·판단 필요가 아니면, 그 답과 출처를 담임 카드의 답변 초안으로 쓴다. 학부모에게는 담임이 승인한 뒤에 나가고, 어느 답을 썼는지는 이력에 `saved_answer_id`로 남긴다. `similarity` 기준값은 평가 뒤에 정한다.
+
+**위험 등급은 문의·상담·민원에 함께 붙는다.** 보호자 글을 받는 이 세 유형에는 같은 규칙으로 위험 등급(일반·긴급·판단 필요)을 매기고, 투약·귀가에는 붙이지 않는다(기획서 FR-03). 규칙이 같으니 문의도 긴급이나 판단 필요로 나오면 민원과 같은 길로 간다. 자료·검사 AI를 부르지 않고, 초안 없는 담임 카드와 원장 보고 카드를 만든 뒤 요청을 `escalated`로 둔다. 상담은 다르다. 시간 고르기(`consult_slots`, 요청 `needs_info`)와 담임 확정은 그대로 두고, 원장 보고 카드와 위험 알림만 더한다. 위험 알림은 민원 때와 마찬가지로 담임과 원장이 받고, 원장 보고 카드는 담임이 예약을 확정하거나 상담을 반려할 때 함께 닫힌다(3.4). 지금은 낱말 대역(`apps/api/app/core/request_rules.py`)으로 위험을 판정하는데, 낱말 하나가 아니라 짧은 구를 본다. '안전'·'신고'·'개인정보'만 보면 '현장체험 안전 수칙'·'결석 신고'·'개인정보 동의서' 같은 평범한 문의까지 걸리기 때문이다. 그래서 '안전을 확인'·'신고하겠'·'경찰에'·'유출' 같은 구를 찾는다. 다만 민원은 예전처럼 '안전'·'신고'·'개인정보' 낱말 하나도 본다. '구청에 신고합니다' 같은 민원을 놓치지 않기 위해서다. 시험은 `test_risk_words_by_phrase_for_every_guardian_request_type`·`test_single_words_count_only_for_complaints`(`tests/unit/test_request_rules.py`), `test_high_risk_handoff_has_two_cards_no_draft_or_automatic_reply`·`test_risky_consultation_keeps_slot_flow_and_adds_director_report`(`tests/integration/api/test_complaints.py`), `test_risky_inquiry_skips_answer_model_and_saves_risk`(`tests/integration/db/test_request_risk_types.py`)다.
 
 아래 표의 API 경로 앞에는 모두 `/api/v1`을 붙인다. 도구의 전체 입력·출력은 계약표 4장을, 실행 조건과 실패 코드는 5.4를 따른다. 표의 도구 호출은 설계상의 계약이고, 모의 API는 같은 흐름을 메모리 안에서 흉내 낸다. DB 제약은 DB 스키마 설계서(T09)를 기준으로 한다.
 
@@ -1761,6 +1778,8 @@ def decide(card_id: UUID, body: CardDecision, user: User = Depends(current_staff
 | 요청 하나의 AI 처리 전체(2~5단계) | 3분 | 처리를 멈추고 초안 없는 카드로 사람에게 넘김. 넘긴 이유(`ai_timeout`)는 이력 `events.detail.handoff_reason`에 남김 |
 | SSE 연결 | 처리 끝(`done`·`error`) 또는 5분 | 서버가 연결을 닫음. 화면은 상세를 다시 불러와 상태를 맞춤 |
 
+요청 하나에 주어진 3분은 그래프 바깥의 실행기가 잰다. 분류, 공공 자료 가져오기, 답변 초안 쓰기와 검사는 모두 요청 행 잠금 밖에서 하고, 모델 응답을 기다리는 동안에는 DB 연결도 잡지 않는다. 잠금은 마지막 저장 때만 건다. 짧은 트랜잭션 안에서 요청 행을 잠근 뒤, 요청이 아직 처리 중인지 다시 확인하고 저장한다. 3분이 지나면 실행기는 더 기다리지 않고 초안 없는 미배정 카드를 만들고 요청을 `awaiting_review`로 바꾼다. 3분이 되기 전에 처리가 예외로 멈췄다면 넘긴 이유를 `ai_failed`로 남긴다. 3분 뒤에 늦게 끝난 결과는 저장 직전 재확인 때 요청이 이미 사람에게 넘어가 있으므로 버려진다. 그래서 늦은 결과가 먼저 만든 카드를 덮지 못한다.
+
 ### 6.2 재시도
 
 | 대상 | 다시 하는 것 | 다시 하지 않는 것 | 횟수·간격 |
@@ -1803,9 +1822,9 @@ def decide(card_id: UUID, body: CardDecision, user: User = Depends(current_staff
 
 서버가 카드를 만들 때 계산해 `cards.due_at`에 넣는다. 계산은 요청 접수 시각에서 시작한다.
 
-1. 민원 긴급·판단 필요(2시간)는 접수 시각에 2시간을 그대로 더한다. 주말·공휴일에도 센다.
+1. 문의·상담·민원의 긴급·판단 필요(2시간)는 접수 시각에 2시간을 그대로 더한다. 주말·공휴일에도 센다.
 2. 그 밖의 기한(민원 일반·상담 24시간, 문의 4시간)은 시간을 더해 가다가 토요일·일요일·공휴일에 걸리면 그날을 통째로 건너뛴다.
-3. 알림장 묶음은 그날 17:00, 원장 보고는 원래 민원 카드와 같은 기한이다. 정보 요청·규칙 제안은 기한이 없다(`NULL`).
+3. 알림장 묶음은 그날 17:00, 원장 보고는 원래 요청 카드와 같은 기한이다. 정보 요청·규칙 제안은 기한이 없다(`NULL`).
 
 | 접수 | 기한 종류 | `due_at` |
 | --- | --- | --- |
@@ -1823,12 +1842,12 @@ def decide(card_id: UUID, body: CardDecision, user: User = Depends(current_staff
 
 | 받는 사람 · 알림 | 근무 시간(평일 09:00~18:00, 공휴일 제외) 안 | 근무 시간 밖 |
 | --- | --- | --- |
-| 교직원 · 긴급 민원 중 아이 안전(`risk_category = child_safety`) | 바로 | 바로 |
-| 교직원 · 그 밖의 긴급 민원(교직원 위협·법적 조치·개인정보)과 판단 필요 민원 | 바로 | 다음 근무 시작(09:00) |
+| 교직원 · 긴급 요청(문의·상담·민원) 중 아이 안전(`risk_category = child_safety`) | 바로 | 바로 |
+| 교직원 · 그 밖의 긴급 요청(교직원 위협·법적 조치·개인정보)과 판단 필요 요청 | 바로 | 다음 근무 시작(09:00) |
 | 교직원 · 그 밖의 알림(새 카드·보류 재개·잡아 둔 시간 풀림 등) | 바로 | 다음 근무 시작(09:00) |
 | 학부모 · 모든 알림 | 바로 | 바로 |
 
-근무 시간 밖 규칙은 교직원이 받는 알림에만 쓴다(FR-21: 퇴근 뒤 알림은 모아 두고 아이 안전·발열만 바로 보냄). 학부모 알림은 학부모가 보낸 요청이 어떻게 진행되는지 알리는 소식이므로, 시간과 상관없이 바로 보낸다. 발열 같은 건강 알림은 아직 이 표에 없으며 투약·귀가(T46)에서 더한다. 근무 시간과 바로 보낼 위험 종류도 MVP에서는 서버 설정(`.env`의 `WORK_HOURS`·`IMMEDIATE_RISK_CATEGORIES`)으로 관리한다(8장). 근무일은 기한 계산과 같은 `HOLIDAYS`로 고르고, 근무 시간은 `WORK_HOURS`의 시작 이상·끝 미만으로 본다. 위험 종류 설정은 긴급 민원일 때만 적용한다.
+근무 시간 밖 규칙은 교직원이 받는 알림에만 쓴다(FR-21: 퇴근 뒤 알림은 모아 두고 아이 안전·발열만 바로 보냄). 학부모 알림은 학부모가 보낸 요청이 어떻게 진행되는지 알리는 소식이므로, 시간과 상관없이 바로 보낸다. 발열 같은 건강 알림은 아직 이 표에 없으며 투약·귀가(T46)에서 더한다. 근무 시간과 바로 보낼 위험 종류도 MVP에서는 서버 설정(`.env`의 `WORK_HOURS`·`IMMEDIATE_RISK_CATEGORIES`)으로 관리한다(8장). 근무일은 기한 계산과 같은 `HOLIDAYS`로 고르고, 근무 시간은 `WORK_HOURS`의 시작 이상·끝 미만으로 본다. 위험 종류 설정은 긴급 요청일 때만 적용한다.
 
 #### 6.6.1 공휴일·퇴근 뒤 알림과 지연 예시
 
@@ -2033,4 +2052,6 @@ MVP 설정값은 서버 설정(`.env`)으로 관리한다. `.env.example`에는 
 | v0.7.1 | 2026-11-21 | 피드 업로드 크기 제한·권한 검사 순서·파일 삭제 시점을 맞춤 | 태웅 |
 | v0.7.2 | 2026-11-23 | 과정 이야기를 걷어내고 문장을 다듬음. 원에 남은 답은 바로 답하지 않고 담임 카드 초안으로만 쓰도록 기획서·에이전트 명세(T14)에 맞춤 | 태웅 |
 | v0.8 | 2026-11-23 | 11/20 강사 피드백을 반영함. 2장에 첫 시연 순서와 API별 상태 칸을, 3.19.1에 알림장 접수부터 발송 차단까지의 응답 예시를, 5.5에 먼저 쓰는 도구 세 개의 입력·출력·실패 뒤 행동을, 6.7에 인계 카드 저장 실패 사례를 더함. 3.22·3.23에 DB 모드 적재 결과(읽는 파일 종류·빈 파일·머리말·충돌·새 판·다시 적재)를 더하고, 3.29에 연결된 아이가 없는 학부모의 원 칸 권한을 더함. 문서 머리에 기준 판 표를 두고, 자료 올리기 크기 제한(2MiB·413)과 보류 예정일 경계를 코드에 맞춤 | 태웅 |
-| v0.9.1 | 2026-11-24 | 요청 대화의 메시지마다 쓴 사람의 역할(`sender_role`)을 더해, 화면에서 학부모 글과 담임 답을 나눠 그릴 수 있게 함(3.2·3.10·7장) | 태웅 |
+| v0.9 | 2026-11-24 | 문서 머리에 2차 검토 링크, 시연 코드 기준 커밋(`ab58b7c`), 1차 검토 뒤 보완 표(바뀐 내용·고친 절·지키는 시험·반영 커밋)를 더함. 코드에 맞춰 6.1에는 요청 처리 3분 마감 때 모델을 잠금 밖에서 부르고 늦은 결과를 버리는 규칙을, 3.3에는 거절 뒤 새 회신 카드를 초안 없이 만들어 직접 쓴 글로만 보내는 규칙을 적음 | 태웅 |
+| v0.10 | 2026-11-24 | 위험 등급을 문의·상담에도 붙임(5.7). 문의·상담은 위험 낱말을 짧은 구로 보고(민원은 낱말 하나도 봄), 문의도 다시 분류할 수 있게 하고(3.14), 위험 기한(6.5)·알림 시각(6.6)·알림 제목(3.11)을 세 유형에 맞춤. 위험 상담의 원장 보고 카드는 예약 확정·반려 때 닫고, 판단 필요 상담도 담임이 확정·반려할 수 있음(3.4) | 태웅 |
+| v0.10.1 | 2026-11-24 | 요청 대화의 메시지마다 쓴 사람의 역할(`sender_role`)을 더해, 화면에서 학부모 글과 담임 답을 나눠 그릴 수 있게 함(3.2·3.10·7장) | 태웅 |

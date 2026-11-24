@@ -22,6 +22,14 @@ def test_documented_due_dates(start, kind, risk, expected):
     assert schedule.due_at(at(start), kind, risk) == at(expected)
 
 
+@pytest.mark.parametrize("kind", ["inquiry", "consultation", "complaint"])
+def test_risky_requests_share_two_hour_due_and_normal_keeps_type_due(kind):
+    start = at("2026-12-01T10:00:00")
+    assert schedule.due_at(start, kind, "urgent") == schedule.due_at(start, kind, "uncertain") == at("2026-12-01T12:00:00")
+    assert schedule.due_at(start, kind, "normal") == schedule.due_at(start, kind, None)
+    assert schedule.due_at(start, "medication", "urgent") == schedule.due_at(start, "medication")
+
+
 @pytest.mark.parametrize("role,risk,category,immediate", [
     ("teacher", "urgent", "child_safety", True),
     ("director", "urgent", "staff_attack", False),
