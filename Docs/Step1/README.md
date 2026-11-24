@@ -2,14 +2,21 @@
 
 프로젝트 범위와 일정의 기준 문서를 모아 둔 폴더입니다. 검토 시 Word·Excel 원본을 우선하고, 빠른 검색에는 UTF-8 Markdown을 이용하세요.
 
-## 최신 문서 (2026-11-18)
+## 최신 문서 (2026-11-24)
 
 | 확인할 내용 | Word·Excel 원본 | Markdown 열람용 |
 |---|---|---|
 | 서비스 정의·요구사항·검증 기준 | [기획서 Word](기획서.docx) | [기획서 Markdown](기획서.md) |
 | 담당자·일정·선행 작업·진척 현황 | [WBS Excel](WBS.xlsx) | [WBS Markdown](WBS.md) |
 
-날짜 없는 위 네 파일을 최신 기준 문서로 사용합니다. 파일명에 날짜가 붙은 문서는 해당 시점의 기록입니다.
+이 폴더에는 위 네 파일만 최신 기준 문서로 둡니다. 11/16·11/17 날짜 판은 [이전판/](이전판/)에 옮겨 두었고, 당시 기록으로만 봅니다.
+
+## 2차 검토 링크와 시연 기준 커밋
+
+| 항목 | 내용 |
+|---|---|
+| 2차 검토 링크 | `develop` 브랜치의 [기획서](https://github.com/aio-final-2team/FinalProject_2Team/blob/develop/Docs/Step1/기획서.md) · [WBS](https://github.com/aio-final-2team/FinalProject_2Team/blob/develop/Docs/Step1/WBS.md) · [T17 숫자·출처 검증표](https://github.com/aio-final-2team/FinalProject_2Team/blob/develop/Docs/Step3/T17_숫자_출처_검증표.md). 설계서별 링크는 [레포 README](../../README.md#2차-검토-문서)에 모았습니다 |
+| 시연 코드 기준 커밋 | [레포 README '2차 검토 문서'](../../README.md#2차-검토-문서)의 '시연 코드 기준 커밋' 한 줄을 봅니다. 11/27 알림장 시연에 쓰는 팀 서버 커밋이고, 값은 그 한 줄에만 둡니다 |
 
 ## 핵심 반영 내용
 
@@ -37,6 +44,10 @@
 - [피드백 안내](../Feedback/README.md)에 담당자별 메모 폴더와 `[문서]`·`[작업]` 항목의 처리 절차를 정리했습니다. [#240](https://github.com/aio-final-2team/FinalProject_2Team/pull/240) · [#241](https://github.com/aio-final-2team/FinalProject_2Team/pull/241) · [#243](https://github.com/aio-final-2team/FinalProject_2Team/pull/243)
 
 - FB-001-5의 AWS 개발 기간 비용 추정(약 $133)과 실제 청구액 확인 방법을 기획서 §11에, 크레딧 초과 위험과 대응을 §10에 반영했습니다. WBS T66에는 개발 기간 추정치·실제 청구액·유치원 운영 월비용을 구분하는 기준을 추가했습니다. [원본 메모 PR #242](https://github.com/aio-final-2team/FinalProject_2Team/pull/242) · [통합 PR #259](https://github.com/aio-final-2team/FinalProject_2Team/pull/259) · [반영 메모](../Feedback/jihye/FB-001-5.md)
+
+### 2026-11-24 추가 반영 (강사님 11/24 피드백 FB-020)
+
+- 11/16·11/17 날짜 판 기획서·WBS 8개 파일을 [이전판/](이전판/)으로 옮기고, 기획서·WBS Markdown 머리의 원본 표시를 `기획서.docx`·`WBS.xlsx`로 고쳤습니다. 2차 검토 링크와 시연 기준 커밋을 보는 곳을 위 표에 적었습니다. [메모](../Feedback/jihye/FB-020-9.md)
 
 ## 문서 갱신 기준
 
