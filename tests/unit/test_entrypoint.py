@@ -14,7 +14,7 @@ ENTRYPOINT = ROOT / "apps/api/entrypoint.sh"
 @pytest.mark.parametrize("backend,fail_step,seed_demo", [
     (None, None, None), ("mock", None, None), ("db", None, None),
     ("db", "settings", None), ("db", "migrate", None), ("db", "seed", None),
-    ("db", None, "true"), ("db", None, "false"), ("db", "migrate", "false"),
+    ("db", "documents", None), ("db", None, "true"), ("db", None, "false"), ("db", "migrate", "false"),
 ])
 def test_startup_sequence_and_failure(tmp_path, backend, fail_step, seed_demo):
     log = tmp_path / "calls"
@@ -24,6 +24,7 @@ case "$*" in
     -c*) step=settings ;;
     *alembic*) step=migrate ;;
     *db.seeds.demo*) step=seed ;;
+    *db.seeds.documents*) step=documents ;;
     *) exit 99 ;;
 esac
 echo "$step" >> "$CALL_LOG"
@@ -48,7 +49,7 @@ printf '%s\n' "$@" >> "$CALL_LOG"
     if backend == "db":
         expected += ["migrate"]
         if seed_demo != "false":
-            expected += ["seed"]
+            expected += ["seed", "documents"]
     if fail_step:
         expected = expected[:expected.index(fail_step) + 1]
     else:
