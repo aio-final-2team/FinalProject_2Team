@@ -27,19 +27,23 @@ class CollaborationState(TypedDict, total=False):
     handoff_reason: str
     draft_no_evidence: bool
     draft_conflict: bool
+    skip_draft: bool
 
 
 def build_graph(checkpointer, route_request, prepare_card, card_status,
-                search=None, load_memory=None, write=None, check=None):
+                search=None, load_memory=None, write=None, check=None, high_risk=None):
     """한 번의 실행에서만 자료를 들고 다닌다. 승인 재개에는 카드 ID만 쓴다."""
     builder = StateGraph(CollaborationState)
     work = {"chunks": [], "memories": [], "draft": {}, "issues": [], "answer": None}
 
     def supervisor(state):
         route = route_request(state["request_id"])
-        return {"route": route if route in ROUTES else "other", "attempt": 0}
+        return {"route": route if route in ROUTES else "other", "attempt": 0,
+                "skip_draft": bool(high_risk and route == "complaint" and high_risk(state["request_id"]))}
 
     def route_after_supervisor(state):
+        if state.get("skip_draft"):
+            return "prepare_card"
         if state["route"] == "consultation":
             return "memory_consultation"
         if state["route"] in ("inquiry", "complaint"):

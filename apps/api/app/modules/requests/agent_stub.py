@@ -114,7 +114,8 @@ def run_request(request_id, prepared_answer=None):
             if prepared_answer and prepared_answer.get("handoff"):
                 draft["text"] = ""
                 check = prepared_answer.get("check_result")
-            elif req["type"] == "inquiry" and graph_enabled():
+            elif (req["type"] == "inquiry" and graph_enabled()) or (
+                    req["type"] == "complaint" and prepared_answer is not None):
                 # 잠금 밖에서 만든 초안은 같은 본문일 때만 쓴다. 없으면 모델을 잠금 안에서 다시 부르지 않고 초안 없는 카드로 둔다.
                 answer = drafted if drafted and req["body"] == initial["body"] else None
                 if answer:

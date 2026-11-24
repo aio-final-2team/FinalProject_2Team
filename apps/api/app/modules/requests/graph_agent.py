@@ -56,16 +56,26 @@ def _request_context(request_id):
         """), {"id": request_id}).mappings().one()
 
 
+def _high_risk_request(request_id):
+    from app.core.request_rules import classify
+
+    req = _request_context(request_id)
+    return classify(req["type"], req["body"]).get("risk_level") in ("urgent", "uncertain")
+
+
 def _search_request(request_id):
     from app.modules.documents.answer import graph_enabled
     from app.modules.documents.search import search_documents
 
     req = _request_context(request_id)
-    if req["type"] != "inquiry" or not graph_enabled():
+    if req["type"] == "inquiry" and not graph_enabled():
+        return [{"skip": True}]
+    if req["type"] not in ("inquiry", "complaint"):
         return [{"skip": True}]
     user = SimpleNamespace(id=req["requester_id"], org_id=req["org_id"], role="parent")
     chunks = []
-    for doc_type in ("notice", "schedule", "menu", "policy"):
+    types = ("notice", "policy") if req["type"] == "complaint" else ("notice", "schedule", "menu", "policy")
+    for doc_type in types:
         for attempt in range(2):
             try:
                 chunks.extend(search_documents(user, str(req["org_id"]), doc_type, req["body"],
@@ -93,7 +103,7 @@ def _write_request(state):
     from app.modules.documents.answer import graph_enabled
 
     req = _request_context(state["request_id"])
-    if req["type"] != "inquiry" or not graph_enabled():
+    if req["type"] == "inquiry" and not graph_enabled():
         return {"draft": {}, "passed": True}
     chunks = state["parallel"]["chunks"]
     prompt = answer_graph._prompt("documents.md", "## 입력", "## 알림장 초안 쓰기") + answer_graph.WRITE_FORMAT
@@ -110,7 +120,7 @@ def _check_request(state):
     from app.modules.documents.answer import graph_enabled
 
     req = _request_context(state["request_id"])
-    if req["type"] != "inquiry" or not graph_enabled():
+    if req["type"] == "inquiry" and not graph_enabled():
         return {"passed": True, "issues": []}
     issues = answer_graph._review(answer_graph.OpenAIModel("CHECKER"), req["body"], state["draft"],
                                   state["parallel"]["chunks"], state.get("attempt", 0) + 1, [])
@@ -151,7 +161,8 @@ def _invoke(request_id, payload, expected_card_id=None):
             if os.getenv("REQUEST_COLLAB_GRAPH") == "1":
                 from agents.graphs.request_collaboration import build_graph as graph_builder
                 graph = graph_builder(checkpointer, _route_request, _prepare_card, _card_status,
-                                      _search_request, _load_request_memory, _write_request, _check_request)
+                                      _search_request, _load_request_memory, _write_request, _check_request,
+                                      _high_risk_request)
             else:
                 graph = graph_builder(checkpointer, _route_request, _prepare_card, _card_status)
             config = {"configurable": {"thread_id": thread_id(request_id)},
