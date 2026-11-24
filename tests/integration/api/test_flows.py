@@ -364,6 +364,11 @@ def test_request_notification_kinds_and_trace_audit(client, parent, teacher):
                             json={"confirm": True, "resolved_checks": [c["id"] for c in note.open_checks]}).status_code == 200
     assert client.post(BASE + "/daily-notes/send", headers=teacher,
                        json={k: body[k] for k in ("classroom_id", "note_date")}).status_code == 200
+    listed = client.get(BASE + "/daily-notes", headers=teacher,
+                        params={"classroom_id": str(seed.CLASS_STAR), "date": body["note_date"]}).json()["items"]
+    note = next(n for n in listed if n["child_id"] == str(seed.CHILD))
+    assert client.post(f"{BASE}/daily-notes/{note['id']}/correct", headers=teacher, json={
+        "version": note["version"], "content": note["content"], "reason_text": "[TEST] 알림장 기록 정정"}).status_code == 200
     care = client.post(BASE + "/requests", headers=parent, json={
         "client_request_id": "care-notification-test", "type": "medication", "child_id": str(seed.CHILD),
         "body": "[TEST] 보호자 원문"})

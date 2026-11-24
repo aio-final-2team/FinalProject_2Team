@@ -166,5 +166,10 @@ class NotePatchIn(BaseModel):
     confirm: bool = False
 
 
+class NoteCorrectIn(VersionIn):
+    content: NoteContent
+    reason_text: str = Field(min_length=1, max_length=500, pattern=r"\S")
+
+
 class ConsultationDelayIn(BaseModel):
     expected_end_at: datetime

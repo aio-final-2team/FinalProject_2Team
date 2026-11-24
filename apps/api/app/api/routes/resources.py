@@ -6,7 +6,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Path, Query, Response, UploadFile
 
-from app.api.schemas.actions import NoteDraftIn, NoteBatchIn, NotePatchIn
+from app.api.schemas.actions import NoteDraftIn, NoteBatchIn, NotePatchIn, NoteCorrectIn
 from app.api.schemas.auth import ChildList
 from app.api.schemas.views import (NotificationList, NotificationResponse, DraftResponse, NoteList, NoteResponse,
                                   SendResponse, DocumentResponse, DocumentList, MemoryKind, MemoryList, RegenerateResponse)
@@ -83,6 +83,13 @@ def note_list(date: Date, classroom_id: UUID | None = None, page: int = Query(1,
 @router.patch("/daily-notes/{note_id}", response_model=NoteResponse, responses=errors(401, 403, 404, 409, 422))
 def patch_note(note_id: UUID, body: NotePatchIn, user: CurrentUser = Depends(note_roles("teacher"))):
     return backend.notes.patch(user, note_id, body)
+
+
+@router.post("/daily-notes/{note_id}/correct", response_model=NoteResponse,
+             responses=errors(401, 403, 404, 409, 422),
+             description="[제안] 보낸 알림장만 정정하고 보호자에게 알림을 남겨요. 현재 version이 필요해요.")
+def correct_note(note_id: UUID, body: NoteCorrectIn, user: CurrentUser = Depends(note_roles("teacher", "director"))):
+    return backend.notes.correct(user, note_id, body)
 
 
 @router.post("/daily-notes/send", response_model=SendResponse, responses=errors(401, 403, 404, 409, 422),

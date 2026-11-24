@@ -254,7 +254,7 @@ class Overview(BaseModel):
 class NotificationView(BaseModel):
     id: int
     kind: Literal["needs_info", "new_card", "urgent_complaint", "uncertain_complaint", "director_report",
-                  "on_hold", "sent_or_booked", "parent_confirmed", "completed", "rejected", "note_sent",
+                  "on_hold", "sent_or_booked", "parent_confirmed", "completed", "rejected", "note_sent", "note_corrected",
                   "slot_hold_expired", "hold_resumed", "consultation_ending", "consultation_delayed", "care_requested", "care_confirmed"]
     title: str
     body: str | None
@@ -314,6 +314,8 @@ class NoteView(BaseModel):
     open_checks: list[OpenCheck]
     confirmed_at: datetime | None
     sent_at: datetime | None
+    version: int = Field(ge=1, description="정정용 판. 정정 성공마다 1 증가해요")
+    corrected_at: datetime | None
 
 
 class NoteList(Page):

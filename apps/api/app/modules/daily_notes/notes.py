@@ -11,7 +11,7 @@ from app.core.config import settings
 from app.core.db import transaction
 from app.core.errors import ApiError
 from app.core.care import missed_request_check, note_content
-from app.core.constants import LATE_NOTE_REQUEST_NOTICE, NOTE_REQUEST_TYPES
+from app.core.constants import LATE_NOTE_REQUEST_NOTICE, NOTE_REQUEST_TYPES, notification_title
 from app.core.jobs import dispatch
 from app.core.schedule import KST, deliver_after, due_at
 from app.modules.daily_notes.events import edited_child_ids, record
@@ -113,7 +113,7 @@ def draft(user, body, background_tasks):
 
 def view(note, *, connection=None, requests=None):
     result = {name: note[name] for name in ("id", "child_id", "note_date", "status", "content",
-                                         "open_checks", "confirmed_at", "sent_at")}
+                                         "open_checks", "confirmed_at", "sent_at", "version", "corrected_at")}
     if requests is None:
         with (transaction() if connection is None else nullcontext(connection)) as connection:
             requests = {str(r["id"]): r for r in connection.execute(text(
@@ -246,6 +246,47 @@ def patch(user, note_id, body):
         return {"note": view(updated, connection=connection)}
 
 
+def _notify_guardians(connection, note, kind, dedupe_prefix, now):
+    guardians = connection.execute(text("""
+        SELECT u.id, u.role FROM child_guardians g JOIN users u ON (u.id, u.org_id)=(g.user_id, g.org_id)
+        WHERE g.child_id=:child AND g.org_id=:org AND u.role='parent' AND u.is_active
+    """), {"child": note["child_id"], "org": note["org_id"]}).mappings()
+    for guardian in guardians:
+        connection.execute(text("""
+            INSERT INTO notifications (org_id, recipient_id, subject_type, subject_id, kind, title,
+                                       dedupe_key, deliver_after)
+            VALUES (:org, :recipient, 'daily_note', :note, :kind, :title, :key, :after)
+            ON CONFLICT (dedupe_key) DO NOTHING
+        """), {"org": note["org_id"], "recipient": guardian["id"], "note": note["id"],
+               "kind": kind, "title": notification_title(kind), "key": f"{dedupe_prefix}:{guardian['id']}",
+               "after": deliver_after(now, guardian["role"])})
+
+
+def correct(user, note_id, body):
+    with transaction() as connection:
+        scoped = scope.note_in_scope(user, note_id, connection=connection)
+        connection.execute(text("SELECT id FROM daily_note_inputs WHERE id=:id AND org_id=:org FOR UPDATE"),
+                           {"id": scoped["input_id"], "org": user.org_id})
+        note = connection.execute(text("SELECT * FROM daily_notes WHERE id=:id AND org_id=:org FOR UPDATE"),
+                                  {"id": note_id, "org": user.org_id}).mappings().one()
+        if note["status"] != "sent":
+            raise ApiError(409, "INVALID_TRANSITION")
+        if note["version"] != body.version:
+            raise ApiError(409, "CARD_VERSION_CONFLICT", current_version=note["version"])
+        _check_sources(user, body.content, note["child_id"], connection)
+        now = datetime.now(KST)
+        updated = connection.execute(text("""
+            UPDATE daily_notes SET content=CAST(:content AS jsonb), corrected_at=:now, version=version+1
+            WHERE id=:id AND org_id=:org RETURNING *
+        """), {"id": note_id, "org": user.org_id, "now": now,
+               "content": json.dumps(body.content.model_dump(mode="json", exclude_none=True))}).mappings().one()
+        record(connection, updated, "daily_note_corrected", actor_id=user.id, from_status="sent",
+               reason_text=body.reason_text, version=updated["version"])
+        _notify_guardians(connection, updated, "note_corrected",
+                          f"daily_note_corrected:{note_id}:{updated['version']}", now)
+        return {"note": view(updated, connection=connection)}
+
+
 def send(user, body):
     with transaction() as connection:
         scope.classroom_in_scope(user, body.classroom_id, connection=connection)
@@ -272,19 +313,7 @@ def send(user, body):
             connection.execute(text("UPDATE daily_notes SET status='sent', sent_at=:now WHERE id=:id AND org_id=:org"),
                                {"id": note["id"], "org": user.org_id, "now": now})
             record(connection, {**note, "status": "sent"}, "daily_note_sent", actor_id=user.id, from_status="ready")
-            guardians = connection.execute(text("""
-                SELECT u.id, u.role FROM child_guardians g JOIN users u ON (u.id, u.org_id)=(g.user_id, g.org_id)
-                WHERE g.child_id=:child AND g.org_id=:org AND u.role='parent' AND u.is_active
-            """), {"child": note["child_id"], "org": user.org_id}).mappings()
-            for guardian in guardians:
-                connection.execute(text("""
-                    INSERT INTO notifications (org_id, recipient_id, subject_type, subject_id, kind, title,
-                                               dedupe_key, deliver_after)
-                    VALUES (:org, :recipient, 'daily_note', :note, 'note_sent', '오늘 알림장', :key, :after)
-                    ON CONFLICT (dedupe_key) DO NOTHING
-                """), {"org": user.org_id, "recipient": guardian["id"], "note": note["id"],
-                       "key": f"daily_note:{note['id']}:{guardian['id']}",
-                       "after": deliver_after(now, guardian["role"])})
+            _notify_guardians(connection, note, "note_sent", f"daily_note:{note['id']}", now)
         if not any(c["status"] != "sent" for c in batch_view(connection, entry["id"], user.org_id)["children"]):
             connection.execute(text("""
                 UPDATE cards SET status='done', version=version+1, updated_at=:now, closed_at=:now

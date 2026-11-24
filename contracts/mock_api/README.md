@@ -96,6 +96,10 @@ API 33 POST /daily-notes/drafts/{input_id}/regenerate는 저장한 반 입력으
 
 선생님이 받은 마지막 AI 초안은 내부 ai_original로 보존하고 공개 NoteView는 그대로예요. 교사 수정으로는 원본을 바꾸지 않고, 미수정 초안 재생성 때 새 초안으로 바꿔요. 내용 변경만 daily_note_edited를 남기고 확인 취소는 returned로 ready→draft, 검사 해소는 checked로 needs_check→draft를 기록해요. 새 초안 이력과 반 묶음 카드에 재생성 요청자도 남겨요. 말투 추출·학습은 기억 AI가 맡아요.
 
+## [제안] 보낸 알림장 정정
+
+API 50 `POST /daily-notes/{note_id}/correct`는 현재 담당 반 담임·같은 기관 원장만 쓸 수 있어요. `content` 전체 줄 객체·`reason_text`(1~500자, 공백만 불가)·현재 `version`이 필수예요. sent에서만 200으로 정정하고, 다른 상태는 409 INVALID_TRANSITION, 판 충돌은 409 CARD_VERSION_CONFLICT(details.current_version), 학부모는 403이에요. 출처 검사는 기존 PATCH와 같아요. NoteView에는 정정용 version(기본 1)·corrected_at(정정 전 null)을 더하고, 학부모 목록에도 보내요. 정정 성공마다 판을 1 올리고 마지막 정정 시각을 기록하지만 status=sent·발송/확인 시각·AI 원본은 유지해요. 발송 전 수정·재생성·확인·발송은 이 판을 바꾸지 않아요. daily_note_corrected 이력에 사유·판·행위자를 남기고 활성 학부모마다 note_corrected("알림장이 고쳐졌어요") 알림을 한 건 만들어요. 알림 body에는 사유를 넣지 않고 daily_note 대상으로 연결해요. 같은 판을 다시 보내면 내용·정정 이력·알림이 늘지 않아요. DB는 0014(down_revision=0012)로 version·corrected_at을 추가해요. 두 모드 계약은 T13 3.30·OpenAPI와 같아요.
+
 ## 상담 체크·확정 v0.5.2
 
 이미 시작한 후보는 체크·확정 모두 409 `SLOT_PAST`예요.

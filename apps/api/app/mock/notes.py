@@ -173,6 +173,22 @@ def draft_view(entry):
             "error": {k: ev.detail[k] for k in ("code", "message")} if ev and entry.draft_status == "failed" else None}
 
 
+def _check_sources(user, content, child_id):
+    if content is None:
+        return
+    for line in content.items:
+        if line.source.type == "document":
+            from app.mock.documents import in_scope
+            document = in_scope(user, line.source.document_id)
+            if document.visibility not in ("parents", "all"):
+                raise ApiError(422, "VALIDATION_FAILED", field="content.items[].source.document_id")
+        if line.source.type == "request":
+            request = store.request_in_scope(user, line.source.request_id)
+            if request.child_id != child_id or (
+                    line.key in ("medication", "pickup") and request.type != line.key):
+                raise ApiError(422, "VALIDATION_FAILED", field="content.items[].source.request_id")
+
+
 def patch(user, note_id, body):
     with store._lock:
         note = store.state().notes.get(note_id)
@@ -190,17 +206,7 @@ def patch(user, note_id, body):
         previous_status = note.status
         previous_content = deepcopy(note.content)
         if body.content is not None:
-            for line in body.content.items:
-                if line.source.type == "document":
-                    from app.mock.documents import in_scope
-                    document = in_scope(user, line.source.document_id)
-                    if document.visibility not in ("parents", "all"):
-                        raise ApiError(422, "VALIDATION_FAILED", field="content.items[].source.document_id")
-                if line.source.type == "request":
-                    request = store.request_in_scope(user, line.source.request_id)
-                    if request.child_id != note.child_id or (
-                            line.key in ("medication", "pickup") and request.type != line.key):
-                        raise ApiError(422, "VALIDATION_FAILED", field="content.items[].source.request_id")
+            _check_sources(user, body.content, note.child_id)
             note.content = body.content.model_dump(exclude_none=True)
         note.open_checks = remaining
         note.status = "needs_check" if remaining else "draft"
@@ -218,8 +224,27 @@ def patch(user, note_id, body):
         return {"note": view(note)}
 
 
+def correct(user, note_id, body):
+    with store._lock:
+        note = store.state().notes.get(note_id)
+        if note is None or note.org_id != user.org_id:
+            store.deny(user)
+        input_in_scope(user, note.input_id)
+        if note.status != "sent":
+            raise ApiError(409, "INVALID_TRANSITION")
+        if note.version != body.version:
+            raise ApiError(409, "CARD_VERSION_CONFLICT", current_version=note.version)
+        _check_sources(user, body.content, note.child_id)
+        note.content = body.content.model_dump(exclude_none=True)
+        note.corrected_at = store.now()
+        note.version += 1
+        record(note, "daily_note_corrected", actor_id=user.id, from_status="sent",
+               reason_text=body.reason_text, version=note.version)
+        return {"note": view(note)}
+
+
 def view(note):
-    result = {k: deepcopy(getattr(note, k)) for k in ("id", "child_id", "note_date", "status", "content", "open_checks", "confirmed_at", "sent_at")}
+    result = {k: deepcopy(getattr(note, k)) for k in ("id", "child_id", "note_date", "status", "content", "open_checks", "confirmed_at", "sent_at", "version", "corrected_at")}
     result["content"] = note_content(note.content, {str(r.id): r.__dict__ for r in store.state().requests.values()
                                                   if r.org_id == note.org_id and r.child_id == note.child_id})
     return result

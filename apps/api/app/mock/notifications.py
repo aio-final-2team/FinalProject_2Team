@@ -39,6 +39,13 @@ def notify_event(ev, req, card):
             note = store.state().notes[ev.daily_note_id]
             for guardian in store.state().children[note.child_id].guardian_ids:
                 create(ev, guardian, "note_sent", subject_id=note.id)
+        if ev.action == "daily_note_corrected" and ev.daily_note_id:
+            note = store.state().notes[ev.daily_note_id]
+            for guardian_id in store.state().children[note.child_id].guardian_ids:
+                guardian = store.state().users.get(guardian_id)
+                if guardian and guardian.role == "parent" and guardian.is_active:
+                    create(ev, guardian_id, "note_corrected", subject_id=note.id,
+                           dedupe_key=f"daily_note_corrected:{note.id}:{note.version}:{guardian_id}")
         return
     if req.type in CARE_REQUEST_TYPES:
         if ev.detail.get("unregistered_pickup"):

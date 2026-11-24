@@ -197,6 +197,7 @@ FastAPI가 기본으로 내는 422 응답은 예외 처리기에서 위 형식�
 | 47 | GET | `/api/v1/photos/{photo_id}/file` | 칸·사진 권한 | 사진 파일 받기(인증 필요) | 200 | FR-22·AC-06 | 3.29 | 제안 | — | 팀: 제안 계약 |
 | 48 | GET | `/api/v1/children/{child_id}/photo-scope` | 그 아이 보호자 | 현재 사진 공개 범위 | 200 | FR-22·AC-06 | 3.29 | 제안 | — | 팀: 제안 계약 |
 | 49 | PATCH | `/api/v1/children/{child_id}/photo-scope` | 그 아이 보호자 | 사진 공개 범위 바꾸기 | 200 | FR-22·AC-06 | 3.29 | 제안 | — | 팀: 제안 계약 |
+| 50 | POST | `/api/v1/daily-notes/{note_id}/correct` | 현재 담당 반 담임·같은 기관 원장 | 보낸 알림장 정정 | 200 | FR-10 | 3.30 | 제안 | — | 팀: 제안 계약 |
 
 알림장 MVP의 ○는 `origin/taewoong-fb020-rehearsal:tools/rehearse_daily_note.py`의 실제 호출이다. `/me`·알림 읽음·다시 만들기는 그 리허설이 부르지 않아 ○를 붙이지 않는다. 팀 확인 남음은 코드 기본값(`LLM_MODEL_SUPERVISOR` 비움, `ANSWER_WRITER=stub`, `DAILY_NOTE_WRITER=app.modules.daily_notes.stub_writer:write`)과 WBS T43(할일), 2.1의 화면 미확인 범위를 뜻한다. 권한 밖 안내를 학부모에게 바로 답하는 경로도 미구현이다(5.7). 이 표시가 API 미구현이나 팀 서버의 현재 스위치 값을 뜻하지는 않는다.
 
@@ -806,7 +807,7 @@ HTTP/1.1 201 Created
 | `page`·`size` | 쿼리 | integer | 선택 | 불가 | 기본 1·20, page ≥ 1, size 1~100 | 쪽 나누기 |
 | `sort` | 쿼리 | string | 선택 | 불가 | `-created_at`(기본)·`created_at` | 내림차순·오름차순 |
 | `notification_id` | 읽음 경로 | integer | 필수 | 불가 | 목록에서 받은 ID | 0 이하도 형식상 정수로 보고, 해당 알림이 없으면 404 |
-| `items[].id`·`kind`·`title` | 목록 응답 | integer·string | 항상 | 불가 | kind는 17종(상담 알림 consultation_ending·consultation_delayed, 투약·귀가 알림 care_requested·care_confirmed 포함). 문의·상담 위험에도 urgent_complaint·uncertain_complaint라는 이름을 그대로 쓴다. 제목만 '긴급 문의'·'AI 판단 불확실 상담'처럼 요청 유형에 맞춘다 | 알림 종류와 제목 |
+| `items[].id`·`kind`·`title` | 목록 응답 | integer·string | 항상 | 불가 | kind는 18종(note_corrected: "알림장이 고쳐졌어요", 3.30 정정 알림 추가; 상담 알림 consultation_ending·consultation_delayed, 투약·귀가 알림 care_requested·care_confirmed 포함). 문의·상담 위험에도 urgent_complaint·uncertain_complaint라는 이름을 그대로 쓴다. 제목만 '긴급 문의'·'AI 판단 불확실 상담'처럼 요청 유형에 맞춘다 | 알림 종류와 제목 |
 | `items[].body`·`request_id`·`subject_type`·`subject_id` | 목록 응답 | string·UUID | 항상 | null 가능 | 알림장 알림은 subject_type=`daily_note` | 내용과 연결 대상 |
 | `items[].read_at`·`deliver_after` | 목록 응답 | datetime | 항상 | read_at만 null 가능 | 한국 시간 포함 | 읽은 시각과 노출 시각; 읽음 응답의 notification도 같은 모양 |
 | `total`·`page`·`size` | 응답 | integer | 항상 | 불가 | 전체 건수·요청한 쪽·크기 | 목록 공통 칸 |
@@ -1250,6 +1251,8 @@ HTTP/1.1 200 OK
 | `items[].content`·`open_checks[]` | 응답 | object·object[] | 항상 | 빈 목록 가능 | 줄·출처·확인 항목 모양은 3.7 참고 | items는 key·label·value·source를 가짐 |
 | `items[].open_checks[].kind` | 응답 | string | 항목마다 | 불가 | not_in_memo·sensitive·other_child·date_check·absent·draft_failed·check_failed·request_missed·return_limit | `return_limit`은 AI 수정 한도 초과로 담임 확인이 필요함 |
 | `items[].confirmed_at`·`sent_at` | 응답 | datetime | 항상 | null 가능 | 확인·발송 뒤 시각 | 아직 실행하지 않았으면 null |
+| `items[].version` | 응답 | integer | 항상 | 불가 | 1 이상, 기본 1 | 정정용 판. 3.30 정정 성공마다 1 증가하며, 발송 전 수정·확인·재생성·발송에서는 유지 |
+| `items[].corrected_at` | 응답 | datetime | 항상 | null 가능 | 마지막 정정 시각 | 아직 정정하지 않았으면 null. 학부모 응답에도 포함 |
 | `total`·`page`·`size` | 응답 | integer | 항상 | 불가 | 전체 건수·요청한 쪽·크기 | 목록 공통 칸 |
 
 ```http
@@ -1273,7 +1276,7 @@ HTTP/1.1 200 OK
 | ② 요청 헤더 | `Authorization`(필수), `X-Request-ID`(권장), `Content-Type: application/json`. |
 | ③ 경로·쿼리 | note_id(UUID, 필수). |
 | ④ 요청 본문 | content·resolved_checks·confirm, 모두 선택. |
-| ⑤ 검증·권한 | teacher만, 현재 담당 반 알림장만 고칠 수 있다. 출처인 문서와 요청도 범위를 검사해서, 요청의 child_id가 알림장의 아이와 다르거나 문서 visibility가 parents·all이 아니면 422 VALIDATION_FAILED다. sent 알림장은 수정할 수 없다. 없는 확인 ID를 보내거나 미해결 항목을 남긴 채 confirm하는 경우는 저장된 확인 항목과 대조해야 알 수 있으므로 서버가 409로 막는다(4.1). |
+| ⑤ 검증·권한 | teacher만, 현재 담당 반 알림장만 고칠 수 있다. 출처인 문서와 요청도 범위를 검사해서, 요청의 child_id가 알림장의 아이와 다르거나 문서 visibility가 parents·all이 아니면 422 VALIDATION_FAILED다. sent 알림장은 이 PATCH로 수정할 수 없다. 보낸 뒤에는 이유와 판을 받는 정정 API(3.30)를 쓴다. 없는 확인 ID를 보내거나 미해결 항목을 남긴 채 confirm하는 경우는 저장된 확인 항목과 대조해야 알 수 있으므로 서버가 409로 막는다(4.1). |
 | ⑥ 정상 응답 | 200 + note. confirm=true이고 미해결 항목이 0개면 ready로 바꾸고 confirmed_at을 남긴다. |
 | ⑦ 오류 응답 | 아래 오류 표. |
 | ⑧ 실행 규칙 | content를 보내면 내용 전체를 새로 바꾼다. confirm=false(기본)이면 기존 확인을 지우고, 미해결 항목 유무에 따라 needs_check나 draft로 되돌린다. 빈 본문을 보내도 기존 확인은 풀린다. 오류가 나면 아무것도 수정하지 않는다. |
@@ -1545,6 +1548,39 @@ Post는 id·lane(class/org)·classroom_id(org 칸은 null)·author_id·body·sta
 사진은 가상 자료만 쓴다. 형식은 확장자나 전송 MIME이 아니라 첫 바이트로 jpeg·png·webp인지 검사하고, 장당 5MiB(5,242,880바이트)까지 받는다. 칸 권한은 몸통을 읽기 전에 검사한다. Content-Length와 읽는 동안 쌓인 크기는 10장×5MiB + 1MiB(51MiB)까지 허용하고, 파일이 10개를 넘거나 일반 필드가 2개를 넘으면 422다. 파일은 MEDIA_DIR에 UUID 이름으로 저장하고, DB에는 경로·형식·크기·sha256만 둔다. 생성에 실패하면 이미 저장한 파일도 정리한다. mock은 MEDIA_DIR/mock 아래를 쓰며, 초기화할 때 그 폴더만 비우고 DB 파일은 그대로 둔다.
 
 원장은 원 칸 글만 hidden으로 숨길 수 있다. 숨긴 글·사진은 모든 일반 조회와 파일에서 404이고 목록에서도 빠진다. 같은 기관 작성자는 반 이동이나 퇴소로 칸 권한을 잃어도 숨긴 글까지 삭제할 수 있다. 삭제할 때는 deleted_at과 이력을 먼저 커밋한 뒤 사진 파일을 디스크에서 지운다. 커밋에 실패하면 글·사진·파일을 보존한다. 데모에서는 두 모드가 같은 UUID로 반 글 2개, 원 글 2개, 2×2 단색 PNG 5장을 쓴다.
+
+### 3.30 [제안] 보낸 알림장 정정 — `POST /api/v1/daily-notes/{note_id}/correct`
+
+| 칸 | 내용 |
+| --- | --- |
+| ① 호출 목적 | 담임·원장이 이미 보낸 알림장의 잘못된 내용을 고치고, 연결된 학부모에게 정정 알림을 남긴다. |
+| ② 요청 헤더 | Authorization 필수, X-Request-ID 권장, Content-Type: application/json. |
+| ③ 경로·쿼리 | note_id(UUID, 필수). 쿼리는 없다. |
+| ④ 요청 본문 | content·reason_text·version 모두 필수. content는 3.7·3.21과 같은 전체 줄 객체다. |
+| ⑤ 검증·권한 | teacher는 현재 담당 반만, director는 같은 기관만 허용한다. parent는 403이다. sent만 정정하며 다른 상태는 409 INVALID_TRANSITION, 판이 다르면 409 CARD_VERSION_CONFLICT와 details.current_version을 준다. 요청·문서 출처는 3.21의 범위·아이·공개 범위 검사를 그대로 적용한다. |
+| ⑥ 정상 응답 | 200 + {note: NoteView}. 내용 전체를 교체하고 corrected_at을 현재 시각으로 기록하며 version을 1 올린다. 학부모 목록도 같은 content·version·corrected_at을 준다. |
+| ⑦ 오류 응답 | 401 UNAUTHENTICATED, 403 FORBIDDEN_ROLE, 404 NOT_FOUND(다른 기관·다른 반·없음), 409 INVALID_TRANSITION 또는 CARD_VERSION_CONFLICT, 422 VALIDATION_FAILED(필수 칸·이유 길이·출처). |
+| ⑧ 실행 규칙 | 반 입력→아이 알림장 순서로 잠그고 판을 검사한다. 같은 판의 경합·재전송은 하나만 성공한다. 내용·시각·판·daily_note_corrected 이력·학부모 note_corrected 알림을 한 트랜잭션에서 저장한다. status=sent, sent_at·confirmed_by·confirmed_at·ai_original·open_checks는 유지한다. |
+
+| 필드 | 위치 | 타입 | 필수 | 빈값 | 제약 | 설명 |
+| --- | --- | --- | --- | --- | --- | --- |
+| note_id | 경로 | UUID | 필수 | 불가 | 담당 반 또는 같은 기관의 sent 알림장 | 정정 대상 |
+| version | 본문 | integer | 필수 | 불가 | 1 이상, 조회한 현재 판 | 판 충돌은 409 |
+| content | 본문 | object | 필수 | null 불가 | items[]의 key·label·value·source는 3.21과 같음. 빈 items 허용 | 내용 전체 교체 |
+| reason_text | 본문 | string | 필수 | 공백만 불가 | 1~500자 | 정정 사유. 교직원 이력에만 저장 |
+| note.version | 응답 | integer | 항상 | 불가 | 정정 전 판 +1 | 다음 정정에 사용 |
+| note.corrected_at | 응답 | datetime | 항상 | 정정 뒤 값 있음 | 마지막 정정 시각 | 학부모 응답에도 포함 |
+
+```http
+POST /api/v1/daily-notes/{note_id}/correct
+{"version":1,"content":{"items":[{"key":"day","label":"오늘 하루","value":"산책 대신 실내 놀이를 했어요.","source":{"type":"teacher_input"}}]},"reason_text":"활동 기록 오기 정정"}
+HTTP/1.1 200 OK
+{"note":{"id":"알림장 UUID","status":"sent","version":2,"corrected_at":"2026-11-24T14:00:00+09:00","content":{"items":[{"key":"day","label":"오늘 하루","value":"산책 대신 실내 놀이를 했어요.","source":{"type":"teacher_input"}}]}}}
+```
+
+위 응답은 정정 관련 칸을 발췌했다. 전체는 3.20 NoteView다. version은 정정용 판이며 기존·새 알림장 모두 1로 시작한다. 발송 전 PATCH·확인·재생성·발송은 이 판을 바꾸지 않는다. 정정 이력은 daily_note_id·행위자·sent→sent·detail.reason_text·detail.version·trace_id로 남기고 본문·AI 원본을 이력에 복사하지 않는다. 활성 parent 계정인 현재 보호자마다 알림 한 건을 만들며, 제목은 "알림장이 고쳐졌어요", kind=note_corrected, subject_type=daily_note·subject_id=알림장 ID다. 알림 body에는 정정 이유나 본문을 넣지 않는다. 중복 키는 알림장·정정 판·수신자이며, 새 판으로 다시 정정하면 새 알림을 만든다. 노출·발송 시각은 기존 학부모 deliver_after 규칙을 따른다.
+
+0014_daily_note_correction(down_revision=0012)는 daily_notes.version·corrected_at만 추가한다. daily_note_corrected와 note_corrected는 0012에서 허용한 값을 재사용한다. 두 모드가 같은 계약을 제공한다. 웹 정정 입력·정정 시각 표시는 웹 담당 범위다.
 
 ## 4. 검증과 권한 규칙
 
@@ -2042,6 +2078,7 @@ Beat는 1분마다 시작이 하루 이내인 확정 예약을 읽고, 그중 �
 | 내 기억 목록·삭제 | `memories` | owner_id가 본인이고 deleted_at이 비어 있는 행. 삭제하면 deleted_at에 표시함 |
 | `child_memos[]` | `daily_note_inputs.child_memos` | 0002의 jsonb NOT NULL DEFAULT '[]'::jsonb, 배열 CHECK. 아이 UUID·중복·소속·메모 길이는 API가 검사함 |
 | `notes[].status` · `content` · `open_checks[]` | `daily_notes.status` · `content` · `open_checks` | 같음 |
+| `notes[].version` · `corrected_at` | `daily_notes.version` · `corrected_at` | 0014. 정정용 판·마지막 정정 시각, 학부모 응답에도 포함(3.30) |
 | `ingest_status` | `documents.ingest_status` | 같음 |
 | `chunk_count` | — | 저장하지 않음. 그 문서에 딸린 `document_chunks` 개수 |
 | 넘긴 이유(`ai_timeout`·`ai_failed`·`card_missing`, 분류 결과의 `handoff_reason`) | `events.detail->>'handoff_reason'` | 칸을 따로 두지 않고 이력에 넣음 |

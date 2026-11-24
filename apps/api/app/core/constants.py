@@ -6,6 +6,7 @@ NOTIFICATION_TITLES = {
     "director_report": "원장 보고 카드", "on_hold": "확인이 늦어지고 있어요",
     "sent_or_booked": "답변 도착", "parent_confirmed": "학부모가 확인했어요 · 처리 완료를 눌러 주세요",
     "completed": "처리 완료", "rejected": "처리할 수 없는 요청이에요", "note_sent": "오늘 알림장",
+    "note_corrected": "알림장이 고쳐졌어요",
     "slot_hold_expired": "잡아 둔 시간이 풀렸어요", "hold_resumed": "보류 카드가 재개됐어요",
     "care_requested": "투약·귀가 요청이 왔어요", "care_confirmed": "선생님이 요청을 확인했어요",
     "consultation_ending": "상담 종료가 가까워요", "consultation_delayed": "상담 대체 시간을 확인해 주세요",
