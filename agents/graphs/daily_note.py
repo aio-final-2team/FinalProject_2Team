@@ -14,7 +14,7 @@ import re
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from agents.llm import JsonModel, ModelError, OpenAIModel
+from agents.llm import JsonModel, ModelError, OpenAIModel, feature, keep_trace
 
 PROMPTS = Path(__file__).resolve().parents[1] / "prompts"
 RETURN_KINDS = {"not_in_memo", "request_missed"}       # 자료 AI가 고칠 수 있는 문제
@@ -61,6 +61,7 @@ def concurrency() -> int:
     return max(1, int(os.getenv("NOTE_DRAFT_CONCURRENCY", "5")))
 
 
+@feature("알림장 초안")
 def draft_daily_notes(payload: dict, writer: JsonModel | None = None, checker: JsonModel | None = None,
                       workers: int | None = None) -> list[dict]:
     """입구 함수. payload = {input_id, note_date, classroom, activities, supplies, children[], menu}.
@@ -80,7 +81,7 @@ def draft_daily_notes(payload: dict, writer: JsonModel | None = None, checker: J
     if workers == 1:
         return [run(child) for child in payload["children"]]
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        return list(pool.map(run, payload["children"]))
+        return list(pool.map(keep_trace(run), payload["children"]))
 
 
 def common_lines(payload: dict) -> dict:
