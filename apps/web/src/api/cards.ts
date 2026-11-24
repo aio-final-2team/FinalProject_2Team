@@ -72,7 +72,7 @@ const cardFromDetail = (data: CardDetail): Card => {
     urgentReason: riskLabel(req?.risk_category), title: req?.title ?? data.card.summary, childName: "", guardianName: "보호자",
     className: "담당 반", createdAt: req?.created_at ?? new Date().toISOString(), original: req?.body ?? data.card.summary,
     summary: data.card.summary || undefined, draft, sources,
-    check: data.card.check_result ? { passed: !!data.card.check_result.passed, note: data.card.check_result.note, issues: (data.card.check_result.issues ?? []).map((i: unknown) => (typeof i === "string" ? i : String((i as { message?: string; text?: string })?.message ?? (i as { text?: string })?.text ?? ""))).filter(Boolean), attempt: data.card.check_result.attempt } : undefined,
+    check: data.card.check_result ? { passed: !!data.card.check_result.passed, note: data.card.check_result.note, issues: (data.card.check_result.issues ?? []).map(issueText).filter(Boolean), attempt: data.card.check_result.attempt } : undefined,
     warnings: data.warnings ?? [], noEvidence: !!data.card.draft?.no_evidence,
     repeatCount: req?.repeat_count ?? undefined, escalated: req?.status === "escalated" || data.card.kind === "director_report",
     assigned: true, parentConfirmedAt: req?.parent_confirmed_at ?? undefined, slots, directorNote: data.director_instruction?.text, history,
@@ -103,6 +103,16 @@ export const useAllCards = () => {
 };
 
 export const useCard = (id: string | undefined) => useQuery({ queryKey: ["cards", "detail", id], queryFn: () => api<CardDetail>(`/api/v1/cards/${id}`).then(cardFromDetail), enabled: !!id });
+/** 검사 결과 issues는 서버에서 [{field, problem}]로 온다 (field: 출처·날짜·대상·누락·민감정보). 옛 모양(문자열·message·text)도 읽는다. */
+function issueText(i: unknown): string {
+  if (typeof i === "string") return i;
+  const o = (i ?? {}) as { field?: string; problem?: string; message?: string; text?: string };
+  const t = o.problem ?? o.message ?? o.text ?? "";
+  return t && o.field ? `${o.field}: ${t}` : t;
+}
+
+/** 반려 이유 칩 → API 이유 코드 (문서 4.1). 칩에 없는 이유는 other + reason_text */
+const REASON_CODE: Record<string, string> = { "개인정보 요청": "privacy", "원 운영 범위 밖": "policy" };
 type ActionResponse = { card?: { id?: string; status?: string; version?: number } };
 
 /** 카드 행동을 API 계약의 기능별 엔드포인트와 요청 본문으로 변환한다. */
@@ -117,7 +127,7 @@ export function useCardAction(id: string, _role: Role) {
       const decision = body.action === "approve_send" ? (body.draft ? "edit_approve" : "approve") : body.action === "reject" ? "dismiss" : body.action;
       const payload: Record<string, unknown> = { version, decision };
       if (body.action === "approve_send" && body.draft) payload.edited_content = { text: body.draft };
-      if (body.action === "reject") Object.assign(payload, { reason_code: "other", reason_text: body.reason });
+      if (body.action === "reject") Object.assign(payload, { reason_code: REASON_CODE[body.reason] ?? "other", reason_text: body.reason });
       if (body.action === "hold") Object.assign(payload, { reason_text: body.reason, hold_until: body.until });
       if (body.action === "complete" && body.reason) payload.reason_text = body.reason;
       return api<ActionResponse>(`/api/v1/cards/${id}/decisions`, { method: "POST", body: JSON.stringify(payload) });

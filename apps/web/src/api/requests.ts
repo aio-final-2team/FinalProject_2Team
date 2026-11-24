@@ -15,7 +15,7 @@ export type RequestSummary = {
 };
 export type RequestDetail = {
   request: RequestSummary & { body?: string; missing_fields: string[]; parent_confirmed_at: string | null; created_at: string };
-  messages: { id: number; sender_type: "user" | "agent" | "system"; body: string; created_at: string }[];
+  messages: { id: number; sender_type: "user" | "agent" | "system"; sender_role?: "parent" | "teacher" | "director" | null; body: string; created_at: string }[];
   timeline: { label: string; at: string }[];
   consultation?: { slots: { id: number; period: { start: string; end: string }; room: string; status: string }[]; booking: unknown };
   sources?: { document_title: string; location: string | null; effective_from: string | null }[];

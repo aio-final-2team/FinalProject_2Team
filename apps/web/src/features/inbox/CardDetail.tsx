@@ -243,7 +243,7 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
       )}
       {(c.risk === "urgent" || (c.noEvidence && !c.draft)) && isOpen && !director && (
         <Section title="직접 답 쓰기">
-          <textarea value={draft} onChange={(e) => setDraft(e.target.value)} onFocus={() => !draft && setDraft("확인해 주셔서 감사합니다. 상황을 확인한 뒤 오늘 중으로 다시 안내드리겠습니다.")} rows={4} placeholder={c.noEvidence ? "자료에서 근거를 찾지 못했어요. 확인한 내용을 직접 써 주세요" : "확인한 내용을 직접 써 주세요"} className="rounded-2xl border-[1.5px] border-transparent bg-card px-4 py-3 text-[15px] outline-none focus:border-accent focus:shadow-[0_0_0_4px_var(--tint)]" />
+          <textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={4} placeholder={c.noEvidence ? "자료에서 근거를 찾지 못했어요. 확인한 내용을 직접 써 주세요" : "확인한 내용을 직접 써 주세요"} className="rounded-2xl border-[1.5px] border-transparent bg-card px-4 py-3 text-[15px] outline-none focus:border-accent focus:shadow-[0_0_0_4px_var(--tint)]" />
         </Section>
       )}
 
@@ -301,7 +301,7 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
 
       <Sheet open={sheet === "complete"} onClose={() => setSheet(null)} title="이 민원을 완료할까요?">
         <p className="text-sub text-ink2">학부모가 {c.parentConfirmedAt ? "확인했어요" : "아직 확인하지 않았어요"}. 완료하면 학부모 화면에 '완료'로 보여요.</p>
-        {!c.parentConfirmedAt && <textarea value={reason} onChange={(e) => setReason(e.target.value)} onFocus={() => !reason && setReason("보호자와 유선으로 확인한 뒤 처리를 완료합니다.")} rows={3} placeholder="학부모 확인 전 완료하는 이유" className="rounded-xl bg-g px-3.5 py-3 text-[15px] outline-none" />}
+        {!c.parentConfirmedAt && <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} placeholder="학부모 확인 전 완료하는 이유" className="rounded-xl bg-g px-3.5 py-3 text-[15px] outline-none" />}
         <Button loading={act.isPending} lockedReason={!c.parentConfirmedAt && !reason.trim() ? "완료 이유를 적어 주세요" : undefined} onClick={() => run({ action: "complete", reason: reason.trim() || undefined }, { title: "처리 완료했어요", sub: "완료 필터로 옮겼어요" })}>처리 완료</Button>
         <Button variant="plain" size="sm" onClick={() => setSheet(null)}>취소</Button>
       </Sheet>
@@ -314,7 +314,7 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
       </Sheet>
 
       <Sheet open={sheet === "note"} onClose={() => setSheet(null)} title="담임에게 지시 남기기">
-        <textarea value={text} onChange={(e) => setText(e.target.value)} onFocus={() => !text && setText("규정은 유지하되 개별 상황에 맞게 조정해 주세요.")} rows={4} placeholder="예: 규정은 유지하되 개별 기상 시간 조정은 허용해 주세요." className="rounded-xl bg-g px-3.5 py-3 text-[15px] outline-none focus:shadow-[0_0_0_4px_var(--tint)]" />
+        <textarea value={text} onChange={(e) => setText(e.target.value)} rows={4} placeholder="예: 규정은 유지하되 개별 기상 시간 조정은 허용해 주세요." className="rounded-xl bg-g px-3.5 py-3 text-[15px] outline-none focus:shadow-[0_0_0_4px_var(--tint)]" />
         <Button loading={act.isPending} lockedReason={text.trim().length < 2 ? "지시 내용을 써 주세요" : undefined} onClick={() => run({ action: "note", text }, { title: "지시를 남겼어요", sub: "담임 카드에 보여요" })}>남기기</Button>
         <Button variant="plain" size="sm" onClick={() => setSheet(null)}>취소</Button>
       </Sheet>
@@ -332,6 +332,13 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
 }
 
 function TeacherActions({ c, open, draft, slot, pending, run }: { c: Card; open: (k: SheetKind) => void; draft: string; slot: string; pending: boolean; run: (b: CardAction, ok: { title: string; sub?: string }) => void }) {
+  if (c.status === "on_hold")
+    return (
+      <>
+        <p className="text-center text-sub text-ink2">보류 중인 요청이에요. 다시 확인하려면 재개해 주세요</p>
+        <Button loading={pending} onClick={() => run({ action: "resume" }, { title: "다시 확인 필요로 옮겼어요", sub: "받은함의 확인 필요에서 볼 수 있어요" })}>재개하기</Button>
+      </>
+    );
   if (c.risk === "judge")
     return (
       <>

@@ -50,7 +50,7 @@ export function RequestDetailPage() {
 
           <ul className="mt-4 grid gap-2">
             {d!.messages.map((m) => (
-              <li key={m.id} className={`max-w-[88%] rounded-2xl px-3 py-2.5 text-callout ${m.sender_type === "user" ? "ml-auto rounded-br-sm bg-brand-fill text-on-brand" : "rounded-bl-sm bg-card shadow-card"}`}>
+              <li key={m.id} className={`max-w-[88%] rounded-2xl px-3 py-2.5 text-callout ${(m.sender_role === undefined ? m.sender_type === "user" : m.sender_role === "parent") ? "ml-auto rounded-br-sm bg-brand-fill text-on-brand" : "rounded-bl-sm bg-card shadow-card"}`}>
                 {m.body}
               </li>
             ))}

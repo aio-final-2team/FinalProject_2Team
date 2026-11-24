@@ -126,7 +126,7 @@ function Compose({ onStarted }: { onStarted: (id: string) => void }) {
         maxLength={2000}
         value={activities}
         onChange={(e) => setActivities(e.target.value)}
-        onFocus={() => !activities && setActivities("가을 낙엽으로 왕관을 만들고 놀이터에서 술래잡기를 했어요")}
+       
         placeholder="예: 가을 낙엽으로 왕관 만들기, 놀이터에서 술래잡기"
         className={`${field} resize-none py-2.5 ${err && !activities.trim() ? "border-danger" : "border-line"}`}
       />
@@ -136,7 +136,7 @@ function Compose({ onStarted }: { onStarted: (id: string) => void }) {
         </p>
       )}
       <Label>가정에서 준비할 것</Label>
-      <input value={supplies} maxLength={2000} onChange={(e) => setSupplies(e.target.value)} onFocus={() => !supplies && setSupplies("김장 체험: 앞치마, 팔토시") } placeholder="예: 11/27(금) 김장 체험: 앞치마, 팔토시" className={`${field} h-12 border-line`} />
+      <input value={supplies} maxLength={2000} onChange={(e) => setSupplies(e.target.value)} placeholder="예: 11/27(금) 김장 체험: 앞치마, 팔토시" className={`${field} h-12 border-line`} />
 
       <Label>
         <span className="inline-flex items-center gap-1">
@@ -242,7 +242,17 @@ function Review({ notes }: { notes: DailyNote[] }) {
   const [sheet, setSheet] = useState(false);
   const [busy, setBusy] = useState(false);
   const [showClean, setShowClean] = useState(false);
-  const [plainOk, setPlainOk] = useState<Record<string, boolean>>({});
+  /* "이대로 사용" 표시는 새로고침해도 남도록 이 기기에 둔다 (확인 전 단계라 서버 데이터는 아님) */
+  const plainKey = `yuchion.plainOk.${cid}.${date}`;
+  const [plainOk, setPlainOkRaw] = useState<Record<string, boolean>>(() => {
+    try { return JSON.parse(localStorage.getItem(plainKey) ?? "{}"); } catch { return {}; }
+  });
+  const setPlainOk = (fn: (p: Record<string, boolean>) => Record<string, boolean>) =>
+    setPlainOkRaw((p) => {
+      const next = fn(p);
+      try { localStorage.setItem(plainKey, JSON.stringify(next)); } catch { /* 저장이 막혀도 이번 화면에서는 동작 */ }
+      return next;
+    });
   const [writeFor, setWriteFor] = useState<DailyNote | null>(null);
   const regen = useRegenerate();
   const [regenSheet, setRegenSheet] = useState(false);
@@ -252,7 +262,8 @@ function Review({ notes }: { notes: DailyNote[] }) {
     if (inputId) return;
     recoverInputId(cid, date).then((id) => { saveInputId(cid, date, id); setInputId(id); }).catch(() => {});
   }, [inputId, cid, date]);
-  /* 보내기가 409 NOTE_BATCH_BLOCKED로 막혔을 때 details.blocked[]를 보여 준다. 빈 목록이면 초안이 아직 만들어지는 중 */
+  /* 보내기가 409 NOTE_BATCH_BLOCKED로 막혔을 때 details.blocked[]를 보여 준다. 빈 목록은 초안 작업이 만드는 중(queued·running)이거나 실패(failed)일 때 온다 (3.19) */
+  const draftJob = useDraftJob(inputId ?? undefined);
   const [blocked, setBlocked] = useState<{ note_id: string; child_id: string; open_checks?: { problem?: string }[] }[] | null>(null);
 
   const c = { needs_check: 0, draft: 0, ready: 0, sent: 0 };
@@ -297,7 +308,7 @@ function Review({ notes }: { notes: DailyNote[] }) {
       onError: (e) => {
         setSheet(false);
         const isBlocked = e instanceof ApiError && e.code === "NOTE_BATCH_BLOCKED";
-        if (isBlocked) setBlocked(((e.details as { blocked?: typeof blocked })?.blocked ?? []) as NonNullable<typeof blocked>);
+        if (isBlocked) { setBlocked(((e.details as { blocked?: typeof blocked })?.blocked ?? []) as NonNullable<typeof blocked>); draftJob.refetch(); }
         toast({ kind: "error", title: isBlocked ? "확인이 안 끝난 알림장이 있어요" : "보내지 못했어요", sub: isBlocked ? "막힌 아이를 목록에서 확인해 주세요" : "잠시 뒤 다시 보내 주세요" });
       },
     });
@@ -353,6 +364,11 @@ function Review({ notes }: { notes: DailyNote[] }) {
                 </li>
               ))}
             </ul>
+          ) : draftJob.data?.draft_status === "failed" ? (
+            <div className="mt-1.5 grid gap-2">
+              <p className="text-footnote text-ink2">초안을 만들지 못했어요. 관찰 기록은 그대로 있어요.</p>
+              <SubButton small onClick={() => setRegenSheet(true)}>다시 만들기</SubButton>
+            </div>
           ) : (
             <p className="mt-1 text-footnote text-ink2">초안이 아직 만들어지는 중이에요. 잠시 뒤 다시 보내 주세요.</p>
           )}
