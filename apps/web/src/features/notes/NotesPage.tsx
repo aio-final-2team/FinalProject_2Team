@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "@/api/client";
-import { useChildren, useCreateDraft, useDraftJob, useNotes, usePatchNote, useSendNotes } from "@/api/notes";
+import { QueryState } from "@/components/QueryState";
+import { loadInputId, recoverInputId, saveInputId, useChildren, useCreateDraft, useDraftJob, useNotes, usePatchNote, useRegenerate, useSendNotes } from "@/api/notes";
 import { useSession } from "@/app/session";
 import { Dock, PrimaryButton, SubButton } from "@/components/Dock";
 import { Icon } from "@/components/Icon";
@@ -22,16 +23,21 @@ export function NotesPage() {
   const date = todayKST();
   const notes = useNotes(cid, date);
   const [jobId, setJobId] = useState<string>();
+  /* 알림장이 아직 없는데 이 기기에 접수한 작업이 있으면 그 진행 상태를 이어서 본다 (API 23). 새로고침해도 입력을 다시 쓰지 않는다 */
+  const stored = !notes.data?.length ? loadInputId(cid, date) : null;
+  const resume = useDraftJob(stored ?? undefined);
 
-  if (notes.isLoading) return <Frame><p className="py-16 text-center text-callout text-ink2">불러오는 중…</p></Frame>;
-  if (notes.isError)
+  if (notes.isLoading || (notes.isError && notes.data === undefined))
     return (
       <Frame>
-        <p className="mt-4 rounded-lg bg-danger-tint p-4 text-callout text-danger">알림장을 불러오지 못했어요. 모의 API 서버(8000)가 켜져 있는지 확인해 주세요.</p>
+        <QueryState queries={[notes]} errorTitle="알림장을 불러오지 못했어요">{null}</QueryState>
       </Frame>
     );
   if (jobId) return <Progress jobId={jobId} onDone={() => setJobId(undefined)} />;
-  if (!notes.data?.length) return <Compose onStarted={setJobId} />;
+  if (!notes.data?.length) {
+    if (stored && resume.data && resume.data.draft_status !== "succeeded") return <Progress jobId={stored} onDone={() => setJobId(undefined)} />;
+    return <Compose onStarted={setJobId} />;
+  }
   return <Review notes={notes.data} />;
 }
 
@@ -95,7 +101,7 @@ function Compose({ onStarted }: { onStarted: (id: string) => void }) {
         supplies: supplies.trim(),
         child_memos: recorded.map((k) => ({ child_id: k.id, memo: memoOf(k.id) })).filter((m) => m.memo),
       },
-      { onSuccess: (job) => onStarted(job.input_id), onError: (e) => setErr(e instanceof ApiError ? e.message : "초안 만들기를 시작하지 못했어요. 잠시 뒤 다시 눌러 주세요.") },
+      { onSuccess: (job) => { saveInputId(cid, date, job.input_id); onStarted(job.input_id); }, onError: (e) => setErr(e instanceof ApiError ? e.message : "초안 만들기를 시작하지 못했어요. 잠시 뒤 다시 눌러 주세요.") },
     );
   };
   const field = "w-full rounded-md border-[1.5px] bg-card px-3 text-body outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--tint)]";
@@ -118,6 +124,7 @@ function Compose({ onStarted }: { onStarted: (id: string) => void }) {
       <textarea
         id="note-activities"
         rows={3}
+        maxLength={2000}
         value={activities}
         onChange={(e) => setActivities(e.target.value)}
         onFocus={() => !activities && setActivities("가을 낙엽으로 왕관을 만들고 놀이터에서 술래잡기를 했어요")}
@@ -130,7 +137,7 @@ function Compose({ onStarted }: { onStarted: (id: string) => void }) {
         </p>
       )}
       <Label>가정에서 준비할 것</Label>
-      <input value={supplies} onChange={(e) => setSupplies(e.target.value)} onFocus={() => !supplies && setSupplies("김장 체험: 앞치마, 팔토시") } placeholder="예: 11/27(금) 김장 체험: 앞치마, 팔토시" className={`${field} h-12 border-line`} />
+      <input value={supplies} maxLength={2000} onChange={(e) => setSupplies(e.target.value)} onFocus={() => !supplies && setSupplies("김장 체험: 앞치마, 팔토시") } placeholder="예: 11/27(금) 김장 체험: 앞치마, 팔토시" className={`${field} h-12 border-line`} />
 
       <Label>
         <span className="inline-flex items-center gap-1">
@@ -157,11 +164,18 @@ function Progress({ jobId, onDone }: { jobId: string; onDone: () => void }) {
   const { user } = useSession();
   const qc = useQueryClient();
   const job = useDraftJob(jobId);
+  const regen = useRegenerate();
   const st = job.data?.draft_status ?? "queued";
   const [shown, setShown] = useState(0);
   useEffect(() => {
     const t = setInterval(() => setShown((s) => Math.min(s + 1, 3)), 700);
     return () => clearInterval(t);
+  }, []);
+  /* queued·running이 시작한 지 300초(DAILY_NOTE_WRITER_TIMEOUT)를 넘기면 서버가 다시 접수할 수 있다 (3.26) */
+  const [late, setLate] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setLate(true), 300_000);
+    return () => clearTimeout(t);
   }, []);
   const step = st === "succeeded" ? shown : Math.min(shown, st === "running" ? 2 : 1);
   useEffect(() => {
@@ -179,7 +193,7 @@ function Progress({ jobId, onDone }: { jobId: string; onDone: () => void }) {
         <section className="mt-4 grid gap-3 rounded-lg bg-card p-4 shadow-card">
           <b className="text-headline">초안을 만들지 못했어요</b>
           <p className="text-callout text-ink2">{job.data?.error?.message ?? "잠시 뒤 다시 만들어 주세요."} 관찰 기록은 그대로 있어요.</p>
-          <SubButton onClick={onDone}>다시 시도</SubButton>
+          <SubButton onClick={() => regen.mutate(jobId)} disabled={regen.isPending}>{regen.isPending ? "다시 접수하는 중…" : "다시 만들기"}</SubButton>
         </section>
       ) : (
         <section className="mt-4 rounded-lg bg-card p-4 shadow-card">
@@ -197,6 +211,12 @@ function Progress({ jobId, onDone }: { jobId: string; onDone: () => void }) {
             ))}
           </ol>
           <p className="mt-3 text-footnote text-ink2">다른 화면으로 가도 계속 만들어요. 다 되면 알려 드려요.</p>
+          {late && st !== "succeeded" && (
+            <div className="mt-3 flex items-center justify-between gap-2 rounded-md bg-g p-3 text-footnote">
+              <span>오래 걸리고 있어요. 멈춘 것 같으면 다시 접수할 수 있어요.</span>
+              <SubButton small onClick={() => regen.mutate(jobId)} disabled={regen.isPending}>다시 만들기</SubButton>
+            </div>
+          )}
         </section>
       )}
       <Dock>
@@ -225,6 +245,16 @@ function Review({ notes }: { notes: DailyNote[] }) {
   const [showClean, setShowClean] = useState(false);
   const [plainOk, setPlainOk] = useState<Record<string, boolean>>({});
   const [writeFor, setWriteFor] = useState<DailyNote | null>(null);
+  const regen = useRegenerate();
+  const [regenSheet, setRegenSheet] = useState(false);
+  const [inputId, setInputId] = useState(() => loadInputId(cid, date));
+  /* 다른 기기에서 만든 알림장이라 이 기기에 입력 ID가 없으면 API 3.19의 중복 접수 규칙으로 되찾는다 */
+  useEffect(() => {
+    if (inputId) return;
+    recoverInputId(cid, date).then((id) => { saveInputId(cid, date, id); setInputId(id); }).catch(() => {});
+  }, [inputId, cid, date]);
+  /* 보내기가 409 NOTE_BATCH_BLOCKED로 막혔을 때 details.blocked[]를 보여 준다. 빈 목록이면 초안이 아직 만들어지는 중 */
+  const [blocked, setBlocked] = useState<{ note_id: string; child_id: string; open_checks?: { problem?: string }[] }[] | null>(null);
 
   const c = { needs_check: 0, draft: 0, ready: 0, sent: 0 };
   notes.forEach((n) => c[n.status]++);
@@ -267,8 +297,9 @@ function Review({ notes }: { notes: DailyNote[] }) {
       },
       onError: (e) => {
         setSheet(false);
-        const blocked = e instanceof ApiError && e.code === "NOTE_BATCH_BLOCKED";
-        toast({ kind: "error", title: blocked ? "확인이 안 끝난 알림장이 있어요" : "보내지 못했어요", sub: blocked ? "걸린 아이를 먼저 확인해 주세요" : "잠시 뒤 다시 보내 주세요" });
+        const isBlocked = e instanceof ApiError && e.code === "NOTE_BATCH_BLOCKED";
+        if (isBlocked) setBlocked(((e.details as { blocked?: typeof blocked })?.blocked ?? []) as NonNullable<typeof blocked>);
+        toast({ kind: "error", title: isBlocked ? "확인이 안 끝난 알림장이 있어요" : "보내지 못했어요", sub: isBlocked ? "막힌 아이를 목록에서 확인해 주세요" : "잠시 뒤 다시 보내 주세요" });
       },
     });
 
@@ -311,6 +342,31 @@ function Review({ notes }: { notes: DailyNote[] }) {
         </div>
       </section>
 
+      {blocked && !allSent && (
+        <section role="alert" className="mt-4 rounded-lg bg-danger-tint p-3 text-callout">
+          <b className="text-danger">보내기가 막혔어요</b>
+          {blocked.length ? (
+            <ul className="mt-1.5 grid gap-1 text-footnote text-ink">
+              {blocked.map((b) => (
+                <li key={b.note_id}>
+                  <Link to={`/teacher/notes/${b.note_id}`} className="font-semibold underline">{names[b.child_id] ?? "아이"}</Link>
+                  <span className="text-ink2"> · {b.open_checks?.map((o) => o.problem).filter(Boolean).join(", ") || "확인 필요"}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-1 text-footnote text-ink2">초안이 아직 만들어지는 중이에요. 잠시 뒤 다시 보내 주세요.</p>
+          )}
+        </section>
+      )}
+
+      {!allSent && inputId && (
+        <div className="mt-3 flex items-center justify-between gap-2 px-1 text-footnote text-ink2">
+          <span>초안이 마음에 안 들면 확인하지 않은 아이만 다시 만들 수 있어요</span>
+          <SubButton small tone="gray" onClick={() => setRegenSheet(true)}>다시 만들기</SubButton>
+        </div>
+      )}
+
       {!allSent && flagged.length > 0 && (
         <>
           <Label right={<span>{flagged.length}명</span>}>먼저 확인할 아이</Label>
@@ -320,7 +376,18 @@ function Review({ notes }: { notes: DailyNote[] }) {
 
       {!allSent && noRecord.length > 0 && (
         <>
-          <Label right={<span>{noRecord.length}명</span>}>반 활동만 작성된 아이</Label>
+          <Label
+            right={
+              <span className="flex items-center gap-2">
+                {noRecord.length}명
+                <SubButton small tone="gray" onClick={() => setPlainOk((p) => ({ ...p, ...Object.fromEntries(noRecord.map((n) => [n.id, true])) }))}>
+                  모두 이대로 사용
+                </SubButton>
+              </span>
+            }
+          >
+            반 활동만 작성된 아이
+          </Label>
           <ul className="overflow-hidden rounded-lg bg-card shadow-card">
             {noRecord.map((n) =>
               row(
@@ -389,7 +456,7 @@ function Review({ notes }: { notes: DailyNote[] }) {
         {preview && (
           <div className="grid gap-1 rounded-lg bg-g p-3 text-callout">
             <b className="text-headline">{nameI(names[preview.child_id] ?? "아이")}의 오늘</b>
-            {preview.content.items.map((it, i) => (
+            {preview.content.items.filter((it) => it.value.trim()).map((it, i) => (
               <span key={i}>
                 <b className="mr-1.5 text-footnote text-ink2">{it.key === "child" ? "아이 이야기" : it.label}</b>
                 {it.value}
@@ -403,6 +470,33 @@ function Review({ notes }: { notes: DailyNote[] }) {
           </SubButton>
           <PrimaryButton onClick={doSend} loading={send.isPending}>
             보내기
+          </PrimaryButton>
+        </div>
+      </Sheet>
+
+      <Sheet open={regenSheet} onClose={() => setRegenSheet(false)} title="초안 다시 만들기">
+        <p className="text-callout text-ink2">내가 고친 알림장과 이미 확인한 알림장은 그대로 두고, 나머지만 새로 써요.</p>
+        <p className="rounded-md bg-g p-3 text-footnote text-ink2">처음 접수한 반 활동·준비물·아이별 메모로 다시 만들어요. 그 뒤에 새로 쓴 관찰 기록은 반영되지 않으니, 필요한 내용은 아이 상세에서 직접 추가해 주세요. 식단과 보호자 요청은 다시 모아요.</p>
+        <div className="grid grid-cols-[1fr_2fr] gap-2">
+          <SubButton tone="gray" className="h-[52px]" onClick={() => setRegenSheet(false)}>취소</SubButton>
+          <PrimaryButton
+            loading={regen.isPending}
+            onClick={() =>
+              inputId &&
+              regen.mutate(inputId, {
+                onSuccess: (r) => {
+                  setRegenSheet(false);
+                  setBlocked(null);
+                  toast({ kind: "ok", title: "초안을 다시 만들고 있어요", sub: r.kept_edited ? `고친 알림장 ${r.kept_edited}개는 그대로 두었어요` : undefined });
+                },
+                onError: () => {
+                  setRegenSheet(false);
+                  toast({ kind: "error", title: "다시 만들지 못했어요", sub: "이미 보낸 알림장이 있으면 다시 만들 수 없어요" });
+                },
+              })
+            }
+          >
+            다시 만들기
           </PrimaryButton>
         </div>
       </Sheet>

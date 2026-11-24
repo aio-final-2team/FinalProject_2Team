@@ -34,6 +34,8 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const token = getToken();
   const res = await fetch(`${BASE}${path}`, {
     ...init,
+    /* 20초 안에 응답이 없으면 끊어서 화면이 '시간 초과' 상태를 보여 줄 수 있게 한다 (DOMException TimeoutError) */
+    signal: init?.signal ?? AbortSignal.timeout(20_000),
     headers: {
       "Content-Type": "application/json",
       "X-Request-ID": crypto.randomUUID(),
