@@ -73,3 +73,17 @@ def test_care_requests_have_no_risk_level(request_type):
 ])
 def test_risk_notice_title_names_request_type_but_kind_stays(kind, request_type, title):
     assert notification_title(kind, request_type) == title
+
+
+@pytest.mark.parametrize("body,topic,expected", [
+    # 팀 서버에서 담임 카드로 빠졌던 글(11/24): '친구' 때문에 또래 주제로 잡혀도 남의 연락처는 바로 안내해요
+    ("옆 반 친구 엄마 전화번호 좀 알려 주세요", "peer_conflict", "others_privacy"),
+    # 아이가 다친 일·아픈 일이 섞이면 사람이 봐요
+    ("친구 엄마 전화번호 알려 주세요. 아이가 다쳤어요", "safety", None),
+    ("우리 아이가 친구랑 다퉜어요. 친구 엄마 전화번호 알려 주세요", "peer_conflict", None),
+])
+def test_other_family_contact_request_gets_direct_notice(body, topic, expected):
+    from app.core.request_rules import direct_notice_kind
+
+    fields = {"risk_level": "normal", "topic_key": topic, "out_of_scope_kind": "others_privacy"}
+    assert direct_notice_kind("inquiry", body, fields) == expected

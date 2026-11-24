@@ -45,11 +45,13 @@ def direct_notice_kind(request_type, body, fields):
 
     if fields.get("risk_level") in ("urgent", "uncertain"):
         return None
-    if fields.get("topic_key") in ("peer_conflict", "safety", "health_hygiene"):
+    kind = fields.get("out_of_scope_kind")
+    # '친구 엄마 전화번호'는 '친구' 때문에 또래 주제로 잡혀요. 남의 연락처를 달라는 글은 또래 일이 아니라서 바로 안내해요.
+    human_topics = ("safety", "health_hygiene") if kind == "others_privacy" else ("peer_conflict", "safety", "health_hygiene")
+    if fields.get("topic_key") in human_topics:
         return None
     if any(word in body for word in ("우리 아이", "우리 애", "저희 아이")):
         return None
-    kind = fields.get("out_of_scope_kind")
     if kind in OUT_OF_SCOPE_MESSAGES and (request_type == "inquiry"
                                          or (request_type == "consultation" and kind == "other_teacher")):
         return kind
