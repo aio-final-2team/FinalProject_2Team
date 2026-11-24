@@ -9,3 +9,15 @@ STEP 3 단일 요청 처리 흐름과 STEP 4 협업 그래프를 둡니다.
 - 모델은 `agents/llm.py`의 `OpenAIModel`(`.env`의 `OPENAI_API_KEY`, `LLM_MODEL_DOCUMENT`·`LLM_MODEL_CHECKER`). `openai` 패키지가 필요해요
 - 시험: `PYTHONPATH=apps/api:. pytest tests/unit/test_daily_note_graph.py` (가짜 모델)
 - 함정 평가: `PYTHONPATH=apps/api:. python tools/eval_daily_note.py --model echo` (모델 없는 기준선) · `--model openai --out <파일>`
+
+## 요청 협업 뼈대 (`request_collaboration.py`)
+
+- `REQUEST_AGENT=app.modules.requests.graph_agent:run_request`와 `REQUEST_COLLAB_GRAPH=1`을 함께 설정하면 새 그래프를 고릅니다. 기본은 기존 요청 그래프입니다.
+- 감독이 요청 유형을 나누고, 문의·민원은 `Send`로 자료 검색과 기억 읽기를 동시에 시작합니다. 합친 뒤 자료 쓰기와 검사를 거쳐, 검사 실패는 최대 두 번 자료로 돌려보냅니다. 카드 뒤에는 기존 `interrupt`로 사람 결정을 기다립니다.
+- 카드 저장은 기존 함수를 쓰고, 문의의 검색·기억 읽기·쓰기·검사는 새 노드에서 실행합니다. 초안·자료 조각·기억 내용은 체크포인트 대신 그래프 한 번 실행하는 동안 지역 변수에 둡니다.
+
+2단계에서는 문의의 자료 검색·기억 읽기·자료 쓰기·검사를 실제 함수에 연결했습니다. 새 그래프가 만든 답을 카드 저장에 넘겨 같은 모델을 두 번 부르지 않습니다. 검색·기억·검사 실패는 빈 초안 카드로 넘깁니다. 민원 일반·상담의 기존 카드 처리는 유지합니다.
+
+4단계부터 민원 일반도 통신문·운영 규정을 찾고 자료·검사 노드를 거칩니다. 긴급·판단 필요 민원은 초안 작성 노드를 건너뛰고 기존처럼 담임·원장 카드로 넘깁니다.
+
+#325 리뷰 반영: 감독이 위험을 먼저 판단하고 긴급·판단 필요면 Send를 건너뜁니다. 예보는 검색 노드에서 한 번만 가져오고, 말투 기억을 못 읽어도 경고를 남기며 초안을 계속 씁니다.
