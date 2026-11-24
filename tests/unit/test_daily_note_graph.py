@@ -70,6 +70,15 @@ def test_other_child_name_is_caught_by_code_even_if_checker_passes():
     assert note["open_checks"][0]["id"] == "c1" and "지아" in note["open_checks"][0]["sentence"]
 
 
+def test_roster_names_catches_other_child_outside_draft_batch():
+    one_child = payload([kid("a", "지안", "블록 놀이")])
+    one_child["roster_names"] = ["지안", "지아"]
+    writer = Script({"child": "지아와 블록 놀이를 했어요.", "requests": []})
+    [note] = draft_daily_notes(one_child, writer, Script(OK))
+    assert [c["kind"] for c in note["open_checks"]] == ["other_child"]
+    assert note["end"] == "needs_check"
+
+
 def test_missing_request_is_returned_then_fixed():
     req = {"request_id": "r1", "type": "pickup", "text": "오늘 할머니가 데리러 가요"}
     writer = Script({"child": "블록 놀이를 했어요.", "requests": []},
@@ -85,9 +94,10 @@ def test_returns_stop_after_two_and_leave_check():
     writer = Script({"child": "잘 지냈어요.", "requests": [{"request_id": "모르는-id", "value": "x"}]})
     [note] = draft_daily_notes(payload([kid("a", "아라", "블록놀이", [req])]), writer, Script(OK))
     assert writer.calls == MAX_RETURNS + 1
-    [check] = note["open_checks"]
+    check = note["open_checks"][0]
     assert check["kind"] == "request_missed" and check["request_id"] == "r1" and check["item_key"] == "medication"
     assert check["sentence"] is None
+    assert note["open_checks"][1]["kind"] == "return_limit"
 
 
 def test_not_in_memo_from_checker_is_returned_but_sensitive_is_not():
@@ -154,6 +164,16 @@ def test_return_limit_handoff_reason():
     [note] = draft_daily_notes(payload([kid("a", "가온", "블록", [req])]), writer, Script(OK))
     assert writer.calls == MAX_RETURNS + 1
     assert note["end"] == "handoff" and note["handoff_reason"] == "return_limit"
+
+
+def test_return_limit_adds_explicit_open_check():
+    req = {"request_id": "r1", "type": "pickup", "text": "오늘 할머니가 데리러 가요"}
+    writer = Script({"child": "블록 놀이를 했어요.", "requests": []})
+    [note] = draft_daily_notes(payload([kid("a", "가온", "블록", [req])]), writer, Script(OK))
+    assert [c["kind"] for c in note["open_checks"]] == ["request_missed", "return_limit"]
+    assert note["open_checks"][-1]["item_key"] == "child"
+    assert note["open_checks"][-1]["problem"] == "AI가 두 번 고쳐도 남은 문제가 있어요. 직접 확인해 주세요."
+    assert note["end"] == "handoff"
 
 
 def test_one_note_per_child_in_order():
