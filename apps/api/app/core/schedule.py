@@ -3,6 +3,7 @@
 from datetime import datetime, time, timedelta, timezone
 
 from app.core.config import settings
+from app.core.request_rules import RISK_TYPES
 
 KST = timezone(timedelta(hours=9))
 
@@ -17,7 +18,7 @@ def due_at(start: datetime, request_type=None, risk_level=None, kind=None):
         return None
     if kind == "daily_note":
         return datetime.combine(start.date(), time(17), KST)
-    if request_type == "complaint" and risk_level in ("urgent", "uncertain"):
+    if request_type in RISK_TYPES and risk_level in ("urgent", "uncertain"):
         return start + timedelta(hours=2)
     remaining = timedelta(hours=4 if request_type == "inquiry" else 24)
     while remaining:
