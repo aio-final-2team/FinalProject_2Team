@@ -4,7 +4,7 @@
 | --- | --- |
 | 작업 | T09 데이터베이스 스키마 설계서 (#166) |
 | 작성 · 검토 | 태웅 · 영민 |
-| 판 | v0.20 · 2026-11-24 (판마다 바뀐 내용은 맨 끝 변경 이력에 있다) |
+| 판 | v0.21 · 2026-11-24 (판마다 바뀐 내용은 맨 끝 변경 이력에 있다) |
 | 2차 검토 링크 | `develop` 브랜치의 [DB 스키마 설계서](https://github.com/aio-final-2team/FinalProject_2Team/blob/develop/Docs/Step2/DB_스키마_설계서.md) |
 | 시연 코드 기준 커밋 | develop `ab58b7c`. 11/27 알림장 시연에 쓰는 팀 서버에 지금 배포된 커밋이며, API 설계 문서에도 같은 커밋을 적는다. 시연 날 아침에 다시 배포하면 이 칸을 새로 배포한 커밋으로 고친다 |
 | 대상 DB | PostgreSQL 16 + pgvector 0.8 (`compose.yaml`의 `pgvector/pgvector:pg16`). Supabase를 쓰지 않는 이유는 5.1에 있다 |
@@ -363,7 +363,7 @@ FK를 걸 수 없는 참조가 두 곳 있다. `cards.subject_id`와 `notificati
 | `requests` | `body` | `text` / NOT NULL | 학부모가 쓴 내용 |
 | `requests` | `status` | `text` / NOT NULL, 값: received·classified·needs_info·assigned·awaiting_review·approved·sent_or_booked·completed·on_hold·escalated·rejected, 기본값 'received' | 공통 상태 11가지(8.1) |
 | `requests` | `urgency` | `text` / NULL 허용, 값: low·normal·high·urgent | 급한 정도(정렬용, 모든 요청) |
-| `requests` | `risk_level` | `text` / NULL 허용, 값: normal·urgent·uncertain | 민원 위험 등급: 일반·긴급·판단 필요 |
+| `requests` | `risk_level` | `text` / NULL 허용, 값: normal·urgent·uncertain | 문의·상담·민원 위험 등급: 일반·긴급·판단 필요 |
 | `requests` | `risk_category` | `text` / NULL 허용, 값: child_safety·staff_attack·legal_external·privacy_leak | 긴급일 때 네 가지 중 무엇인지 |
 | `requests` | `risk_confidence` | `real` / NULL 허용, 값: 0~1 | 감독 AI 확신 정도(기준값은 T06) |
 | `requests` | `topic_key` | `text` / NULL 허용 | 감독 AI가 정해진 목록(2.2 글머리)에서 고른 민원 주제. 같은 주제 반복 수를 셈(`other`는 안 셈) |
@@ -430,7 +430,7 @@ FK를 걸 수 없는 참조가 두 곳 있다. `cards.subject_id`와 `notificati
 | `events` | `detail` | `jsonb` / NOT NULL, 기본값 '{}' | 부가 정보. 비밀값·불필요한 개인정보 금지 |
 | `events` | `created_at` | `timestamptz` / NOT NULL, 기본값 now() | 일어난 시각 |
 
-- `requests` 표 제약: `CHECK (previous_request_id IS DISTINCT FROM id)` · `CHECK ((risk_level IS NULL) OR (type = 'complaint'))` · `CHECK ((risk_level IS DISTINCT FROM 'urgent') OR (risk_category IS NOT NULL))` · `CHECK ((parent_confirmed_at IS NULL) OR (type = 'complaint'))` · `UNIQUE (id, org_id)` · `UNIQUE (requester_id, client_request_id)`
+- `requests` 표 제약: `CHECK (previous_request_id IS DISTINCT FROM id)` · `CHECK ((risk_level IS NULL) OR (type IN ('inquiry', 'consultation', 'complaint')))` · `CHECK ((risk_level IS DISTINCT FROM 'urgent') OR (risk_category IS NOT NULL))` · `CHECK ((parent_confirmed_at IS NULL) OR (type = 'complaint'))` · `UNIQUE (id, org_id)` · `UNIQUE (requester_id, client_request_id)`
 - `cards` 표 제약: `CHECK ((request_id IS NOT NULL) OR (subject_id IS NOT NULL))` · `CHECK ((status <> 'on_hold') OR (hold_until IS NOT NULL))` · `CHECK ((kind <> 'director_report') OR (assignee_id IS NOT NULL))` · `UNIQUE (id, org_id)`
 - `approvals` 표 제약: `CHECK ((decision <> ALL (ARRAY['reject', 'dismiss'])) OR (reason_code IS NOT NULL))` · `CHECK ((decision <> ALL (ARRAY['hold', 'instruct'])) OR (reason_text IS NOT NULL))` · `CHECK ((reason_code IS DISTINCT FROM 'other') OR (reason_text IS NOT NULL))` · `UNIQUE (card_id, card_version)` · 트리거 `approvals_unconfirmed_complete_reason`(결정이 `complete`인데 요청의 `parent_confirmed_at`이 비어 있으면 `reason_text` 필수. 다른 표 값을 봐야 해서 CHECK 대신 트리거로 둠)
 
@@ -439,7 +439,7 @@ FK를 걸 수 없는 참조가 두 곳 있다. `cards.subject_id`와 `notificati
 - `type`: `inquiry`(안내 문의) · `consultation`(상담) · `complaint`(민원) · `medication`(투약) · `pickup`(귀가). 투약·귀가(T46, 팀 확인 전 초안)는 세부 칸을 따로 두지 않고 이력에 남긴다. 접수 내용(등록된 인계자 UUID `pickup_guardian_id` 등)은 접수 이력의 `events.detail`에 넣고, 교직원이 실제로 확인·완료한 일은 이력의 `care_decision`·행위자·`created_at`으로 남긴다. 상태는 `received → assigned → completed` 순서로 바뀐다. 알림장 줄에 보이는 `request_status`는 따로 저장하지 않고, 조회할 때 요청 상태를 읽어 온다.
 - `client_request_id`: 화면이 제출할 때 만드는 키다. 같은 사람이 같은 키로 다시 보내면 DB가 거부하므로, 네트워크 재시도로 요청이 두 번 생기지 않는다.
 - `urgency`: 모든 요청에 붙는 급한 정도(`low`·`normal`·`high`·`urgent`)로, 받은함을 정렬할 때 쓴다.
-- `risk_level`: 민원에만 붙이는 위험 등급으로, `normal`(일반) · `urgent`(긴급) · `uncertain`(판단 필요) 중 하나다. 긴급으로 저장하려면 `risk_category`에 다음 네 가지 중 어느 것인지도 넣어야 한다: `child_safety`(아이 안전) · `staff_attack`(교직원 비난·위협) · `legal_external`(법적 조치·외부 기관) · `privacy_leak`(개인정보 유출 주장). 감독 AI가 얼마나 확신했는지는 `risk_confidence`(0~1)에 남기고, 긴급과 판단 필요를 가르는 기준값은 T06 평가로 정한다. 판단 필요였던 민원을 사람이 일반이나 긴급으로 다시 나누면, `events`에 `risk_reclassified`로 이전 값·새 값·이유를 남긴다.
+- `risk_level`: 보호자 글을 받는 문의·상담·민원에 붙이는 위험 등급으로(기획서 FR-03), `normal`(일반) · `urgent`(긴급) · `uncertain`(판단 필요) 중 하나다. 긴급으로 저장하려면 `risk_category`에 다음 네 가지 중 어느 것인지도 넣어야 한다: `child_safety`(아이 안전) · `staff_attack`(교직원 비난·위협) · `legal_external`(법적 조치·외부 기관) · `privacy_leak`(개인정보 유출 주장). 감독 AI가 얼마나 확신했는지는 `risk_confidence`(0~1)에 남기고, 긴급과 판단 필요를 가르는 기준값은 T06 평가로 정한다. 판단 필요였던 문의·민원을 사람이 일반이나 긴급으로 다시 나누면, `events`에 `risk_reclassified`로 이전 값·새 값·이유를 남긴다. 투약·귀가 요청에는 위험 등급이 없으므로 이 값을 NULL로 둔다. 이 CHECK는 0001에서 이름 없이 만들었기 때문에 PostgreSQL이 붙인 `requests_check1`이라는 이름을 갖고 있다. 0011에서는 이 이름은 그대로 두고 조건만 바꾼다.
 - `topic_key`: 감독 AI가 민원에 붙이는 주제다. 값은 주제 10개와 `other` 중 하나이고, 에이전트 도구 `create_card`의 `topic_key` 인자와 같은 목록을 쓴다: `safety`(안전) · `meal`(급식) · `teacher`(선생님) · `belongings`(소지품) · `fee`(원비) · `pickup_bus`(등하원·버스) · `peer_conflict`(친구 다툼) · `health_hygiene`(건강·위생) · `photo_record`(사진·기록) · `communication`(소통·연락) · `other`. FR-07의 "같은 내용의 민원이 세 번째면 원장에게 보고"는 이 값으로 센다. **같은 반에서 최근 30일 동안 같은 `topic_key`로 들어온 민원 수**를 세고, 보낸 학부모가 달라도 합친다. 다만 `other`는 세지 않는다. 정해진 주제에 맞지 않는 민원끼리는 같은 내용이라고 볼 수 없기 때문이다. 그래서 백엔드는 `other`이면 6.2 ② 쿼리를 부르지 않는다. 주제 목록은 설정값이므로 `reason_code`와 마찬가지로 CHECK로 묶지 않는다.
 - `parent_confirmed_at`: 학부모가 민원 회신에서 '확인했어요'를 누른 시각이다. 학부모 확인을 상태 값으로 늘리지 않고 이 칸 하나로 처리한다. 민원은 자동으로 완료되지 않고, 담임이 '처리 완료'를 눌러야 `completed`가 된다. 학부모가 끝내 확인을 누르지 않으면, 담임이 이유 글(`approvals.reason_text`, 예: '전화로 마무리함')을 남기고 처리 완료할 수 있다. 이유 없이 끝내려 하면 DB 트리거가 거부한다(9.1 F2-6).
 - `missing_fields`: 필수 정보가 빠졌을 때 되물을 항목의 목록이다(FR-02).
@@ -740,7 +740,7 @@ FK를 걸 수 없는 참조가 두 곳 있다. `cards.subject_id`와 `notificati
 
 - `notifications.dedupe_key`: 알림은 처리 이력 한 건에서 생기므로 키를 `event:<events.id>:<받는 사람 ID>`로 만든다. 같은 이력으로 발송을 다시 시도하면 키가 같아서 한 번만 들어간다. 반대로 같은 카드가 다시 보류되는 것처럼 새 이력이 생기면 새 알림이 된다. 상담 종료·지연 알림(T48)은 `consultation:<예약 ID>:<종류>:<받는 사람 ID>`로 만들어, 같은 예약의 같은 안내를 한 번만 남긴다.
 - 발송 시도: 한 알림은 최대 3번까지 보낸다(FR-12, `attempts`). 보내기에 실패하면 60초 뒤, 그다음 실패면 120초 뒤로 `next_attempt_at`을 미뤄 다시 보낸다. 이때 `deliver_after`와 목록에 보이는 시각은 바꾸지 않는다.
-- `notifications.kind`: 다음 17가지만 받는다. `needs_info` · `new_card`(새 카드) · `urgent_complaint`(긴급 민원) · `uncertain_complaint`(판단 필요 민원) · `director_report`(반복 3번째 원장 보고) · `on_hold` · `sent_or_booked` · `parent_confirmed`(학부모가 확인함) · `completed`(민원 완료) · `rejected` · `note_sent`(오늘 알림장) · `slot_hold_expired`(잡아 둔 상담 시간이 풀림 → 담임) · `hold_resumed`(보류 카드가 예정일에 자동 재개 → 담당) · `care_requested`(투약·귀가 요청 접수) · `care_confirmed`(교직원이 투약·귀가 요청을 확인함). 나머지 두 가지는 상담 알림이다. `consultation_ending`은 예정 종료 10분 이내에 담임에게 가는 알림이고, `consultation_delayed`는 앞 상담의 명시된 예상 종료와 겹치는 예약의 담임·학부모에게 대체 시간을 제안하는 알림이다. 자세한 기준은 API 설계 6.6.2에 있다.
+- `notifications.kind`: 다음 17가지만 받는다. `needs_info` · `new_card`(새 카드) · `urgent_complaint`(긴급 요청) · `uncertain_complaint`(판단 필요 요청) · `director_report`(반복 3번째 원장 보고) · `on_hold` · `sent_or_booked` · `parent_confirmed`(학부모가 확인함) · `completed`(민원 완료) · `rejected` · `note_sent`(오늘 알림장) · `slot_hold_expired`(잡아 둔 상담 시간이 풀림 → 담임) · `hold_resumed`(보류 카드가 예정일에 자동 재개 → 담당) · `care_requested`(투약·귀가 요청 접수) · `care_confirmed`(교직원이 투약·귀가 요청을 확인함). 나머지 두 가지는 상담 알림이다. `consultation_ending`은 예정 종료 10분 이내에 담임에게 가는 알림이고, `consultation_delayed`는 앞 상담의 명시된 예상 종료와 겹치는 예약의 담임·학부모에게 대체 시간을 제안하는 알림이다. 자세한 기준은 API 설계 6.6.2에 있다. 두 위험 알림(`urgent_complaint`·`uncertain_complaint`)은 이름에 complaint가 남아 있지만 문의·상담 위험에도 그대로 쓴다. 요청 유형에 따라 달라지는 것은 제목(`title`)뿐이라 '긴급 문의'·'긴급 상담'처럼 붙는다.
 - `subject_type`·`subject_id`: 요청·카드가 아닌 대상을 가리킨다. 지금은 `note_sent` 알림이 아이별 알림장(`daily_note`)을 가리킬 때만 쓴다.
 - `deliver_after`: 이 시각이 지나야 보낸다. 근무 시간(평일 09~18시) 밖에 생긴 알림에는 다음 근무 시작 시각을 넣는다. 긴급 민원 가운데 **아이 안전(`risk_category = child_safety`)만** 지금 시각을 넣어 바로 보내고, 나머지 긴급 3가지와 판단 필요 민원은 다음 근무 시간에 보낸다(FR-21). 발송기는 `status = 'pending' AND deliver_after <= now()`인 알림만 꺼낸다(9.1 F3-5).
 
@@ -760,7 +760,7 @@ FK를 걸 수 없는 참조가 두 곳 있다. `cards.subject_id`와 `notificati
 | `in_progress` | 진행 중 | 학부모·AI·시스템 차례인 것 |
 | `done` | 완료 | 카드 `done`·`rejected`, 요청 `completed`·`rejected` |
 
-긴급 민원에는 필터를 따로 두지 않고, `is_urgent`로 '확인 필요' 맨 위에 올린다. `is_urgent`는 `urgency`가 아니라 `risk_level = 'urgent'`인지로 정한다. 판단 필요 민원을 사람이 다시 나누면 `risk_level`이 바뀌면서 '확인 필요'로 옮겨 간다.
+긴급 요청에는 필터를 따로 두지 않고, `is_urgent`로 '확인 필요' 맨 위에 올린다. `is_urgent`는 `urgency`가 아니라 `risk_level = 'urgent'`인지로 정한다. 판단 필요 문의·민원을 사람이 다시 나누면 `risk_level`이 바뀌면서 '확인 필요'로 옮겨 간다.
 
 회신한 민원 카드는 처리 완료 전까지 받은함에 남는다. 발송한 `reply_draft` 카드는 학부모가 확인하기 전에는 `in_progress`, 확인한 뒤에는 `needs_review`에 있다가 처리 완료 뒤 `done`이 된다. 거절한 옛 회신 카드는 `done`에 그대로 남는다.
 
@@ -1225,7 +1225,7 @@ WHERE type = 'complaint' AND classroom_id = :classroom_id AND topic_key = :topic
 
 ### 9.2 마이그레이션 적용 기록
 
-9장과 9.1은 마이그레이션을 만들기 전에 설계 DDL을 한 번에 올려 시험한 기록이라, 당시 판을 함께 적는다. 그 뒤로는 `apps/api/migrations`의 0001~0010을 차례로 올린 시험 PG에서 `tools/test_db.sh`로 확인한다.
+9장과 9.1은 마이그레이션을 만들기 전에 설계 DDL을 한 번에 올려 시험한 기록이라, 당시 판을 함께 적는다. 그 뒤로는 `apps/api/migrations`의 0001~0011을 차례로 올린 시험 PG에서 `tools/test_db.sh`로 확인한다.
 
 | 기준 | 적용 순서 | 확인한 것 | 시험(파일::함수) | 결과 |
 | --- | --- | --- | --- | --- |
@@ -1236,8 +1236,11 @@ WHERE type = 'complaint' AND classroom_id = :classroom_id AND topic_key = :topic
 | `develop` `76900bb` + v0.18 변경 | 0009 → 0010 → 0009 → 0010 | 다른 칸은 그대로이고 `photo_scope`만 더해짐. 피드 표 기관 FK·CHECK, 0009로 되돌린 스키마가 처음과 같음 | `test_feed_migration.py::test_feed_revision_backfill_constraints_and_previous_revision_roundtrip` | 통과 |
 | `develop` `76900bb` + v0.18 변경 | 0010 | 공개 범위(`family`·`class`·`org`)별로 목록·상세·앨범·사진 파일이 보이는지 | `test_feed.py::test_photo_scope_filters_all_surfaces_and_uploader_always_sees`(시험 PG 모드) | 통과 |
 | `develop` `76900bb` + v0.18 변경 | 0010 | 알림장 초안·확인·발송·다시 만들기·복구 이력 | `test_daily_notes_runner.py`, `test_note_regenerate.py`, `test_daily_note_recovery.py`, `test_daily_notes.py`(시험 PG 모드) | 통과 |
+| `develop` `d82b81a` + v0.21 변경 | 0001 → … → 0011, base로 내렸다가 다시 0011 | 표 30·뷰 2·트리거 2·FK 64·컬럼 292(0011은 개수를 바꾸지 않음). 다시 올린 스키마와 설계 DDL을 직접 올린 스키마의 `pg_dump`가 같음 | `test_migrations.py::test_upgrade_downgrade_upgrade` | 통과 |
+| `develop` `d82b81a` + v0.21 변경 | 0011 → 0010 → 0011 | 되돌리면 문의·상담의 위험 등급만 지우고 민원 등급은 남김. 다시 올리면 문의에 위험 등급을 저장할 수 있음 | `test_request_risk_types.py::test_0011_round_trip_keeps_complaint_risk_and_clears_other_types` | 통과 |
+| `develop` `d82b81a` + v0.21 변경 | 0011 | 답변 그래프를 켜도 위험 문의는 자료·검사 AI를 부르지 않고, 요청에 `risk_level = urgent`·`risk_category = legal_external`이 저장됨 | `test_request_risk_types.py::test_risky_inquiry_skips_answer_model_and_saves_risk` | 통과 |
 
-**다시 확인하는 방법.** 기준 커밋을 받은 뒤 레포 루트에서 `tools/test_db.sh`를 실행하면 된다. 이 스크립트는 `pgvector/pgvector:pg16` 임시 컨테이너를 빈 포트에 띄우며, 공용 DB는 쓰지 않는다. 그 컨테이너에서 `tests/integration/db` 전체와 공유 HTTP 시험을 모의·시험 PG 두 모드로 돌리고, 끝나면 컨테이너와 볼륨을 지운다. 실행 환경은 Python 3.12, 그리고 pgvector를 얹은 PostgreSQL 16이다. 실행 로그에는 시험 이름과 통과 수가 남는다. 이 판의 실행에서는 DB 시험 297개와 공유 HTTP 시험 672개가 모두 통과했다(실패 0).
+**다시 확인하는 방법.** 기준 커밋을 받은 뒤 레포 루트에서 `tools/test_db.sh`를 실행하면 된다. 이 스크립트는 `pgvector/pgvector:pg16` 임시 컨테이너를 빈 포트에 띄우며, 공용 DB는 쓰지 않는다. 그 컨테이너에서 `tests/integration/db` 전체와 공유 HTTP 시험을 모의·시험 PG 두 모드로 돌리고, 끝나면 컨테이너와 볼륨을 지운다. 실행 환경은 Python 3.12, 그리고 pgvector를 얹은 PostgreSQL 16이다. 실행 로그에는 시험 이름과 통과 수가 남는다. 이 판의 실행에서는 DB 시험 343개와 공유 HTTP 시험 690개가 모두 통과했다(실패 0).
 
 ## 10. LangGraph 체크포인트
 
@@ -1348,6 +1351,7 @@ T50이 붙기 전까지는 사진을 올린 사람이 아이를 직접 표시한
 | v0.19 | 2026-11-23 | 백업·복원 스크립트, 복원 뒤 다시 적용, 고아 사진 정리, 퇴소 관리 작업을 더하고 피드·앨범 절의 '지금 상태와 남은 일'을 그에 맞춤. 데모 시드가 퇴소한 아이를 다시 넣지 않게 하고, 지금 DB를 못 읽으면 복원이 멈추게 함 |
 | v0.19.1 | 2026-11-23 | 팀 서버 첫 백업 기록(`backup.sh` 1회, 복원은 할 일만 확인)으로 '지금 상태와 남은 일'을 고침 |
 | v0.20 | 2026-11-24 | 문서 머리에 2차 검토 링크, 시연 코드 기준 커밋(`ab58b7c`), 1차 검토 뒤 보완 표(바뀐 내용·고친 절·지키는 시험·반영 커밋)를 더함. 2.2에 사람에게 넘긴 이유(`ai_timeout`·`ai_failed`·`card_missing`)와 요청 행 잠금 규칙, 거절 뒤 새 회신 카드의 빈 초안을 더함 |
+| v0.21 | 2026-11-24 | 0011: 위험 등급을 문의·상담에도 저장(`requests_check1`), 위험 알림 제목 규칙(2.6)과 받은함 설명(2.7)을 세 유형에 맞춤 |
 
 
 ## 부록. 가이드 제출 전 체크리스트

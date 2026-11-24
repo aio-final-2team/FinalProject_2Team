@@ -1,4 +1,4 @@
-"""T31: 반복·고위험 민원의 사람 인계를 두 백엔드에서 확인해요."""
+"""T31: 반복·고위험 민원과 위험한 문의·상담의 사람 인계를 두 백엔드에서 확인해요."""
 
 from datetime import datetime, timedelta
 from uuid import UUID, uuid4
@@ -11,6 +11,7 @@ from app.core.db import transaction
 from app.core.schedule import KST
 from app.mock import seed, store
 from tests.integration.api.helpers import BASE, decision, err
+from tests.integration.api.test_consultations import book, choose
 
 
 @pytest.fixture(autouse=True, params=["mock", "db"])
@@ -102,10 +103,11 @@ def test_other_topic_is_not_combined_into_repeated_complaints(client, parent, di
     ("[TEST] 개인정보가 유출됐어요", "urgent", "privacy_leak"),
     ("[TEST] 판단 필요 민원이에요", "uncertain", None),
 ])
+@pytest.mark.parametrize("kind", ["complaint", "inquiry"])
 def test_high_risk_handoff_has_two_cards_no_draft_or_automatic_reply(
-    client, parent, teacher, director, body, risk, category
+    client, parent, teacher, director, body, risk, category, kind
 ):
-    rid = create(client, parent, body=body)
+    rid = create(client, parent, body=body, kind=kind)
     saved = cards(client, director, rid)
     assert set(saved) == {"reply_draft", "director_report"}
     assert all(c["risk_level"] == risk and c["risk_category"] == category for c in saved.values())
@@ -143,3 +145,81 @@ def test_high_risk_handoff_has_two_cards_no_draft_or_automatic_reply(
         assert instructed.status_code == 200, instructed.text
         assert decision(client, teacher, cid, "edit_approve", version=2,
                         edited_content={"text": "[TEST] 확인 뒤 직접 안내해요"}).status_code == 200
+
+
+def risk_titles(client, actor, rid):
+    response = client.get(f"{BASE}/notifications?size=100", headers=actor)
+    assert response.status_code == 200, response.text
+    return {n["kind"]: n["title"] for n in response.json()["items"]
+            if n["request_id"] == rid and n["kind"] in ("urgent_complaint", "uncertain_complaint")}
+
+
+def test_urgent_inquiry_can_be_lowered_by_teacher_and_director(client, parent, teacher, director):
+    rid = create(client, parent, body="[TEST] 경찰에 알릴 거예요", kind="inquiry")
+    saved = cards(client, director, rid)
+    assert saved["reply_draft"]["risk_category"] == "legal_external"
+    assert risk_titles(client, director, rid) == risk_titles(client, teacher, rid) == {"urgent_complaint": "긴급 문의"}
+    cid, report = saved["reply_draft"]["id"], saved["director_report"]["id"]
+    lowered = client.post(f"{BASE}/cards/{cid}/reclassify", headers=teacher, json={
+        "version": 1, "risk_level": "normal", "reason": "[TEST] 문의로 확인했어요"})
+    assert lowered.status_code == 200, lowered.text
+    assert lowered.json()["request"]["risk_level"] == "normal"
+    assert lowered.json()["request"]["status"] == "escalated"  # 원장 보고 카드는 원장이 닫아요
+    closed = client.post(f"{BASE}/cards/{report}/reclassify", headers=director, json={
+        "version": 1, "risk_level": "normal", "reason": "[TEST] 원장도 일반으로 봤어요"})
+    assert closed.status_code == 200, closed.text
+    assert closed.json()["request"]["status"] == "awaiting_review"
+    assert detail(client, director, report)["card"]["status"] == "done"
+
+
+@pytest.mark.parametrize("body,risk,title", [
+    ("[TEST] 아이가 다쳤어요. 상담하고 싶어요", "urgent", "긴급 상담"),
+    ("[TEST] 판단 필요 상담이에요", "uncertain", "AI 판단 불확실 상담"),
+])
+def test_risky_consultation_keeps_slot_flow_and_adds_director_report(
+    client, parent, teacher, director, body, risk, title
+):
+    other = create(client, parent, body="[TEST] 아이가 다쳤어요", kind="inquiry")  # 다른 요청의 보고 카드는 그대로
+    rid = create(client, parent, body=body, kind="consultation")
+    saved = cards(client, director, rid)
+    assert set(saved) == {"consult_slots", "director_report"}
+    assert saved["consult_slots"]["assignee"]["id"] == str(seed.TEACHER)
+    assert saved["director_report"]["assignee"]["id"] == str(seed.DIRECTOR)
+    assert all(c["risk_level"] == risk for c in saved.values())
+    start = datetime.fromisoformat(detail(client, director, saved["director_report"]["id"])["request"]["created_at"])
+    assert all(datetime.fromisoformat(c["due_at"]) == start + timedelta(hours=2) for c in saved.values())
+    kind = "urgent_complaint" if risk == "urgent" else "uncertain_complaint"
+    assert risk_titles(client, director, rid) == {kind: title}
+    view = client.get(f"{BASE}/requests/{rid}", headers=parent).json()
+    assert view["request"]["status"] == "needs_info"
+    err(client.post(f"{BASE}/cards/{saved['consult_slots']['id']}/reclassify", headers=teacher, json={
+        "version": 1, "risk_level": "normal", "reason": "[TEST] 상담은 재분류 안 함"}), 409, "INVALID_TRANSITION")
+    slots = view["consultation"]["slots"]
+    assert choose(client, parent, rid, slots[:1]).status_code == 200
+    director_notices = client.get(f"{BASE}/notifications?size=100", headers=director).json()["total"]
+    booked = book(client, teacher, saved["consult_slots"]["id"], slots[0])
+    assert booked.status_code == 200, booked.text
+    assert booked.json()["request"]["status"] == "sent_or_booked"
+    # 원장 지시는 escalated만 받으므로 예약 확정 때 열린 원장 보고 카드를 같이 닫고, 원장 알림은 더 보내지 않아요.
+    assert detail(client, director, saved["director_report"]["id"])["card"]["status"] == "done"
+    assert client.get(f"{BASE}/notifications?size=100", headers=director).json()["total"] == director_notices
+    assert detail(client, director, cards(client, director, other)["director_report"]["id"])["card"]["status"] == "pending"
+
+
+@pytest.mark.parametrize("body,risk", [
+    ("[TEST] 아이가 다쳤어요. 상담하고 싶어요", "urgent"),
+    ("[TEST] 판단 필요 상담이에요", "uncertain"),
+])
+def test_risky_consultation_can_be_declined_and_closes_director_report(client, parent, teacher, director, body, risk):
+    rid = create(client, parent, body=body, kind="consultation")
+    saved = cards(client, director, rid)
+    assert saved["consult_slots"]["risk_level"] == risk
+    slots = client.get(f"{BASE}/requests/{rid}", headers=parent).json()["consultation"]["slots"]
+    assert choose(client, parent, rid, slots[:1]).status_code == 200
+    consult = detail(client, teacher, saved["consult_slots"]["id"])["card"]
+    # 판단 필요 상담도 재분류 없이 담임이 반려할 수 있고, 요청이 끝나면 원장 보고 카드도 닫혀요.
+    declined = decision(client, teacher, consult["id"], "dismiss", version=consult["version"],
+                        reason_code="slot_unavailable", reason_text="[TEST] 이번 주는 상담이 어려워요")
+    assert declined.status_code == 200, declined.text
+    assert client.get(f"{BASE}/requests/{rid}", headers=parent).json()["request"]["status"] == "rejected"
+    assert detail(client, director, saved["director_report"]["id"])["card"]["status"] == "done"

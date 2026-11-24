@@ -1,6 +1,6 @@
 -- 유치온 DB 스키마 초안 (T09) · 문서 버전 v0.16 ([제안] T54 피드·앨범 11/21 반영)
 -- 설계서: Docs/Step2/DB_스키마_설계서.md
--- 이 파일은 최종 설계 모양이다. 실제 적용은 apps/api/migrations의 0001 → 0002 → 0003 → 0004 → 0005 → 0006 → 0007 → 0008 → 0009 → 0010으로 한다.
+-- 이 파일은 최종 설계 모양이다. 실제 적용은 apps/api/migrations의 0001 → 0002 → 0003 → 0004 → 0005 → 0006 → 0007 → 0008 → 0009 → 0010 → 0011로 한다.
 -- 대상: PostgreSQL 16 + pgvector 0.8 (compose.yaml의 pgvector/pgvector:pg16). Supabase는 쓰지 않는다(설계서 5.1)
 -- 기관 경계: 기관에 속한 표끼리는 (id, org_id) 짝으로 참조해서 다른 원 행을 섞어 넣으면 DB가 거부한다
 
@@ -106,7 +106,7 @@ CREATE TABLE requests (
                                        'awaiting_review', 'approved', 'sent_or_booked', 'completed',
                                        'on_hold', 'escalated', 'rejected')),
     urgency          text CHECK (urgency IN ('low', 'normal', 'high', 'urgent')),  -- 모든 요청의 급한 정도(정렬용)
-    risk_level       text CHECK (risk_level IN ('normal', 'urgent', 'uncertain')),  -- 민원 위험 등급: 일반·긴급·판단 필요(T04 2.3)
+    risk_level       text CHECK (risk_level IN ('normal', 'urgent', 'uncertain')),  -- 문의·상담·민원 위험 등급: 일반·긴급·판단 필요(기획서 FR-03, T04 2.3)
     risk_category    text CHECK (risk_category IN ('child_safety', 'staff_attack',
                                                    'legal_external', 'privacy_leak')),  -- 긴급 4가지
     risk_confidence  real CHECK (risk_confidence BETWEEN 0 AND 1),  -- 기준값은 T06 평가로 정함
@@ -126,7 +126,7 @@ CREATE TABLE requests (
     UNIQUE (requester_id, client_request_id),
     UNIQUE (id, org_id),
     CHECK (previous_request_id IS DISTINCT FROM id),
-    CHECK (risk_level IS NULL OR type = 'complaint'),
+    CHECK (risk_level IS NULL OR type IN ('inquiry', 'consultation', 'complaint')),  -- 투약·귀가는 위험 등급 없음
     CHECK (risk_level IS DISTINCT FROM 'urgent' OR risk_category IS NOT NULL),
     CHECK (parent_confirmed_at IS NULL OR type = 'complaint')
 );

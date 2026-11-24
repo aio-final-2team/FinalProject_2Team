@@ -343,14 +343,19 @@ def _run_mock_ai(req: Request, trace_id: str | None) -> None:
     req.assignee_id = teacher
     set_request_status(req, "assigned", action="assigned", actor_type="agent", agent_name="supervisor",
                        trace_id=trace_id)
+    summary = req.body[:60]
+    high_risk = req.risk_level in ("urgent", "uncertain")
     if req.type == "consultation":
         card = _new_card(req, "consult_slots", teacher)
         _propose_slots(card, teacher)
         set_request_status(req, "needs_info", action="info_requested", card=card, actor_type="agent",
                            agent_name="code", trace_id=trace_id)
+        director = director_of(req.org_id)
+        if high_risk and director:
+            # DB 백엔드와 같이 상담 흐름은 두고 원장 보고 카드와 알림만 더해요.
+            report = _new_card(req, "director_report", director, draft={"summary": summary})
+            add_event(req, "escalated", card=report, actor_type="agent", agent_name="supervisor", trace_id=trace_id)
         return
-    summary = req.body[:60]
-    high_risk = req.risk_level in ("urgent", "uncertain")
     card = _new_card(req, "reply_draft", teacher, draft={
         "summary": summary,
         **({} if high_risk else {"text": "(모의 초안) 말씀해 주셔서 감사합니다. 확인해서 다시 안내드릴게요."}),
