@@ -31,12 +31,12 @@ export function ErrorState({ error, onRetry, updatedAt, title, retrying }: { err
   const nav = useNavigate();
   const { role } = useSession();
   const retryable = t.variant === "server" || t.variant === "offline" || t.variant === "timeout" || t.variant === "conflict";
-  const when = retryable && updatedAt ? ` · 마지막으로 불러온 시각 ${new Date(updatedAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}` : "";
+  const when = retryable && updatedAt ? `\n마지막으로 불러온 시각 ${new Date(updatedAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}` : "";
   /* 할 수 있는 일 하나만 (7.15): 오류는 다시 시도, 권한 없음·없는 내용은 내 첫 화면으로 */
   const action = retryable ? { label: retrying ? "다시 불러오는 중…" : t.variant === "conflict" ? "최신 내용 보기" : "다시 시도", run: onRetry } : { label: "내 첫 화면으로", run: () => nav(role ? HOME[role] : "/login") };
   return (
     <div data-state="error" data-variant={t.variant}>
-      <StateView kind={t.variant === "forbidden" ? "forbidden" : t.variant === "notfound" ? "empty" : "error"} variant={t.variant} audience={role === "parent" ? "parent" : "staff"} title={retryable ? (title ?? t.title) : t.title} sub={`${t.sub}${when}`} action={action} />
+      <StateView kind={t.variant === "forbidden" ? "forbidden" : t.variant === "notfound" ? "empty" : "error"} variant={t.variant} audience={role === "parent" ? "parent" : "staff"} title={retryable && t.variant !== "conflict" ? (title ?? t.title) : t.title} sub={`${t.sub}${when}`} action={action} />
     </div>
   );
 }
@@ -47,7 +47,7 @@ export function StaleBanner({ queries }: { queries: UseQueryResult<unknown>[] })
   if (!failed) return null;
   return (
     <div role="status" data-state="stale" className="mb-3 flex items-center justify-between gap-2 rounded-lg bg-card px-3 py-2.5 text-footnote shadow-card">
-      <span className="min-w-0">최신 내용을 불러오지 못했어요. 보이는 내용은 이전 것이에요.</span>
+      <span className="min-w-0 whitespace-pre-line break-keep text-pretty">{"최신 내용을 불러오지 못했어요.\n보이는 내용은 마지막으로 받은 내용이에요"}</span>
       <button type="button" onClick={() => queries.forEach((q) => q.isError && q.refetch())} className="h-8 shrink-0 rounded-md bg-tint px-2.5 font-semibold text-accent-ink active:scale-[.97]">
         다시 시도
       </button>

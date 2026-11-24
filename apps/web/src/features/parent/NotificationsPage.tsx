@@ -2,6 +2,7 @@ import { Link, useNavigate } from "react-router";
 import { useNotifications, useReadNotification, type Notification } from "@/api/notifications";
 import { Buddy } from "@/components/Brand";
 import { Icon } from "@/components/Icon";
+import { QueryState } from "@/components/QueryState";
 
 /** 학부모 알림 목록 (API 11). 알림장 알림(daily_note)을 누르면 홈의 오늘 알림장으로, 요청 알림은 요청 상세로 간다 */
 export function NotificationsPage() {
@@ -23,11 +24,8 @@ export function NotificationsPage() {
       </Link>
       <h1 className="text-large-title font-bold tracking-[-0.025em]">알림</h1>
       <p className="mb-4 mt-0.5 text-footnote font-medium text-ink2">{items.filter((n) => !n.read_at).length}개 안 읽음</p>
-      {list.isLoading ? (
-        <p className="py-10 text-center text-callout text-ink2">불러오는 중…</p>
-      ) : list.isError ? (
-        <p className="rounded-lg bg-danger-tint p-4 text-callout text-danger">알림을 불러오지 못했어요. 잠시 뒤 다시 열어 주세요.</p>
-      ) : !items.length ? (
+      <QueryState queries={[list]} skeleton={3} errorTitle="알림을 불러오지 못했어요">
+      {!items.length ? (
         <div className="grid justify-items-center gap-2 py-12 text-center">
           <Buddy face="waiting" className="size-20" />
           <b className="text-headline">새 알림이 없어요</b>
@@ -48,6 +46,7 @@ export function NotificationsPage() {
           ))}
         </ul>
       )}
+      </QueryState>
     </div>
   );
 }

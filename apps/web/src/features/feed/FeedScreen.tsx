@@ -1,0 +1,152 @@
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useSearchParams } from "react-router";
+import { api } from "@/api/client";
+import { useChildren } from "@/api/notes";
+import { useAlbum, useDeletePost, useHidePost, usePosts, type Lane, type Photo, type Post } from "@/api/feed";
+import { useSession } from "@/app/session";
+import { AuthPhoto } from "@/components/AuthPhoto";
+import { BackLink } from "@/components/BackLink";
+import { Button } from "@/components/Button";
+import { Dock, PrimaryButton, SubButton } from "@/components/Dock";
+import { QueryState } from "@/components/QueryState";
+import { Sheet } from "@/components/Sheet";
+import { StateView } from "@/components/StateView";
+import { useToast } from "@/components/Toast";
+import type { Role } from "@/domain/types";
+import { ComposeSheet, type Kid } from "./ComposeSheet";
+import { PhotoViewer, PostCard } from "./parts";
+import { ScopeSheet } from "./ScopeSheet";
+
+type TabKey = "class" | "org" | "album";
+const TABS: Record<Role, { key: TabKey; label: string }[]> = {
+  parent: [{ key: "class", label: "우리 반" }, { key: "org", label: "원 전체" }, { key: "album", label: "앨범" }],
+  teacher: [{ key: "org", label: "원 소식" }, { key: "album", label: "앨범" }],
+  director: [{ key: "org", label: "원 소식" }, { key: "album", label: "앨범" }],
+};
+type Me = { children: { id: string; display_name: string; classroom_id: string }[] };
+
+/**
+ * 소식(피드)과 앨범 (API 38~49 [제안]). 사진 AI가 없어서 올리는 사람이 아이를 직접 고른다.
+ * 반 칸은 그 반 보호자만 읽고 쓰고(교사는 403), 원 칸은 같은 원 교직원과 보호자가 쓴다.
+ */
+export function FeedScreen({ role }: { role: Role }) {
+  const { user } = useSession();
+  const toast = useToast();
+  const [params, setParams] = useSearchParams();
+  const tabs = TABS[role];
+  const tab = (tabs.find((t) => t.key === params.get("tab"))?.key ?? tabs[0].key) as TabKey;
+
+  const me = useQuery({ queryKey: ["me"], queryFn: () => api<Me>("/api/v1/me"), enabled: role === "parent" });
+  const classKids = useChildren(role === "teacher" ? user?.classroom_ids[0] : undefined);
+  const myKids = me.data?.children ?? [];
+  const kids: Kid[] = role === "parent" ? myKids : (classKids.data ?? []);
+
+  const [albumKind, setAlbumKind] = useState<"class" | "org">(role === "parent" ? "class" : "org");
+  const [albumChild, setAlbumChild] = useState<string | undefined>();
+  const classLane: Lane | undefined = role === "parent" && myKids[0] ? { kind: "class", id: myKids[0].classroom_id } : undefined;
+  const orgLane: Lane | undefined = user ? { kind: "org", id: user.org_id } : undefined;
+  const lane = tab === "class" ? classLane : tab === "org" ? orgLane : albumKind === "class" ? classLane : orgLane;
+
+  const posts = usePosts(tab === "album" ? undefined : lane);
+  const album = useAlbum(tab === "album" ? lane : undefined, albumChild);
+  const del = useDeletePost();
+  const hide = useHidePost();
+
+  const [compose, setCompose] = useState(false);
+  const [scope, setScope] = useState(false);
+  const [viewer, setViewer] = useState<{ photos: Photo[]; index: number } | null>(null);
+  const [confirm, setConfirm] = useState<{ kind: "delete" | "hide"; post: Post } | null>(null);
+
+  const audience = role === "parent" ? "parent" : "staff";
+  const laneLabel = (tab === "album" ? albumKind : tab) === "class" ? "우리 반 소식" : "원 전체 소식";
+  const waiting = role === "parent" ? [me] : [];
+
+  const actionOf = (p: Post) => {
+    if (p.author_id === user?.id) return { label: "삭제", run: () => setConfirm({ kind: "delete", post: p }) };
+    if (role === "director" && p.lane === "org") return { label: "숨기기", run: () => setConfirm({ kind: "hide", post: p }) };
+    return undefined;
+  };
+  const doConfirm = () => {
+    if (!confirm) return;
+    const { kind, post } = confirm;
+    const run = kind === "delete" ? del : hide;
+    run.mutate(post.id, {
+      onSuccess: () => { setConfirm(null); toast({ kind: "ok", title: kind === "delete" ? "글을 지웠어요" : "글을 숨겼어요" }); },
+      onError: () => { setConfirm(null); toast({ kind: "error", title: kind === "delete" ? "글을 지우지 못했어요" : "글을 숨기지 못했어요", sub: "연결을 확인하고 다시 눌러 주세요" }); },
+    });
+  };
+
+  return (
+    <div className="mx-auto max-w-[680px] px-4 pb-48 lg:pb-10">
+      {role === "teacher" ? <BackLink to="/teacher/home" label="홈" className="mt-2" /> : <div className="pt-4" />}
+      <h1 className="text-large-title font-bold tracking-[-0.025em]">{role === "parent" ? "소식" : "원 소식"}</h1>
+      <p className="mb-4 mt-0.5 text-footnote font-medium text-ink2">{role === "parent" ? "우리 반과 원의 이야기, 사진을 볼 수 있어요" : "원 전체에 올라온 이야기와 사진이에요"}</p>
+
+      <div role="tablist" aria-label="소식 종류" className="mb-4 grid grid-flow-col gap-1 rounded-md bg-fill p-1">
+        {tabs.map((t) => (
+          <button key={t.key} role="tab" aria-selected={tab === t.key} onClick={() => setParams({ tab: t.key }, { replace: true })} className={`h-9 rounded-sm text-footnote font-semibold ${tab === t.key ? "bg-card shadow-card" : "text-ink2"}`}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "album" ? (
+        <>
+          {role === "parent" && (
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              {(["class", "org"] as const).map((k) => (
+                <button key={k} aria-pressed={albumKind === k} onClick={() => setAlbumKind(k)} className={`h-9 rounded-full border px-3 text-footnote font-semibold ${albumKind === k ? "border-accent bg-tint text-accent-ink" : "border-sep bg-card"}`}>{k === "class" ? "우리 반" : "원 전체"}</button>
+              ))}
+              {myKids.length > 1 &&
+                [{ id: undefined, display_name: "전체" } as { id?: string; display_name: string }, ...myKids].map((k) => (
+                  <button key={k.id ?? "all"} aria-pressed={albumChild === k.id} onClick={() => setAlbumChild(k.id)} className={`h-9 rounded-full border px-3 text-footnote font-semibold ${albumChild === k.id ? "border-accent bg-tint text-accent-ink" : "border-sep bg-card"}`}>{k.display_name}</button>
+                ))}
+              <SubButton small className="ml-auto" onClick={() => setScope(true)}>공개 범위</SubButton>
+            </div>
+          )}
+          <QueryState queries={[...waiting, album]} skeleton={3} errorTitle="앨범을 불러오지 못했어요">
+            {album.data && album.data.length > 0 ? (
+              <ul className="grid grid-cols-3 gap-1 overflow-hidden rounded-lg">
+                {album.data.map((p, i) => (
+                  <li key={p.id}>
+                    <button type="button" onClick={() => setViewer({ photos: album.data!, index: i })} aria-label={`사진 ${i + 1}장 크게 보기`} className="block w-full active:opacity-80">
+                      <AuthPhoto photo={p} className="aspect-square w-full" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <StateView kind="empty" audience={audience} title="아직 사진이 없어요" sub="글에 사진을 올리면 여기에 모여요" />
+            )}
+          </QueryState>
+        </>
+      ) : (
+        <QueryState queries={[...waiting, posts]} skeleton={3} errorTitle="소식을 불러오지 못했어요">
+          {posts.data && posts.data.length > 0 ? (
+            <div className="grid gap-3">
+              {posts.data.map((p) => (
+                <PostCard key={p.id} post={p} mine={p.author_id === user?.id} action={actionOf(p)} onOpenPhoto={(i) => setViewer({ photos: p.photos, index: i })} />
+              ))}
+            </div>
+          ) : (
+            <StateView kind="empty" audience={audience} title="아직 올라온 소식이 없어요" sub="첫 글을 올려 보세요" />
+          )}
+        </QueryState>
+      )}
+
+      <Dock>
+        <PrimaryButton onClick={() => setCompose(true)} disabled={!lane}>글 올리기</PrimaryButton>
+      </Dock>
+
+      <ComposeSheet open={compose} onClose={() => setCompose(false)} lane={lane} kids={kids} laneLabel={laneLabel} />
+      <ScopeSheet open={scope} onClose={() => setScope(false)} kid={myKids.find((k) => k.id === albumChild) ?? myKids[0]} />
+      {viewer && <PhotoViewer photos={viewer.photos} index={viewer.index} onIndex={(i) => setViewer({ ...viewer, index: i })} onClose={() => setViewer(null)} />}
+      <Sheet open={!!confirm} onClose={() => setConfirm(null)} title={confirm?.kind === "hide" ? "이 글을 숨길까요?" : "이 글을 지울까요?"}>
+        <p className="text-footnote text-ink2">{confirm?.kind === "hide" ? "숨기면 모두에게 보이지 않아요." : "올린 사진도 함께 지워지고 되돌릴 수 없어요."}</p>
+        <Button variant="danger" loading={del.isPending || hide.isPending} onClick={doConfirm}>{confirm?.kind === "hide" ? "숨기기" : "지우기"}</Button>
+        <Button variant="plain" size="sm" onClick={() => setConfirm(null)}>취소</Button>
+      </Sheet>
+    </div>
+  );
+}

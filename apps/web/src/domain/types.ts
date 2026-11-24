@@ -45,6 +45,7 @@ export type CardAction =
   | { action: "reject"; reason: string }
   | { action: "hold"; reason: string; until: string }
   | { action: "escalate" }
+  | { action: "resume" }
   | { action: "complete"; reason?: string }
   | { action: "reclassify"; risk: "normal" | "urgent"; reason: string; riskCategory?: "child_safety" | "staff_attack" | "legal_external" | "privacy_leak" }
   | { action: "confirm_slot"; slotId: string }

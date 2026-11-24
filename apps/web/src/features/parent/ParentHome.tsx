@@ -2,6 +2,7 @@ import { Link } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/api/client";
 import { Buddy } from "@/components/Brand";
+import { QueryState } from "@/components/QueryState";
 import { Dock, SubButton } from "@/components/Dock";
 import { Icon } from "@/components/Icon";
 import { useToast } from "@/components/Toast";
@@ -47,9 +48,8 @@ export function ParentHome() {
       </header>
 
       <div className="mx-auto max-w-[680px] px-4 pt-4">
-        {notes.isLoading || me.isLoading ? (
-          <p className="py-10 text-center text-callout text-ink2">불러오는 중…</p>
-        ) : !note ? (
+        <QueryState queries={[me, notes]} skeleton={3} errorTitle="오늘 알림장을 불러오지 못했어요">
+        {!note ? (
           <div className="grid justify-items-center gap-2 py-12 text-center">
             <Buddy face="waiting" className="size-20" />
             <b className="text-headline">아직 오늘 알림장이 오지 않았어요</b>
@@ -85,6 +85,7 @@ export function ParentHome() {
             </div>
           </article>
         )}
+        </QueryState>
       </div>
 
       {note && (

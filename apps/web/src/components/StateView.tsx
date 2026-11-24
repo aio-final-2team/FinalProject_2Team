@@ -8,22 +8,30 @@ type Kind = "loading" | "empty" | "error" | "forbidden";
  * 새 그림은 없이 기존 '온' 심볼 움직임(blink·scan·closed)·배지 아이콘과 말풍선 친구 표정만 조합한다.
  */
 export type Variant = "server" | "offline" | "timeout" | "forbidden" | "notfound" | "conflict";
-const LAV = "from-[#A8A3F4] to-[#5562F0]";
-const MINT = "from-[#5BE0BC] to-[#2FB58C]";
-const NAVY = "from-[#2A3B5C] to-[#0B1F3A]";
-const VARIANT: Record<Variant, { motion: "blink" | "scan" | "closed"; shake?: boolean; badge: { cls: string; icon: string }; face: "sorry" | "waiting" | "check" | "guide"; move: string }> = {
-  server: { motion: "blink", shake: true, badge: { cls: LAV, icon: "retry" }, face: "sorry", move: "m-shake" },
-  offline: { motion: "blink", badge: { cls: LAV, icon: "pending" }, face: "waiting", move: "m-float" },
-  timeout: { motion: "scan", badge: { cls: LAV, icon: "pending" }, face: "waiting", move: "m-bob" },
-  forbidden: { motion: "closed", badge: { cls: NAVY, icon: "lock" }, face: "check", move: "m-tilt" },
-  notfound: { motion: "blink", badge: { cls: MINT, icon: "approve" }, face: "guide", move: "m-float" },
-  conflict: { motion: "scan", badge: { cls: LAV, icon: "retry" }, face: "guide", move: "m-bob" },
+type Motion = "blink" | "blink2" | "scan" | "scan2" | "closed";
+type Face = "sorry" | "waiting" | "check";
+/**
+ * 마크 규칙 (11/24 정함)
+ * - 모든 상태에 움직임이 있다: 눈 움직임(교사) 또는 몸 움직임(학부모)이 멈추지 않고 이어진다. 움직임 줄이기 설정이면 시스템이 멈춘다.
+ * - 배지 색: 교사·원장은 전부 라벤더, 학부모는 전부 네이비. 배지 모양이 원인을 알려 준다.
+ * - 학부모 표정: 기다리는 표정(waiting)·확인하는 표정(check)만 쓴다. 미안해하는 표정(sorry)은 서버 오류 전용, 안내하는 표정(guide)은 완료 때만 쓴다.
+ */
+const STAFF_BADGE = "from-[#A8A3F4] to-[#5562F0]";
+const PARENT_BADGE = "from-[#2A3B5C] to-[#0B1F3A]";
+/** once: 한 번 하는 움직임(흔들기·기울이기), loop: 계속 이어지는 움직임 */
+const VARIANT: Record<Variant, { motion: Motion; icon: string; face: Face; once?: string; loop: string }> = {
+  server: { motion: "blink2", icon: "retry", face: "sorry", once: "m-shake", loop: "m-float" },
+  offline: { motion: "blink", icon: "wifi-off", face: "waiting", loop: "m-float" },
+  timeout: { motion: "scan", icon: "hourglass", face: "waiting", loop: "m-bob" },
+  forbidden: { motion: "closed", icon: "lock", face: "check", once: "m-tilt", loop: "m-sway" },
+  notfound: { motion: "scan", icon: "search", face: "check", loop: "m-float" },
+  conflict: { motion: "scan2", icon: "overlap", face: "check", loop: "m-float" },
 };
-/** 배지 색도 브랜드 색: + 블루 · 체크 민트 · 다시 시도 라벤더→블루 · 자물쇠 네이비 */
-const BADGE: Record<Exclude<Kind, "loading">, { cls: string; icon: string }> = {
-  empty: { cls: "from-[#3D63F2] to-[#2440C8]", icon: "plus" },
-  error: { cls: LAV, icon: "retry" },
-  forbidden: { cls: NAVY, icon: "lock" },
+/** variant 없이 쓰는 기본 상태 */
+const KIND: Record<Exclude<Kind, "loading">, { motion: Motion; icon: string; face: Face; once?: string; loop: string }> = {
+  empty: { motion: "blink", icon: "plus", face: "waiting", loop: "m-float" },
+  error: VARIANT.server,
+  forbidden: VARIANT.forbidden,
 };
 
 /**
@@ -45,18 +53,23 @@ export function StateView({
   action?: { label: string; run: () => void; primary?: boolean };
   variant?: Variant;
 }) {
-  const v = variant ? VARIANT[variant] : undefined;
-  const staffBadge = v ? v.badge : kind === "empty" ? { cls: MINT, icon: "approve" } : kind !== "loading" ? BADGE[kind] : null;
-  const parentBadge = v ? v.badge : kind !== "loading" ? BADGE[kind] : null;
-  const badge = audience === "parent" ? parentBadge : staffBadge;
+  const v = variant ? VARIANT[variant] : kind === "loading" ? undefined : KIND[kind];
+  const badge = v ? { cls: audience === "parent" ? PARENT_BADGE : STAFF_BADGE, icon: v.icon } : null;
+  /* 움직임은 두 겹: 바깥은 한 번 하는 움직임, 안쪽은 계속 이어지는 움직임 */
+  const once = v?.once ?? "";
+  const loop = v?.loop ?? "m-bob";
   const mark =
     audience === "parent" ? (
-      <span className={v ? v.move : kind === "loading" ? "m-bob" : kind === "empty" ? "m-float" : kind === "error" ? "m-shake" : "m-tilt"}>
-        <Buddy face={v ? v.face : kind === "loading" ? "processing" : kind === "empty" ? "guide" : kind === "error" ? "sorry" : "check"} className="size-24" />
+      <span className={once}>
+        <span className={`inline-block ${loop}`}>
+          <Buddy face={v ? v.face : "processing"} className="size-24" />
+        </span>
       </span>
     ) : (
-      <span className={v ? (v.shake ? "m-shake" : "") : kind === "error" ? "m-shake" : ""}>
-        <SymbolMark className="size-16" motion={v ? v.motion : kind === "loading" ? "scan" : kind === "forbidden" ? "closed" : "blink"} />
+      <span className={once}>
+        <span className={`inline-block ${v ? loop : ""}`}>
+          <SymbolMark className="size-16" motion={v ? v.motion : "scan"} />
+        </span>
       </span>
     );
   return (
@@ -76,8 +89,8 @@ export function StateView({
           ))}
         </span>
       )}
-      {title && <b className="text-body font-bold tracking-tight">{title}</b>}
-      {sub && <p className="text-sub text-ink2">{sub}</p>}
+      {title && <b className="text-balance break-keep text-body font-bold tracking-tight">{title}</b>}
+      {sub && <p className="max-w-[300px] whitespace-pre-line text-pretty break-keep text-sub text-ink2">{sub}</p>}
       {action && (
         <Button variant={action.primary ? "primary" : "tinted"} className="mt-2 w-full max-w-[260px]" onClick={action.run}>
           {action.label}
