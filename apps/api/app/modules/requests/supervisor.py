@@ -5,6 +5,7 @@ import os
 import re
 from pathlib import Path
 
+import agents.llm
 from agents.llm import ModelError, OpenAIModel
 from app.core.request_rules import RISK_TYPES, classify
 
@@ -12,7 +13,7 @@ TOPICS = {"safety", "meal", "teacher", "belongings", "fee", "pickup_bus", "peer_
           "health_hygiene", "photo_record", "communication", "other"}
 RISK_CATEGORIES = {"child_safety", "staff_attack", "legal_external", "privacy_leak"}
 LEVEL = {"normal": 0, "uncertain": 1, "urgent": 2}
-PROMPTS = Path(__file__).resolve().parents[5] / "agents" / "prompts"
+PROMPTS = Path(agents.llm.__file__).resolve().parent / "prompts"
 OUT_OF_SCOPE_KINDS = {"payment", "others_privacy", "other_family", "other_teacher"}
 
 
@@ -25,17 +26,17 @@ def _scope_kind(body):
         return "other_teacher"
     if re.search(r"결제\s*(?:해|할|하고|부탁)|카드로\s*결제", body):
         return "payment"
-    if re.search(other, body) and re.search(r"민원|요청|알림장|기록|정보|내용|보여|알려", body):
+    record_owner = r"다른\s*(?:집|가정|아이)|남의|친구\s*(?:엄마|아빠)"
+    if (not re.search(r"우리\s*(?:아이|애)|저희\s*아이", body)
+            and re.search(record_owner, body)
+            and re.search(r"민원|요청|알림장|기록", body)
+            and re.search(r"보여|알려|볼\s*수", body)):
         return "other_family"
     return None
 
 
 def _code_classification(request_type, body):
-    result = classify(request_type, body)
-    # 등원이라는 낱말이 있어도 수족구 문의의 주제는 건강이다.
-    if "수족구" in body:
-        result["topic_key"] = "health_hygiene"
-    return result
+    return classify(request_type, body)
 
 
 def classify_request(request_type, body, writer=None):
