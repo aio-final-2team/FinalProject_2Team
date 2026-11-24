@@ -1,6 +1,8 @@
 """투약·귀가 요청의 사람이 확인하는 경로(T46 팀 확인 전 초안)."""
 
-from app.core.care import care_view, check_decision
+from uuid import UUID
+
+from app.core.care import care_view, check_decision, check_parent_change, updated_detail
 from app.core.constants import CARE_REQUEST_TYPES, UNREGISTERED_PICKUP_CHECK
 from app.core.errors import ApiError
 from app.mock import seed, store
@@ -45,13 +47,45 @@ def decision(user, request_id, body):
                 snapshot = validate_guardian(user, req.child_id, body.pickup_guardian_id)
         if target:
             req.assignee_id = user.id
-            store.set_request_status(req, target, action="checked" if body.decision == "confirm" else "completed",
+            action = {"confirm": "checked", "complete": "completed", "reject": "dismissed"}[body.decision]
+            store.set_request_status(req, target, action=action,
                                      actor_type="user", actor_id=user.id, care_decision=body.decision,
-                                     version=current["version"], pickup_snapshot=snapshot)
+                                     version=current["version"], pickup_snapshot=snapshot,
+                                     **({"reason_text": body.reason_text.strip()} if body.decision == "reject" else {}))
             if body.decision == "confirm" and current["unregistered_pickup"]:
                 store.add_event(req, "checked", actor_type="user", actor_id=user.id,
                                 unregistered_pickup=True, label=UNREGISTERED_PICKUP_CHECK, version=current["version"],
                                 pickup_snapshot=snapshot)
+        return {"request": {"id": req.id, "status": req.status}, "care": view(req)}
+
+
+def cancel(user, request_id):
+    with store._lock:
+        req = store.request_in_scope(user, request_id)
+        current = view(req)
+        check_parent_change(req.type, req.status, current)
+        store.set_request_status(req, "rejected", action="cancelled", actor_type="user", actor_id=user.id,
+                                 cancelled_by_parent=True, version=current["version"])
+        return {"request": {"id": req.id, "status": req.status}, "care": view(req)}
+
+
+def update(user, request_id, body):
+    with store._lock:
+        req = store.request_in_scope(user, request_id)
+        current = view(req)
+        check_parent_change(req.type, req.status, current, body.version)
+        detail, fields = updated_detail(req.type, req.care_detail, body)
+        if req.type == "pickup" and detail.get("pickup_guardian_id"):
+            detail = validate_guardian(user, req.child_id, UUID(detail["pickup_guardian_id"]))
+        changed_pickup = req.type == "pickup" and detail != req.care_detail and not detail.get("pickup_guardian_id")
+        req.care_detail = detail
+        req.missing_fields = care_view([], req.type, detail)["missing_fields"]
+        store.set_request_status(req, "received", action="care_updated", actor_type="user", actor_id=user.id,
+                                 fields=fields, version=current["version"] + 1)
+        if changed_pickup:
+            store.add_event(req, "checked", actor_type="user", actor_id=user.id,
+                            unregistered_pickup=True, label=UNREGISTERED_PICKUP_CHECK,
+                            version=current["version"] + 1, pickup_snapshot=detail)
         return {"request": {"id": req.id, "status": req.status}, "care": view(req)}
 
 
@@ -68,7 +102,9 @@ def listing(user, classroom_id, status, page, size, sort):
         rows.sort(key=lambda r: (getattr(r, sort.lstrip("-")), str(r.id)), reverse=sort.startswith("-"))
         return {"items": [{"id": r.id, "type": r.type, "title": r.title, "status": r.status,
                            "child_id": r.child_id, "child_name": store.state().children[r.child_id].display_name,
-                           "status_label": staff_label(r.status, r.type), "updated_at": r.updated_at,
-                           **{k: v for k, v in view(r).items() if k in ("version", "unregistered_pickup", "missing_fields")},
+                           "status_label": staff_label(r.status, r.type,
+                                                       cancelled_by_parent=current["cancelled_by_parent"]), "updated_at": r.updated_at,
+                           **{k: v for k, v in current.items() if k in ("version", "unregistered_pickup", "missing_fields")},
                            "next_action": "confirm" if r.status == "received" else "complete" if r.status == "assigned" else None}
-                          for r in rows[(page-1)*size:page*size]], "total": len(rows), "page": page, "size": size}
+                          for r in rows[(page-1)*size:page*size] for current in (view(r),)],
+                "total": len(rows), "page": page, "size": size}

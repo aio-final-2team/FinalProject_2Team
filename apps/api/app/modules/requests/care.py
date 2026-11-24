@@ -1,9 +1,11 @@
 """T46 등록 인계자 조회·재검사와 교직원 실제 확인. 요청 행 잠금으로 직렬화해요."""
 
+import json
+
 from sqlalchemy import text
 
 from app.core import scope
-from app.core.care import care_view, check_decision
+from app.core.care import care_view, check_decision, check_parent_change, updated_detail
 from app.core.constants import UNREGISTERED_PICKUP_CHECK
 from app.core.db import transaction
 from app.core.errors import ApiError
@@ -56,13 +58,50 @@ def decision(user, request_id, body):
             connection.execute(text("UPDATE requests SET assignee_id=:user WHERE id=:id"),
                                {"id": request_id, "user": user.id})
             req["assignee_id"] = user.id
-            set_status(connection, req, target, action="checked" if body.decision == "confirm" else "completed",
+            action = {"confirm": "checked", "complete": "completed", "reject": "dismissed"}[body.decision]
+            set_status(connection, req, target, action=action,
                        actor_type="user", actor_id=user.id, care_decision=body.decision,
-                       version=current["version"], pickup_snapshot=snapshot)
+                       version=current["version"], pickup_snapshot=snapshot,
+                       **({"reason_text": body.reason_text.strip()} if body.decision == "reject" else {}))
             if body.decision == "confirm" and current["unregistered_pickup"]:
                 record(connection, req, "checked", actor_type="user", actor_id=user.id,
                        unregistered_pickup=True, label=UNREGISTERED_PICKUP_CHECK, version=current["version"],
                        pickup_snapshot=snapshot)
+        return {"request": {"id": req["id"], "status": req["status"]}, "care": view(connection, req)}
+
+
+def cancel(user, request_id):
+    with transaction() as connection:
+        scope.request_in_scope(user, request_id, connection=connection)
+        req = dict(connection.execute(text("SELECT * FROM requests WHERE id=:id FOR NO KEY UPDATE"),
+                                      {"id": request_id}).mappings().one())
+        current = view(connection, req)
+        check_parent_change(req["type"], req["status"], current)
+        set_status(connection, req, "rejected", action="cancelled", actor_type="user", actor_id=user.id,
+                   cancelled_by_parent=True, version=current["version"])
+        return {"request": {"id": req["id"], "status": req["status"]}, "care": view(connection, req)}
+
+
+def update(user, request_id, body):
+    with transaction() as connection:
+        scope.request_in_scope(user, request_id, connection=connection)
+        req = dict(connection.execute(text("SELECT * FROM requests WHERE id=:id FOR NO KEY UPDATE"),
+                                      {"id": request_id}).mappings().one())
+        current = view(connection, req)
+        check_parent_change(req["type"], req["status"], current, body.version)
+        detail, fields = updated_detail(req["type"], req["care_detail"], body)
+        if req["type"] == "pickup" and detail.get("pickup_guardian_id"):
+            detail = validate_guardian(connection, user, req["child_id"], detail["pickup_guardian_id"])
+        changed_pickup = req["type"] == "pickup" and detail != req["care_detail"] and not detail.get("pickup_guardian_id")
+        missing = care_view([], req["type"], detail)["missing_fields"]
+        connection.execute(text("UPDATE requests SET care_detail=CAST(:care AS jsonb),missing_fields=CAST(:missing AS jsonb) WHERE id=:id"),
+                           {"id": request_id, "care": json.dumps(detail), "missing": json.dumps(missing)})
+        set_status(connection, req, "received", action="care_updated", actor_type="user", actor_id=user.id,
+                   fields=fields, version=current["version"] + 1)
+        if changed_pickup:
+            record(connection, req, "checked", actor_type="user", actor_id=user.id,
+                   unregistered_pickup=True, label=UNREGISTERED_PICKUP_CHECK,
+                   version=current["version"] + 1, pickup_snapshot=detail)
         return {"request": {"id": req["id"], "status": req["status"]}, "care": view(connection, req)}
 
 
@@ -87,8 +126,10 @@ def listing(user, classroom_id, status, page, size, sort):
                "user": user.id, "director": user.role == "director"}).mappings().all()
         rows = sorted(rows, key=lambda r: (r[sort.lstrip("-")], str(r["id"])), reverse=sort.startswith("-"))
         return {"items": [{**{k: r[k] for k in ("id", "type", "title", "status", "updated_at", "child_id", "child_name")},
-                           "status_label": staff_label(r["status"], r["type"]),
-                           **{k: v for k, v in view(connection, r).items()
+                           "status_label": staff_label(r["status"], r["type"],
+                                                       cancelled_by_parent=current["cancelled_by_parent"]),
+                           **{k: v for k, v in current.items()
                               if k in ("version", "unregistered_pickup", "missing_fields")},
                            "next_action": "confirm" if r["status"] == "received" else "complete" if r["status"] == "assigned" else None}
-                          for r in rows[(page-1)*size:page*size]], "total": len(rows), "page": page, "size": size}
+                          for r in rows[(page-1)*size:page*size] for current in (view(connection, r),)],
+                "total": len(rows), "page": page, "size": size}

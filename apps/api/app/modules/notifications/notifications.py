@@ -4,7 +4,7 @@ from sqlalchemy import text
 
 from app.api.labels import parent_label
 from app.core.care import unregistered_pickup_key
-from app.core.constants import (CARE_REQUEST_TYPES, CARE_MESSAGE_NOTICE, UNREGISTERED_PICKUP_CHECK,
+from app.core.constants import (CARE_REQUEST_TYPES, CARE_MESSAGE_NOTICE, CARE_UPDATED_NOTICE, UNREGISTERED_PICKUP_CHECK,
                                 consultation_booking_body, notification_title, rejection_body)
 from app.core.schedule import deliver_after
 
@@ -48,17 +48,25 @@ def notify_event(connection, event, req, card):
                 event["detail"].get("preferred_times"))
         return
     if req.get("type") in CARE_REQUEST_TYPES:
-        if event["detail"].get("unregistered_pickup"):
+        if action == "cancelled":
+            recipient = req["assignee_id"] or connection.scalar(text(
+                "SELECT id FROM users WHERE org_id=:org AND role='director' AND is_active ORDER BY id LIMIT 1"),
+                {"org": req["org_id"]})
+            enqueue(connection, event, req, recipient, "cancelled")
+        elif event["detail"].get("care_decision") == "reject":
+            enqueue(connection, event, req, req["requester_id"], "care_rejected", event["detail"]["reason_text"])
+        elif event["detail"].get("unregistered_pickup"):
             director = connection.scalar(text(
                 "SELECT id FROM users WHERE org_id=:org AND role='director' AND is_active ORDER BY id LIMIT 1"),
                 {"org": req["org_id"]})
             enqueue(connection, event, req, director, "care_requested", UNREGISTERED_PICKUP_CHECK,
                     dedupe_key=unregistered_pickup_key(req["id"], event["detail"].get("pickup_snapshot", {})))
-        elif event["detail"].get("care_message"):
+        elif event["detail"].get("care_message") or action == "care_updated":
             recipient = req["assignee_id"] or connection.scalar(text(
                 "SELECT id FROM users WHERE org_id=:org AND role='director' AND is_active ORDER BY id LIMIT 1"),
                 {"org": req["org_id"]})
-            enqueue(connection, event, req, recipient, "care_requested", CARE_MESSAGE_NOTICE)
+            enqueue(connection, event, req, recipient, "care_requested",
+                    CARE_UPDATED_NOTICE if action == "care_updated" else CARE_MESSAGE_NOTICE)
         elif action == "created" and to == "received":
             recipient = req["assignee_id"] or connection.scalar(text(
                 "SELECT id FROM users WHERE org_id=:org AND role='director' AND is_active ORDER BY id LIMIT 1"),

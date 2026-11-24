@@ -384,6 +384,18 @@ def test_request_notification_kinds_and_trace_audit(client, parent, teacher, dir
     for action in ("confirm", "complete"):
         assert client.post(f"{BASE}/requests/{care_id}/care-decisions", headers=teacher,
                            json={"decision": action, "version": 1}).status_code == 200
+    for action in ("reject", "cancel"):
+        created = client.post(BASE + "/requests", headers=parent, json={
+            "client_request_id": f"care-notification-{action}", "type": "medication", "child_id": str(seed.CHILD),
+            "body": "[TEST] 반려·취소 알림"})
+        assert created.status_code == 202, created.text
+        care_id = created.json()["request"]["id"]
+        if action == "cancel":
+            result = client.post(f"{BASE}/requests/{care_id}/cancel", headers=parent)
+        else:
+            result = client.post(f"{BASE}/requests/{care_id}/care-decisions", headers=teacher,
+                                 json={"decision": "reject", "version": 1, "reason_text": "[TEST] 재확인 필요"})
+        assert result.status_code == 200, result.text
     # 시간·지연 기록으로 만드는 두 종류는 test_consultation_reminders에서 양쪽 저장소로 검사해요.
     assert {n.kind for n in store.state().notifications.values()} == set(TITLES) - set(KINDS)
 

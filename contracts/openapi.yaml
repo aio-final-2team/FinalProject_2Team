@@ -125,6 +125,7 @@ paths:
             - received
             - assigned
             - completed
+            - rejected
             type: string
           - type: 'null'
           title: Status
@@ -192,7 +193,7 @@ paths:
     post:
       tags:
       - 학부모 요청
-      summary: 투약·인계 실제 확인·완료 기록 (T46 팀 확인 전 초안)
+      summary: 투약·인계 실제 확인·완료·반려 기록 (T46 팀 확인 전 초안)
       operationId: care_decision_api_v1_requests__request_id__care_decisions_post
       security:
       - HTTPBearer: []
@@ -210,6 +211,118 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/CareDecisionIn'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CareDecisionOut'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+  /api/v1/requests/{request_id}/cancel:
+    post:
+      tags:
+      - 학부모 요청
+      summary: 학부모 투약·귀가 요청 취소 (제안)
+      operationId: cancel_care_api_v1_requests__request_id__cancel_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: request_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Request Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CareDecisionOut'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+  /api/v1/requests/{request_id}/care:
+    patch:
+      tags:
+      - 학부모 요청
+      summary: 학부모 투약·귀가 입력 수정 (제안)
+      operationId: update_care_api_v1_requests__request_id__care_patch
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: request_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Request Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CareUpdateIn'
       responses:
         '200':
           description: Successful Response
@@ -3254,18 +3367,25 @@ components:
           enum:
           - confirm
           - complete
+          - reject
           title: Decision
         version:
           type: integer
           minimum: 1.0
           title: Version
-          description: 교직원이 본 care.version. 보호자 새 글마다 증가해요
+          description: 교직원이 본 care.version. 보호자 새 글·입력 수정마다 증가해요
         pickup_guardian_id:
           anyOf:
           - type: string
             format: uuid
           - type: 'null'
           title: Pickup Guardian Id
+        reason_text:
+          anyOf:
+          - type: string
+            maxLength: 1000
+          - type: 'null'
+          title: Reason Text
       type: object
       required:
       - decision
@@ -3479,6 +3599,54 @@ components:
       - id
       - status
       title: CareState
+    CareUpdateIn:
+      properties:
+        version:
+          type: integer
+          minimum: 1.0
+          title: Version
+          description: 학부모가 본 care.version
+        pickup_guardian_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Pickup Guardian Id
+        pickup_name:
+          anyOf:
+          - type: string
+            maxLength: 100
+          - type: 'null'
+          title: Pickup Name
+        pickup_relation:
+          anyOf:
+          - type: string
+            maxLength: 100
+          - type: 'null'
+          title: Pickup Relation
+        medication_name:
+          anyOf:
+          - type: string
+            maxLength: 100
+          - type: 'null'
+          title: Medication Name
+        medication_dose:
+          anyOf:
+          - type: string
+            maxLength: 100
+          - type: 'null'
+          title: Medication Dose
+        medication_time:
+          anyOf:
+          - type: string
+            maxLength: 100
+          - type: 'null'
+          title: Medication Time
+      additionalProperties: false
+      type: object
+      required:
+      - version
+      title: CareUpdateIn
     CheckSummary:
       properties:
         passed:
@@ -4671,6 +4839,8 @@ components:
           - consultation_delayed
           - care_requested
           - care_confirmed
+          - care_rejected
+          - cancelled
           title: Kind
         title:
           type: string

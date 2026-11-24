@@ -19,7 +19,8 @@ def detail(user, request_id):
         for e in store.events_of(req.id):
             if e.to_status is None:
                 continue
-            text = label(e.to_status, req.type, req.assignee_id, req.parent_confirmed_at)
+            text = label(e.to_status, req.type, req.assignee_id, req.parent_confirmed_at,
+                         cancelled_by_parent=e.detail.get("cancelled_by_parent", False))
             if not timeline or timeline[-1].label != text:
                 timeline.append(TimelineItem(label=text, at=e.created_at))
         consultation = None
@@ -33,7 +34,8 @@ def detail(user, request_id):
         care_state = care.view(req) if req.type in CARE_REQUEST_TYPES else None
         return RequestDetailOut(
             request=RequestView(id=req.id, type=req.type, title=req.title, status=req.status,
-                                status_label=label(req.status, req.type, req.assignee_id, req.parent_confirmed_at),
+                                status_label=label(req.status, req.type, req.assignee_id, req.parent_confirmed_at,
+                                                   cancelled_by_parent=bool(care_state and care_state["cancelled_by_parent"])),
                                 missing_fields=care_state["missing_fields"] if care_state else req.missing_fields,
                                 hold_until=store.hold_until_of(req.id), parent_confirmed_at=req.parent_confirmed_at,
                                 created_at=req.created_at, updated_at=req.updated_at),
@@ -41,7 +43,8 @@ def detail(user, request_id):
                                  created_at=m.created_at) for m in store.messages_of(req.id)],
             timeline=timeline, consultation=consultation,
             care=care_state,
-            rejection=store.rejection_of(req.id) if req.status == "rejected" else None,
+            rejection=(care_state["rejection"] if care_state else store.rejection_of(req.id))
+                      if req.status == "rejected" else None,
             sources=[source for card in store.approved_cards_of(req.id)
                      for source in documents.evidence(card, parent=user.role == "parent")]
                      if req.status in ("sent_or_booked", "completed") else [],
@@ -156,7 +159,10 @@ def listing(user, status, page, size, sort):
             if r.type == "complaint" and r.status == "sent_or_booked" and r.parent_confirmed_at is None:
                 action = "답변을 확인해 주세요"
             return {"id": r.id, "type": r.type, "title": r.title, "status": r.status,
-                    "status_label": parent_label(r.status, r.type, r.assignee_id, r.parent_confirmed_at), "updated_at": r.updated_at,
+                    "status_label": parent_label(r.status, r.type, r.assignee_id, r.parent_confirmed_at,
+                                                 cancelled_by_parent=care.view(r)["cancelled_by_parent"]
+                                                 if r.type in CARE_REQUEST_TYPES and r.status == "rejected" else False),
+                    "updated_at": r.updated_at,
                     "next_action": action, "hold_until": store.hold_until_of(r.id)}
         return {"items": [item(r) for r in requests[(page-1)*size:page*size]], "total": len(requests), "page": page, "size": size}
 

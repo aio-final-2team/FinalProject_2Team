@@ -197,9 +197,10 @@ def detail(user, request_id):
         label = parent_label if user.role == "parent" else staff_label
         timeline = []
         for event in connection.execute(text("""
-            SELECT to_status,created_at FROM events WHERE request_id=:id AND org_id=:org AND to_status IS NOT NULL ORDER BY id
+            SELECT to_status,detail,created_at FROM events WHERE request_id=:id AND org_id=:org AND to_status IS NOT NULL ORDER BY id
         """), values).mappings():
-            name = label(event["to_status"], req["type"], req["assignee_id"], req["parent_confirmed_at"])
+            name = label(event["to_status"], req["type"], req["assignee_id"], req["parent_confirmed_at"],
+                         cancelled_by_parent=event["detail"].get("cancelled_by_parent", False))
             if not timeline or timeline[-1]["label"] != name:
                 timeline.append({"label": name, "at": event["created_at"]})
         consultation = None
@@ -238,9 +239,12 @@ def detail(user, request_id):
         care_state = care.view(connection, req) if req["type"] in CARE_REQUEST_TYPES else None
         if care_state:
             req["missing_fields"] = care_state["missing_fields"]
+            rejection = care_state["rejection"] if req["status"] == "rejected" else None
         return {"request": {**{key: req[key] for key in (
                     "id", "type", "title", "status", "missing_fields", "parent_confirmed_at", "created_at", "updated_at")},
-                    "status_label": label(req["status"], req["type"], req["assignee_id"], req["parent_confirmed_at"]), "hold_until": _hold_until(connection, req)},
+                    "status_label": label(req["status"], req["type"], req["assignee_id"], req["parent_confirmed_at"],
+                                          cancelled_by_parent=bool(care_state and care_state["cancelled_by_parent"])),
+                    "hold_until": _hold_until(connection, req)},
                 "messages": [dict(row) for row in messages], "sources": [dict(row) for row in sources],
                 "timeline": timeline, "consultation": consultation,
                 "care": care_state, "rejection": dict(rejection) if rejection else None}
@@ -264,7 +268,10 @@ def listing(user, status, page, size, sort):
             if req["type"] == "complaint" and req["status"] == "sent_or_booked" and req["parent_confirmed_at"] is None:
                 action = "답변을 확인해 주세요"
             items.append({**{key: req[key] for key in ("id", "type", "title", "status", "updated_at")},
-                          "status_label": parent_label(req["status"], req["type"], req["assignee_id"], req["parent_confirmed_at"]), "next_action": action,
+                          "status_label": parent_label(req["status"], req["type"], req["assignee_id"], req["parent_confirmed_at"],
+                                                       cancelled_by_parent=care.view(connection, req)["cancelled_by_parent"]
+                                                       if req["type"] in CARE_REQUEST_TYPES and req["status"] == "rejected" else False),
+                          "next_action": action,
                           "hold_until": _hold_until(connection, req)})
         return {"items": items, "total": len(requests), "page": page, "size": size}
 

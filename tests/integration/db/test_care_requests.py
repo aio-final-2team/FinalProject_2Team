@@ -235,3 +235,81 @@ def test_note_listing_uses_one_connection_and_one_bulk_request_query(db_client, 
     assert listed.status_code == 200, listed.text
     assert len(listed.json()["items"]) == 20
     assert len(opens) == len(queries) == 1
+
+
+@pytest.mark.parametrize("action", ["care_updated", "cancelled", "dismissed"])
+def test_care_mutations_roll_back_values_events_and_notifications_together(db_client, seeded_db, monkeypatch, action):
+    rid, teacher = setup_request(db_client)
+    login = db_client.post(BASE + "/auth/login", json={"login_id": "parent01", "password": "demo1234"})
+    parent = {"Authorization": "Bearer " + login.json()["access_token"]}
+    before = db_client.get(f"{BASE}/requests/{rid}", headers=parent).json()
+    with seeded_db.connect() as connection:
+        count = connection.scalar(text("SELECT count(*) FROM notifications WHERE request_id=:id"), {"id": rid})
+        audit = connection.scalar(text("SELECT count(*) FROM events WHERE request_id=:id"), {"id": rid})
+    original = events.notify_event
+    def fail(connection, event, req, card):
+        original(connection, event, req, card)
+        if event["action"] == action:
+            raise RuntimeError("[TEST] 돌봄 이력 뒤 실패")
+    monkeypatch.setattr(events, "notify_event", fail)
+    if action == "care_updated":
+        result = db_client.patch(f"{BASE}/requests/{rid}/care", headers=parent,
+                                 json={"version": 1, "medication_name": "[TEST] 바꾸면 안 되는 값"})
+    elif action == "cancelled":
+        result = db_client.post(f"{BASE}/requests/{rid}/cancel", headers=parent)
+    else:
+        result = db_client.post(f"{BASE}/requests/{rid}/care-decisions", headers=teacher,
+                                json={"version": 1, "decision": "reject", "reason_text": "[TEST] 사유"})
+    assert result.status_code == 500, result.text
+    assert db_client.get(f"{BASE}/requests/{rid}", headers=parent).json() == before
+    with seeded_db.connect() as connection:
+        assert connection.scalar(text("SELECT count(*) FROM notifications WHERE request_id=:id"), {"id": rid}) == count
+        assert connection.scalar(text("SELECT count(*) FROM events WHERE request_id=:id"), {"id": rid}) == audit
+        assert connection.scalar(text("SELECT care_detail->>'medication_name' FROM requests WHERE id=:id"), {"id": rid}) is None
+
+
+@pytest.mark.parametrize("first_action", ["care_updated", "cancelled", "completed"])
+def test_care_mutations_serialize_with_completion(db_client, seeded_db, monkeypatch, first_action):
+    from app.modules.requests import care
+
+    rid, teacher = setup_request(db_client)
+    login = db_client.post(BASE + "/auth/login", json={"login_id": "parent01", "password": "demo1234"})
+    parent = {"Authorization": "Bearer " + login.json()["access_token"]}
+    entered, release, second_started = Event(), Event(), Event()
+    original = care.set_status
+    def pause(connection, req, status, **kwargs):
+        if kwargs["action"] == first_action:
+            entered.set()
+            assert release.wait(5)
+        return original(connection, req, status, **kwargs)
+    monkeypatch.setattr(care, "set_status", pause)
+    def send(first):
+        with TestClient(app) as client:
+            if not first:
+                second_started.set()
+            if first and first_action == "care_updated":
+                return client.patch(f"{BASE}/requests/{rid}/care", headers=parent,
+                                    json={"version": 1, "medication_dose": "[TEST] 1mL"})
+            if (first and first_action == "cancelled") or (not first and first_action == "completed"):
+                return client.post(f"{BASE}/requests/{rid}/cancel", headers=parent)
+            return client.post(f"{BASE}/requests/{rid}/care-decisions", headers=teacher,
+                               json={"version": 1, "decision": "complete"})
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(send, True)
+        assert entered.wait(5)
+        second = pool.submit(send, False)
+        try:
+            assert second_started.wait(5)
+            with pytest.raises(TimeoutError):
+                second.result(timeout=0.25)
+        finally:
+            release.set()
+        assert first.result(timeout=5).status_code == 200
+        rejected = second.result(timeout=5)
+    expected = "CARD_VERSION_CONFLICT" if first_action == "care_updated" else "INVALID_TRANSITION"
+    assert rejected.status_code == 409 and rejected.json()["error"]["code"] == expected
+    detail = db_client.get(f"{BASE}/requests/{rid}", headers=parent).json()
+    assert detail["request"]["status"] == {"care_updated": "received", "cancelled": "rejected", "completed": "completed"}[first_action]
+    if first_action == "care_updated":
+        assert detail["care"]["version"] == 2 and detail["care"]["confirmed_at"] is None
+        assert detail["care"]["medication_dose"] == "[TEST] 1mL"

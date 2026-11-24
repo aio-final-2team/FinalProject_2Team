@@ -4,7 +4,7 @@ from dataclasses import replace
 
 from app.api.labels import parent_label
 from app.core.care import unregistered_pickup_key
-from app.core.constants import (CARE_REQUEST_TYPES, CARE_MESSAGE_NOTICE, UNREGISTERED_PICKUP_CHECK,
+from app.core.constants import (CARE_REQUEST_TYPES, CARE_MESSAGE_NOTICE, CARE_UPDATED_NOTICE, UNREGISTERED_PICKUP_CHECK,
                                 NOTIFICATION_TITLES as TITLES, consultation_booking_body, notification_title, rejection_body)
 from app.core.schedule import deliver_after
 from app.core.errors import ApiError
@@ -53,11 +53,16 @@ def notify_event(ev, req, card):
                ev.detail.get("preferred_times"))
         return
     if req.type in CARE_REQUEST_TYPES:
-        if ev.detail.get("unregistered_pickup"):
+        if ev.action == "cancelled":
+            create(ev, req.assignee_id or store.director_of(req.org_id), "cancelled")
+        elif ev.detail.get("care_decision") == "reject":
+            create(ev, req.requester_id, "care_rejected", ev.detail["reason_text"])
+        elif ev.detail.get("unregistered_pickup"):
             create(ev, store.director_of(req.org_id), "care_requested", UNREGISTERED_PICKUP_CHECK,
                    dedupe_key=unregistered_pickup_key(req.id, ev.detail.get("pickup_snapshot", {})))
-        elif ev.detail.get("care_message"):
-            create(ev, req.assignee_id or store.director_of(req.org_id), "care_requested", CARE_MESSAGE_NOTICE)
+        elif ev.detail.get("care_message") or ev.action == "care_updated":
+            create(ev, req.assignee_id or store.director_of(req.org_id), "care_requested",
+                   CARE_UPDATED_NOTICE if ev.action == "care_updated" else CARE_MESSAGE_NOTICE)
         elif ev.action == "created" and ev.to_status == "received":
             create(ev, req.assignee_id or store.director_of(req.org_id), "care_requested")
         elif ev.detail.get("care_decision") in ("confirm", "complete"):
