@@ -4,22 +4,19 @@
 대역은 입력 원문만 옮긴다. 저장·상태·이벤트 처리는 runner가 맡는다.
 """
 
+from agents.graphs.daily_note import code_checks, common_lines
 from app.mock.seed import REQUEST_PICKUP
 
 
 def common_content(payload):
-    items = [
-        {"key": "day", "label": "오늘 하루", "value": payload["activities"],
-         "source": {"type": "teacher_input"}},
-        {"key": "supplies", "label": "준비물", "value": payload["supplies"],
-         "source": {"type": "teacher_input"}},
-    ]
-    if payload["menu"] is not None:
-        menu = payload["menu"]
-        items.append({"key": "meal", "label": "식사", "value": menu["text"],
-                      "source": {"type": "document", "document_id": menu["document_id"],
-                                 "document_title": menu["title"]}})
-    return {"items": items}
+    return {"items": list(common_lines(payload).values())}
+
+
+def other_child_checks(payload, child, content):
+    names = payload.get("roster_names", [c["display_name"] for c in payload["children"]])
+    own = [line for line in content["items"] if line["key"] not in ("day", "supplies", "meal")]
+    return [{"id": f"other-child-{i}", **check} for i, check in enumerate(code_checks(own, child, names))
+            if check["kind"] == "other_child"]
 
 
 def failed_child(payload, child):
@@ -48,6 +45,7 @@ def write_child(payload, child, index):
         else:
             content["items"].append({"key": key, "label": "보호자 요청", "value": request["text"],
                                      "source": {"type": "request", "request_id": request["request_id"]}})
+    checks.extend(other_child_checks(payload, child, content))
     return {"child_id": child["child_id"], "content": content, "open_checks": checks}
 
 

@@ -3,8 +3,8 @@
 from collections import Counter
 from datetime import timedelta
 
-from app.api.labels import staff_label
-from app.mock import cards, documents, store
+from app.api.labels import note_batch_label, staff_label
+from app.mock import cards, documents, notes, store
 
 FILTERS = ("unassigned", "needs_review", "uncertain", "on_hold", "in_progress", "done")
 
@@ -44,8 +44,11 @@ def item(card):
     req = store.state().requests.get(card.request_id)
     classroom = store.state().classrooms.get(cards.classroom_of(card))
     check = card.check_result
+    note_batch = notes.batch_view(card.subject_id, card.org_id) if card.subject_type == "daily_note_batch" else None
     return {"id": card.id, "kind": card.kind, "status": card.status, "version": card.version,
-            "status_label": staff_label(req.status, req.type, card_kind=card.kind) if req else "확인 필요" if card.status == "pending" else "완료",
+            "status_label": staff_label(req.status, req.type, card_kind=card.kind) if req else note_batch_label(card.status, note_batch["draft_status"], card.draft.get("validation_result"))
+            if note_batch else "확인 필요" if card.status == "pending" else "완료",
+            "note_batch": note_batch,
             "request_id": card.request_id, "request_type": req.type if req else None,
             "title": req.title if req else card.draft.get("summary", ""), "urgency": req.urgency if req else None,
             "risk_level": req.risk_level if req else None,
@@ -103,8 +106,11 @@ def detail(user, card_id):
                         and store.state().cards[a.card_id].request_id == card.request_id] if req else []
         instruction = instructions[-1] if instructions and card.kind != "director_report" else None
         rule = store.state().rules.get(card.subject_id) if card.kind == "rule_proposal" else None
+        note_batch = notes.batch_view(card.subject_id, card.org_id) if card.subject_type == "daily_note_batch" else None
         return {"card": {k: getattr(card, k) for k in ("id", "kind", "status", "version", "draft", "check_result", "check_attempts")}
-                        | {"summary": card.draft.get("summary", "")}, "request": staff_request(req, card.kind) if req else None,
+                        | {"summary": card.draft.get("summary", ""), "note_batch": note_batch,
+                           "status_label": note_batch_label(card.status, note_batch["draft_status"], card.draft.get("validation_result")) if note_batch else None},
+                "request": staff_request(req, card.kind) if req else None,
                 "evidence": evidence, "warnings": warnings,
                 "messages": [{"id": m.id, "sender_type": m.sender_type, "sender_role": m.sender_role,
                               "body": m.body, "created_at": m.created_at}

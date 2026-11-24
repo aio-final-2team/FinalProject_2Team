@@ -3,11 +3,14 @@
 from dataclasses import replace
 from datetime import datetime
 import json
+from concurrent.futures import ThreadPoolExecutor
+from threading import Event
 from uuid import UUID
 
 import pytest
 from sqlalchemy import text
 
+from agents import llm
 from agents.graphs import daily_note as graph
 from agents.llm import ModelError, OpenAIModel
 from app.core.auth import issue_token
@@ -37,7 +40,7 @@ def graph_models(monkeypatch):
                 return self.answer(value)
 
         models = {"DOCUMENT": FakeModel(writer), "CHECKER": FakeModel(checker)}
-        monkeypatch.setattr(graph, "OpenAIModel", lambda role: models[role])
+        monkeypatch.setattr(llm, "OpenAIModel", lambda role: models[role])
         return models
 
     return install
@@ -156,7 +159,7 @@ def test_graph_model_failure_isolated_to_one_child(db_client, teacher, graph_mod
 
 
 def test_graph_entry_exception_marks_whole_job_failed(db_client, teacher, seeded_db, graph_models, monkeypatch):
-    def fail(payload):
+    def fail(payload, *, writer, checker):
         raise RuntimeError("[TEST] 그래프 전체 실패")
 
     monkeypatch.setattr(graph, "draft_daily_notes", fail)
@@ -166,3 +169,57 @@ def test_graph_entry_exception_marks_whole_job_failed(db_client, teacher, seeded
     assert status["draft_status"] == "failed" and status["error"]["code"] == "UPSTREAM_UNAVAILABLE"
     with seeded_db.connect() as connection:
         assert connection.scalar(text("SELECT count(*) FROM daily_notes")) == 0
+
+
+@pytest.mark.parametrize("blocked_role", ["DOCUMENT", "CHECKER"])
+def test_superseded_graph_stops_before_next_model_call(
+        db_client, teacher, seeded_db, monkeypatch, graph_models, blocked_role):
+    started, release = Event(), Event()
+    runs, calls = [], []
+
+    class FakeModel:
+        def __init__(self, role):
+            if role == "DOCUMENT":
+                runs.append(len(runs))
+            self.run, self.role = runs[-1], role
+
+        def json(self, system, user):
+            calls.append((self.run, self.role))
+            value = json.loads(user)
+            if self.run == 0 and self.role == blocked_role:
+                started.set()
+                assert release.wait(20), "[TEST] 이전 호출 해제 시간 초과"
+            if self.role == "DOCUMENT":
+                return echo_writer(value)
+            return {"checks": [{"item_key": "child", "kind": "not_in_memo", "problem": "[TEST] 다시 쓰기"}]
+                    if self.run == 0 else []}
+
+    monkeypatch.setattr(llm, "OpenAIModel", FakeModel)
+    with seeded_db.begin() as connection:
+        # 한 아이의 메모만 모델을 호출하게 해서 옛 실행의 호출 수를 정확히 센다.
+        connection.execute(text("UPDATE requests SET created_at=created_at-interval '1 day'"))
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        previous = pool.submit(draft, db_client, teacher,
+                               [{"child_id": str(seed.CHILD), "memo": "[TEST] 블록 놀이"}])
+        try:
+            assert started.wait(15), "[TEST] 이전 호출 시작 시간 초과"
+            with seeded_db.begin() as connection:
+                input_id = connection.scalar(text("SELECT id FROM daily_note_inputs"))
+                connection.execute(text("""
+                    UPDATE cards SET draft=draft || '{"draft_started_at":"2020-01-01T00:00:00+09:00"}'::jsonb
+                    WHERE subject_id=:id
+                """), {"id": input_id})
+            response = db_client.post(f"{BASE}/daily-notes/drafts/{input_id}/regenerate", headers=teacher)
+            before = notes(db_client, teacher, response)
+            assert all(n["status"] == "draft" for n in before)
+        finally:
+            release.set()
+        old_response = previous.result(timeout=15)
+    assert notes(db_client, teacher, old_response) == before
+    assert [role for run, role in calls if run == 0] == (
+        ["DOCUMENT"] if blocked_role == "DOCUMENT" else ["DOCUMENT", "CHECKER"])
+    assert [role for run, role in calls if run == 1] == ["DOCUMENT", "CHECKER"]
+    with seeded_db.connect() as connection:
+        assert connection.scalar(text("SELECT draft_status FROM daily_note_inputs")) == "succeeded"
+        assert connection.scalar(text("SELECT count(*) FROM events WHERE action='tool_failed'")) == 0
+        assert connection.scalar(text("SELECT count(*) FROM events WHERE action='daily_note_drafted'")) == 20

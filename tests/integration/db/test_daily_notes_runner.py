@@ -49,6 +49,42 @@ def set_writer(monkeypatch, writer):
                                                   daily_note_writer="app.modules.daily_notes.stub_writer:test_write"))
 
 
+@pytest.mark.parametrize("regenerating", [False, True])
+def test_request_received_during_writer_is_kept_as_missed_check_at_save(db_client, teacher, monkeypatch, regenerating):
+    started, release = Event(), Event()
+    input_id = draft(db_client, teacher).json()["input_id"] if regenerating else None
+
+    def writer(payload):
+        started.set()
+        assert release.wait(15)
+        return stub_writer.write(payload)
+
+    set_writer(monkeypatch, writer)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(lambda: db_client.post(f"{BASE}/daily-notes/drafts/{input_id}/regenerate", headers=teacher)
+                             if regenerating else draft(db_client, teacher))
+        try:
+            assert started.wait(15)
+            parent = {"Authorization": "Bearer " + issue_token(users.get_user(seed.PARENT))}
+            created = db_client.post(BASE + "/requests", headers=parent, json={
+                "client_request_id": f"late-writer-{regenerating}", "child_id": str(seed.CHILD),
+                "type": "medication", "body": "[TEST] 작성 중 새 투약 요청"})
+            assert created.status_code == 202, created.text
+            request_id = created.json()["request"]["id"]
+            pending = next((n for n in notes(db_client, teacher) if n["child_id"] == str(seed.CHILD)), None)
+            original_check = next(c for c in pending["open_checks"] if c["request_id"] == request_id) if pending else None
+        finally:
+            release.set()
+        assert future.result(timeout=15).status_code == 202
+    note = next(n for n in notes(db_client, teacher) if n["child_id"] == str(seed.CHILD))
+    checks = [c for c in note["open_checks"] if c["request_id"] == request_id]
+    assert note["status"] == "needs_check" and len(checks) == 1
+    assert checks[0]["kind"] == "request_missed"
+    if original_check:
+        assert checks[0] == original_check
+    assert not any(line["source"]["request_id"] == request_id for line in note["content"]["items"])
+
+
 def test_startup_recovers_running_and_queued_without_replaying_finished(seeded_db, monkeypatch):
     from app import backend, main
     from app.api.schemas.actions import NoteDraftIn
@@ -184,7 +220,7 @@ def test_background_claims_running_and_deduplicates_concurrent_input(db_client, 
     assert response.status_code == 202 and response.json()["draft_status"] == "queued"
     assert len(captured) == 1 and len(notes(db_client, teacher)) == 20
     payload = captured[0]
-    assert set(payload) == {"input_id", "note_date", "classroom", "activities", "supplies", "children", "menu"}
+    assert set(payload) == {"input_id", "note_date", "classroom", "activities", "supplies", "children", "menu", "roster_names"}
     assert payload["classroom"] == {"id": str(seed.CLASS_STAR), "name": "만 4세 별빛반"}
     assert set(payload["children"][0]) == {"child_id", "display_name", "memo", "requests"}
     assert payload["menu"]["document_id"] == str(seed.MENU)
@@ -251,6 +287,26 @@ def test_bad_writer_configuration_marks_failed_with_safe_queryable_error(db_clie
             SELECT e.action,e.actor_type FROM events e JOIN cards c ON c.id=e.card_id
             WHERE c.subject_type='daily_note_batch' AND c.subject_id=:id
         """), {"id": response.json()["input_id"]}).all() == [("tool_failed", "system")]
+
+
+def test_unknown_writer_check_preserves_draft_and_logs_only_kind(db_client, teacher, monkeypatch, caplog):
+    def writer(payload):
+        rows = stub_writer.write(payload)
+        target = next(row for row in rows if row["child_id"] == str(seed.CHILD))
+        target["open_checks"].append({"id": "future", "item_key": "child", "kind": "future_check",
+                                      "problem": "[TEST] 설명은 그대로", "sentence": "[TEST] 비공개 문장"})
+        return rows
+
+    set_writer(monkeypatch, writer)
+    draft(db_client, teacher, child_memos=[{"child_id": str(seed.CHILD), "memo": "[TEST] 보존할 메모"}])
+    child = next(n for n in notes(db_client, teacher) if n["child_id"] == str(seed.CHILD))
+    assert child["status"] == "needs_check"
+    assert [c["kind"] for c in child["open_checks"]] == ["date_check", "check_failed"]
+    check = child["open_checks"][-1]
+    assert check["problem"] == "[TEST] 설명은 그대로" and check["sentence"] == "[TEST] 비공개 문장"
+    assert any(line["value"] == "[TEST] 보존할 메모" for line in child["content"]["items"])
+    assert "future_check" in caplog.text
+    assert all(value not in caplog.text for value in ("보존할 메모", "설명은 그대로", "비공개 문장"))
 
 
 @pytest.mark.parametrize("memo", ["열이 났음", "넘어져 다침", "약 먹음"])

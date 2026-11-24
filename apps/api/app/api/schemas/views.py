@@ -97,6 +97,19 @@ class CheckSummary(BaseModel):
     issue_count: int
 
 
+class NoteBatchChild(BaseModel):
+    child_id: UUID
+    display_name: str
+    note_id: UUID | None
+    status: Literal["missing", "draft", "needs_check", "ready", "sent"]
+
+
+class NoteBatchView(BaseModel):
+    input_id: UUID
+    draft_status: Literal["queued", "running", "succeeded", "failed"]
+    children: list[NoteBatchChild]
+
+
 class CardItem(BaseModel):
     id: UUID
     kind: CardKind
@@ -118,6 +131,7 @@ class CardItem(BaseModel):
     due_at: datetime | None
     is_delayed: bool
     hold_until: date | None
+    note_batch: NoteBatchView | None = None
 
 
 class CardList(Page):
@@ -132,6 +146,8 @@ class CardView(CardState):
     draft: dict
     check_result: dict | None
     check_attempts: int
+    status_label: str | None = None
+    note_batch: NoteBatchView | None = None
 
 
 class EvidenceView(SourceOut):
@@ -246,9 +262,9 @@ class Overview(BaseModel):
 class NotificationView(BaseModel):
     id: int
     kind: Literal["needs_info", "new_card", "urgent_complaint", "uncertain_complaint", "director_report",
-                  "on_hold", "sent_or_booked", "parent_confirmed", "completed", "rejected", "note_sent",
+                  "on_hold", "sent_or_booked", "parent_confirmed", "completed", "rejected", "note_sent", "note_corrected",
                   "slot_hold_expired", "hold_resumed", "consultation_ending", "consultation_delayed", "care_requested", "care_confirmed",
-                  "care_rejected", "cancelled"]
+                  "care_rejected", "cancelled", "parent_message", "reassigned", "consultation_booked"]
     title: str
     body: str | None
     request_id: UUID | None
@@ -284,7 +300,7 @@ class RegenerateResponse(DraftResponse):
 class OpenCheck(BaseModel):
     id: str
     item_key: str
-    kind: Literal["not_in_memo", "sensitive", "other_child", "date_check", "absent", "draft_failed", "check_failed", "request_missed"]
+    kind: Literal["not_in_memo", "sensitive", "other_child", "date_check", "absent", "draft_failed", "check_failed", "request_missed", "return_limit"]
     problem: str
     sentence: str | None = None
     request_id: UUID | None = None
@@ -307,6 +323,8 @@ class NoteView(BaseModel):
     open_checks: list[OpenCheck]
     confirmed_at: datetime | None
     sent_at: datetime | None
+    version: int = Field(ge=1, description="정정용 판. 정정 성공마다 1 증가해요")
+    corrected_at: datetime | None
 
 
 class NoteListItem(NoteView):

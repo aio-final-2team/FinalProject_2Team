@@ -5,12 +5,13 @@ from datetime import datetime, timedelta
 
 from sqlalchemy import text
 
-from app.api.labels import staff_label
+from app.api.labels import note_batch_label, staff_label
 from app.core import scope
 from app.core.db import transaction
 from app.core.schedule import KST
 from app.modules.requests.complaints import repeat_count
 from app.modules.requests.requests import _expire, _hold_until
+from app.modules.daily_notes.notes import batch_view
 
 FILTERS = ("unassigned", "needs_review", "uncertain", "on_hold", "in_progress", "done")
 
@@ -97,9 +98,12 @@ def _item(connection, card):
         .one_or_none()
     )
     check = card["check_result"]
+    note_batch = batch_view(connection, card["subject_id"], card["org_id"]) if card["subject_type"] == "daily_note_batch" else None
     return {k: card[k] for k in ("id", "kind", "status", "version", "request_id", "due_at", "hold_until")} | {
         "status_label": staff_label(req["status"], req["type"], card_kind=card["kind"])
         if req
+        else note_batch_label(card["status"], note_batch["draft_status"], card["draft"].get("validation_result"))
+        if note_batch
         else "확인 필요"
         if card["status"] == "pending"
         else "완료",
@@ -120,6 +124,7 @@ def _item(connection, card):
         "classroom": dict(classroom) if classroom else None,
         "assignee": dict(person) if person else None,
         "is_delayed": bool(card["due_at"] and card["due_at"] < datetime.now(KST)),
+        "note_batch": note_batch,
     }
 
 
@@ -246,9 +251,11 @@ def detail(user, card_id):
                 {"org": user.org_id, "request": card["request_id"], "id": card_id},
             ).mappings()
         ]
+        note_batch = batch_view(connection, card["subject_id"], card["org_id"]) if card["subject_type"] == "daily_note_batch" else None
         return {
             "card": {k: card[k] for k in ("id", "kind", "status", "version", "draft", "check_result", "check_attempts")}
-            | {"summary": card["draft"].get("summary", "")},
+            | {"summary": card["draft"].get("summary", ""), "note_batch": note_batch,
+               "status_label": note_batch_label(card["status"], note_batch["draft_status"], card["draft"].get("validation_result")) if note_batch else None},
             "request": staff_request(connection, req, card["kind"]) if req else None,
             "messages": [dict(row) for row in connection.execute(text("""
                 SELECT m.id,m.sender_type,CASE WHEN m.sender_type='user' THEN u.role END AS sender_role,m.body,m.created_at

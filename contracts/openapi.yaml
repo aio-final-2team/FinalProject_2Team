@@ -1949,6 +1949,66 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
           description: Unprocessable Entity
+  /api/v1/daily-notes/{note_id}/correct:
+    post:
+      tags:
+      - 알림장·자료
+      summary: Correct Note
+      description: '[제안] 보낸 알림장만 정정하고 보호자에게 알림을 남겨요. 현재 version이 필요해요.'
+      operationId: correct_note_api_v1_daily_notes__note_id__correct_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: note_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Note Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NoteCorrectIn'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NoteResponse'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
   /api/v1/daily-notes/send:
     post:
       tags:
@@ -3235,6 +3295,10 @@ components:
             format: date
           - type: 'null'
           title: Hold Until
+        note_batch:
+          anyOf:
+          - $ref: '#/components/schemas/NoteBatchView'
+          - type: 'null'
       type: object
       required:
       - id
@@ -3349,6 +3413,15 @@ components:
         check_attempts:
           type: integer
           title: Check Attempts
+        status_label:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Status Label
+        note_batch:
+          anyOf:
+          - $ref: '#/components/schemas/NoteBatchView'
+          - type: 'null'
       type: object
       required:
       - id
@@ -4538,6 +4611,37 @@ components:
       required:
       - message
       title: MessageResponse
+    NoteBatchChild:
+      properties:
+        child_id:
+          type: string
+          format: uuid
+          title: Child Id
+        display_name:
+          type: string
+          title: Display Name
+        note_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Note Id
+        status:
+          type: string
+          enum:
+          - missing
+          - draft
+          - needs_check
+          - ready
+          - sent
+          title: Status
+      type: object
+      required:
+      - child_id
+      - display_name
+      - note_id
+      - status
+      title: NoteBatchChild
     NoteBatchIn:
       properties:
         classroom_id:
@@ -4553,6 +4657,31 @@ components:
       - classroom_id
       - note_date
       title: NoteBatchIn
+    NoteBatchView:
+      properties:
+        input_id:
+          type: string
+          format: uuid
+          title: Input Id
+        draft_status:
+          type: string
+          enum:
+          - queued
+          - running
+          - succeeded
+          - failed
+          title: Draft Status
+        children:
+          items:
+            $ref: '#/components/schemas/NoteBatchChild'
+          type: array
+          title: Children
+      type: object
+      required:
+      - input_id
+      - draft_status
+      - children
+      title: NoteBatchView
     NoteContent:
       properties:
         items:
@@ -4575,6 +4704,26 @@ components:
       required:
       - items
       title: NoteContentOut
+    NoteCorrectIn:
+      properties:
+        version:
+          type: integer
+          minimum: 1.0
+          title: Version
+        content:
+          $ref: '#/components/schemas/NoteContent'
+        reason_text:
+          type: string
+          maxLength: 500
+          minLength: 1
+          pattern: \S
+          title: Reason Text
+      type: object
+      required:
+      - version
+      - content
+      - reason_text
+      title: NoteCorrectIn
     NoteDraftIn:
       properties:
         classroom_id:
@@ -4746,6 +4895,17 @@ components:
             format: date-time
           - type: 'null'
           title: Sent At
+        version:
+          type: integer
+          minimum: 1.0
+          title: Version
+          description: 정정용 판. 정정 성공마다 1 증가해요
+        corrected_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Corrected At
         input_id:
           type: string
           format: uuid
@@ -4760,6 +4920,8 @@ components:
       - open_checks
       - confirmed_at
       - sent_at
+      - version
+      - corrected_at
       - input_id
       title: NoteListItem
     NotePatchIn:
@@ -4858,6 +5020,17 @@ components:
             format: date-time
           - type: 'null'
           title: Sent At
+        version:
+          type: integer
+          minimum: 1.0
+          title: Version
+          description: 정정용 판. 정정 성공마다 1 증가해요
+        corrected_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Corrected At
       type: object
       required:
       - id
@@ -4868,6 +5041,8 @@ components:
       - open_checks
       - confirmed_at
       - sent_at
+      - version
+      - corrected_at
       title: NoteView
     NotificationList:
       properties:
@@ -4919,6 +5094,7 @@ components:
           - completed
           - rejected
           - note_sent
+          - note_corrected
           - slot_hold_expired
           - hold_resumed
           - consultation_ending
@@ -4927,6 +5103,9 @@ components:
           - care_confirmed
           - care_rejected
           - cancelled
+          - parent_message
+          - reassigned
+          - consultation_booked
           title: Kind
         title:
           type: string
@@ -4994,6 +5173,7 @@ components:
           - draft_failed
           - check_failed
           - request_missed
+          - return_limit
           title: Kind
         problem:
           type: string

@@ -680,6 +680,8 @@ FK를 걸 수 없는 참조가 두 곳 있다. `cards.subject_id`와 `notificati
 | `daily_notes` | `confirmed_by` | `uuid` / NULL 허용, FK (confirmed_by, org_id) → users | 확인한 교사 |
 | `daily_notes` | `confirmed_at` | `timestamptz` / NULL 허용 | 교사 확인 시각 |
 | `daily_notes` | `sent_at` | `timestamptz` / NULL 허용 | 보낸 시각 |
+| `daily_notes` | `version` | `integer` / NOT NULL, 기본값 1, CHECK >=1 (0015) | 정정용 판. 정정 성공 때만 +1, 현재 판을 보내야 정정 가능 |
+| `daily_notes` | `corrected_at` | `timestamptz` / NULL 허용 (0015) | 마지막 정정 시각. 정정 전 null, 학부모 응답에도 포함 |
 | `daily_notes` | `created_at` | `timestamptz` / NOT NULL, 기본값 now() | 만든 시각 |
 | `notifications` | `id` | `bigint` / PK, 자동 증가 | 알림 ID |
 | `notifications` | `org_id` | `uuid` / NOT NULL, FK → organizations.id | 기관 |
@@ -717,29 +719,32 @@ FK를 걸 수 없는 참조가 두 곳 있다. `cards.subject_id`와 `notificati
 - `notifications` 표 제약: `CHECK ((subject_type IS NULL) = (subject_id IS NULL))` · `CHECK (subject_type = 'daily_note')`
 - `eval_runs` 표 제약: `CHECK ((passed + errors) <= total)`
 
-**알림장.** 상태 값 `draft`·`needs_check`·`ready`·`sent`는 T04 6장의 `note_drafted`·`note_needs_check`·`note_ready`·`note_sent`와 뜻이 같다. 알림장 표가 따로 있어서 앞의 `note_`만 뺐다. MVP는 반 전체를 한 번에 보내고, 반에 `needs_check`가 하나라도 있으면 보내기를 잠근다. 잠금은 두 겹이다. **아이별로는 DB CHECK가** `open_checks`가 남은 알림장을 `sent`로 바꾸지 못하게 막고, **반 단위 잠금은 API 트랜잭션이** 맡는다. API는 그 반·그날의 알림장을 모두 잠근 뒤, 하나라도 `ready`가 아니면 아무것도 보내지 않고 409 `NOTE_BATCH_BLOCKED`로 답한다(FR-10, AC-04). `ready`·`sent`로 저장하려면 교사 확인(`confirmed_by`·`confirmed_at`)도 있어야 한다(NFR-03). `content`에는 식단·일정을 `documents`에서, 투약·귀가 줄을 `requests`에서 가져와 넣는다.
+**알림장.** 상태 값 `draft`·`needs_check`·`ready`·`sent`는 T04 6장의 `note_drafted`·`note_needs_check`·`note_ready`·`note_sent`와 뜻이 같다. 알림장 표가 따로 있어서 앞의 `note_`만 뺐다. MVP는 반 전체를 한 번에 보내고, 반에 `needs_check`가 하나라도 있으면 보내기를 잠근다. 잠금은 두 겹이다. **아이별로는 DB CHECK가** `open_checks`가 남은 알림장을 `sent`로 바꾸지 못하게 막고, **반 단위 잠금은 API 트랜잭션이** 맡는다. API는 그 반·그날의 알림장을 모두 잠근 뒤, 하나라도 `ready`가 아니면 아무것도 보내지 않고 409 `NOTE_BATCH_BLOCKED`로 답한다(FR-10, AC-04). `ready`·`sent`로 저장하려면 교사 확인(`confirmed_by`·`confirmed_at`)도 있어야 한다(NFR-03). `content`에는 식단·일정을 `documents`에서, 투약·귀가 줄을 `requests`에서 가져와 넣는다. 초안 뒤 접수된 당일 보호자 투약·귀가·문의는 입력→아이 알림장 순서로 같은 잠금을 잡고 `request_missed`·`request_id`를 붙인다. ready도 확인자·시각을 비우고 needs_check로 되돌리며 기존 returned 이력을 남긴다. sent는 보존하고 반 카드 담당자에게 new_card 알림만 보낸다. 전입 아이처럼 알림장 행이 없는 현재 반 아이도 API가 발송을 막고 카드 조회에서 missing으로 표시한다. 모든 아이가 sent이면 반 카드를 done으로 닫는다.
 
 `child_memos`는 입력한 메모 원문을 보관한다. DB는 배열인지와 NOT NULL만 검사한다. 아이 ID, 메모 길이(1~500자), 같은 아이가 두 번 들어갔는지, 그 아이가 그 반 소속인지는 API가 검사한다(API 설계 문서). 0002를 0001로 되돌리면 이 컬럼과 CHECK가 없어지므로 저장한 메모도 함께 사라지고, 다른 입력 칸은 그대로 남는다. 0003을 되돌리면 `ai_original`과 알림장 이력 연결(`events.daily_note_id`), 알림장 이력 네 종류가 사라진다.
 
-**초안 실패와 복구 기록.** 초안 작업이 실패하면 반 입력에는 `draft_status = 'failed'`만 남는다. 그래서 실패를 감지한 때부터 다시 시도해 결과를 검증할 때까지를 이력으로 따로 남긴다. 기록 형식은 Auto-Healing 가이드의 incident 기록 칸을 그대로 쓴다. 칸은 `incident_id`·`detected_failure`·`selected_strategy`·`retry_count`·`fallback_used`·`recovery_status`·`validation_result`·`duration_ms` 여덟 개다. 이력을 붙이는 곳은 반 묶음 카드의 `card_id`다. 반 묶음 카드는 `cards.subject_type = 'daily_note_batch'`이고 `subject_id`가 입력 ID인 카드다. 가이드의 `incident_id`에는 반 입력 ID(`daily_note_inputs.id`)를 넣는다. 가이드의 작업 조회 예시에 나오는 `job_id`도 이 값에 해당한다. 알림장 초안 작업 하나가 반 입력 하나이고, API가 202로 돌려주는 작업 ID도 이 값이기 때문이다. 한 작업 안에서 난 실패는 첫 실패부터 묶어 incident 하나로 센다. 아이별 저장 이력(`daily_note_drafted`)은 그대로 두고, 아래 이력을 작업마다 한 줄씩 더한다. 세 종류 모두 지금 `events.action` 목록에 있는 값이라 새 마이그레이션은 필요 없다.
+**보낸 알림장 정정([제안], API 3.30).** 0015_daily_note_correction은 down_revision=0014로 상담 보고 확인 뒤에 이어진다(0012→0013→0014→0015). daily_notes에 version(기본 1·NOT NULL·CHECK >=1)과 corrected_at(NULL 허용)을 더한다. 기존 내용·상태·AI 원본은 그대로 두고 기존 행도 version=1·corrected_at=null로 채운다. 현재 담당 반 담임·같은 기관 원장만 sent를 정정하며, 입력→알림장 순서 잠금 아래 판 검사 후 내용 교체·시각 기록·판 +1을 한다. 판 충돌은 CARD_VERSION_CONFLICT, 미발송 상태는 INVALID_TRANSITION으로 409다. 발송 전 PATCH·확인·재생성·발송에서는 정정 판을 유지한다. daily_note_corrected 이력에는 행위자·sent→sent·reason_text·version·trace_id만 남기며, 기존 0012 action을 쓴다. 연결된 활성 parent마다 기존 note_corrected kind로 제목 "알림장이 고쳐졌어요" 알림을 한 건 저장한다. 중복 키는 알림장·정정 판·수신자이고, body는 비워 정정 이유를 노출하지 않는다. 내용·시각·판·이력·알림은 같은 트랜잭션이다. 0015를 0014로 내리면 새 두 칸만 사라지고 내용·기존 이력·알림은 보존된다. 다시 올리면 판·시각은 기본값으로 초기화되므로 운영 되돌리기 때 이 점을 고려한다. 최종 DDL도 이 두 칸을 포함하며 head 카탈로그는 표 30·뷰 2·트리거 2·FK 64·컬럼 295다.
+
+**초안 실패와 복구 기록.** 초안 작업이 실패하면 반 입력에는 `draft_status = 'failed'`만 남는다. 그래서 실패를 감지한 때부터 다시 시도해 결과를 검증할 때까지를 이력으로 따로 남긴다. 기록 형식은 Auto-Healing 가이드의 incident 기록 칸을 그대로 쓴다. 칸은 `incident_id`·`detected_failure`·`selected_strategy`·`retry_count`·`fallback_used`·`recovery_status`·`validation_result`·`duration_ms` 여덟 개다. 이력을 붙이는 곳은 반 묶음 카드의 `card_id`다. 반 묶음 카드는 `cards.subject_type = 'daily_note_batch'`이고 `subject_id`가 입력 ID인 카드다. 가이드의 `incident_id`에는 반 입력 ID(`daily_note_inputs.id`)를 넣는다. 가이드의 작업 조회 예시에 나오는 `job_id`도 이 값에 해당한다. 알림장 초안 작업 하나가 반 입력 하나이고, API가 202로 돌려주는 작업 ID도 이 값이기 때문이다. 한 작업 안에서 난 실패는 첫 실패부터 묶어 incident 하나로 센다. 아이별 저장 이력(`daily_note_drafted`)에는 본문 대신 `draft_failed`(참/거짓)·`open_check_count`·`trigger`를 함께 남기고, 아래 반 이력을 실행마다 한 줄씩 더한다. 세 종류 모두 지금 `events.action` 목록에 있는 값이라 새 마이그레이션은 필요 없다.
 
 | 시점 | `action` | `actor_type` | `detail` |
 | --- | --- | --- | --- |
 | 작업이 실패함(감지) | `tool_failed` | `system` | `incident_id`, `detected_failure`, `retry_count`, `detection_ms`, `fallback_used = false`, `validation_result = job_failed`, `recovery_status`(처음 실패면 `pending`, 다시 시도한 뒤의 실패면 `handed_off`) |
-| 담임이 다시 만들기를 요청함(API 3.26) | `agent_requeued` | `user` | `incident_id`, `selected_strategy = retry_by_teacher`, `retry_count` |
-| 점검 작업이 멈춘 작업을 대기로 되돌림 | `agent_requeued` | `system` | `incident_id`, `selected_strategy = requeue_stale`, `retry_count` |
-| 초안을 저장하고 검증함 | `drafted` | `agent` | `incident_id`, `retry_count`, `saved`, `needs_check`, `draft_failed`, `fallback_used`, `validation_result`. 앞에 실패가 있었으면 `recovery_status`와 `duration_ms`도 |
+| 담임이 다시 만들기를 요청함(API 3.26) | `agent_requeued` | `user` | `incident_id`, `selected_strategy = retry_by_teacher`, `trigger = teacher_regenerate`, `retry_count`(증가하지 않음) |
+| 점검 작업이 멈춘 작업을 대기로 되돌림 | `agent_requeued` | `system` | `incident_id`, `selected_strategy = requeue_stale`, `trigger = auto_retry`, `retry_count` |
+| 초안을 저장하고 검증함 | `drafted` | `agent` | `incident_id`, `retry_count`, `saved`, `needs_check`, `draft_failed`, `fallback_used`, `validation_result`. 모든 실행에 `trigger`·`queue_wait_ms`·`detection_ms`, 앞에 실패가 있었으면 `recovery_status`와 `duration_ms`도 |
 
 칸마다 넣는 값은 다음과 같다.
 
-- `detected_failure`: 작업 시간 초과면 `writer_timeout`이고, 결과 형식·설정·저장 오류처럼 그 밖의 예외면 `writer_error`다. `tool_failed`가 되는 것은 작업 전체가 실패한 경우뿐이다. 모델 호출 하나가 시간 초과·429·5xx로 실패할 때는 작성기 안에서 1초, 2초 뒤에 두 번 다시 부르고, 그래도 실패하면 그 아이만 템플릿으로 저장한다(`fallback_used`).
-- `retry_count`: 작업을 다시 넣은 횟수다. 처음 실행은 0이고, `agent_requeued`에는 다음에 돌 실행의 값을 적는다. 시스템은 실패한 작업을 저절로 다시 돌리지 않으므로, 담임이 다시 만들기를 눌러야 다시 시도한다. 점검 작업이 되돌리는 것도 `running`에 멈춘 작업뿐이다.
+- `detected_failure`: 작업 시간 초과면 `writer_timeout`이고, 결과 형식·설정·저장 오류처럼 그 밖의 예외면 `writer_error`다. 워커 큐 등록 실패는 queued 입력을 failed로 바꾸고 `queue_error`로 기록한다. 이때 `detection_ms=0`은 워커 실행 전 실패를 뜻하며 첫 접수는 `recovery_status=pending`으로 담임의 다시 만들기를 기다리고, 재시도의 큐 등록 실패는 `handed_off`로 기록한다. 이미 running·succeeded·failed인 입력에는 늦은 큐 오류 이력을 덧붙이지 않는다. `tool_failed`가 되는 것은 작업 전체가 실패한 경우뿐이다. 모델 호출 하나가 시간 초과·429·5xx로 실패할 때는 작성기 안에서 1초, 2초 뒤에 두 번 다시 부르고, 그래도 실패하면 그 아이만 템플릿으로 저장한다(`fallback_used`).
+- `retry_count`: 시스템이 멈춘 실행을 자동으로 다시 넣은 횟수다. 처음 실행은 0이고, `agent_requeued` 중 `actor_type=system`만 1을 더한다. 담임의 다시 만들기는 이 값을 늘리지 않는다. `trigger`는 첫 실행 `initial`, 점검 재등록 `auto_retry`, 담임 다시 만들기 `teacher_regenerate`다. 실패 작업을 저절로 재실행하는 기능을 새로 만들지는 않는다. 점검은 기존대로 멈춘 `running`만 되돌린다.
+- `queue_wait_ms`: 접수·재등록부터 워커가 실행을 가져갈 때까지의 대기(ms)다. 반 카드 `draft.draft_queued_at`·`draft.draft_trigger`에서 읽고, 첫 실행은 입력 `created_at`을 쓴다. `drafted`·실행 실패 `tool_failed`에 한 번 기록한다. 큐 등록 자체의 실패는 실행 전이므로 0이다.
 - `detection_ms`: 그 실행이 시작된 때부터 실패를 기록할 때까지 걸린 시간, 곧 감지 시간이다.
 - `saved`·`needs_check`·`draft_failed`: `saved`는 이번 실행에서 저장한 아이별 알림장 수, `needs_check`는 그중 확인 필요로 저장한 수, `draft_failed`는 다시 그중 아이 초안을 만들지 못한 수다. 그래서 `draft_failed`는 `needs_check`에 들어 있다.
 - `fallback_used`: 대체 응답을 썼는지 적는다. 알림장의 대체 응답은 한 가지뿐이다. 아이 한 명의 초안이 실패하거나 검증을 통과하지 못하면, 그 아이 알림장을 반 공통 줄(활동·준비물·식단)만 담은 템플릿으로 저장하고 확인 항목 `draft_failed`를 붙인다. 담임은 화면에서 이 확인 항목을 보고 그 아이 메모 줄을 직접 쓴다. 작성기를 다른 제공자나 대역 작성기로 바꾸는 경로는 없으므로 그런 대체는 0건이다.
-- `validation_result`: 저장하기 전에 아이별 결과 모양·출처·확인 항목을 보는 계약 검사의 결과다. 모든 아이가 통과하면 `all_children_passed`, 일부만 템플릿이면 `some_children_template`, 모두 템플릿이면 `all_children_template`, 작업 자체가 실패하면 `job_failed`다.
+- `validation_result`: 저장하기 전에 아이별 결과 모양·출처·확인 항목을 보는 계약 검사의 결과다. 모든 아이가 통과하면 `all_children_passed`, 일부만 템플릿이면 `some_children_template`, 모두 템플릿이면 `all_children_template`, 작업 자체가 실패하면 `job_failed`다. 전원 템플릿도 반 incident의 실패로 집계하며 `handed_off`로 분류한다. 템플릿은 담임이 직접 고칠 수 있으므로 입력 상태는 `succeeded`로 두지만, 반 카드에는 "AI가 못 만들었어요 · 직접 쓰거나 다시 만들기"를 표시한다.
 - `recovery_status`: `recovered`(정상 복구), `fallback`(대체 응답), `handed_off`(사람 이관), `pending`(다시 시도 전이거나 진행 중) 가운데 하나다. 가이드의 `success`·검증 통과와 대응할 제출 기준은 아래 T58 규칙이다. 현재 `all_children_passed`는 `draft_failed=0`을 뜻하며, 다른 확인 항목이 없는지는 보장하지 않는다.
-- `duration_ms`: 현재 도구가 기록하는 반 단위 저장까지의 시간이다. T58의 아이별 검증 통과 저장 시각과 구분한다.
+- `duration_ms`: 첫 실패부터 반 단위 저장까지의 경과 시간에서 실패 뒤 각 실행의 `queue_wait_ms`를 뺀 값이다. 담임이 다시 만들기를 누를 때까지의 시간은 포함한다. `tool_failed`뿐 아니라 아이 템플릿 저장도 실패 시작점으로 삼는다. 검증 통과 결과가 없으면 NULL이며, 아이별 시간은 아래 별도 결과를 쓴다. 새 계측 이전 이력의 시간에는 대기가 섞일 수 있으므로 신규 수치와 섞어 제출하지 않는다.
 
 **T58 복구 집계 기준.** 12/18 WBS T58(Auto-Healing 구현·결과서)의 집계는 이 기준과 같다. Step4 가이드 14·20·21쪽의 감지→전략→실행→검증→기록을 같은 `input_id`로 잇고, 정상 복구·대체 응답·사람에게 넘김·복구 실패를 섞어 세지 않는다.
 
@@ -748,23 +753,25 @@ FK를 걸 수 없는 참조가 두 곳 있다. `cards.subject_id`와 `notificati
 | 복구 성공 | 재시도 뒤 검사에 통과한 쓸 수 있는 아이 초안이 저장된 경우만 센다. `status='draft' AND open_checks='[]'::jsonb`가 기준이며 `needs_check`는 성공이 아니다 | `daily_notes.input_id`·`child_id`·`status`·`open_checks`·`content` |
 | 사람에게 넘김 | 재시도 뒤에도 확인 항목(`draft_failed`·`check_failed` 등)이 남아 담임이 직접 작성·해결해야 하는 아이는 성공에서 뺀다. 담임의 후속 수정·확인은 자동 복구로 바꾸어 세지 않는다 | `daily_note_edited`·`daily_note_confirmed` 이력의 `actor_type='user'`, `daily_notes.ai_original`과 수정 내용 |
 | 대체 응답 | 반 공통 템플릿을 썼으면 별도로 표시한다. `draft_failed`가 남은 아이는 사람에게 넘긴 결과다 | `events.detail.fallback_used`·`draft_failed`, 아이의 `open_checks` |
-| 실패 시각 | 같은 반 작업의 첫 실패를 읽는다. 작업 상태 표에는 `failed_at` 칸이 없다 | 반 묶음 카드 `cards.subject_type='daily_note_batch' AND subject_id=input_id` → `events.action='tool_failed'`의 `created_at` |
+| 실패 시각 | 같은 반 작업의 첫 실패를 읽는다. 작업 상태 표에는 `failed_at` 칸이 없다 | 반 묶음 카드 `tool_failed` 또는 아이의 `daily_note_drafted.detail.draft_failed=true` 이력 `created_at` |
 | 통과 초안 저장 시각 | 같은 `input_id`·아이의 검사 통과 초안이 저장된 `daily_note_drafted` 이력 시각을 쓴다. 첫 생성 시각이나 교사 확인 시각으로 대체하지 않는다 | `events.daily_note_id → daily_notes.id`, `events.created_at`·`to_status='draft'`·`actor_type='agent'` |
-| 복구 시간 | 실패 시각부터 통과 초안 저장 시각까지의 차이(ms)다. 통과 저장이 없으면 시간은 NULL이다. 결과서에는 평균·중앙값·최대를 함께 낸다 | 위 두 이력의 `created_at` 차이. `daily_notes`에는 `updated_at`·`validated_at` 칸이 없다 |
+| 복구 시간 | 실패 시각부터 통과 초안 저장 시각까지의 차이(ms)다. 통과 저장이 없으면 시간은 NULL이다. 결과서에는 평균·중앙값·최대를 함께 낸다 | 위 두 이력의 `created_at` 차이에서 실패 뒤 완료까지 실행별 큐 대기를 뺀 값. `daily_notes`에는 `updated_at`·`validated_at` 칸이 없다 |
 | 집계 단위·분모 | 기본은 장애의 영향을 받은 아이별 `(input_id, child_id)` 결과다. 같은 아이의 재시도를 중복 합산하지 않고, 반 작업(`input_id`) 수를 옆에 같이 적는다. 복구율은 검사 통과 아이 수 ÷ 자동 복구 대상 아이 수다 | `daily_note_inputs`와 작업 당시 반 명단·아이별 이력. 담임이 재시도를 누른 경로는 `retry_by_teacher`로 따로 표시한다 |
 | 재시도 진입 실패 | 큐 등록 실패·작업 미기동으로 재시도하지 못했어도 `복구 실패`로 분모에 포함하고 별도 줄에 센다. 판정 시한 안에 완료되지 않은 대기도 성공으로 빼지 않는다 | `daily_note_inputs.draft_status`, `cards.draft.draft_started_at`, 큐 등록 오류 로그·장애 주입 실행 기록 |
 
-현재 `runner.py`와 [`tools/daily_note_recovery.py`](../../tools/daily_note_recovery.py)는 **반 작업 단위**로 `draft_failed=0`이면 `recovered`를 기록하고 `needs_check`도 포함한다. 재시도 전 `pending`은 복구율 분모에서 빠진다. 따라서 현재 숫자를 T58 수치로 그대로 제출하지 않는다. 기존 `test_daily_note_recovery.py::test_timeout_then_regenerate_is_one_recovered_incident_with_times`와 `::test_failed_retry_is_handed_off_then_partial_template_is_fallback`은 그 구현의 이력·분류 시험이다(2026-11-24, 이 PR HEAD, 0011, `tools/test_db.sh -p no:cacheprovider`).
+현재 [`tools/daily_note_recovery.py`](../../tools/daily_note_recovery.py)는 기존 **반 작업 단위** 결과와 `child_recovery`를 함께 준다. 반 결과는 `draft_failed=0`이면 `recovered`로 분류해 `needs_check`도 포함하고, 재시도 전 `pending`은 반 복구율 분모에서 빠진다. 전원 템플릿은 `tool_failed`가 없어도 실패 incident로 포함한다. `retry_count`는 시스템 재등록만 세고 담임 재생성은 `trigger`·`selected_strategy`로 나눈다. CLI도 실행 계기·큐 대기를 별도 열로 보여 준다. 기존 반 복구율을 T58 아이 복구율로 제출하지 않는다.
 
-T58에서 채울 기록도 남아 있다. 아이별 이력은 현재 `to_status`만 남기고 당시 `open_checks`는 보관하지 않으므로 수정 전 검증 통과 여부를 사후 완전 복원할 수 없다. 큐 등록 오류는 로그에만 남고, 실행되지 않은 작업의 실패 시각·당시 반 명단을 보존하는 전용 표도 없다. T58 실행에서는 장애 주입 기록에 `input_id`·대상 아이 명단·실패 시각·아이별 통과 저장 시각과 확인 항목 유무를 함께 남겨 원 로그·분모를 연결한다. 이 기록이 없는 사례는 측정 불가로 밝히고 성공에 넣지 않는다. 이 PR은 집계 설계만 보완하며 새 칸이나 집계 구현을 만들지 않는다.
+`child_recovery`는 기간 안에 `daily_note_drafted.detail.draft_failed=true`가 기록된 `(input_id, child_id)`를 한 번만 대상으로 삼는다. 이후 같은 아이의 첫 `actor_type=agent`·`to_status=draft`·`open_check_count=0` 저장만 `recovered`다. 확인 항목이 남거나 교사가 수정·확인해 재생성에서 보호된 아이는 `handed_off`이고 성공으로 바뀌지 않는다. 원문을 읽거나 현재 알림장 상태로 과거를 추측하지 않는다. 결과는 `children[]`(입력·아이 ID, trigger, 상태, 실패/통과 시각, duration_ms), 대상·성공·이관 수, 복구율, `teacher_regenerate`·`not_retried` 수와 시간 평균·중앙값·최대를 준다. `automatic_targets`·`automatic_recovery_rate`는 담임 경로를 제외한 현재 자동 경로와 아직 재시도하지 못한 실패를 포함한다. 담임이 누른 뒤의 결과는 별도 경로로 표시하며 자동 복구 성공으로 세지 않는다.
+
+이 구현으로 측정할 수 있는 범위는 **아이별 템플릿 실패→재생성→검사 통과 저장**이다. 새 스냅샷 전 `needs_check` 이력은 원인 복원이 불가능하므로 `unmeasurable`에 따로 센다. 큐 등록 오류·전체 작업 예외로 아이별 저장 이력 자체가 없는 경우는 반 incident에는 포함하지만 당시 대상 명단을 보존하지 않아 아이별 분모는 아직 측정할 수 없다. T58 전체 제출에는 장애 주입 기록의 `input_id`·대상 아이 명단·실패 시각·판정 시한을 추가로 연결하고, 이 진입 실패도 실패 분모에 포함해야 한다. 계측이 없는 옛 자료·기간 밖 실패를 성공으로 추정하지 않으며, 집계 기간은 장애 주입부터 재시도 종료까지를 모두 포함해 잡는다. `test_daily_note_recovery.py`는 전원 템플릿 집계, 교사 경로와 자동 재등록 분리, 큐 대기 제외, 확인 항목·교사 확인을 성공에서 제외하고 같은 아이를 중복 합산하지 않는 경계를 검사한다.
 
 **알림**
 
 - `notifications.dedupe_key`: 알림은 처리 이력 한 건에서 생기므로 키를 `event:<events.id>:<받는 사람 ID>`로 만든다. 같은 이력으로 발송을 다시 시도하면 키가 같아서 한 번만 들어간다. 반대로 같은 카드가 다시 보류되는 것처럼 새 이력이 생기면 새 알림이 된다. 상담 종료·지연 알림(T48)은 `consultation:<예약 ID>:<종류>:<받는 사람 ID>`로 만들어, 같은 예약의 같은 안내를 한 번만 남긴다.
 - 발송 시도: 한 알림은 최대 3번까지 보낸다(FR-12, `attempts`). 보내기에 실패하면 60초 뒤, 그다음 실패면 120초 뒤로 `next_attempt_at`을 미뤄 다시 보낸다. 이때 `deliver_after`와 목록에 보이는 시각은 바꾸지 않는다.
 - `notifications.kind`: 다음 23가지만 받는다. `needs_info` · `new_card`(새 카드) · `urgent_complaint`(긴급 요청) · `uncertain_complaint`(판단 필요 요청) · `director_report`(반복 3번째 원장 보고) · `on_hold` · `sent_or_booked` · `parent_confirmed`(학부모가 확인함) · `completed`(민원 완료) · `rejected` · `note_sent`(오늘 알림장) · `slot_hold_expired`(잡아 둔 상담 시간이 풀림 → 담임) · `hold_resumed`(보류 카드가 예정일에 자동 재개 → 담당) · `care_requested`(투약·귀가 요청 접수) · `care_confirmed`(교직원이 투약·귀가 요청을 확인함). 기존 상담 알림 두 가지도 있다. `consultation_ending`은 예정 종료 10분 이내에 담임에게 가는 알림이고, `consultation_delayed`는 앞 상담의 명시된 예상 종료와 겹치는 예약의 담임·학부모에게 대체 시간을 제안하는 알림이다. 자세한 기준은 API 설계 6.6.2에 있다. 두 위험 알림(`urgent_complaint`·`uncertain_complaint`)은 이름에 complaint가 남아 있지만 문의·상담 위험에도 그대로 쓴다. 요청 유형에 따라 달라지는 것은 제목(`title`)뿐이라 '긴급 문의'·'긴급 상담'처럼 붙는다.
-- 0012에서 더한 알림은 `parent_message`(학부모 추가 글) · `reassigned`(재배정받음) · `consultation_booked`(상담 예약 확정) · `note_corrected`(알림장 정정) · `cancelled`(취소) · `care_rejected`(투약·귀가 반려)다. 추가 글은 parent_message로 열린 카드 담당에게, 재배정은 reassigned("요청이 배정됐어요")로 새 담당에게, 상담 확정은 consultation_booked("상담 예약 확정", 본문 한국 날짜·시간)로 학부모에게 알린다. cancelled는 투약·귀가 학부모 취소 때 담당자(없으면 원장), care_rejected는 교직원 반려 때 사유와 함께 학부모에게 보낸다. note_corrected는 후속 묶음에서 연결한다. 반려 알림 본문은 사유 코드 표시 이름과 reason_text를 함께 쓴다.
-- `subject_type`·`subject_id`: 요청·카드가 아닌 대상을 가리킨다. 지금은 `note_sent` 알림이 아이별 알림장(`daily_note`)을 가리킬 때만 쓴다.
+- 0012에서 더한 알림은 `parent_message`(학부모 추가 글) · `reassigned`(재배정받음) · `consultation_booked`(상담 예약 확정) · `note_corrected`(알림장 정정) · `cancelled`(취소) · `care_rejected`(투약·귀가 반려)다. 추가 글은 parent_message로 열린 카드 담당에게, 재배정은 reassigned("요청이 배정됐어요")로 새 담당에게, 상담 확정은 consultation_booked("상담 예약 확정", 본문 한국 날짜·시간)로 학부모에게 알린다. cancelled는 투약·귀가 학부모 취소 때 담당자(없으면 원장), care_rejected는 교직원 반려 때 사유와 함께 학부모에게 보낸다. note_corrected는 알림장 정정(0015·API 3.30)에서 연결한다. 반려 알림 본문은 사유 코드 표시 이름과 reason_text를 함께 쓴다.
+- `subject_type`·`subject_id`: 요청·카드가 아닌 대상을 가리킨다. `note_sent`·`note_corrected` 및 알림장 확인 안내 알림이 아이별 알림장(`daily_note`)을 가리킬 때 쓴다.
 - `deliver_after`: 이 시각이 지나야 보낸다. 근무 시간(평일 09~18시) 밖에 생긴 알림에는 다음 근무 시작 시각을 넣는다. 긴급 민원 가운데 **아이 안전(`risk_category = child_safety`)만** 지금 시각을 넣어 바로 보내고, 나머지 긴급 3가지와 판단 필요 민원은 다음 근무 시간에 보낸다(FR-21). 발송기는 `status = 'pending' AND deliver_after <= now()`인 알림만 꺼낸다(9.1 F3-5).
 
 **평가.** `eval_runs`는 요청한 모델 ID와 응답에 돌아온 모델 ID를 함께 남긴다. 그래서 원장 현황의 '평가 결과'와 모델 선택 근거(T05)를 같은 기록에서 볼 수 있다.

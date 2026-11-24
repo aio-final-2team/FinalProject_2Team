@@ -21,7 +21,7 @@ from app.mock import seed
 from db.seeds.demo import seed_demo
 
 ROOT = Path(__file__).resolve().parents[3]
-HEAD_CATALOG = {"tables": 30, "views": 2, "triggers": 2, "foreign_keys": 64, "columns": 293}
+HEAD_CATALOG = {"tables": 30, "views": 2, "triggers": 2, "foreign_keys": 64, "columns": 295}
 
 
 def catalog(connection):
@@ -80,7 +80,7 @@ def test_upgrade_downgrade_upgrade(db_engine, alembic_config):
     command.upgrade(alembic_config, "head")
     with db_engine.connect() as connection:
         assert dict(catalog(connection)) == first_catalog
-        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0014"
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0015"
     assert schema_dump() == first_dump
 
     # 최신 설계를 직접 적용한 스키마도 마이그레이션 head와 같아야 한다.
@@ -141,7 +141,7 @@ def test_child_memos_backfill_constraints_and_revision_round_trip(db_engine, ale
     command.upgrade(alembic_config, "head")
     with db_engine.begin() as connection:
         assert dict(catalog(connection)) == HEAD_CATALOG
-        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0014"
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0015"
         assert dict(connection.execute(text("SELECT * FROM daily_note_inputs WHERE id=:id"),
                                        {"id": before["id"]}).mappings().one()) == {**before, "child_memos": []}
         connection.execute(text("DELETE FROM daily_note_inputs"))
@@ -356,6 +356,52 @@ def test_note_original_backfill_and_event_fk_revision_round_trip(db_engine, alem
     with db_engine.connect() as connection:
         assert dict(catalog(connection)) == HEAD_CATALOG
         assert connection.scalar(text("SELECT ai_original FROM daily_notes WHERE id=:id"), {"id": note_id}) == {"items": []}
+
+
+def test_0015_note_correction_backfill_constraints_and_round_trip(seeded_db, alembic_config):
+    command.downgrade(alembic_config, "0014")
+    with seeded_db.begin() as connection:
+        input_id = connection.scalar(text("""
+            INSERT INTO daily_note_inputs (org_id,classroom_id,author_id,note_date)
+            VALUES (:org,:class,:author,'2026-11-20') RETURNING id
+        """), {"org": seed.ORG, "class": seed.CLASS_STAR, "author": seed.TEACHER})
+        before = dict(connection.execute(text("""
+            INSERT INTO daily_notes (org_id,input_id,child_id,note_date,status,content,ai_original,
+                                     confirmed_by,confirmed_at,sent_at)
+            VALUES (:org,:input,:child,'2026-11-20','sent','{"items": []}','{"items": []}',:teacher,now(),now())
+            RETURNING *
+        """), {"org": seed.ORG, "input": input_id, "child": seed.CHILD, "teacher": seed.TEACHER}).mappings().one())
+    old_dump = schema_dump()
+    command.upgrade(alembic_config, "head")
+    with seeded_db.begin() as connection:
+        assert dict(connection.execute(text("SELECT * FROM daily_notes WHERE id=:id"),
+                                       {"id": before["id"]}).mappings().one()) == {
+            **before, "version": 1, "corrected_at": None}
+        for value, state in ((0, "23514"), (None, "23502")):
+            with pytest.raises(IntegrityError) as error, connection.begin_nested():
+                connection.execute(text("UPDATE daily_notes SET version=:version WHERE id=:id"),
+                                   {"id": before["id"], "version": value})
+            assert error.value.orig.sqlstate == state
+        connection.execute(text("UPDATE daily_notes SET version=2,corrected_at=now() WHERE id=:id"), {"id": before["id"]})
+        event_id = connection.scalar(text("""
+            INSERT INTO events (org_id,daily_note_id,actor_type,actor_id,action,from_status,to_status,detail)
+            VALUES (:org,:note,'user',:teacher,'daily_note_corrected','sent','sent',
+                    CAST(:detail AS jsonb)) RETURNING id
+        """), {"org": seed.ORG, "note": before["id"], "teacher": seed.TEACHER,
+               "detail": json.dumps({"reason_text": "[TEST] 정정", "version": 2})})
+        event = dict(connection.execute(text("SELECT * FROM events WHERE id=:id"), {"id": event_id}).mappings().one())
+    command.downgrade(alembic_config, "0014")
+    assert schema_dump() == old_dump
+    with seeded_db.connect() as connection:
+        assert dict(connection.execute(text("SELECT * FROM daily_notes WHERE id=:id"),
+                                       {"id": before["id"]}).mappings().one()) == before
+        assert dict(connection.execute(text("SELECT * FROM events WHERE id=:id"), {"id": event_id}).mappings().one()) == event
+    command.upgrade(alembic_config, "head")
+    with seeded_db.begin() as connection:
+        assert dict(catalog(connection)) == HEAD_CATALOG
+        assert dict(connection.execute(text("SELECT * FROM events WHERE id=:id"), {"id": event_id}).mappings().one()) == event
+        # 보존 확인을 마친 이 시험의 0012 이력은 정리해 다음 base 왕복 시험과 격리해요.
+        connection.execute(text("DELETE FROM events WHERE id=:id"), {"id": event_id})
 
 
 def test_seed_twice_keeps_same_rows_and_password_hash(db_engine, alembic_config):
