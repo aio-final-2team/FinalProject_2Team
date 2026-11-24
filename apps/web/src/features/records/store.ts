@@ -48,11 +48,20 @@ export function useRecords(cid: string | undefined, date: string) {
     const cur = read(k);
     write(k, { ...cur, [childId]: [...(cur[childId] ?? []), { at, text }] });
   };
+  /** 기록 한 줄 삭제 (남은 기록이 없으면 그 아이 항목도 지운다) */
+  const remove = (childId: string, index: number) => {
+    const cur = read(k);
+    const left = (cur[childId] ?? []).filter((_, i) => i !== index);
+    const next = { ...cur };
+    if (left.length) next[childId] = left;
+    else delete next[childId];
+    write(k, next);
+  };
   /** 아이별 기록을 한 줄 메모로 합친다 (child_memos 1~500자) */
   const memoOf = (childId: string) =>
     (records[childId] ?? [])
       .map((r) => r.text)
       .join(", ")
       .slice(0, 500);
-  return { records, add, memoOf };
+  return { records, add, remove, memoOf };
 }

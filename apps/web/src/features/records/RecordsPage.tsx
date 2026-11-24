@@ -1,9 +1,12 @@
+
 import { useMemo, useState } from "react";
 import { useChildren } from "@/api/notes";
 import { useSession } from "@/app/session";
 import { SymbolMark } from "@/components/Brand";
+import { BellLink } from "@/components/BellLink";
 import { Icon } from "@/components/Icon";
 import { dateLabel, todayKST } from "@/domain/notes";
+import { QueryState } from "@/components/QueryState";
 import { RecordSheet } from "./RecordSheet";
 import { useRecords } from "./store";
 
@@ -13,7 +16,7 @@ export function RecordsPage() {
   const cid = user?.classroom_ids[0];
   const date = todayKST();
   const kids = useChildren(cid);
-  const { records, add } = useRecords(cid, date);
+  const { records, add, remove } = useRecords(cid, date);
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState<string | null>(null);
   const recordedKids = useMemo(() => (kids.data ?? []).filter((k) => records[k.id]?.length), [kids.data, records]);
@@ -24,7 +27,7 @@ export function RecordsPage() {
     <div className="mx-auto max-w-[680px] px-4 pb-32 lg:pb-10">
       <header className="flex min-h-[52px] items-center justify-between pt-2">
         <SymbolMark className="size-8" />
-        <button className="grid size-10 place-items-center rounded-md text-ink" aria-label="알림"><Icon name="bell" className="size-6" /></button>
+        <BellLink to="/teacher/notifications" />
       </header>
       <h1 className="mt-1 text-large-title font-bold tracking-[-0.025em]">아이 관찰 기록</h1>
       <p className="mt-0.5 text-footnote font-medium text-ink2">{dateLabel(date)} · 수업 중 기억해 둘 내용을 짧게 남겨 주세요</p>
@@ -42,7 +45,7 @@ export function RecordsPage() {
         </span>
       </label>
 
-      {kids.isLoading && <p className="py-6 text-center text-callout text-ink2">아이 목록을 불러오는 중…</p>}
+      {(kids.isLoading || (kids.isError && kids.data === undefined)) && <QueryState queries={[kids]} skeleton={2} errorTitle="아이 목록을 불러오지 못했어요">{null}</QueryState>}
       {query.trim() && (
         <ul className="mt-2 overflow-hidden rounded-lg bg-card shadow-card">
           {results.map((k) => {
@@ -75,7 +78,7 @@ export function RecordsPage() {
       <p className="mt-6 px-1 text-footnote text-ink2">관찰 기록은 알림장 초안을 만들 때 아이별 내용으로 반영돼요.</p>
       <p className="mt-1 px-1 text-caption text-ink2">임시 저장 · 기록 API가 연결되기 전까지 이 기기에만 보관돼요.</p>
 
-      {openKid && <RecordSheet open name={openKid.display_name} entries={records[openKid.id] ?? []} onClose={() => setOpen(null)} onSave={(t) => add(openKid.id, t)} />}
+      {openKid && <RecordSheet open name={openKid.display_name} entries={records[openKid.id] ?? []} onClose={() => setOpen(null)} onSave={(t) => add(openKid.id, t)} onRemove={(i) => remove(openKid.id, i)} />}
     </div>
   );
 }
