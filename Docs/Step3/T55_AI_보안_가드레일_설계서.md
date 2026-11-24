@@ -126,11 +126,11 @@ flowchart LR
 | G-3 | 위험 규칙이 현재 민원에만 적용되고 낱말 범위도 넓어요 | `request_rules.py:13`의 "열"은 위험 낱말이 아니라 주제 낱말이에요. 위험 낱말은 `request_rules.py:22`에서 민원에 한해 적용되고, DB도 `0001_initial.sql:127`에서 `CHECK (risk_level IS NULL OR type = 'complaint')`로 제한해요. | 3-추가 결정에 따라 문의·상담에도 기획서 FR-03을 적용하고 담임 재분류를 허용해요. 위험 낱말을 좁힌 뒤 반영해야 해요(예: "결석 신고는 어떻게 해요?"의 오탐 방지). 변경 위치: `request_rules.py:22`, `supervisor.py:40`, `0001_initial.sql:127`, `cards.py:325`, `schedule.py:20`, `notifications.py:70-71`. |
 | G-11 | 거절 뒤 재초안 카드에 앞 카드의 검사 통과가 이어져 빈 초안을 승인할 수 있었음 | 거절 뒤 카드 `draft.text`와 `check_result`를 비우지 않던 경로 | INJ-01·GRD-01·GRD-03에서 초안 없는 카드 규칙이 깨질 수 있었어요. **#317에서 고침**: 빈 초안·검사 결과 없음, 일반 승인은 409, `edit_approve`만 가능 |
 | G-4 | **구현(커밋: 아래 1차 로컬 커밋)** 코드 주제가 `other`가 아니면 다른 모델 주제를 거부하고 분류 이력에 `topic_model_rejected` 표시 | `supervisor.py`, `agent_stub.py`, 시험 `test_code_topic_cannot_be_replaced` | 모델이 올바른 코드 주제를 덮어쓰지 못함 |
-| G-5 | 입력 개인정보 가리기 없음. 본문 그대로 외부 모델로 전송 | `supervisor.py:25`, `answer.py:33` | 시연은 가상 데이터라 문제없음. 실제 적용 때 NFR-02 위반 가능 |
-| G-6 | 업로드 자료에 지시문·의심 문장 검사 없음. 인용 대조는 "조각에 있는지"만 봄 | `documents/ingest.py`, `parsing.py`에 검사 없음, `answer.py` `_verify` | 자료 속 가짜 규정이 정상 근거로 통과(INJ-03). 업로드는 교사·원장만이라 위험은 중간 |
+| G-5 | **구현(커밋: T55 2차 로컬 커밋)** 감독·답변 모델 호출 직전 사용자 글의 전화번호·주민번호·계좌·이메일 가림. G-7 형식 검사를 공용으로 재사용 | `agents/guardrails/sensitive.py`, `supervisor.py`, `answer.py`; 시험 `test_supervisor_model_only_gets_masked_body`, `test_answer_models_get_masked_question` | DB에 저장된 원문은 유지 |
+| G-6 | **구현(커밋: T55 2차 로컬 커밋)** 자료 적재 시 의심 조각 번호를 `events.detail.suspicious_chunk_indexes`에 기록. 검색·답변에서 의심 조각 제외 | `agents/guardrails/injection.py`, `documents/ingest.py`·`search.py`, `answer.py`; 시험 `test_injected_document_chunk_is_marked_and_not_searched`, `test_suspicious_chunk_is_excluded_but_normal_chunk_remains` | DB 구조 변경 없음. 짧은 표현 목록 밖의 우회 문장은 놓칠 수 있음 |
 | G-7 | **구현(커밋: 아래 1차 로컬 커밋)** 답변 초안의 전화번호·주민번호·계좌·이메일 형식을 코드로 확인, 모델 검사와 OR | `answer.py`, 시험 `test_sensitive_formats_positive`, `test_sensitive_formats_negative`, `test_code_sensitive_issue_even_when_model_passes` | 발견 시 `check_result.issues`에 `민감정보`를 추가해 담임 확인으로 넘김 |
 | G-8 | 접수 이력(`events.detail`)에 투약 입력 항목이 들어가고 보관·삭제 기준이 문서에 없음 | `requests.py` `record(... **detail)`, `events.py` | 시연에는 문제없음. 실제 적용 시 보관 기간 필요 |
-| G-9 | 기본 JWT 키 거부는 `DATA_BACKEND=db`일 때만 | `core/config.py:38-41` | mock 모드로 배포하면 기본 키가 그대로 씀. 배포 설정 점검 필요 |
+| G-9 | **구현(커밋: T55 2차 로컬 커밋)** `APP_ENV=production/prod`면 mock 모드에서도 기본·예시·짧은 JWT 키 거부. 서버 Compose가 `APP_ENV=production` 설정 | `core/config.py`, `infra/team-server/compose.server.yaml`; 시험 `test_production_mock_rejects_default_secret`, `test_local_mock_still_uses_default_secret` | 로컬 개발·시험 기본값은 유지 |
 | G-10 | 문의 답변 초안은 `ANSWER_WRITER=graph`일 때만 AI가 씀. 기본값은 모의 초안 | `documents/answer.py` `graph_enabled`, `agent_stub.py:111` | 시연 환경 설정에 따라 이 문서의 L4·L5가 아예 작동하지 않음 |
 
 ---
@@ -150,7 +150,7 @@ flowchart LR
 | 질문 | 1안 | 2안 |
 | --- | --- | --- |
 | 권한 밖 질문(P01~P04)은 어디서 막나요? | **결정됨(2026-11-23, 영민): 1안.** 감독 프롬프트를 실제 호출에 연결해 AI가 거절 문구를 씀 | (고르지 않음) 코드 규칙(키워드)으로 먼저 거르고 고정 문구로 답함. 모델 없이도 같은 결과 |
-| 전화번호 같은 개인정보는? | (고르지 않음) 모델에 보내기 전에 코드로 가림 | **결정됨(2026-11-23, 영민): 2안.** 시연은 가상 데이터라 가리지 않고, 실제 적용 때 만듦. **미구현, 실제 적용 전 필수**(빈틈 G-5·G-7) |
+| 전화번호 같은 개인정보는? | **2026-11-24 G-5로 구현:** 모델 입력 직전에 형식 검사를 재사용해 가림. 저장 원문은 유지 | 2026-11-23 시연 시점에는 가리지 않기로 했으나, 2차 구현 지시로 적용 |
 | 위험 규칙을 문의·상담에도 적용할까요? | **결정됨(2026-11-24, 영민):** 문의·상담에도 기획서 FR-03을 적용해요. 긴급·판단 필요는 초안 없이 담임·원장 카드로 넘겨요. 담임이 문의도 일반 또는 긴급으로 재분류할 수 있어요(기획서 2.4 권한 표). 위험 낱말을 좁힌 뒤 적용해요(오탐 예: "결석 신고는 어떻게 해요?" → 긴급). 근무 시간 밖 알림은 F2(아이 안전 긴급만 즉시). 백엔드 변경(마이그레이션 0001 CHECK 완화·흐름·낱말)은 태웅님 담당이에요. | 현재처럼 민원만. 문의에서 위험 표현이 나오면 담임이 발견 |
 
 **변경 이력**
@@ -162,3 +162,4 @@ flowchart LR
 | v0.3 | 2026-11-24 | G-1·G-2·G-4·G-7 1차 구현과 가짜 모델 시험 연결. 거절 문구의 학부모 직접 전달은 현재 접수 경로의 범위 밖으로 명시 | 영민 |
 | v0.3 | 2026-11-24 | 리뷰 반영: 승인 전 발송 통제, 위협·시험 설명 정정, 접근 범위 구분, Q3 영민 결정과 G-3 연결 | 영민 |
 | v0.4 | 2026-11-24 | 팀 결정에 따라 P01~P04 감독 판단과 백엔드 고정 안내의 담당 범위를 구분 | 영민 |
+| v0.5 | 2026-11-24 | G-5 입력 가리기·G-6 의심 자료 표시와 근거 제외·G-9 배포 JWT 키 검사 구현 | 영민 |

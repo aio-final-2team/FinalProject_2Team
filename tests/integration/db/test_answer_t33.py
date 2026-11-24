@@ -83,6 +83,18 @@ def test_answer_evidence_card(db_client, seeded_db, monkeypatch):
     assert [role for role, _ in Writer.calls] == ["DOCUMENT", "CHECKER"]
 
 
+def test_parent_original_is_stored_but_model_question_is_masked(db_client, seeded_db, monkeypatch):
+    setup_graph(seeded_db, monkeypatch, {"text": "확인 필요", "evidence": [], "no_evidence": True, "conflict": False})
+    body = "겨울방학 언제부터인가요? 연락처 010-1234-5678"
+    card, _, _ = create_card(db_client, body)
+    with transaction() as connection:
+        stored = connection.scalar(text("SELECT body FROM requests WHERE id=:id"), {"id": card["request_id"]})
+    assert stored == body
+    assert Writer.calls
+    assert all("010-1234-5678" not in sent for _, sent in Writer.calls)
+    assert any("[전화번호]" in sent for _, sent in Writer.calls)
+
+
 def test_duplicate_citation_saves_one_evidence_row(db_client, seeded_db, monkeypatch):
     with seeded_db.begin() as connection:
         seed_documents(connection)
