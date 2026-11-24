@@ -1,4 +1,4 @@
-import { BackLink } from "@/components/BackLink";
+import { ScreenTop } from "@/components/ScreenTop";
 import { useNavigate } from "react-router";
 import { QueryState, StaleBanner } from "@/components/QueryState";
 import { useAllCards, useCards } from "@/api/cards";
@@ -31,10 +31,9 @@ export function TeacherNotifications({ role = "teacher" }: { role?: "teacher" | 
 
   return (
     <div className="mx-auto max-w-[680px] px-4 pb-10">
-      <BackLink to={back} label={role === "teacher" ? "홈" : "받은함"} className="mt-2" />
-      <h1 className="text-large-title font-bold tracking-[-0.025em]">알림</h1>
+      <ScreenTop back={{ to: back, label: role === "teacher" ? "홈" : "받은함" }} title="알림" sub={list.data ? `${items.filter((n) => !n.read_at).length}개 안 읽음` : " "} />
       <StaleBanner queries={[list]} />
-      <p className="mb-4 mt-0.5 min-h-4 text-footnote font-medium text-ink2">{list.data ? `${items.filter((n) => !n.read_at).length}개 안 읽음` : ""}</p>
+      <div className="mb-4" />
       {list.isLoading || (list.isError && list.data === undefined) ? (
         <QueryState queries={[list]} errorTitle="알림을 불러오지 못했어요">{null}</QueryState>
       ) : !items.length ? (

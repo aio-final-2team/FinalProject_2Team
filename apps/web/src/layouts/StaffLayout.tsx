@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router";
-import { Sheet } from "@/components/Sheet";
-import { SubButton } from "@/components/Dock";
+import { MeSheet } from "@/components/MeSheet";
+import { TabBar } from "@/components/TabBar";
 import { useCards } from "@/api/cards";
 import { useNotes } from "@/api/notes";
 import { todayKST } from "@/domain/notes";
@@ -36,10 +36,6 @@ export function StaffLayout({ role }: { role: Exclude<Role, "parent"> }) {
           { to: `${base}/feed`, icon: "class", label: "원 소식", count: 0 },
         ];
   const [me, setMe] = useState(false);
-  const logout = () => {
-    signOut();
-    nav("/login");
-  };
 
   return (
     <div className="min-h-full lg:grid lg:grid-cols-[232px_1fr]">
@@ -80,25 +76,8 @@ export function StaffLayout({ role }: { role: Exclude<Role, "parent"> }) {
         <Outlet />
       </main>
 
-      <Sheet open={me} onClose={() => setMe(false)} title="내 정보">
-        <p className="text-callout"><b>{user?.display_name}</b> · {role === "teacher" ? "담임 교사" : "원장"}</p>
-        <SubButton tone="gray" className="h-[52px] w-full" onClick={logout}>로그아웃</SubButton>
-      </Sheet>
-      <nav className="glass fixed inset-x-0 bottom-0 z-30 grid grid-flow-col bg-bar pb-[max(10px,env(safe-area-inset-bottom))] pt-2 shadow-[0_-1px_0_var(--sep)] backdrop-blur-xl backdrop-saturate-[1.8] lg:hidden" aria-label="주 메뉴">
-          {items.map((it) => (
-            <NavLink key={it.to} to={it.to} className={({ isActive }) => `relative grid justify-items-center gap-0.5 text-caption font-semibold ${isActive ? "text-accent" : "text-ink2"}`}>
-              <span className="relative">
-                <Icon name={it.icon} className="size-6" />
-                {it.count > 0 && <span className="absolute -right-2.5 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-accent px-1 text-caption font-bold text-on-accent ring-2 ring-card">{it.count}</span>}
-              </span>
-              {it.label}
-            </NavLink>
-          ))}
-          <button type="button" onClick={() => setMe(true)} className="relative grid justify-items-center gap-0.5 text-caption font-semibold text-ink2">
-            <Icon name="profile" className="size-6" />
-            내 정보
-          </button>
-        </nav>
+      <MeSheet open={me} onClose={() => setMe(false)} />
+      <TabBar className="max-w-none lg:hidden" items={items.map((it) => ({ to: it.to, icon: it.icon, label: it.label, count: it.count }))} extra={{ icon: "profile", label: "내 정보", onClick: () => setMe(true) }} />
     </div>
   );
 }

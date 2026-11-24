@@ -1,5 +1,6 @@
 import { Link, useParams, useSearchParams } from "react-router";
 import { useCards, type TypeFilter } from "@/api/cards";
+import { ScreenTop } from "@/components/ScreenTop";
 import { dateLabel, todayKST } from "@/domain/notes";
 import { BackLink as SharedBackLink } from "@/components/BackLink";
 import { SkeletonRows, StateView } from "@/components/StateView";
@@ -91,14 +92,20 @@ export function InboxPage({ role }: { role: Exclude<Role, "parent"> }) {
 
   const listPane = (
     <section className={`min-w-0 ${cardId ? "hidden lg:block" : ""}`} aria-label="받은함 목록">
-      <header className="sticky top-0 z-10 bg-g/90 px-4 pb-3 pt-[max(16px,env(safe-area-inset-top))] backdrop-blur-xl lg:px-5 lg:pt-6">
-        <p className="text-sub text-ink2">{role === "teacher" ? "우리 반" : "원 전체"} · {dateLabel(todayKST())}</p>
-        <h1 className="text-title font-bold tracking-[-0.025em]">받은함</h1>
-        {role === "director" && counts.review > 0 && (
-          <p className="mt-1 text-sub text-ink2">
-            원장 보고 <b className="text-ink">{data?.items.filter((c) => c.escalated).length ?? 0}건</b>을 먼저 봐 주세요
-          </p>
-        )}
+      <div className="sticky top-0 z-10 bg-g/90 px-4 pb-3 backdrop-blur-xl lg:px-5 lg:pt-4">
+        <ScreenTop
+          title="받은함"
+          sub={
+            <>
+              {role === "teacher" ? "우리 반" : "원 전체"} · {dateLabel(todayKST())}
+              {role === "director" && counts.review > 0 && (
+                <>
+                  <br />원장 보고 <b className="text-ink">{data?.items.filter((c) => c.escalated).length ?? 0}건</b>을 먼저 봐 주세요
+                </>
+              )}
+            </>
+          }
+        />
         <div className="-mx-4 mt-3 flex gap-1.5 overflow-x-auto px-4 [scrollbar-width:none] lg:mx-0 lg:flex-wrap lg:px-0" role="tablist" aria-label="받은함 필터">
           {INBOX_FILTERS.map((f) => (
             <button
@@ -127,7 +134,7 @@ export function InboxPage({ role }: { role: Exclude<Role, "parent"> }) {
             </button>
           ))}
         </div>
-      </header>
+      </div>
       <div className="grid gap-2 px-3 pb-6 lg:px-4">
         {isLoading && <SkeletonRows />}
         {isError && (

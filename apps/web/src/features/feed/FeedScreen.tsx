@@ -6,7 +6,7 @@ import { useChildren } from "@/api/notes";
 import { useAlbum, useDeletePost, useHidePost, usePosts, type Lane, type Photo, type Post } from "@/api/feed";
 import { useSession } from "@/app/session";
 import { AuthPhoto } from "@/components/AuthPhoto";
-import { BackLink } from "@/components/BackLink";
+import { ScreenTop } from "@/components/ScreenTop";
 import { Button } from "@/components/Button";
 import { Dock, PrimaryButton } from "@/components/Dock";
 import { QueryState } from "@/components/QueryState";
@@ -75,9 +75,8 @@ export function FeedScreen({ role }: { role: Role }) {
 
   return (
     <div className="mx-auto max-w-[680px] px-4 pb-48 lg:pb-10">
-      {role === "teacher" ? <BackLink to="/teacher/home" label="홈" className="mt-2" /> : <div className="pt-4" />}
-      <h1 className="text-large-title font-bold tracking-[-0.025em]">{role === "parent" ? "소식" : "원 소식"}</h1>
-      <p className="mb-4 mt-0.5 text-footnote font-medium text-ink2">{role === "parent" ? "우리 반과 원의 이야기, 사진을 볼 수 있어요" : "원 전체에 올라온 이야기와 사진이에요"}</p>
+      <ScreenTop audience={role === "parent" ? "parent" : "staff"} back={role === "teacher" ? { to: "/teacher/home", label: "홈" } : undefined} title={role === "parent" ? "소식" : "원 소식"} sub={role === "parent" ? "우리 반과 원의 이야기, 사진을 볼 수 있어요" : "원 전체에 올라온 이야기와 사진이에요"} />
+      <div className="mb-4" />
 
       <div role="tablist" aria-label="소식 종류" className="mb-4 grid grid-flow-col gap-1 rounded-md bg-fill p-1">
         {tabs.map((t) => (

@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { Link, useParams } from "react-router";
+import { useParams } from "react-router";
 import { TYPE_LABEL, useConfirmRequest, usePostMessage, useRequest } from "@/api/requests";
 import { Dock, PrimaryButton } from "@/components/Dock";
-import { Icon } from "@/components/Icon";
+import { ScreenTop } from "@/components/ScreenTop";
 import { QueryState } from "@/components/QueryState";
 import { useToast } from "@/components/Toast";
 
@@ -26,17 +26,10 @@ export function RequestDetailPage() {
 
   return (
     <div className="px-4 pb-48">
-      <Link to="/parent/requests" className="inline-flex min-h-11 items-center gap-0.5 pt-2 text-body font-medium text-accent">
-        <Icon name="chevL" className="size-4" />요청
-      </Link>
+      <ScreenTop audience="parent" back={{ to: "/parent/requests", label: "요청" }} title={r?.title ?? "요청"} sub={r ? <>{TYPE_LABEL[r.type] ?? r.type} · <span className="font-bold text-lav">{r.status_label}</span></> : undefined} />
       <QueryState queries={[q]} skeleton={3} errorTitle="이 요청을 불러오지 못했어요">
       {r && (
         <>
-          <h1 className="text-large-title font-bold tracking-[-0.025em]">{r.title ?? "요청"}</h1>
-          <p className="mt-0.5 text-footnote font-medium text-ink2">
-            {TYPE_LABEL[r.type] ?? r.type} · <span className="font-bold text-lav">{r.status_label}</span>
-          </p>
-
           <ol className="mt-4 grid grid-cols-4 gap-1 rounded-lg bg-card p-3 shadow-card" aria-label="진행 단계">
             {STEPS.map((s, i) => (
               <li key={s} className="grid justify-items-center gap-1 text-center">

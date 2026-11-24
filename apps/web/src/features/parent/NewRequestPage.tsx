@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { useNavigate } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { api, ApiError } from "@/api/client";
 import { useCreateRequest, type RequestType } from "@/api/requests";
 import { Dock, PrimaryButton } from "@/components/Dock";
 import { Icon } from "@/components/Icon";
+import { ScreenTop } from "@/components/ScreenTop";
 
 const TYPES: [RequestType, string, string][] = [
   ["inquiry", "문의", "궁금한 점을 물어봐요"],
@@ -34,10 +35,7 @@ export function NewRequestPage() {
 
   return (
     <div className="px-4 pb-48">
-      <Link to="/parent/requests" className="inline-flex min-h-11 items-center gap-0.5 pt-2 text-body font-medium text-accent">
-        <Icon name="chevL" className="size-4" />요청
-      </Link>
-      <h1 className="text-large-title font-bold tracking-[-0.025em]">새 요청</h1>
+      <ScreenTop audience="parent" back={{ to: "/parent/requests", label: "요청" }} title="새 요청" />
       <div className="mb-2 mt-5 px-1 text-footnote font-semibold text-ink2">무엇을 도와 드릴까요?</div>
       <div role="radiogroup" className="grid gap-2">
         {TYPES.map(([v, label, desc]) => (

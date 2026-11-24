@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/api/client";
@@ -5,6 +6,7 @@ import { Buddy } from "@/components/Brand";
 import { QueryState } from "@/components/QueryState";
 import { Dock, SubButton } from "@/components/Dock";
 import { Icon } from "@/components/Icon";
+import { MeSheet } from "@/components/MeSheet";
 import { useToast } from "@/components/Toast";
 import wordWhite from "@/assets/brand/wordmark-white.svg";
 import { dateLabel, nameI, todayKST, type DailyNote } from "@/domain/notes";
@@ -19,6 +21,7 @@ type Me = { user: { display_name: string }; children: { id: string; display_name
 export function ParentHome() {
   const date = todayKST();
   const toast = useToast();
+  const [meOpen, setMeOpen] = useState(false);
   const me = useQuery({ queryKey: ["me"], queryFn: () => api<Me>("/api/v1/me") });
   const notes = useQuery({
     queryKey: ["parent-notes", date],
@@ -33,13 +36,19 @@ export function ParentHome() {
 
   return (
     <div className="min-h-full pb-48">
+      <MeSheet open={meOpen} onClose={() => setMeOpen(false)} />
       {/* 블루 머리: 학부모 홈에만 브랜드 블루를 넓게 쓴다 */}
       <header className="bg-brand-fill px-4 pb-6 pt-[max(12px,env(safe-area-inset-top))] text-on-brand">
         <div className="mx-auto flex max-w-[680px] items-center justify-between">
           <img src={wordWhite} alt="유치온" className="h-5 w-auto" />
-          <Link to="/parent/notifications" className="grid size-11 place-items-center rounded-md" aria-label="알림">
-            <Icon name="bell" className="size-6" />
-          </Link>
+          <div className="flex items-center">
+            <Link to="/parent/notifications" className="grid size-11 place-items-center rounded-md" aria-label="알림">
+              <Icon name="bell" className="size-6" />
+            </Link>
+            <button type="button" aria-label="내 정보" onClick={() => setMeOpen(true)} className="grid size-11 place-items-center rounded-md active:scale-95">
+              <Icon name="profile" className="size-6" />
+            </button>
+          </div>
         </div>
         <div className="mx-auto max-w-[680px]">
           <h1 className="mt-4 text-large-title font-bold tracking-[-0.025em]">{child ? `${nameI(child.display_name)}의 오늘` : "오늘"}</h1>

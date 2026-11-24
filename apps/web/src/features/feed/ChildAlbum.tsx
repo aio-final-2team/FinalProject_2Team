@@ -5,6 +5,7 @@ import { useAlbum, usePosts, type Lane, type Photo, type Post } from "@/api/feed
 import { useSession } from "@/app/session";
 import { AuthPhoto } from "@/components/AuthPhoto";
 import { Icon } from "@/components/Icon";
+import { ScreenTop } from "@/components/ScreenTop";
 import { QueryState } from "@/components/QueryState";
 import { StateView } from "@/components/StateView";
 import { useToast } from "@/components/Toast";
@@ -52,20 +53,16 @@ export function ChildAlbum() {
 
   return (
     <div className="pb-24">
-      <header className="flex items-start justify-between gap-2 px-4 pt-4">
-        <div className="min-w-0">
-          <h1 className="text-large-title font-bold tracking-[-0.025em]">우리 애</h1>
-          <p className="mt-0.5 text-footnote font-medium text-ink2">반 사진에서 모은 {name} 기록</p>
-        </div>
-        <div className="flex shrink-0 gap-1">
+      <div className="px-4">
+        <ScreenTop audience="parent" title="우리 애" sub={`반 사진에서 모은 ${name} 기록`} right={<>
           <button type="button" aria-label="공유" onClick={() => soon("공유는")} className="grid size-11 place-items-center rounded-full text-ink active:scale-95">
             <svg viewBox="0 0 24 24" className="size-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12 15V4M8 8l4-4 4 4M5 12v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6" /></svg>
           </button>
           <button type="button" aria-label={`${name} 사진 공개 범위 설정`} onClick={() => setScope(true)} className="grid size-11 place-items-center rounded-full text-ink active:scale-95">
             <svg viewBox="0 0 24 24" className="size-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></svg>
           </button>
-        </div>
-      </header>
+        </>} />
+      </div>
 
       <QueryState queries={[me, album, posts]} skeleton={3} errorTitle="앨범을 불러오지 못했어요">
         <div className="px-4">

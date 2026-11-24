@@ -2,7 +2,7 @@
 import { useMemo, useState } from "react";
 import { useChildren } from "@/api/notes";
 import { useSession } from "@/app/session";
-import { SymbolMark } from "@/components/Brand";
+import { ScreenTop } from "@/components/ScreenTop";
 import { Icon } from "@/components/Icon";
 import { dateLabel, todayKST } from "@/domain/notes";
 import { QueryState } from "@/components/QueryState";
@@ -24,11 +24,7 @@ export function RecordsPage() {
 
   return (
     <div className="mx-auto max-w-[680px] px-4 pb-32 lg:pb-10">
-      <header className="flex min-h-[52px] items-center justify-between pt-2">
-        <SymbolMark className="size-8" />
-      </header>
-      <h1 className="mt-1 text-large-title font-bold tracking-[-0.025em]">아이 관찰 기록</h1>
-      <p className="mt-0.5 text-footnote font-medium text-ink2">{dateLabel(date)} · 수업 중 기억해 둘 내용을 짧게 남겨 주세요</p>
+      <ScreenTop title="아이 관찰 기록" sub={`${dateLabel(date)} · 수업 중 기억해 둘 내용을 짧게 남겨 주세요`} />
 
       <div className="mt-4 rounded-lg bg-tint p-3">
         <b className="text-headline">오늘 {recordedKids.length}명 기록</b>

@@ -1,4 +1,4 @@
-import { BackLink } from "@/components/BackLink";
+import { ScreenTop } from "@/components/ScreenTop";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
@@ -47,9 +47,7 @@ function Frame({ title = "오늘 알림장", sub, children }: { title?: string; 
   const { user } = useSession();
   return (
     <div className="mx-auto max-w-[680px] px-4 pb-48 lg:pb-10">
-      <BackLink to="/teacher/home" label="홈" className="mt-2" />
-      <h1 className="text-large-title font-bold tracking-[-0.025em]">{title}</h1>
-      <p className="mt-0.5 text-footnote font-medium text-ink2">{sub ?? `${user?.display_name} · ${dateLabel(todayKST())} · 17:00까지`}</p>
+      <ScreenTop title={title} sub={sub ?? `${user?.display_name} · ${dateLabel(todayKST())} · 17:00까지`} />
       {children}
     </div>
   );

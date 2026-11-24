@@ -1,4 +1,4 @@
-import { BackLink } from "@/components/BackLink";
+import { ScreenTop } from "@/components/ScreenTop";
 import { Navigate, useParams } from "react-router";
 import { StateView } from "@/components/StateView";
 
@@ -14,9 +14,7 @@ export function SoonPage() {
   const s = SOON[key as SoonKey];
   return (
     <div className="mx-auto max-w-[680px] px-4 pb-10 pt-2">
-      <BackLink to="/teacher/home" label="홈" />
-      <h1 className="mt-1 text-large-title font-bold tracking-[-0.025em]">{s.title}</h1>
-      <p className="mt-0.5 text-footnote font-medium text-ink2">{s.sub}</p>
+      <ScreenTop back={{ to: "/teacher/home", label: "홈" }} title={s.title} sub={s.sub} />
       <div className="mt-6 grid place-items-center">
         <StateView kind="empty" audience="staff" title="준비 중이에요" sub={s.note} />
       </div>
