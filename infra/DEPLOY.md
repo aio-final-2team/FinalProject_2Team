@@ -173,7 +173,7 @@ DB 모드는 설정 검사 → `alembic upgrade head` → 데모 시드 → API 
 | 모델 키와 모델 이름 | `.env.server`의 `OPENAI_API_KEY`, `LLM_MODEL_DEFAULT`. 역할별 `LLM_MODEL_DOCUMENT`·`LLM_MODEL_CHECKER`는 비워 두면 기본값을 써요. 키가 컨테이너에 들어갔는지는 `exec worker sh -c '[ -n "$OPENAI_API_KEY" ] && echo 있음'`처럼 키 값을 찍지 않는 명령으로 확인해요 | 키가 있고 모델이 팀에서 정한 값 |
 | 켠 직후 대표 문의 1건 | 학부모 계정으로 문의 한 건을 보내고 담임 받은함을 봐요 | 3분 안에 카드가 생기고, 그동안 담임 화면이 느려지지 않음 |
 
-**켜는 법.** `.env.server`에 `ANSWER_WRITER=graph`를 넣고 api·worker만 다시 만들어요. 이미지는 다시 빌드하지 않고 db·redis도 건드리지 않아요. 다만 api가 다시 뜨는 몇 초 동안은 요청이 실패할 수 있어요.
+**켜는 법.** `.env.server`에 `ANSWER_WRITER=graph`를 넣고 api·worker만 다시 만들어요. 이미지는 다시 빌드하지 않고 db·redis도 건드리지 않아요. beat는 정해진 시각에 작업을 넘기기만 하고 답변 초안을 쓰지 않아서, beat의 값은 옛것이어도 괜찮아요. 다만 api가 다시 뜨는 몇 초 동안은 요청이 실패할 수 있어요.
 
 ```bash
 compose=(docker compose --env-file infra/team-server/.env.server -f compose.yaml -f infra/team-server/compose.server.yaml)
@@ -182,7 +182,7 @@ compose=(docker compose --env-file infra/team-server/.env.server -f compose.yaml
 curl "$API_BASE_URL/health"
 ```
 
-**이상 신호.** 켠 뒤 아래 신호 가운데 하나라도 나빠지면 바로 꺼요. 나빠졌는지는 평소 값과 비교해야 알 수 있어요. 그러니 켜기 전에 아래 명령을 한 번 돌려 값을 적어 두고, 켠 뒤에 같은 명령으로 다시 재요.
+**이상 신호.** 켠 뒤 아래 신호 가운데 하나라도 나빠지면 바로 꺼요. 나빠졌는지는 평소 값과 비교해야 알 수 있어요. 그러니 켜기 전에 아래 명령을 한 번 돌려 값을 적어 두고, 켠 뒤에 같은 명령으로 다시 재요. 아래 로그인은 데모 계정(`teacher01`)이에요. 데모 시드를 끈 서버(`SEED_DEMO=false`)라면 실제 담임 계정으로 바꿔요.
 
 | 신호 | 보는 법 |
 |---|---|
