@@ -31,7 +31,10 @@ export function StaffLayout({ role }: { role: Exclude<Role, "parent"> }) {
           { to: `${base}/notes`, icon: "document", label: "알림장", count: noteLeft },
           { to: `${base}/inbox`, icon: "inbox", label: "받은함", count: review },
         ]
-      : [{ to: `${base}/inbox`, icon: "inbox", label: "받은함", count: review }];
+      : [
+          { to: `${base}/inbox`, icon: "inbox", label: "받은함", count: review },
+          { to: `${base}/feed`, icon: "class", label: "원 소식", count: 0 },
+        ];
   const [me, setMe] = useState(false);
   const logout = () => {
     signOut();

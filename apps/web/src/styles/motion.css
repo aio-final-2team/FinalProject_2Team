@@ -7,6 +7,9 @@
 @keyframes y-blink { 0%,44%,56%,100% { transform: scaleY(1) } 50% { transform: scaleY(.1) } }
 @keyframes y-scan { 0%,100% { transform: translateX(-4px) } 50% { transform: translateX(7px) } }
 @keyframes y-close { from { transform: scaleY(1) } to { transform: scaleY(.12) } }
+@keyframes y-blink2 { 0%,30%,40%,50%,60%,100% { transform: scaleY(1) } 35%,55% { transform: scaleY(.1) } }
+@keyframes y-breathe { 0%,100% { transform: scaleY(.12) } 50% { transform: scaleY(.3) } }
+@keyframes y-sway { 0%,100% { transform: rotate(-3deg) } 50% { transform: rotate(3deg) } }
 @keyframes y-dot { 0%,100% { opacity: .25; transform: translateY(0) } 40% { opacity: 1; transform: translateY(-4px) } }
 @keyframes y-shimmer { from { background-position: 100% 0 } to { background-position: -100% 0 } }
 @keyframes y-spin { to { transform: rotate(360deg) } }
@@ -15,11 +18,14 @@
 .m-bob { animation: y-bob 1.1s ease-in-out infinite }
 .m-float { animation: y-float 3s ease-in-out infinite }
 .m-shake { animation: y-shake .6s ease-in-out .2s both }
+.m-sway { animation: y-sway 3.6s ease-in-out infinite }
 .m-tilt { animation: y-tilt .7s var(--spring) .2s both }
 .m-spin { animation: y-spin .7s linear infinite }
 .sym .eye, .sym .pupil { transform-box: fill-box; transform-origin: center }
-.sym-blink .eye { animation: y-blink 3.2s ease-in-out infinite }
+.sym-blink .eye { animation: y-blink 2.4s ease-in-out infinite }
+.sym-blink2 .eye { animation: y-blink2 2.2s ease-in-out infinite }
 .sym-scan .pupil { animation: y-scan 1.6s ease-in-out infinite }
-.sym-closed .eye { transform: scaleY(.12); animation: y-close .6s ease-out both }
+.sym-scan2 .pupil { animation: y-scan 1s ease-in-out infinite }
+.sym-closed .eye { transform: scaleY(.12); animation: y-close .6s ease-out both, y-breathe 3s ease-in-out .7s infinite }
 .m-dot { animation: y-dot 1.1s ease-in-out infinite }
 .skel { background: linear-gradient(90deg, var(--fill) 0%, var(--fill2) 50%, var(--fill) 100%); background-size: 200% 100%; animation: y-shimmer 1.4s ease-in-out infinite }

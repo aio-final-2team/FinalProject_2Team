@@ -1,7 +1,7 @@
 import { Link, useParams, useSearchParams } from "react-router";
 import { useCards, type TypeFilter } from "@/api/cards";
 import { dateLabel, todayKST } from "@/domain/notes";
-import { Icon } from "@/components/Icon";
+import { BackLink as SharedBackLink } from "@/components/BackLink";
 import { SkeletonRows, StateView } from "@/components/StateView";
 import { Pill, WeightIcon } from "@/components/Tags";
 import { INBOX_FILTERS, TYPE_LABEL, type InboxFilter } from "@/domain/status";
@@ -17,11 +17,12 @@ const EMPTY: Record<InboxFilter, string> = {
   done: "완료한 카드가 없어요",
 };
 
+/** 카드 목록 응답에는 접수 시각이 없고 처리 기한(due_at)만 있다. 기한까지 남은 시간(지났으면 지난 시간)을 보여 준다 */
 function ago(iso: string) {
-  const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
-  if (m < 60) return `${m}분`;
-  if (m < 60 * 24) return `${Math.round(m / 60)}시간`;
-  return `${Math.round(m / 60 / 24)}일`;
+  const m = Math.round((new Date(iso).getTime() - Date.now()) / 60000);
+  const a = Math.abs(m);
+  const unit = a < 60 ? `${a}분` : a < 60 * 24 ? `${Math.round(a / 60)}시간` : `${Math.round(a / 60 / 24)}일`;
+  return m >= 0 ? `${unit} 남음` : `${unit} 지남`;
 }
 
 function weightOf(c: Card) {
@@ -157,10 +158,5 @@ export function InboxPage({ role }: { role: Exclude<Role, "parent"> }) {
 }
 
 export function BackLink({ to }: { to: string }) {
-  return (
-    <Link to={to} className="inline-flex items-center gap-0.5 text-body text-accent lg:hidden">
-      <Icon name="chevL" className="size-5" />
-      받은함
-    </Link>
-  );
+  return <SharedBackLink to={to} label="받은함" className="lg:hidden" />;
 }

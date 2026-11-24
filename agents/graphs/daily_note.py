@@ -122,7 +122,7 @@ def draft_child(payload, child, common, names, writer, checker) -> dict:
             own = twice(lambda: write(writer, payload, child, issues))
         except ModelError as error:
             trace.append({"step": "write", "attempt": attempt, "result": "failed", "error": str(error)})
-            return result(child, common, [], [new_check("child", "draft_failed")], trace, "handoff")
+            return result(child, common, [], [new_check("child", "draft_failed")], trace, "handoff", "draft_failed")
         trace.append({"step": "write", "attempt": attempt, "result": "ok",
                       "lines": [{"key": line["key"], "value": line["value"]} for line in own]})
         found = code_checks(own, child, names)
@@ -137,11 +137,11 @@ def draft_child(payload, child, common, names, writer, checker) -> dict:
         trace.append({"step": "check", "attempt": attempt, "result": review_result,
                       "kinds": [f["kind"] for f in found]})
         if any(f["kind"] == "check_failed" for f in found):
-            return result(child, common, own, found, trace, "handoff")
+            return result(child, common, own, found, trace, "handoff", "check_failed")
         if not issues:
             return result(child, common, own, found, trace, "needs_check" if found else "done")
         if attempt == MAX_RETURNS:
-            return result(child, common, own, found, trace, "handoff")
+            return result(child, common, own, found, trace, "handoff", "return_limit")
         trace.append({"step": "return", "attempt": attempt, "kinds": [f["kind"] for f in issues]})
     raise AssertionError("unreachable")
 
@@ -268,9 +268,12 @@ def unique(found: list[dict]) -> list[dict]:
     return list(kept.values())
 
 
-def result(child, common, own, found, trace=None, end="done") -> dict:
-    """end: done(확인 없음) · needs_check(선생님 볼 일) · handoff(실패·한도 초과로 사람에게). 백엔드는 trace·end를 저장하지 않는다."""
+def result(child, common, own, found, trace=None, end="done", handoff_reason=None) -> dict:
+    """handoff일 때만 인계 이유를 돌려준다. 현재 백엔드는 trace·end·handoff_reason을 저장하지 않는다."""
     items = [common["day"], *own, *(common[k] for k in ("supplies", "meal") if k in common)]
     checks = [{"id": f"c{n}", **f} for n, f in enumerate(found, start=1)]
-    return {"child_id": child["child_id"], "content": {"items": items}, "open_checks": checks,
-            "end": end, "trace": (trace or []) + [{"step": "end", "result": end}]}
+    output = {"child_id": child["child_id"], "content": {"items": items}, "open_checks": checks,
+              "end": end, "trace": (trace or []) + [{"step": "end", "result": end}]}
+    if end == "handoff":
+        output["handoff_reason"] = handoff_reason
+    return output
