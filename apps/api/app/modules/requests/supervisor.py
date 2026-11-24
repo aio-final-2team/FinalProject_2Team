@@ -2,6 +2,7 @@
 
 import json
 import os
+from pathlib import Path
 
 from agents.llm import ModelError, OpenAIModel
 from app.core.request_rules import RISK_TYPES, classify
@@ -10,30 +11,39 @@ TOPICS = {"safety", "meal", "teacher", "belongings", "fee", "pickup_bus", "peer_
           "health_hygiene", "photo_record", "communication", "other"}
 RISK_CATEGORIES = {"child_safety", "staff_attack", "legal_external", "privacy_leak"}
 LEVEL = {"normal": 0, "uncertain": 1, "urgent": 2}
+PROMPTS = Path(__file__).resolve().parents[5] / "agents" / "prompts"
+
+
+def _code_classification(request_type, body):
+    result = classify(request_type, body)
+    # 등원이라는 낱말이 있어도 수족구 문의의 주제는 건강이다.
+    if "수족구" in body:
+        result["topic_key"] = "health_hygiene"
+    return result
 
 
 def classify_request(request_type, body, writer=None):
     if not os.getenv("LLM_MODEL_SUPERVISOR") and writer is None:
         return {}
     model = writer or OpenAIModel("SUPERVISOR")
-    system = """요청을 분류해 JSON으로 topic_key, urgency, risk_level, risk_category를 제안한다.
-화면의 요청 유형은 바꾸지 않는다. topic_key는 safety, meal, teacher, belongings, fee, pickup_bus,
-peer_conflict, health_hygiene, photo_record, communication, other 중 하나다.
-urgency는 normal/urgent, risk_level은 normal/uncertain/urgent, risk_category는
-child_safety/staff_attack/legal_external/privacy_leak/null이다."""
+    system = ((PROMPTS / "common.md").read_text(encoding="utf-8") + "\n" +
+              (PROMPTS / "supervisor.md").read_text(encoding="utf-8") +
+              "\n분류 결과를 JSON으로 제안한다: topic_key, urgency, risk_level, risk_category. "
+              "화면의 요청 유형은 바꾸지 않는다. 거절 안내가 필요하면 안내 문구를 제안한다.")
     try:
-        proposal = model.json(system, json.dumps({"request_type": request_type, "body": body}, ensure_ascii=False))
+        proposal = model.json(system, json.dumps({"request_type": request_type, "body": body,
+                                                   "untrusted_data_fields": ["body"]}, ensure_ascii=False))
     except ModelError:
         return {}
     return proposal if isinstance(proposal, dict) else {}
 
 
 def validate_proposal(request_type, body, proposal):
-    base = classify(request_type, body)
+    base = _code_classification(request_type, body)
     if not isinstance(proposal, dict):
         return base
     result = dict(base)
-    if proposal.get("topic_key") in TOPICS:
+    if proposal.get("topic_key") in TOPICS and (base["topic_key"] == "other" or proposal["topic_key"] == base["topic_key"]):
         result["topic_key"] = proposal["topic_key"]
     if proposal.get("urgency") in ("normal", "urgent"):
         result["urgency"] = "urgent" if base["urgency"] == "urgent" else proposal["urgency"]
@@ -50,3 +60,10 @@ def validate_proposal(request_type, body, proposal):
             result["risk_level"] = "uncertain"
         result["risk_category"] = category
     return result
+
+
+def topic_conflict(request_type, body, proposal):
+    """코드가 특정한 주제를 고른 경우, 다른 모델 제안을 이력에 표시한다."""
+    base_topic = _code_classification(request_type, body)["topic_key"]
+    return (isinstance(proposal, dict) and base_topic != "other"
+            and proposal.get("topic_key") in TOPICS and proposal["topic_key"] != base_topic)

@@ -9,7 +9,7 @@ from datetime import datetime
 from sqlalchemy import text
 
 from app.core.db import transaction
-from app.modules.requests.supervisor import classify_request, validate_proposal
+from app.modules.requests.supervisor import classify_request, topic_conflict, validate_proposal
 from app.core.schedule import KST, due_at
 from app.modules.requests.complaints import repeat_count
 from app.modules.requests.events import record, set_status
@@ -90,7 +90,9 @@ def run_request(request_id):
             UPDATE requests SET topic_key=:topic_key,urgency=:urgency,risk_level=:risk_level,risk_category=:risk_category
             WHERE id=:id
         """), {"id": request_id, "risk_level": None, "risk_category": None, **fields})
-        set_status(connection, req, "classified", action="classified", actor_type="agent", agent_name="supervisor")
+        set_status(connection, req, "classified", action="classified", actor_type="agent", agent_name="supervisor",
+                   topic_model_rejected=topic_conflict(req["type"], req["body"], proposal)
+                   if req["type"] == initial["type"] and req["body"] == initial["body"] else False)
         teacher = connection.scalar(text("""
             SELECT s.user_id FROM classroom_staff s JOIN users u ON (u.id,u.org_id)=(s.user_id,s.org_id)
             WHERE s.org_id=:org AND s.classroom_id=:class AND u.role='teacher' AND u.is_active
