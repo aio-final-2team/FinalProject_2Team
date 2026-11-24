@@ -101,7 +101,8 @@ def test_sent_note_correction_notifies_parent_once_and_preserves_send_and_origin
     assert event["detail"]["reason_text"] == body["reason_text"] and event["detail"]["version"] == 2
     assert "content" not in event["detail"] and "ai_original" not in event["detail"]
     public = client.get(BASE + "/daily-notes", headers=parent, params={"date": batch()["note_date"]}).json()
-    assert public["total"] == 1 and public["items"][0] == corrected
+    assert "input_id" not in corrected
+    assert public["total"] == 1 and public["items"][0] == {**corrected, "input_id": note["input_id"]}
     notices = client.get(BASE + "/notifications", headers=parent).json()["items"]
     corrections = [n for n in notices if n["kind"] == "note_corrected"]
     assert len(corrections) == 1 and corrections[0]["title"] == "알림장이 고쳐졌어요"
@@ -133,7 +134,7 @@ def test_note_correction_rejects_unsent_status_without_side_effects(client, teac
         changed = client.patch(f"{BASE}/daily-notes/{note['id']}", headers=teacher, json={
             "resolved_checks": [c["id"] for c in note["open_checks"]], "confirm": status == "ready"})
         assert changed.status_code == 200
-        note = changed.json()["note"]
+        note = {**changed.json()["note"], "input_id": note["input_id"]}
     assert note["status"] == status
     before = events(note_flow_backend, note["id"])
     err(client.post(f"{BASE}/daily-notes/{note['id']}/correct", headers=teacher, json=correction_body(note)),
