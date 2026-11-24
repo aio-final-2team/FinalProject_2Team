@@ -136,7 +136,7 @@ def _invoke(request_id, payload, expected_card_id=None):
     from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
     from psycopg.rows import dict_row
 
-    # 임의 Python 객체를 읽지 않는다. 협업 경로는 자료·초안·기억도 저장하므로 운영 전 범위를 검토한다.
+    # 체크포인트에는 ID·분기·시도 횟수·인계 사유만 남긴다. 임의 Python 객체도 읽지 않는다.
     serializer = JsonPlusSerializer(allowed_msgpack_modules=[])
     request_id = str(UUID(str(request_id)))
     key = f"request-graph:{request_id}"

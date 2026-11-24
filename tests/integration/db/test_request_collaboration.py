@@ -128,3 +128,45 @@ def test_collaboration_memory_failure_blanks_complaint(db_client, seeded_db, mon
     [card] = cards_of(seeded_db, request_id)
     assert card["draft"]["text"] == ""
     assert card["check_result"]["passed"] is False
+
+
+def test_collaboration_checkpoint_excludes_content_and_resumes(db_client, seeded_db, monkeypatch):
+    from app.core import users
+    from app.core.auth import issue_token
+    from app.mock import seed
+    from app.modules.requests import graph_agent
+
+    enable_graph(monkeypatch)
+    use_model(seeded_db, monkeypatch, lambda _: None)
+    tone = "[TEST] 체크포인트에 남기지 않을 담임 말투"
+    with seeded_db.begin() as connection:
+        connection.execute(text("""
+            INSERT INTO memories(org_id,owner_id,kind,content)
+            SELECT org_id,id,'tone',:tone FROM users WHERE id=:teacher
+        """), {"tone": tone, "teacher": seed.TEACHER})
+    request_id = submit(db_client)
+    [card] = cards_of(seeded_db, request_id)
+    thread = graph_agent.thread_id(request_id)
+
+    def checkpoint_bytes():
+        with seeded_db.connect() as connection:
+            data = []
+            for table, column in (("checkpoints", "checkpoint"), ("checkpoints", "metadata"),
+                                  ("checkpoint_blobs", "blob"), ("checkpoint_writes", "blob")):
+                rows = connection.execute(text(f"SELECT {column} FROM {table} WHERE thread_id=:thread"),
+                                          {"thread": thread}).scalars()
+                data.extend(value if isinstance(value, bytes) else str(value).encode("utf-8")
+                            for value in rows if value is not None)
+        return b" ".join(data)
+
+    stored = checkpoint_bytes()
+    assert stored
+    for secret in (tone, "[TEST] 자료 확인 답", "12월 24일", "[TEST] 겨울방학 언제부터인가요?"):
+        assert secret.encode("utf-8") not in stored
+    assert card["draft"]["text"] == "[TEST] 자료 확인 답"
+    teacher = {"Authorization": "Bearer " + issue_token(users.get_user(seed.TEACHER))}
+    response = db_client.post(f"/api/v1/cards/{card['id']}/decisions", headers=teacher,
+                              json={"version": card["version"], "decision": "approve"})
+    assert response.status_code == 200, response.text
+    assert graph_agent.resume_request(card["id"]) is None
+    assert tone.encode("utf-8") not in checkpoint_bytes()
