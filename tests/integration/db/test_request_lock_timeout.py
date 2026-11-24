@@ -1,12 +1,16 @@
 """요청 처리의 모델 호출이 요청 행 잠금 밖에서 돌고, 3분을 넘기면 초안 없는 카드로 넘기는지 실제 DB에서 확인한다."""
 
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from uuid import uuid4
 
+import pytest
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
 from app.mock import seed
+from app.core import users
+from app.core.auth import issue_token
 from app.modules.requests import agent_stub, runner
 from db.seeds.documents import seed_documents
 
@@ -65,6 +69,24 @@ def handoff_reasons(seeded_db, request_id):
         return connection.scalars(text("""
             SELECT detail->>'handoff_reason' FROM events WHERE request_id=:id AND detail ? 'handoff_reason' ORDER BY id
         """), {"id": request_id}).all()
+
+
+def request_snapshot(seeded_db, request_id):
+    with seeded_db.connect() as connection:
+        return {
+            "cards": connection.execute(text("SELECT id,status,version,draft,check_result FROM cards WHERE request_id=:id ORDER BY id"),
+                                        {"id": request_id}).mappings().all(),
+            "status": connection.scalar(text("SELECT status FROM requests WHERE id=:id"), {"id": request_id}),
+            "evidence": connection.execute(text("""
+                SELECT card_id,chunk_id,quote FROM card_evidence
+                WHERE card_id IN (SELECT id FROM cards WHERE request_id=:id) ORDER BY card_id,chunk_id
+            """), {"id": request_id}).all(),
+            "events": connection.execute(text("SELECT id,action,detail FROM events WHERE request_id=:id ORDER BY id"),
+                                         {"id": request_id}).all(),
+            "notifications": connection.execute(text("""
+                SELECT id,kind FROM notifications WHERE request_id=:id ORDER BY id
+            """), {"id": request_id}).all(),
+        }
 
 
 def test_answer_models_run_outside_request_row_lock(db_client, seeded_db, monkeypatch):
@@ -127,6 +149,97 @@ def test_ai_timeout_hands_off_empty_card_and_drops_late_draft(db_client, seeded_
     assert late["id"] == card["id"] and not late["draft"].get("text")
     with seeded_db.connect() as connection:
         assert connection.scalar(text("SELECT status FROM requests WHERE id=:id"), {"id": request_id}) == "awaiting_review"
+
+
+@pytest.mark.parametrize("decision", ["edit_approve", "reject"])
+def test_late_draft_keeps_teacher_decision(db_client, seeded_db, monkeypatch, decision):
+    entered, release, finished = threading.Event(), threading.Event(), threading.Event()
+
+    def hold(role):
+        if role == "DOCUMENT":
+            entered.set()
+            assert release.wait(10)
+
+    use_model(seeded_db, monkeypatch, hold)
+    original = agent_stub.run_request
+
+    def tracked(request_id):
+        try:
+            return original(request_id)
+        finally:
+            finished.set()
+
+    monkeypatch.setattr(agent_stub, "run_request", tracked)
+    monkeypatch.setattr(runner, "AI_TIMEOUT_SECONDS", 0.3)
+    try:
+        request_id = submit(db_client)
+        assert entered.wait(5)
+        [card] = cards_of(seeded_db, request_id)
+        assert handoff_reasons(seeded_db, request_id) == ["ai_timeout"]
+        assert not card["draft"].get("text")
+        director = {"Authorization": "Bearer " + issue_token(users.get_user(seed.DIRECTOR))}
+        assigned = db_client.post(f"/api/v1/cards/{card['id']}/reassign", headers=director,
+                                  json={"assignee_id": str(seed.TEACHER), "reason": "[TEST] 담임 확인"})
+        assert assigned.status_code == 200, assigned.text
+        [card] = cards_of(seeded_db, request_id)
+        teacher = {"Authorization": "Bearer " + issue_token(users.get_user(seed.TEACHER))}
+        body = {"version": card["version"], "decision": decision}
+        if decision == "edit_approve":
+            body["edited_content"] = {"text": "[TEST] 담임이 직접 확인했어요."}
+        else:
+            body["reason_code"] = "wrong_fact"
+        response = db_client.post(f"/api/v1/cards/{card['id']}/decisions", headers=teacher, json=body)
+        assert response.status_code == 200, response.text
+        before = request_snapshot(seeded_db, request_id)
+        assert before["status"] == ("sent_or_booked" if decision == "edit_approve" else "awaiting_review")
+        assert len(before["cards"]) == (1 if decision == "edit_approve" else 2)
+    finally:
+        release.set()
+    assert finished.wait(10)
+    assert request_snapshot(seeded_db, request_id) == before
+
+
+def test_teacher_can_read_while_model_waits(db_client, seeded_db, monkeypatch):
+    entered, release, finished = threading.Event(), threading.Event(), threading.Event()
+
+    def hold(role):
+        if role == "DOCUMENT":
+            entered.set()
+            assert release.wait(10)
+
+    use_model(seeded_db, monkeypatch, hold)
+    original = agent_stub.run_request
+
+    def tracked(request_id):
+        try:
+            return original(request_id)
+        finally:
+            finished.set()
+
+    monkeypatch.setattr(agent_stub, "run_request", tracked)
+    monkeypatch.setattr(runner, "AI_TIMEOUT_SECONDS", 0.3)
+    request_id = submit(db_client)
+    assert entered.wait(5)
+    [card] = cards_of(seeded_db, request_id)
+    teacher = {"Authorization": "Bearer " + issue_token(users.get_user(seed.TEACHER))}
+
+    def read_and_lock():
+        detail = db_client.get(f"/api/v1/cards/{card['id']}", headers=teacher)
+        listing = db_client.get("/api/v1/cards", headers=teacher)
+        with seeded_db.begin() as connection:
+            locked = connection.scalar(text("SELECT id FROM requests WHERE id=:id FOR UPDATE NOWAIT"),
+                                       {"id": request_id})
+        return detail, listing, locked
+
+    try:
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            detail, listing, locked = pool.submit(read_and_lock).result(timeout=1)
+        assert detail.status_code == 200, detail.text
+        assert listing.status_code == 200, listing.text
+        assert str(locked) == request_id
+    finally:
+        release.set()
+    assert finished.wait(10)
 
 
 def test_timeout_error_raised_by_agent_is_ai_failed(db_client, seeded_db, monkeypatch):
