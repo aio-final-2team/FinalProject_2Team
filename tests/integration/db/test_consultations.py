@@ -233,7 +233,7 @@ def test_distinct_requests_simultaneously_confirming_conflict_only_store_one(db_
         assert connection.execute(text("SELECT status,version FROM cards WHERE id=:id"), {"id": loser[1]}).one() == ("pending", 1)
         assert connection.scalar(text("SELECT status FROM consultation_slots WHERE id=:id"), {"id": loser[2]["id"]}) == "chosen_by_parent"
         notifications = connection.execute(text("""
-            SELECT recipient_id,kind,status,dedupe_key,deliver_after,created_at FROM notifications WHERE kind='sent_or_booked'
+            SELECT recipient_id,kind,status,dedupe_key,deliver_after,created_at FROM notifications WHERE kind='consultation_booked'
         """)).mappings().all()
         assert len(notifications) == 1
         notice = notifications[0]

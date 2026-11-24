@@ -690,6 +690,8 @@ SELECT
             THEN 'on_hold'
         WHEN c.assignee_id IS NULL
             THEN 'unassigned'
+        WHEN r.status = 'escalated' AND c.kind = 'reply_draft'
+            THEN 'in_progress'
         WHEN r.risk_level = 'uncertain'
             THEN 'uncertain'
         WHEN r.status IN ('awaiting_review', 'escalated')

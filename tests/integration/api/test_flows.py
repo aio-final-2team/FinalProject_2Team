@@ -206,8 +206,8 @@ def test_reclassify_uncertain_and_escalate(client, teacher, director):
     card = next(c for c in store.cards_of(req.id) if c.kind == "reply_draft")
     result = client.post(f"{BASE}/cards/{card.id}/reclassify", headers=teacher, json={"version": 1, "risk_level": "normal", "reason": "일반 문의 수준"})
     assert result.status_code == 200 and result.json()["request"]["risk_level"] == "normal"
-    review = client.get(BASE + "/cards?filter=needs_review", headers=teacher).json()
-    assert str(card.id) in [c["id"] for c in review["items"]]
+    progress = client.get(BASE + "/cards?filter=in_progress", headers=teacher).json()
+    assert next(c for c in progress["items"] if c["id"] == str(card.id))["status_label"] == "원장 확인 중"
     result = client.post(f"{BASE}/cards/{card.id}/reclassify", headers=teacher,
                          json={"version": 2, "risk_level": "urgent", "risk_category": "child_safety", "reason": "추가 확인"})
     assert result.status_code == 200 and req.status == "escalated"
@@ -335,7 +335,7 @@ def test_foreign_scope_paths_and_required_parameters(client, parent, parent_othe
     err(client.post(f"{BASE}/requests/{seed.REQUEST_CONSULT}/confirm", headers=parent), 409, "INVALID_TRANSITION")
 
 
-def test_request_notification_kinds_and_trace_audit(client, parent, teacher):
+def test_request_notification_kinds_and_trace_audit(client, parent, teacher, director):
     from app.mock.notifications import TITLES
     from app.core.consultation_alerts import KINDS
     store.reset()
@@ -359,6 +359,13 @@ def test_request_notification_kinds_and_trace_audit(client, parent, teacher):
     assert client.post(f"{BASE}/requests/{seed.REQUEST_CONSULT}/slot-choices", headers=parent, json={"slot_ids": [slot.id]}).status_code == 200
     slot.chosen_at = store.now() - timedelta(hours=25)
     assert client.get(f"{BASE}/requests/{seed.REQUEST_CONSULT}", headers=parent).status_code == 200
+    assert client.post(f"{BASE}/requests/{seed.REQUEST_CONSULT}/slot-choices", headers=parent,
+                       json={"slot_ids": [slot.id]}).status_code == 200
+    assert client.post(f"{BASE}/cards/{slot.card_id}/bookings", headers=teacher,
+                       json={"version": 1, "slot_id": slot.id}).status_code == 200
+    _, reassigned_id = create(client, parent, "inquiry", "[TEST] 재배정 알림")
+    assert client.post(f"{BASE}/cards/{reassigned_id}/reassign", headers=director,
+                       json={"assignee_id": str(seed.TEACHER_OTHER), "reason": "[TEST] 담당 부재"}).status_code == 200
     body = {"classroom_id": str(seed.CLASS_STAR), "note_date": store.now().date().isoformat(), "activities": "산책", "supplies": "실내화"}
     assert client.post(BASE + "/daily-notes/drafts", headers=teacher, json=body).status_code == 202
     for note in store.state().notes.values():

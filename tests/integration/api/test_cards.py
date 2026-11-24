@@ -13,6 +13,7 @@ from app.core.db import transaction
 from app.core.schedule import KST
 from app.mock import seed, store
 from tests.integration.api.helpers import BASE, decision, err
+from tests.integration.api.test_requests import notices
 
 
 @pytest.fixture(autouse=True, params=["mock", "db"])
@@ -75,10 +76,18 @@ def test_reply_approval_confirmation_completion_and_event_order(client, parent, 
     confirmed = client.post(f"{BASE}/requests/{rid}/confirm", headers=parent)
     assert confirmed.status_code == 200
     assert client.post(f"{BASE}/requests/{rid}/confirm", headers=parent).json() == confirmed.json()
+    confirmed_view = client.get(f"{BASE}/requests/{rid}", headers=parent).json()
+    label = "확인함 · 선생님이 마무리하고 있어요"
+    assert confirmed_view["request"]["status_label"] == label
+    assert confirmed_view["timeline"][-1]["label"] == label
+    listed = client.get(BASE + "/requests?size=100", headers=parent).json()["items"]
+    assert next(row for row in listed if row["id"] == rid)["status_label"] == label
+    assert client.get(f"{BASE}/requests/{rid}", headers=teacher).json()["request"]["status_label"] == "발송됨"
     assert cid in [
         row["id"] for row in client.get(BASE + "/cards?filter=needs_review", headers=teacher).json()["items"]
     ]
     assert decision(client, teacher, cid, "complete", version=2).status_code == 200
+    assert client.get(f"{BASE}/requests/{rid}", headers=parent).json()["request"]["status_label"] == "완료"
     assert [ev["action"] for ev in detail(client, teacher, cid)["timeline"]][-2:] == ["parent_confirmed", "completed"]
     assert client.get(BASE + "/overview", headers=director).json()["completed_unconfirmed"] == 0
 
@@ -161,7 +170,7 @@ def test_reject_then_dismiss_keeps_old_card_done(client, parent, teacher):
     }
 
 
-def test_escalation_instruction_reassignment_then_edit_approval(client, parent, teacher, teacher_other, director):
+def test_escalation_instruction_reassignment_then_edit_approval(client, parent, teacher, teacher_other, director, card_backend):
     rid, cid = create(client, parent, teacher)
     report = decision(client, teacher, cid, "escalate")
     assert report.status_code == 200, report.text
@@ -192,6 +201,10 @@ def test_escalation_instruction_reassignment_then_edit_approval(client, parent, 
     )
     assert result.status_code == 200, result.text
     assert result.json()["card"]["version"] == 3
+    reassigned = [n for n in notices(card_backend, rid) if n["kind"] == "reassigned"]
+    assert len(reassigned) == 1
+    assert (str(reassigned[0]["recipient_id"]), str(reassigned[0]["card_id"]), reassigned[0]["title"]) == (
+        str(seed.TEACHER_OTHER), cid, "요청이 배정됐어요")
     assert detail(client, teacher_other, cid)["request"]["id"] == rid
     assert client.get(f"{BASE}/requests/{rid}", headers=teacher_other).status_code == 200
     assert cid in [c["id"] for c in client.get(BASE + "/cards?assignee=me", headers=teacher_other).json()["items"]]
@@ -202,6 +215,49 @@ def test_escalation_instruction_reassignment_then_edit_approval(client, parent, 
     )
     assert result.status_code == 200, result.text
     assert client.get(f"{BASE}/requests/{rid}", headers=parent).json()["messages"][-1]["body"] == "[TEST] 직접 쓴 회신"
+
+
+@pytest.mark.parametrize("code,label,reason", [
+    ("wrong_fact", "사실이 틀림", None), ("tone", "말투", None),
+    ("missing_info", "근거·정보 부족", None), ("privacy", "개인정보", None),
+    ("policy", "원 방침과 다름", "[TEST] 원에서 별도로 안내해요"),
+    ("slot_unavailable", "상담 시간 안 됨", None), ("room_unavailable", "상담실 없음", None),
+    ("other", "기타", "[TEST] 업무 범위 밖이에요"),
+])
+def test_dismiss_notification_uses_reason_label_and_text(client, parent, teacher, card_backend, code, label, reason):
+    rid, cid = create(client, parent, teacher, type="inquiry", body="[TEST] 반려 사유 표시")
+    extra = {"reason_text": reason} if reason else {}
+    response = decision(client, teacher, cid, "dismiss", reason_code=code, **extra)
+    assert response.status_code == 200, response.text
+    rejected = [n for n in notices(card_backend, rid) if n["kind"] == "rejected"]
+    assert len(rejected) == 1
+    assert str(rejected[0]["recipient_id"]) == str(seed.PARENT)
+    assert rejected[0]["body"] == (f"{label} · {reason}" if reason else label)
+
+
+@pytest.mark.parametrize("body", ["[TEST] 일반 문의", "[TEST] 아이가 다쳤어요", "[TEST] 판단 필요 문의"])
+def test_escalated_reply_waits_in_progress_until_director_instruction(client, parent, teacher, director, body):
+    rid, cid = create(client, parent, teacher, type="inquiry", body=body)
+    if detail(client, teacher, cid)["request"]["status"] != "escalated":
+        response = decision(client, teacher, cid, "escalate")
+        assert response.status_code == 200, response.text
+    progress = client.get(BASE + "/cards?filter=in_progress&size=100", headers=teacher).json()["items"]
+    assert next(c for c in progress if c["id"] == cid)["status_label"] == "원장 확인 중"
+    assert detail(client, teacher, cid)["request"]["status_label"] == "원장 확인 중"
+    for bucket in ("needs_review", "uncertain"):
+        rows = client.get(f"{BASE}/cards?filter={bucket}&size=100", headers=teacher).json()["items"]
+        assert cid not in {c["id"] for c in rows}
+    report = next(c for c in client.get(BASE + "/cards?kind=director_report&size=100", headers=director).json()["items"]
+                  if c["request_id"] == rid)
+    report_bucket = "uncertain" if report["risk_level"] == "uncertain" else "needs_review"
+    rows = client.get(f"{BASE}/cards?filter={report_bucket}&size=100", headers=director).json()["items"]
+    assert report["id"] in {c["id"] for c in rows}
+    response = client.post(f"{BASE}/cards/{report['id']}/instructions", headers=director,
+                           json={"version": 1, "instruction": "[TEST] 확인 후 안내해요"})
+    assert response.status_code == 200, response.text
+    reply_bucket = "uncertain" if report["risk_level"] == "uncertain" else "needs_review"
+    rows = client.get(f"{BASE}/cards?filter={reply_bucket}&size=100", headers=teacher).json()["items"]
+    assert next(c for c in rows if c["id"] == cid)["status_label"] == "확인 필요"
 
 
 def test_reclassification_updates_deadlines_without_duplicate_report(client, parent, teacher, director):

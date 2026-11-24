@@ -14,6 +14,7 @@ from app.mock import seed, store
 from tests.integration.api.helpers import decision
 from tests.integration.api.helpers import BASE, err
 from tests.integration.api.test_cards import create, detail
+from tests.integration.api.test_requests import notices
 
 
 @pytest.fixture(autouse=True, params=["mock", "db"])
@@ -79,6 +80,70 @@ def test_choice_booking_permissions_version_events_and_parent_view(
     assert [(e["from_status"], e["to_status"]) for e in card["timeline"][-2:]] == [
         ("awaiting_review", "approved"), ("approved", "sent_or_booked")]
     err(book(client, teacher, cid, slots[0]), 409, "ALREADY_DECIDED")
+
+
+def test_booking_notification_has_own_kind_title_and_local_date_time(client, parent, teacher, consultation_backend):
+    rid, cid, slots = prepare(client, parent, teacher)
+    assert choose(client, parent, rid, slots[:1]).status_code == 200
+    response = book(client, teacher, cid, slots[0])
+    assert response.status_code == 200, response.text
+    saved = [n for n in notices(consultation_backend, rid) if n["kind"] == "consultation_booked"]
+    assert len(saved) == 1
+    notice = saved[0]
+    assert (str(notice["recipient_id"]), str(notice["card_id"]), notice["title"]) == (
+        str(seed.PARENT), cid, "상담 예약 확정")
+    start, end = (datetime.fromisoformat(slots[0]["period"][key]) for key in ("start", "end"))
+    assert notice["body"] == f"{start:%Y-%m-%d %H:%M}~{end:%H:%M}"
+    assert not any(n["kind"] == "sent_or_booked" for n in notices(consultation_backend, rid))
+    err(book(client, teacher, cid, slots[0]), 409, "ALREADY_DECIDED")
+    assert len([n for n in notices(consultation_backend, rid) if n["kind"] == "consultation_booked"]) == 1
+
+
+@pytest.mark.parametrize("candidate_status", ["none", "discarded", "proposed", "chosen_by_parent"])
+def test_reassign_consultation_reproposes_only_when_no_live_candidates(
+    client, parent, teacher, director, consultation_backend, candidate_status
+):
+    rid, cid, slots = prepare(client, parent, teacher)
+    if candidate_status == "chosen_by_parent":
+        assert choose(client, parent, rid, slots).status_code == 200
+    elif candidate_status != "proposed":
+        if consultation_backend == "mock":
+            for slot in slots:
+                if candidate_status == "none":
+                    del store.state().slots[slot["id"]]
+                else:
+                    store.state().slots[slot["id"]].status = "discarded"
+        else:
+            with transaction() as connection:
+                statement = ("DELETE FROM consultation_slots WHERE card_id=:id" if candidate_status == "none"
+                             else "UPDATE consultation_slots SET status='discarded' WHERE card_id=:id")
+                connection.execute(text(statement), {"id": cid})
+    before = notices(consultation_backend, rid)
+    response = client.post(f"{BASE}/cards/{cid}/reassign", headers=director,
+                           json={"assignee_id": str(seed.TEACHER_OTHER), "reason": "[TEST] 담당자 변경"})
+    assert response.status_code == 200, response.text
+    assert response.json()["card"]["version"] == 2
+    new = [n for n in notices(consultation_backend, rid) if n["id"] not in {n["id"] for n in before}]
+    reassigned = [n for n in new if n["kind"] == "reassigned"]
+    assert len(reassigned) == 1
+    assert str(reassigned[0]["recipient_id"]) == str(seed.TEACHER_OTHER)
+    assert reassigned[0]["title"] == "요청이 배정됐어요"
+    saved = client.get(f"{BASE}/requests/{rid}", headers=parent).json()
+    needs_candidates = candidate_status in ("none", "discarded")
+    assert saved["request"]["status"] == ("awaiting_review" if candidate_status == "chosen_by_parent" else "needs_info")
+    candidates = saved["consultation"]["slots"]
+    assert len(candidates) == 3
+    assert {s["id"] for s in slots}.isdisjoint(s["id"] for s in candidates) == needs_candidates
+    parent_notices = [n for n in new if str(n["recipient_id"]) == str(seed.PARENT)]
+    assert [n["kind"] for n in parent_notices] == (["needs_info"] if needs_candidates else [])
+    if needs_candidates:
+        if consultation_backend == "mock":
+            teachers = {store.state().slots[s["id"]].teacher_id for s in candidates}
+        else:
+            with transaction() as connection:
+                teachers = set(connection.scalars(text("SELECT teacher_id FROM consultation_slots WHERE id=ANY(:ids)"),
+                                                   {"ids": [s["id"] for s in candidates]}))
+        assert teachers == {seed.TEACHER_OTHER}
 
 
 def test_other_request_and_discarded_round_candidates_are_not_selectable(client, parent, teacher):

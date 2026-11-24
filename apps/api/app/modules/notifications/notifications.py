@@ -4,7 +4,8 @@ from sqlalchemy import text
 
 from app.api.labels import parent_label
 from app.core.care import unregistered_pickup_key
-from app.core.constants import CARE_REQUEST_TYPES, CARE_MESSAGE_NOTICE, UNREGISTERED_PICKUP_CHECK, notification_title
+from app.core.constants import (CARE_REQUEST_TYPES, CARE_MESSAGE_NOTICE, UNREGISTERED_PICKUP_CHECK,
+                                consultation_booking_body, notification_title, rejection_body)
 from app.core.schedule import deliver_after
 
 
@@ -27,6 +28,9 @@ def enqueue(connection, event, req, recipient_id, kind, body=None, *, dedupe_key
 
 
 def notify_event(connection, event, req, card):
+    if event["action"] == "reassigned":
+        enqueue(connection, event, req, card["assignee_id"], "reassigned")
+        return
     if req is None:
         if card and card["kind"] == "rule_proposal" and event["action"] == "created":
             enqueue(connection, event, None, card["assignee_id"], "new_card")
@@ -77,12 +81,20 @@ def notify_event(connection, event, req, card):
     if to == "completed" and req["type"] == "complaint":
         enqueue(connection, event, req, req["requester_id"], "completed")
     elif to in parent_kinds:
-        body = parent_label(to, req["type"], req["assignee_id"])
+        kind = parent_kinds[to]
+        body = parent_label(to, req["type"], req["assignee_id"], req["parent_confirmed_at"])
+        if to == "sent_or_booked" and req["type"] == "consultation":
+            kind = "consultation_booked"
+            booking = connection.execute(text("""
+                SELECT lower(period) AS start,upper(period) AS end FROM consultation_bookings
+                WHERE request_id=:id AND org_id=:org AND status='confirmed'
+            """), {"id": req["id"], "org": req["org_id"]}).mappings().one()
+            body = consultation_booking_body(booking["start"], booking["end"])
         if to == "on_hold":
             body += f" · 예정일 {card['hold_until']}"
         if action == "dismissed":
-            body = event["detail"].get("reason_text") or event["detail"].get("reason_code")
-        enqueue(connection, event, req, req["requester_id"], parent_kinds[to], body)
+            body = rejection_body(event["detail"].get("reason_code"), event["detail"].get("reason_text"))
+        enqueue(connection, event, req, req["requester_id"], kind, body)
     if action == "escalated":
         director = connection.scalar(text("""
             SELECT id FROM users WHERE org_id=:org AND role='director' AND is_active ORDER BY id LIMIT 1

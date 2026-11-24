@@ -1,5 +1,7 @@
 """모의·DB 백엔드가 함께 쓰는 알림 문구와 요청 유형이에요."""
 
+from app.core.schedule import KST
+
 NOTIFICATION_TITLES = {
     "needs_info": "정보가 더 필요해요", "new_card": "새 카드가 왔어요",
     "urgent_complaint": "긴급 민원", "uncertain_complaint": "AI 판단 불확실 민원",
@@ -9,6 +11,7 @@ NOTIFICATION_TITLES = {
     "slot_hold_expired": "잡아 둔 시간이 풀렸어요", "hold_resumed": "보류 카드가 재개됐어요",
     "care_requested": "투약·귀가 요청이 왔어요", "care_confirmed": "선생님이 요청을 확인했어요",
     "parent_message": "학부모가 글을 더 남겼어요",
+    "consultation_booked": "상담 예약 확정", "reassigned": "요청이 배정됐어요",
     "consultation_ending": "상담 종료가 가까워요", "consultation_delayed": "상담 대체 시간을 확인해 주세요",
 }
 # 위험 알림 kind는 계약이라 이름에 complaint가 남아 있어요. 사람이 보는 제목만 요청 유형에 맞춰요.
@@ -20,6 +23,22 @@ def notification_title(kind, request_type=None):
     if kind in ("urgent_complaint", "uncertain_complaint") and request_type in RISK_NOTICE_TYPE_NAMES:
         return title.replace("민원", RISK_NOTICE_TYPE_NAMES[request_type])
     return title
+
+
+def consultation_booking_body(start, end):
+    return f"{start.astimezone(KST):%Y-%m-%d %H:%M}~{end.astimezone(KST):%H:%M}"
+
+
+REJECTION_REASON_LABELS = {
+    "wrong_fact": "사실이 틀림", "tone": "말투", "missing_info": "근거·정보 부족",
+    "privacy": "개인정보", "policy": "원 방침과 다름", "slot_unavailable": "상담 시간 안 됨",
+    "room_unavailable": "상담실 없음", "other": "기타",
+}
+
+
+def rejection_body(reason_code, reason_text):
+    label = REJECTION_REASON_LABELS.get(reason_code, "기타")
+    return f"{label} · {reason_text}" if reason_text else label
 
 
 CARE_REQUEST_TYPES = ("medication", "pickup")

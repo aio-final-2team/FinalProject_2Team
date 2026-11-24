@@ -19,6 +19,8 @@ def inbox_filter(card):
         return "on_hold"
     if card.assignee_id is None:
         return "unassigned"
+    if req and req.status == "escalated" and card.kind == "reply_draft":
+        return "in_progress"
     if req and req.risk_level == "uncertain":
         return "uncertain"
     if (req and (req.status in ("awaiting_review", "escalated") or (waiting_completion and req.parent_confirmed_at))) or req is None:
@@ -31,11 +33,11 @@ def person(user_id):
     return {"id": user.id, "display_name": user.display_name} if user else None
 
 
-def staff_request(req):
+def staff_request(req, card_kind=None):
     return {k: getattr(req, k) for k in ("id", "type", "title", "body", "status", "risk_level", "risk_category",
                                         "parent_confirmed_at", "classroom_id", "created_at", "updated_at")} | {
         "repeat_count": store.repeat_count(req), "missing_fields": req.missing_fields,
-        "status_label": staff_label(req.status, req.type), "hold_until": store.hold_until_of(req.id)}
+        "status_label": staff_label(req.status, req.type, card_kind=card_kind), "hold_until": store.hold_until_of(req.id)}
 
 
 def item(card):
@@ -43,7 +45,7 @@ def item(card):
     classroom = store.state().classrooms.get(cards.classroom_of(card))
     check = card.check_result
     return {"id": card.id, "kind": card.kind, "status": card.status, "version": card.version,
-            "status_label": staff_label(req.status, req.type) if req else "확인 필요" if card.status == "pending" else "완료",
+            "status_label": staff_label(req.status, req.type, card_kind=card.kind) if req else "확인 필요" if card.status == "pending" else "완료",
             "request_id": card.request_id, "request_type": req.type if req else None,
             "title": req.title if req else card.draft.get("summary", ""), "urgency": req.urgency if req else None,
             "risk_level": req.risk_level if req else None,
@@ -102,7 +104,7 @@ def detail(user, card_id):
         instruction = instructions[-1] if instructions and card.kind != "director_report" else None
         rule = store.state().rules.get(card.subject_id) if card.kind == "rule_proposal" else None
         return {"card": {k: getattr(card, k) for k in ("id", "kind", "status", "version", "draft", "check_result", "check_attempts")}
-                        | {"summary": card.draft.get("summary", "")}, "request": staff_request(req) if req else None,
+                        | {"summary": card.draft.get("summary", "")}, "request": staff_request(req, card.kind) if req else None,
                 "evidence": evidence, "warnings": warnings,
                 "messages": [{"id": m.id, "sender_type": m.sender_type, "sender_role": m.sender_role,
                               "body": m.body, "created_at": m.created_at}

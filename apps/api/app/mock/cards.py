@@ -271,6 +271,12 @@ def reassign(user, card_id, body):
         touch(card)
         store.add_event(req, "reassigned", card=card, actor_type="user", actor_id=user.id,
                         **{"from": previous, "to": target.id, "reason": body.reason})
+        if req and card.kind == "consult_slots" and not any(
+                s.card_id == card.id and s.status in ("proposed", "chosen_by_parent")
+                for s in store.state().slots.values()):
+            round_no = max((s.round for s in store.slots_of_request(req.id) if s.card_id == card.id), default=0) + 1
+            store._propose_slots(card, target.id, round_no)
+            store.set_request_status(req, "needs_info", action="info_requested", card=card)
         return {"card": {"assignee": {"id": target.id, "display_name": target.display_name}, "version": card.version}}
 
 

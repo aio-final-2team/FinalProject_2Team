@@ -466,6 +466,12 @@ def reassign(user, card_id, body):
             actor_id=user.id,
             **{"from": str(previous) if previous else None, "to": str(target["id"]), "reason": body.reason},
         )
+        if req and card["kind"] == "consult_slots" and not connection.scalar(text("""
+            SELECT EXISTS (SELECT 1 FROM consultation_slots WHERE card_id=:id
+                           AND status IN ('proposed','chosen_by_parent'))
+        """), {"id": card["id"]}):
+            propose_slots(connection, req, card, target["id"])
+            set_status(connection, req, "needs_info", action="info_requested", card=card)
         return {"card": {"assignee": dict(target), "version": card["version"]}}
 
 

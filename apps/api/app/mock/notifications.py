@@ -4,7 +4,8 @@ from dataclasses import replace
 
 from app.api.labels import parent_label
 from app.core.care import unregistered_pickup_key
-from app.core.constants import CARE_REQUEST_TYPES, CARE_MESSAGE_NOTICE, UNREGISTERED_PICKUP_CHECK, NOTIFICATION_TITLES as TITLES, notification_title
+from app.core.constants import (CARE_REQUEST_TYPES, CARE_MESSAGE_NOTICE, UNREGISTERED_PICKUP_CHECK,
+                                NOTIFICATION_TITLES as TITLES, consultation_booking_body, notification_title, rejection_body)
 from app.core.schedule import deliver_after
 from app.core.errors import ApiError
 from app.mock import store
@@ -32,6 +33,9 @@ def create(ev, recipient_id, kind, body=None, subject_id=None, *, dedupe_key=Non
 
 
 def notify_event(ev, req, card):
+    if ev.action == "reassigned":
+        create(ev, card.assignee_id, "reassigned")
+        return
     if req is None:
         if card and ev.action in ("created", "drafted"):
             create(ev, card.assignee_id, "new_card")
@@ -70,12 +74,17 @@ def notify_event(ev, req, card):
     if ev.to_status == "completed" and req.type == "complaint":
         create(ev, req.requester_id, "completed")
     elif ev.to_status in parent_kinds:
-        body = parent_label(ev.to_status, req.type, req.assignee_id)
+        kind = parent_kinds[ev.to_status]
+        body = parent_label(ev.to_status, req.type, req.assignee_id, req.parent_confirmed_at)
+        if ev.to_status == "sent_or_booked" and req.type == "consultation":
+            kind = "consultation_booked"
+            booking = store.confirmed_booking_of(req.id)
+            body = consultation_booking_body(booking.period["start"], booking.period["end"])
         if ev.to_status == "on_hold":
             body += f" · 예정일 {card.hold_until}"
         if ev.action == "dismissed":
-            body = ev.detail.get("reason_text") or ev.detail.get("reason_code")
-        create(ev, req.requester_id, parent_kinds[ev.to_status], body)
+            body = rejection_body(ev.detail.get("reason_code"), ev.detail.get("reason_text"))
+        create(ev, req.requester_id, kind, body)
     if ev.action == "escalated":
         if req.risk_level in ("urgent", "uncertain"):
             kind = "urgent_complaint" if req.risk_level == "urgent" else "uncertain_complaint"

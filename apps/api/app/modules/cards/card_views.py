@@ -15,7 +15,7 @@ from app.modules.requests.requests import _expire, _hold_until
 FILTERS = ("unassigned", "needs_review", "uncertain", "on_hold", "in_progress", "done")
 
 
-def staff_request(connection, req):
+def staff_request(connection, req, card_kind=None):
     return {
         k: req[k]
         for k in (
@@ -34,7 +34,7 @@ def staff_request(connection, req):
         )
     } | {
         "repeat_count": repeat_count(connection, req),
-        "status_label": staff_label(req["status"], req["type"]),
+        "status_label": staff_label(req["status"], req["type"], card_kind=card_kind),
         "hold_until": _hold_until(connection, req),
     }
 
@@ -98,7 +98,7 @@ def _item(connection, card):
     )
     check = card["check_result"]
     return {k: card[k] for k in ("id", "kind", "status", "version", "request_id", "due_at", "hold_until")} | {
-        "status_label": staff_label(req["status"], req["type"])
+        "status_label": staff_label(req["status"], req["type"], card_kind=card["kind"])
         if req
         else "확인 필요"
         if card["status"] == "pending"
@@ -249,7 +249,7 @@ def detail(user, card_id):
         return {
             "card": {k: card[k] for k in ("id", "kind", "status", "version", "draft", "check_result", "check_attempts")}
             | {"summary": card["draft"].get("summary", "")},
-            "request": staff_request(connection, req) if req else None,
+            "request": staff_request(connection, req, card["kind"]) if req else None,
             "messages": [dict(row) for row in connection.execute(text("""
                 SELECT m.id,m.sender_type,CASE WHEN m.sender_type='user' THEN u.role END AS sender_role,m.body,m.created_at
                 FROM request_messages m LEFT JOIN users u ON (u.id,u.org_id)=(m.sender_id,m.org_id)

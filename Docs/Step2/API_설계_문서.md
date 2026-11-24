@@ -405,6 +405,9 @@ X-Request-ID: 6b0f1c2e-9a7d-4c1e-8f3a-2d5b7e9c1a40
 | `assigned`·`awaiting_review`·`on_hold`, `assignee_id`가 비어 있음 | 담당 선생님 배정 중 |
 | `awaiting_review`, 담당 있음 | 선생님 확인 중 |
 | `on_hold`, 담당 있음 | 확인이 늦어지고 있어요 |
+| 민원 `sent_or_booked`, `parent_confirmed_at` 있음 | 확인함 · 선생님이 마무리하고 있어요 |
+
+민원의 확인 여부는 목록·상세·타임라인에 함께 반영한다. 요청 상태는 `sent_or_booked` 그대로이며, 담임이 처리 완료하면 "완료"로 표시한다. 타임라인의 회신 단계도 현재 확인 여부를 읽는다.
 
 투약·귀가의 '선생님 확인 대기/완료'와 '투약/인계 완료', 상담의 '시간을 골라 주세요/예약 확정' 분기는 그대로다. 원장 재배정 뒤 요청에 담당자가 생기면 원래 상태의 표시로 돌아간다. 공용 HTTP 시험 `test_unassigned_request_label_changes_after_director_reassign`은 담임 없는 반→카드 `unassigned`→목록·상세의 배정 대기→원장 재배정→선생님 확인 중을 두 모드에서 확인한다. 접수 직후는 `test_received_request_label_before_agent_runs`, 유형별 문구는 `test_parent_labels_follow_assignment_and_keep_type_branches`로 확인한다(실행 기준 2.2).
 
@@ -507,6 +510,7 @@ X-Request-ID: 0e7d4a51-2c3b-4f6e-9a18-5b7c9d0e1f23
 긴급·판단 필요 상담에는 원장 보고 카드가 함께 생기지만 요청은 `escalated`가 되지 않는다(5.7). 원장 지시는 `escalated`인 요청만 받으므로, 담임이 예약을 확정하거나 상담을 반려(`dismiss`)할 때 같은 요청의 열린 원장 보고 카드도 함께 닫는다. 이때 알림을 더 보내지는 않는다. 판단 필요(`uncertain`)로 결정을 막는 규칙은 재분류로 풀 수 있는 문의·민원에만 쓰고, 상담은 판단 필요여도 담임이 그대로 확정·반려한다.
 `escalated`에서는 원장이 지시하기 전에 확정할 수 없다. 원장이 지시하면 보고 카드를 닫고 상담 후보 카드로 돌려보낸다.
 최종 확정은 담임 → 상담실 순서로 거는 자문 잠금과 DB 배제 제약으로 한 건만 받는다(DB 설계서 9.1 F1-7).
+확정하면 학부모에게 `consultation_booked` 알림을 한 번 남긴다. 제목은 "상담 예약 확정", 본문은 예약한 한국 날짜·시간(`YYYY-MM-DD HH:MM~HH:MM`)이다. 문의·민원 회신 알림은 기존 `sent_or_booked`("답변 도착")를 쓴다.
 
 **필드**
 
@@ -811,6 +815,8 @@ HTTP/1.1 201 Created
 | `items[].read_at`·`deliver_after` | 목록 응답 | datetime | 항상 | read_at만 null 가능 | 한국 시간 포함 | 읽은 시각과 노출 시각; 읽음 응답의 notification도 같은 모양 |
 | `total`·`page`·`size` | 응답 | integer | 항상 | 불가 | 전체 건수·요청한 쪽·크기 | 목록 공통 칸 |
 
+상담 확정은 `consultation_booked`("상담 예약 확정", 본문은 한국 날짜·시간), 재배정은 새 담당에게 `reassigned`("요청이 배정됐어요")로 알린다. 반려(`dismiss`)의 `rejected` 알림 본문은 6장 사유 코드의 표시 이름과 선택한 `reason_text`를 ` · `로 잇는다. 예를 들어 `policy`만 있으면 "원 방침과 다름", `other`와 이유 글이 있으면 "기타 · 이유 글"이다. 원문 사유 코드는 본문에 쓰지 않는다.
+
 ```http
 GET /api/v1/notifications?size=1
 HTTP/1.1 200 OK
@@ -850,7 +856,7 @@ HTTP/1.1 200 OK
 | `type_counts` | 응답 | object(integer) | 항상 | 불가 | all·complaint·consultation·inquiry | 역할·risk_level·kind·assignee·filter 조건 안에서, request_type을 적용하기 전에 셈 |
 | `total`·`page`·`size` | 응답 | integer | 항상 | 불가 | 전체 건수·요청한 쪽·크기 | 목록 공통 칸 |
 
-카드마다 아래 순서로 따져서 처음 맞는 필터 하나에만 넣는다. ① 끝난 카드·요청은 `done`(단, 회신한 민원의 reply_draft 중 거절되지 않은 것은 처리 완료 전까지 예외) ② 카드나 요청이 보류 중이면 `on_hold` ③ 담당이 없으면 `unassigned` ④ 위험 등급이 uncertain이면 `uncertain` ⑤ awaiting_review·escalated, 학부모가 확인한 회신 민원, 요청 없는 카드는 `needs_review` ⑥ 나머지는 `in_progress`.
+카드마다 아래 순서로 따져서 처음 맞는 필터 하나에만 넣는다. ① 끝난 카드·요청은 `done`(단, 회신한 민원의 reply_draft 중 거절되지 않은 것은 처리 완료 전까지 예외) ② 카드나 요청이 보류 중이면 `on_hold` ③ 담당이 없으면 `unassigned` ④ 요청이 `escalated`인 `reply_draft`는 위험 등급에 관계없이 `in_progress` ⑤ 위험 등급이 uncertain이면 `uncertain` ⑥ awaiting_review·escalated, 학부모가 확인한 회신 민원, 요청 없는 카드는 `needs_review` ⑦ 나머지는 `in_progress`. 원장 대기 중인 회신 카드는 목록과 상세의 `request.status_label`에 "원장 확인 중"을 표시하며, 원장 보고 카드는 기존 표시·필터를 유지한다. 원장 지시나 원장의 일반 재분류로 `awaiting_review`가 되면 회신 카드는 기존 위험 등급에 맞는 필터로 돌아간다. DB 뷰는 0013 마이그레이션으로 바꾼다.
 종류 건수도 요청 수가 아니라 카드 수다. `type_counts.all`은 요청 없는 카드까지 세므로 세 유형 건수를 더한 값보다 클 수 있다. 완료 카드는 counts에는 들어가지만, type_counts에서는 filter가 없을 때 빠진다.
 
 ```http
@@ -998,7 +1004,7 @@ HTTP/1.1 200 OK
 | ⑤ 검증·권한 | director만. 배정 대상은 같은 기관의 활성 teacher여야 한다. director_report 카드나 done·rejected 카드는 재배정하지 못한다. |
 | ⑥ 정상 응답 | 200 + card { assignee { id, display_name }, version }. |
 | ⑦ 오류 응답 | 아래 오류 표. |
-| ⑧ 실행 규칙 | 카드의 담당과 연결된 요청의 담당을 함께 바꾸고 카드 판을 1 올린다. 상태는 unassigned 카드만 pending으로 바꾸며, 요청의 상태와 기한은 그대로 둔다. 다른 반 교사에게도 배정할 수 있고, 이력에는 from·to·reason을 남긴다. |
+| ⑧ 실행 규칙 | 카드의 담당과 연결된 요청의 담당을 함께 바꾸고 카드 판을 1 올린다. unassigned 카드는 pending으로 바꾼다. 새 담당에게 reassigned("요청이 배정됐어요") 알림을 남긴다. 상담 후보 카드에 proposed·chosen_by_parent 후보가 하나도 없으면 새 담당 기준으로 다음 회차 후보를 계산하고 요청을 needs_info로 바꿔 학부모에게 needs_info 알림을 남긴다. 후보가 있으면 후보와 체크를 보존하며, 그 밖의 요청 상태와 기한도 그대로 둔다. 다른 반 교사에게도 배정할 수 있고, 이력에는 from·to·reason을 남긴다. |
 
 | 필드 | 위치 | 타입 | 필수 | 빈값 | 제약 | 설명 |
 | --- | --- | --- | --- | --- | --- | --- |

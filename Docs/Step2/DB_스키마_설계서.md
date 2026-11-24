@@ -763,7 +763,7 @@ T58에서 채울 기록도 남아 있다. 아이별 이력은 현재 `to_status`
 - `notifications.dedupe_key`: 알림은 처리 이력 한 건에서 생기므로 키를 `event:<events.id>:<받는 사람 ID>`로 만든다. 같은 이력으로 발송을 다시 시도하면 키가 같아서 한 번만 들어간다. 반대로 같은 카드가 다시 보류되는 것처럼 새 이력이 생기면 새 알림이 된다. 상담 종료·지연 알림(T48)은 `consultation:<예약 ID>:<종류>:<받는 사람 ID>`로 만들어, 같은 예약의 같은 안내를 한 번만 남긴다.
 - 발송 시도: 한 알림은 최대 3번까지 보낸다(FR-12, `attempts`). 보내기에 실패하면 60초 뒤, 그다음 실패면 120초 뒤로 `next_attempt_at`을 미뤄 다시 보낸다. 이때 `deliver_after`와 목록에 보이는 시각은 바꾸지 않는다.
 - `notifications.kind`: 다음 23가지만 받는다. `needs_info` · `new_card`(새 카드) · `urgent_complaint`(긴급 요청) · `uncertain_complaint`(판단 필요 요청) · `director_report`(반복 3번째 원장 보고) · `on_hold` · `sent_or_booked` · `parent_confirmed`(학부모가 확인함) · `completed`(민원 완료) · `rejected` · `note_sent`(오늘 알림장) · `slot_hold_expired`(잡아 둔 상담 시간이 풀림 → 담임) · `hold_resumed`(보류 카드가 예정일에 자동 재개 → 담당) · `care_requested`(투약·귀가 요청 접수) · `care_confirmed`(교직원이 투약·귀가 요청을 확인함). 기존 상담 알림 두 가지도 있다. `consultation_ending`은 예정 종료 10분 이내에 담임에게 가는 알림이고, `consultation_delayed`는 앞 상담의 명시된 예상 종료와 겹치는 예약의 담임·학부모에게 대체 시간을 제안하는 알림이다. 자세한 기준은 API 설계 6.6.2에 있다. 두 위험 알림(`urgent_complaint`·`uncertain_complaint`)은 이름에 complaint가 남아 있지만 문의·상담 위험에도 그대로 쓴다. 요청 유형에 따라 달라지는 것은 제목(`title`)뿐이라 '긴급 문의'·'긴급 상담'처럼 붙는다.
-- 0012에서 더한 알림은 `parent_message`(학부모 추가 글) · `reassigned`(재배정받음) · `consultation_booked`(상담 예약 확정) · `note_corrected`(알림장 정정) · `cancelled`(취소) · `care_rejected`(투약·귀가 반려)다. 실제 발송 흐름은 후속 묶음에서 연결한다.
+- 0012에서 더한 알림은 `parent_message`(학부모 추가 글) · `reassigned`(재배정받음) · `consultation_booked`(상담 예약 확정) · `note_corrected`(알림장 정정) · `cancelled`(취소) · `care_rejected`(투약·귀가 반려)다. 추가 글은 parent_message로 열린 카드 담당에게, 재배정은 reassigned("요청이 배정됐어요")로 새 담당에게, 상담 확정은 consultation_booked("상담 예약 확정", 본문 한국 날짜·시간)로 학부모에게 알린다. 나머지 세 종류는 후속 묶음에서 연결한다. 반려 알림 본문은 사유 코드 표시 이름과 reason_text를 함께 쓴다.
 - `subject_type`·`subject_id`: 요청·카드가 아닌 대상을 가리킨다. 지금은 `note_sent` 알림이 아이별 알림장(`daily_note`)을 가리킬 때만 쓴다.
 - `deliver_after`: 이 시각이 지나야 보낸다. 근무 시간(평일 09~18시) 밖에 생긴 알림에는 다음 근무 시작 시각을 넣는다. 긴급 민원 가운데 **아이 안전(`risk_category = child_safety`)만** 지금 시각을 넣어 바로 보내고, 나머지 긴급 3가지와 판단 필요 민원은 다음 근무 시간에 보낸다(FR-21). 발송기는 `status = 'pending' AND deliver_after <= now()`인 알림만 꺼낸다(9.1 F3-5).
 
@@ -777,13 +777,15 @@ T58에서 채울 기록도 남아 있다. 아이별 이력은 현재 `to_status`
 | `inbox_filter` | 받은함 필터 | 들어가는 카드 |
 | --- | --- | --- |
 | `unassigned` | 미배정 | 담당이 없는 카드 |
-| `needs_review` | 확인 필요 | 요청이 `awaiting_review`·`escalated`, 학부모가 확인한 민원(`sent_or_booked` + `parent_confirmed_at`), 요청 없는 카드(규칙 제안 등) 중 결정 대기 |
+| `needs_review` | 확인 필요 | 요청이 `awaiting_review`·`escalated`(원장 대기 중인 `reply_draft` 제외), 학부모가 확인한 민원(`sent_or_booked` + `parent_confirmed_at`), 요청 없는 카드(규칙 제안 등) 중 결정 대기 |
 | `uncertain` | 판단 필요 | 위험 등급 `uncertain` 민원 |
 | `on_hold` | 보류 | 카드나 요청이 보류 |
-| `in_progress` | 진행 중 | 학부모·AI·시스템 차례인 것 |
+| `in_progress` | 진행 중 | 학부모·AI·시스템 차례인 것, 원장 확인 대기(`escalated`)의 담임 `reply_draft` |
 | `done` | 완료 | 카드 `done`·`rejected`, 요청 `completed`·`rejected` |
 
-긴급 요청에는 필터를 따로 두지 않고, `is_urgent`로 '확인 필요' 맨 위에 올린다. `is_urgent`는 `urgency`가 아니라 `risk_level = 'urgent'`인지로 정한다. 판단 필요 문의·민원을 사람이 다시 나누면 `risk_level`이 바뀌면서 '확인 필요'로 옮겨 간다.
+0013은 요청이 `escalated`인 담임 회신 카드를 `in_progress`로 분류한다. 완료·보류·미배정 분기 뒤, `uncertain` 분기 앞에 적용하므로 원장 확인을 기다리는 동안 위험 등급과 관계없이 같은 필터에 남는다. 카드 표시 이름은 "원장 확인 중"이며 원장 보고 카드는 기존 필터를 유지한다. 원장 지시 등으로 `awaiting_review`가 되면 기존 위험 등급 기준을 다시 따른다. downgrade는 0012의 뷰 정의로만 되돌리고 행을 바꾸지 않는다.
+
+긴급 요청에는 필터를 따로 두지 않고, `is_urgent`로 '확인 필요' 맨 위에 올린다. `is_urgent`는 `urgency`가 아니라 `risk_level = 'urgent'`인지로 정한다. 판단 필요 문의·민원을 사람이 다시 나누어도 열린 원장 보고 카드가 있으면 회신은 원장 대기 필터에 남으며, 원장이 지시하거나 원장이 일반으로 내린 뒤 기존 필터로 돌아간다.
 
 회신한 민원 카드는 처리 완료 전까지 받은함에 남는다. 발송한 `reply_draft` 카드는 학부모가 확인하기 전에는 `in_progress`, 확인한 뒤에는 `needs_review`에 있다가 처리 완료 뒤 `done`이 된다. 거절한 옛 회신 카드는 `done`에 그대로 남는다.
 

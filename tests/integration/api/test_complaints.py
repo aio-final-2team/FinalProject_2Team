@@ -125,7 +125,10 @@ def test_high_risk_handoff_has_two_cards_no_draft_or_automatic_reply(
     assert not {"approved", "sent"} & {e["action"] for e in history}
     bucket = "uncertain" if risk == "uncertain" else "needs_review"
     listed = client.get(f"{BASE}/cards?filter={bucket}&size=100", headers=director).json()["items"]
-    assert {c["id"] for c in saved.values()} <= {c["id"] for c in listed}
+    assert saved["director_report"]["id"] in {c["id"] for c in listed}
+    assert saved["reply_draft"]["id"] not in {c["id"] for c in listed}
+    progress = client.get(f"{BASE}/cards?filter=in_progress&size=100", headers=teacher).json()["items"]
+    assert next(c for c in progress if c["id"] == saved["reply_draft"]["id"])["status_label"] == "원장 확인 중"
     parent_view = client.get(f"{BASE}/requests/{rid}", headers=parent).json()
     assert len(parent_view["messages"]) == 1
     err(decision(client, teacher, saved["reply_draft"]["id"]), 409, "INVALID_TRANSITION")

@@ -2,7 +2,7 @@
 
 import json
 from datetime import datetime, timedelta
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from alembic import command
@@ -98,6 +98,39 @@ def test_view_migration_roundtrip_preserves_rows_and_complaint_inbox(db_client, 
     with seeded_db.begin() as connection:
         connection.execute(text("UPDATE requests SET status='completed' WHERE id=:id"), {"id": rid})
     assert bucket() == "done"
+
+
+@pytest.mark.parametrize("risk", ["normal", "urgent", "uncertain"])
+def test_0013_escalated_reply_view_roundtrip_preserves_rows(db_client, seeded_db, alembic_config, risk):
+    rid, cid = create(db_client, kind="inquiry")
+    response = db_client.post(f"{BASE}/cards/{cid}/decisions", headers=auth(seed.TEACHER),
+                              json={"version": 1, "decision": "escalate"})
+    assert response.status_code == 200, response.text
+    report_id = response.json()["next_card_id"]
+    with seeded_db.begin() as connection:
+        connection.execute(text("UPDATE requests SET risk_level=:risk,risk_category=:category WHERE id=:id"),
+                           {"id": rid, "risk": risk, "category": "child_safety" if risk == "urgent" else None})
+
+    def snapshot():
+        with seeded_db.connect() as connection:
+            return {table: connection.execute(text(f"SELECT * FROM {table} ORDER BY id")).mappings().all()
+                    for table in ("requests", "cards", "approvals", "events", "notifications")}
+
+    def buckets():
+        with seeded_db.connect() as connection:
+            return dict(connection.execute(text("SELECT card_id,inbox_filter FROM staff_inbox WHERE request_id=:id"),
+                                           {"id": rid}).all())
+
+    before = snapshot()
+    old_bucket = "uncertain" if risk == "uncertain" else "needs_review"
+    expected = {UUID(cid): "in_progress", UUID(report_id): old_bucket}
+    assert buckets() == expected
+    command.downgrade(alembic_config, "0012")
+    assert buckets() == dict.fromkeys(expected, old_bucket)
+    assert snapshot() == before
+    command.upgrade(alembic_config, "head")
+    assert buckets() == expected
+    assert snapshot() == before
 
 
 def test_automatic_hold_expiry_on_list_is_once_and_no_human_approval(db_client, seeded_db):
