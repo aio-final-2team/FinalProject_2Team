@@ -517,17 +517,39 @@ def reassign(user, card_id, body):
             actor_id=user.id,
             **{"from": str(previous) if previous else None, "to": str(target["id"]), "reason": body.reason},
         )
-        if req and card["kind"] == "consult_slots":
-            connection.execute(text("""
-                UPDATE consultation_slots SET teacher_id=:teacher WHERE card_id=:id
-                  AND status IN ('proposed','chosen_by_parent')
-            """), {"id": card["id"], "teacher": target["id"]})
         if req and card["kind"] == "consult_slots" and not connection.scalar(text("""
-            SELECT EXISTS (SELECT 1 FROM consultation_slots WHERE card_id=:id
-                           AND status IN ('proposed','chosen_by_parent'))
-        """), {"id": card["id"]}):
-            propose_slots(connection, req, card, target["id"])
-            set_status(connection, req, "needs_info", action="info_requested", card=card)
+            SELECT EXISTS (SELECT 1 FROM consultation_bookings WHERE request_id=:id AND status='confirmed')
+        """), {"id": req["id"]}):
+            slots = connection.execute(text("""
+                SELECT s.id,s.status,
+                    (EXISTS (SELECT 1 FROM staff_busy_blocks b
+                        WHERE b.org_id=s.org_id AND b.user_id=:teacher AND b.period && s.period)
+                     OR EXISTS (SELECT 1 FROM consultation_bookings b
+                        WHERE b.org_id=s.org_id AND b.status='confirmed'
+                          AND (b.teacher_id=:teacher OR b.room_id=s.room_id)
+                          AND tstzrange(lower(b.period),coalesce(b.expected_end_at,upper(b.period)),'[)') && s.period)
+                    ) AS conflicts
+                FROM consultation_slots s WHERE s.card_id=:id AND s.status IN ('proposed','chosen_by_parent')
+            """), {"id": card["id"], "teacher": target["id"]}).mappings().all()
+            discarded = [s["id"] for s in slots if s["conflicts"]]
+            reset = any(s["conflicts"] and s["status"] == "chosen_by_parent" for s in slots)
+            connection.execute(text("UPDATE consultation_slots SET status='discarded' WHERE id=ANY(:ids)"),
+                               {"ids": discarded})
+            connection.execute(text("""
+                UPDATE consultation_slots SET teacher_id=:teacher,
+                    status=CASE WHEN :reset THEN 'proposed' ELSE status END,
+                    chosen_at=CASE WHEN :reset THEN NULL ELSE chosen_at END WHERE card_id=:id
+                  AND status IN ('proposed','chosen_by_parent')
+            """), {"id": card["id"], "teacher": target["id"], "reset": reset})
+            if discarded or not slots:
+                remaining = len(discarded) if slots else 3
+                while remaining:
+                    candidates = propose_slots(connection, req, card, target["id"], count=min(remaining, 3))
+                    if not candidates:
+                        break
+                    remaining -= len(candidates)
+            if reset or not slots:
+                set_status(connection, req, "needs_info", action="info_requested", card=card)
         return {"card": {"assignee": dict(target), "version": card["version"]}}
 
 

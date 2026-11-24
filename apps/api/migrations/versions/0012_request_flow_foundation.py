@@ -80,5 +80,7 @@ def downgrade():
         WHERE e.id=receipt.id
     """)
     op.drop_column("requests", "care_detail")
-    _replace_check("events", "action", PREVIOUS_ACTIONS, preserve_existing=True)
-    _replace_check("notifications", "kind", PREVIOUS_KINDS, preserve_existing=True)
+    op.execute(f"DELETE FROM events WHERE action IN ({NEW_ACTIONS})")
+    op.execute(f"DELETE FROM notifications WHERE kind IN ({NEW_KINDS})")
+    _replace_check("events", "action", PREVIOUS_ACTIONS)
+    _replace_check("notifications", "kind", PREVIOUS_KINDS)

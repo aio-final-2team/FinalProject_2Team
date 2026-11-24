@@ -16,13 +16,7 @@ def upgrade():
 
 
 def downgrade():
-    # 새 결정 행은 보존하고, 이후 쓰기에만 이전 계약을 적용해요(0012와 같은 관례).
+    # 이전 코드가 읽지 못하는 새 결정은 지우고 원래 제약으로 돌려요.
+    op.execute("DELETE FROM approvals WHERE decision='acknowledge'")
     op.execute("ALTER TABLE approvals DROP CONSTRAINT approvals_decision_check")
-    op.execute(f"ALTER TABLE approvals ADD CONSTRAINT approvals_decision_check CHECK (decision IN ({PREVIOUS})) NOT VALID")
-    op.execute("""
-        DO $$ BEGIN
-            IF NOT EXISTS (SELECT 1 FROM approvals WHERE decision='acknowledge') THEN
-                ALTER TABLE approvals VALIDATE CONSTRAINT approvals_decision_check;
-            END IF;
-        END $$
-    """)
+    op.execute(f"ALTER TABLE approvals ADD CONSTRAINT approvals_decision_check CHECK (decision IN ({PREVIOUS}))")

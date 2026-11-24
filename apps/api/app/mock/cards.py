@@ -305,16 +305,29 @@ def reassign(user, card_id, body):
         touch(card)
         store.add_event(req, "reassigned", card=card, actor_type="user", actor_id=user.id,
                         **{"from": previous, "to": target.id, "reason": body.reason})
-        if req and card.kind == "consult_slots":
-            for slot in store.slots_of_request(req.id):
-                if slot.card_id == card.id and slot.status in ("proposed", "chosen_by_parent"):
+        if req and card.kind == "consult_slots" and store.confirmed_booking_of(req.id) is None:
+            slots = [s for s in store.slots_of_request(req.id) if s.card_id == card.id
+                     and s.status in ("proposed", "chosen_by_parent")]
+            discarded = [s for s in slots if store.slot_conflicts(card.org_id, target.id, s.room_id, s.period)]
+            reset = any(s.status == "chosen_by_parent" for s in discarded)
+            for slot in slots:
+                if slot in discarded:
+                    slot.status = "discarded"
+                else:
                     slot.teacher_id = target.id
-        if req and card.kind == "consult_slots" and not any(
-                s.card_id == card.id and s.status in ("proposed", "chosen_by_parent")
-                for s in store.state().slots.values()):
-            round_no = max((s.round for s in store.slots_of_request(req.id) if s.card_id == card.id), default=0) + 1
-            store._propose_slots(card, target.id, round_no)
-            store.set_request_status(req, "needs_info", action="info_requested", card=card)
+                    if reset:
+                        slot.status, slot.chosen_at = "proposed", None
+            if discarded or not slots:
+                round_no = max((s.round for s in store.slots_of_request(req.id) if s.card_id == card.id), default=0) + 1
+                remaining = len(discarded) if slots else 3
+                while remaining:
+                    candidates = store._propose_slots(card, target.id, round_no, count=min(remaining, 3))
+                    if not candidates:
+                        break
+                    remaining -= len(candidates)
+                    round_no += 1
+            if reset or not slots:
+                store.set_request_status(req, "needs_info", action="info_requested", card=card)
         return {"card": {"assignee": {"id": target.id, "display_name": target.display_name}, "version": card.version}}
 
 
