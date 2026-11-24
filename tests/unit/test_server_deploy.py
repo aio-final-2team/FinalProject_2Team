@@ -67,6 +67,7 @@ def test_server_compose_replaces_ports_and_preserves_database_volume(backend, ov
     expected = {"SEED_DEMO": "false" if override else "true",
                 "DAILY_NOTE_WRITER_TIMEOUT": "420" if override else "300",
                 "NOTE_DRAFT_CONCURRENCY": "3" if override else "5",
+                "ANSWER_WRITER": "graph" if override else "stub",  # DEPLOY.md 5-4 요청 처리 AI 스위치
                 "OPENAI_API_KEY": "[TEST]-unused-model-key",
                 "LAW_GO_KR_OC": "[TEST]-law-oc" if override else "",
                 "DATA_GO_KR_API_KEY": "[TEST]-data-go-kr-key" if override else "",
@@ -77,6 +78,7 @@ def test_server_compose_replaces_ports_and_preserves_database_volume(backend, ov
         env.pop("SEED_DEMO")
         env.pop("DAILY_NOTE_WRITER_TIMEOUT")
         env.pop("NOTE_DRAFT_CONCURRENCY")
+        env.pop("ANSWER_WRITER")
         env.pop("LAW_GO_KR_OC")
         env.pop("DATA_GO_KR_API_KEY")
     command = ["docker", "compose", "--env-file", "/dev/null", "-f", "compose.yaml",
