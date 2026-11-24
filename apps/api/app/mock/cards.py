@@ -3,6 +3,7 @@
 from uuid import uuid4
 
 from app.core.errors import ApiError
+from app.core.request_rules import RECLASSIFY_TYPES
 from app.core.schedule import due_at
 from app.mock import store
 from app.mock.records import Approval, Booking
@@ -159,7 +160,7 @@ def reclassify(user, card_id, body):
             raise ApiError(403, "FORBIDDEN_ROLE")
         version(card, body.version, approval=False)
         req = store.state().requests.get(card.request_id)
-        if req is None or req.type != "complaint" or req.status not in ("awaiting_review", "escalated"):
+        if req is None or req.type not in RECLASSIFY_TYPES or req.status not in ("awaiting_review", "escalated"):
             raise ApiError(409, "INVALID_TRANSITION")
         previous = req.risk_level
         req.risk_level, req.risk_category = body.risk_level, body.risk_category if body.risk_level == "urgent" else None
@@ -220,6 +221,9 @@ def book(user, card_id, body):
         store.set_request_status(req, "approved", action="approved", card=card, actor_type="user", actor_id=user.id)
         store.set_request_status(req, "sent_or_booked", action="booked", card=card, actor_type="user", actor_id=user.id)
         touch(card, "done")
+        for report_card in store.cards_of(req.id):  # DB 백엔드와 같이 열린 원장 보고 카드만 닫아요
+            if report_card.kind == "director_report" and report_card.status not in ("done", "rejected"):
+                touch(report_card, "done")
         return {"booking": {"id": booking.id, "room": store.state().rooms[booking.room_id].name,
                             "period": booking.period}, "request": request_state(req)}
 

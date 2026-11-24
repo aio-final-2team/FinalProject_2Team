@@ -4,7 +4,7 @@ import json
 import os
 
 from agents.llm import ModelError, OpenAIModel
-from app.core.request_rules import classify
+from app.core.request_rules import RISK_TYPES, classify
 
 TOPICS = {"safety", "meal", "teacher", "belongings", "fee", "pickup_bus", "peer_conflict",
           "health_hygiene", "photo_record", "communication", "other"}
@@ -37,7 +37,7 @@ def validate_proposal(request_type, body, proposal):
         result["topic_key"] = proposal["topic_key"]
     if proposal.get("urgency") in ("normal", "urgent"):
         result["urgency"] = "urgent" if base["urgency"] == "urgent" else proposal["urgency"]
-    if request_type == "complaint":
+    if request_type in RISK_TYPES:
         level = proposal.get("risk_level")
         if level in LEVEL:
             result["risk_level"] = max((base["risk_level"], level), key=LEVEL.get)
