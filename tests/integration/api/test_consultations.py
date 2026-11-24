@@ -163,22 +163,36 @@ def test_other_request_and_discarded_round_candidates_are_not_selectable(client,
     assert book(client, teacher, cid, after[0]).status_code == 200
 
 
-def test_colliding_booking_rolls_back_and_adjacent_candidate_can_be_booked(client, parent, teacher, consultation_backend):
+def test_colliding_booking_discards_only_conflict_and_reproposes_for_parent(client, parent, teacher, consultation_backend):
     pairs = [prepare(client, parent, teacher) for _ in range(2)]
     for index, (rid, _, slots) in enumerate(pairs):
-        assert choose(client, parent, rid, slots[index:index+1]).status_code == 200
+        assert choose(client, parent, rid, slots[index:] if index else slots[:1]).status_code == 200
     # 예전 체크가 겹친 경우도 최종 확정에서 지키도록 선택 후 겹침을 만들어요.
     set_period(pairs[1][2][1], pairs[0][2][0]["period"], consultation_backend)
     assert pairs[0][2][0]["period"] == pairs[1][2][0]["period"]
     assert book(client, teacher, pairs[0][1], pairs[0][2][0]).status_code == 200
     rid, cid, slots = pairs[1]
-    before = detail(client, teacher, cid)
+    before = notices(consultation_backend, rid)
     err(book(client, teacher, cid, slots[1]), 409, "SLOT_TAKEN")
-    assert detail(client, teacher, cid) == before
-    assert client.get(f"{BASE}/requests/{rid}", headers=parent).json()["consultation"]["booking"] is None
-    # 충돌 뒤 체크를 보존하고 겹치지 않는 시간은 확정할 수 있어요.
-    set_period(slots[1], slots[2]["period"], consultation_backend)
-    assert book(client, teacher, cid, slots[1]).status_code == 200
+    saved = client.get(f"{BASE}/requests/{rid}", headers=parent).json()
+    assert saved["request"]["status"] == "needs_info"
+    assert saved["consultation"]["booking"] is None
+    after = saved["consultation"]["slots"]
+    assert slots[1]["id"] not in {s["id"] for s in after}
+    assert {slots[0]["id"], slots[2]["id"]} <= {s["id"] for s in after}
+    assert next(s for s in after if s["id"] == slots[2]["id"])["status"] == "chosen_by_parent"
+    new_slots = [s for s in after if s["id"] not in {s["id"] for s in slots}]
+    assert len(new_slots) == 3
+    assert all(s["period"]["start"] >= pairs[0][2][0]["period"]["end"] for s in new_slots)
+    timeline = detail(client, teacher, cid)["timeline"]
+    event = next(e for e in timeline if e["action"] == "slot_conflict_reproposed")
+    assert event["detail"]["slot_id"] == slots[1]["id"]
+    assert set(event["detail"]["new_slot_ids"]) == {s["id"] for s in new_slots}
+    assert not any(e["action"] in ("approved", "booked") for e in timeline)
+    new = [n for n in notices(consultation_backend, rid) if n["id"] not in {n["id"] for n in before}]
+    assert [(n["kind"], str(n["recipient_id"])) for n in new] == [("needs_info", str(seed.PARENT))]
+    assert choose(client, parent, rid, [slots[2]]).status_code == 200
+    assert book(client, teacher, cid, slots[2], version=2).status_code == 200
 
 
 def test_simultaneous_confirmations_of_same_card_only_record_once(
@@ -264,15 +278,15 @@ def test_rejected_consultation_has_new_candidates_and_needs_parent_choice(client
     assert book(client, teacher, next_card, after[0]).status_code == 200
 
 
-def test_reassigned_teacher_from_other_class_cannot_confirm(client, parent, teacher, teacher_other, director):
+def test_reassigned_teacher_from_other_class_can_confirm_as_card_assignee(client, parent, teacher, teacher_other, director):
     rid, cid, slots = prepare(client, parent, teacher)
     assert choose(client, parent, rid, slots[:1]).status_code == 200
     response = client.post(f"{BASE}/cards/{cid}/reassign", headers=director,
                            json={"assignee_id": str(seed.TEACHER_OTHER), "reason": "[TEST] 재배정"})
     assert response.status_code == 200, response.text
     assert client.get(f"{BASE}/cards/{cid}", headers=teacher_other).status_code == 200
-    err(book(client, teacher_other, cid, slots[0], version=2), 403, "FORBIDDEN_ROLE")
-    assert book(client, teacher, cid, slots[0], version=2).status_code == 200
+    err(book(client, teacher, cid, slots[0], version=2), 403, "FORBIDDEN_ROLE")
+    assert book(client, teacher_other, cid, slots[0], version=2).status_code == 200
 
 
 def set_period(slot, period, mode):
@@ -433,3 +447,156 @@ def test_previously_issued_candidate_rejects_new_delay_overlap(
     response = choose(client, parent, rid, [slot]) if stage == "choice" else book(client, teacher, cid, slot)
     err(response, 409, "SLOT_TAKEN")
     assert client.get(f"{BASE}/requests/{rid}", headers=parent).json()["consultation"]["booking"] is None
+
+
+def test_none_fit_prefers_requested_window_and_notifies_teacher(client, parent, teacher, consultation_backend):
+    rid, cid, slots = prepare(client, parent, teacher)
+    day = store.now().date()+timedelta(days=7)
+    while day.weekday() >= 5:
+        day += timedelta(days=1)
+    preferred = f"[TEST] {day} 오후 4시~5시"
+    before = notices(consultation_backend, rid)
+    response = client.post(f"{BASE}/requests/{rid}/slot-choices", headers=parent,
+                           json={"none_fit": True, "preferred_times": preferred})
+    assert response.status_code == 200, response.text
+    saved = client.get(f"{BASE}/requests/{rid}", headers=parent).json()
+    after = saved["consultation"]["slots"]
+    first = datetime.fromisoformat(after[0]["period"]["start"])
+    assert first.date() == day and first.hour == 16
+    assert set(s["id"] for s in slots).isdisjoint(s["id"] for s in after)
+    assert saved["request"]["status"] == "needs_info"
+    new = [n for n in notices(consultation_backend, rid) if n["id"] not in {n["id"] for n in before}]
+    assert len(new) == 1
+    assert (new[0]["kind"], str(new[0]["recipient_id"]), str(new[0]["card_id"]), new[0]["body"]) == (
+        "parent_message", str(seed.TEACHER), cid, preferred)
+    event = detail(client, teacher, cid)["timeline"][-1]
+    assert event["detail"]["preferred_times"] == preferred
+
+
+@pytest.mark.parametrize("phase", ["needs_info", "awaiting_review"])
+@pytest.mark.parametrize("finish", ["acknowledge", "resume", "automatic"])
+def test_consultation_report_decisions_do_not_change_parent_flow(
+    client, parent, teacher, director, consultation_backend, phase, finish
+):
+    rid, cid = create(client, parent, teacher, type="consultation", body="[TEST] 아이가 다쳤어요 상담")
+    slots = client.get(f"{BASE}/requests/{rid}", headers=parent).json()["consultation"]["slots"]
+    report_id = next(row["id"] for row in client.get(BASE+"/cards?size=100", headers=director).json()["items"]
+                     if row["request_id"] == rid and row["kind"] == "director_report")
+    if phase == "awaiting_review":
+        assert choose(client, parent, rid, slots[:1]).status_code == 200
+    before = client.get(f"{BASE}/requests/{rid}", headers=parent).json()
+    parent_notices = [n for n in notices(consultation_backend, rid) if str(n["recipient_id"]) == str(seed.PARENT)]
+    err(decision(client, teacher, report_id, "acknowledge"), 403, "FORBIDDEN_ROLE")
+    held = decision(client, director, report_id, "hold", reason_text="[TEST] 보고 확인 예정",
+                    hold_until=(store.now().date()+timedelta(days=3)).isoformat())
+    assert held.status_code == 200, held.text
+    assert held.json()["request"]["status"] == phase
+    assert held.json()["card"]["status"] == "on_hold"
+    assert client.get(f"{BASE}/requests/{rid}", headers=parent).json() == before
+    if finish == "automatic":
+        if consultation_backend == "mock":
+            store.state().cards[UUID(report_id)].hold_until = store.now().date()
+        else:
+            with transaction() as connection:
+                connection.execute(text("UPDATE cards SET hold_until=CURRENT_DATE WHERE id=:id"), {"id": report_id})
+        assert detail(client, director, report_id)["card"]["status"] == "pending"
+    else:
+        response = decision(client, director, report_id, finish, version=2)
+        assert response.status_code == 200, response.text
+        assert response.json()["request"]["status"] == phase
+    assert client.get(f"{BASE}/requests/{rid}", headers=parent).json() == before
+    assert [n for n in notices(consultation_backend, rid) if str(n["recipient_id"]) == str(seed.PARENT)] == parent_notices
+    if finish != "acknowledge":
+        acknowledged = decision(client, director, report_id, "acknowledge", version=3)
+        assert acknowledged.status_code == 200, acknowledged.text
+    final = detail(client, director, report_id)
+    assert final["card"]["status"] == "done"
+    event = next(e for e in final["timeline"] if e["action"] == "report_acknowledged")
+    assert event["card_id"] == report_id and event["from_status"] is None and event["to_status"] is None
+    if phase == "needs_info":
+        assert choose(client, parent, rid, slots[:1]).status_code == 200
+    assert book(client, teacher, cid, slots[0]).status_code == 200
+
+
+def test_acknowledge_only_accepts_consultation_report_and_is_idempotent_per_version(client, parent, teacher, director):
+    rid, cid = create(client, parent, teacher, type="consultation", body="[TEST] 상담 다쳤어요")
+    report_id = next(row["id"] for row in client.get(BASE+"/cards?size=100", headers=director).json()["items"]
+                     if row["request_id"] == rid and row["kind"] == "director_report")
+    err(decision(client, teacher, cid, "acknowledge"), 409, "INVALID_TRANSITION")
+    err(decision(client, director, report_id, "acknowledge", version=9), 409, "CARD_VERSION_CONFLICT")
+    response = decision(client, director, report_id, "acknowledge")
+    assert response.status_code == 200, response.text
+    err(decision(client, director, report_id, "acknowledge"), 409, "ALREADY_DECIDED")
+    assert response.json()["request"]["status"] == "needs_info"
+    assert len([e for e in detail(client, director, report_id)["timeline"] if e["action"] == "report_acknowledged"]) == 1
+    other_rid, _ = create(client, parent, teacher, body="[TEST] 민원 아이 다쳤어요")
+    other_report = next(row["id"] for row in client.get(BASE+"/cards?size=100", headers=director).json()["items"]
+                        if row["request_id"] == other_rid and row["kind"] == "director_report")
+    err(decision(client, director, other_report, "acknowledge"), 409, "INVALID_TRANSITION")
+
+
+def test_dismiss_consultation_releases_chosen_holds(client, parent, teacher, consultation_backend):
+    rid, cid, slots = prepare(client, parent, teacher)
+    assert choose(client, parent, rid, slots[:2]).status_code == 200
+    response = decision(client, teacher, cid, "dismiss", reason_code="policy", reason_text="[TEST] 반려")
+    assert response.status_code == 200, response.text
+    assert detail(client, teacher, cid)["parent_choices"] == []
+    if consultation_backend == "mock":
+        assert all(store.state().slots[s["id"]].status == "discarded" for s in slots[:2])
+    else:
+        with transaction() as connection:
+            assert connection.scalar(text("SELECT count(*) FROM consultation_slots WHERE card_id=:id AND status='chosen_by_parent'"),
+                                     {"id": cid}) == 0
+    _, _, offered = prepare(client, parent, teacher)
+    assert offered[0]["period"] == slots[0]["period"]
+
+
+@pytest.mark.parametrize("has_candidates", [False, True])
+def test_unassigned_consultation_notifies_director_allows_choices_and_recovers_on_reassign(
+    client, parent, teacher_other, director, consultation_backend, has_candidates
+):
+    from uuid import uuid4
+    from app.modules.consultations.slots import propose_slots
+
+    if consultation_backend == "mock":
+        store.state().classroom_staff[:] = [s for s in store.state().classroom_staff if s.classroom_id != seed.CLASS_STAR]
+    else:
+        with transaction() as connection:
+            connection.execute(text("DELETE FROM classroom_staff WHERE classroom_id=:id"), {"id": seed.CLASS_STAR})
+    response = client.post(BASE+"/requests", headers=parent,
+                           json={"client_request_id": str(uuid4()), "child_id": str(seed.CHILD),
+                                 "type": "consultation", "body": "[TEST] 담임 없는 반 상담"})
+    assert response.status_code == 202, response.text
+    rid = response.json()["request"]["id"]
+    cid = next(row["id"] for row in client.get(BASE+"/cards?size=100", headers=director).json()["items"]
+               if row["request_id"] == rid and row["kind"] == "consult_slots")
+    staff_notices = [n for n in notices(consultation_backend, rid) if n["kind"] == "new_card"]
+    assert len(staff_notices) == 1 and str(staff_notices[0]["recipient_id"]) == str(seed.DIRECTOR)
+    assert detail(client, director, cid)["card"]["status"] == "unassigned"
+    if consultation_backend == "db" and has_candidates:
+        with transaction() as connection:
+            req = dict(connection.execute(text("SELECT * FROM requests WHERE id=:id"), {"id": rid}).mappings().one())
+            propose_slots(connection, req, {"id": cid}, seed.TEACHER)
+    elif not has_candidates:
+        if consultation_backend == "mock":
+            for slot in list(store.slots_of_request(UUID(rid))):
+                del store.state().slots[slot.id]
+    before = client.get(f"{BASE}/requests/{rid}", headers=parent).json()["consultation"]["slots"]
+    if has_candidates:
+        assert choose(client, parent, rid, before[:1]).status_code == 200
+        assert detail(client, director, cid)["card"]["status"] == "unassigned"
+    response = client.post(f"{BASE}/cards/{cid}/reassign", headers=director,
+                           json={"assignee_id": str(seed.TEACHER_OTHER), "reason": "[TEST] 담당 지정"})
+    assert response.status_code == 200, response.text
+    after = client.get(f"{BASE}/requests/{rid}", headers=parent).json()["consultation"]["slots"]
+    assert len(after) == 3
+    if not has_candidates:
+        assert choose(client, parent, rid, after[:1]).status_code == 200
+    assert book(client, teacher_other, cid, after[0], version=2).status_code == 200
+    if consultation_backend == "mock":
+        booking = store.confirmed_booking_of(UUID(rid))
+        assert booking.teacher_id == seed.TEACHER_OTHER and booking.confirmed_by == seed.TEACHER_OTHER
+    else:
+        with transaction() as connection:
+            assert connection.execute(text("SELECT teacher_id,confirmed_by FROM consultation_bookings WHERE request_id=:id"),
+                                      {"id": rid}).one() == (seed.TEACHER_OTHER, seed.TEACHER_OTHER)

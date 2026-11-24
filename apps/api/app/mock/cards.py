@@ -74,19 +74,25 @@ def decide(user, card_id, body):
         version(card, body.version)
         req = store.state().requests.get(card.request_id)
         decision = body.decision
+        consultation_report = req and req.type == "consultation" and card.kind == "director_report"
         # T04 3.2: 민원 회신의 승인·완료는 교사가 한다. 원장은 지시·재배정(API 설계 4.2).
         if (user.role == "director" and req and req.type == "complaint" and card.kind == "reply_draft"
                 and decision in ("approve", "edit_approve", "complete")):
             raise ApiError(403, "FORBIDDEN_ROLE")
         valid = req is not None and req.status not in ("completed", "rejected")
-        if decision == "complete":
+        if consultation_report:
+            valid = valid and ((decision in ("hold", "acknowledge") and card.status in ("pending", "in_review"))
+                               or (decision in ("resume", "acknowledge") and card.status == "on_hold"))
+        elif decision == "acknowledge":
+            valid = False
+        elif decision == "complete":
             valid = (valid and card.kind == "reply_draft" and card.status == "done"
                      and req.type == "complaint" and req.status == "sent_or_booked")
         elif decision == "resume":
             valid = valid and card.status == "on_hold" and req.status == "on_hold"
         else:
             valid = valid and card.status in ("pending", "in_review") and req.status == "awaiting_review"
-        if card.kind == "director_report" and decision not in ("hold", "resume"):
+        if card.kind == "director_report" and not consultation_report and decision not in ("hold", "resume"):
             valid = False
         if decision in ("approve", "edit_approve") and card.kind != "reply_draft":
             valid = False
@@ -107,7 +113,12 @@ def decide(user, card_id, body):
             remember_rejection(user, card, decision, body.reason_code, body.reason_text)
         actor = {"card": card, "actor_type": "user", "actor_id": user.id}
         next_card = None
-        if decision in ("approve", "edit_approve"):
+        if consultation_report:
+            card.hold_until = body.hold_until if decision == "hold" else None
+            touch(card, {"hold": "on_hold", "resume": "pending", "acknowledge": "done"}[decision])
+            store.add_event(req, {"hold": "held", "resume": "resumed", "acknowledge": "report_acknowledged"}[decision],
+                            reason_text=body.reason_text, **actor)
+        elif decision in ("approve", "edit_approve"):
             card.draft = content
             card.status = "approved"
             store.set_request_status(req, "approved", action="approved", **actor)
@@ -127,6 +138,9 @@ def decide(user, card_id, body):
             touch(card, "pending")
             store.expire(req.id)
         elif decision == "dismiss":
+            for slot in store.slots_of_request(req.id):
+                if slot.card_id == card.id and slot.status == "chosen_by_parent":
+                    slot.status = "discarded"
             store.set_request_status(req, "rejected", action="dismissed", reason_code=body.reason_code,
                                      reason_text=body.reason_text, **actor)
             touch(card, "rejected")
@@ -201,7 +215,7 @@ def reclassify(user, card_id, body):
 def book(user, card_id, body):
     with store._lock:
         card = in_scope(user, card_id)
-        if classroom_of(card) not in store.classroom_ids_of(user.id):
+        if user.role != "teacher" or card.assignee_id != user.id:
             raise ApiError(403, "FORBIDDEN_ROLE")
         version(card, body.version)
         req = store.state().requests.get(card.request_id)
@@ -221,6 +235,13 @@ def book(user, card_id, body):
                         and booking.period["start"] < slot.period["end"])
             if booking.status == "confirmed" and (booking.request_id == req.id or (overlaps
                     and (booking.room_id == slot.room_id or booking.teacher_id == slot.teacher_id))):
+                slot.status = "discarded"
+                round_no = max(s.round for s in store.slots_of_request(req.id) if s.card_id == card.id) + 1
+                candidates = store._propose_slots(card, card.assignee_id, round_no)
+                touch(card)
+                store.set_request_status(req, "needs_info", action="slot_conflict_reproposed", card=card,
+                                         actor_type="user", actor_id=user.id, slot_id=slot.id,
+                                         new_slot_ids=[candidate.id for candidate in candidates])
                 raise ApiError(409, "SLOT_TAKEN")
         record(card, user, "approve")
         booking = Booking(uuid4(), req.org_id, req.id, slot.id, slot.teacher_id, slot.room_id, dict(slot.period), user.id)
@@ -271,6 +292,10 @@ def reassign(user, card_id, body):
         touch(card)
         store.add_event(req, "reassigned", card=card, actor_type="user", actor_id=user.id,
                         **{"from": previous, "to": target.id, "reason": body.reason})
+        if req and card.kind == "consult_slots":
+            for slot in store.slots_of_request(req.id):
+                if slot.card_id == card.id and slot.status in ("proposed", "chosen_by_parent"):
+                    slot.teacher_id = target.id
         if req and card.kind == "consult_slots" and not any(
                 s.card_id == card.id and s.status in ("proposed", "chosen_by_parent")
                 for s in store.state().slots.values()):

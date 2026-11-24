@@ -92,7 +92,10 @@ def _expire(connection, req):
                 UPDATE cards SET status='pending',hold_until=NULL,version=version+1,updated_at=clock_timestamp()
                 WHERE id=:id RETURNING *
             """), {"id": card["id"]}).mappings().one())
-            set_status(connection, req, "awaiting_review", action="resumed", card=card, automatic=True)
+            if card["kind"] == "director_report" and req["type"] == "consultation":
+                record(connection, req, "resumed", card=card, automatic=True)
+            else:
+                set_status(connection, req, "awaiting_review", action="resumed", card=card, automatic=True)
         if req["status"] != "awaiting_review":
             continue
         reset = connection.execute(text("""
@@ -107,8 +110,9 @@ def _expire(connection, req):
 def _hold_until(connection, req):
     return connection.scalar(text("""
         SELECT hold_until FROM cards WHERE request_id=:id AND org_id=:org AND status='on_hold'
+          AND (kind<>'director_report' OR :type<>'consultation')
         ORDER BY created_at,id LIMIT 1
-    """), {"id": req["id"], "org": req["org_id"]})
+    """), {"id": req["id"], "org": req["org_id"], "type": req["type"]})
 
 
 def choices(user, request_id, body):
@@ -122,7 +126,7 @@ def choices(user, request_id, body):
             raise ApiError(409, "INVALID_TRANSITION")
         card = connection.execute(text("""
             SELECT * FROM cards WHERE request_id=:id AND kind='consult_slots'
-              AND status IN ('pending','in_review') ORDER BY created_at DESC,id DESC
+              AND status IN ('pending','in_review','unassigned') ORDER BY created_at DESC,id DESC
             LIMIT 1 FOR NO KEY UPDATE
         """), {"id": request_id}).mappings().one_or_none()
         if card is None:
@@ -130,13 +134,14 @@ def choices(user, request_id, body):
         current_round = connection.scalar(text("SELECT coalesce(max(round),0) FROM consultation_slots WHERE card_id=:id"),
                                           {"id": card["id"]})
         slots = connection.execute(text("""
-            SELECT * FROM consultation_slots WHERE card_id=:id AND round=:round AND status='proposed'
-            ORDER BY rank FOR NO KEY UPDATE
-        """), {"id": card["id"], "round": current_round}).mappings().all()
+            SELECT * FROM consultation_slots WHERE card_id=:id AND status IN ('proposed','chosen_by_parent')
+            ORDER BY round,rank FOR NO KEY UPDATE
+        """), {"id": card["id"]}).mappings().all()
         if body.none_fit:
             connection.execute(text("UPDATE consultation_slots SET status='discarded' WHERE card_id=:id"),
                                {"id": card["id"]})
-            slots = propose_slots(connection, req, card, card["assignee_id"], current_round + 1)
+            slots = propose_slots(connection, req, card, card["assignee_id"], current_round + 1,
+                                  preferred_times=body.preferred_times)
             record(connection, req, "info_requested", card=card, actor_type="user", actor_id=user.id,
                    preferred_times=body.preferred_times)
         else:
@@ -162,6 +167,10 @@ def choices(user, request_id, body):
                        "room": row["room_id"], "period": row["period"]})
                 if taken:
                     raise ApiError(409, "SLOT_TAKEN")
+            connection.execute(text("""
+                UPDATE consultation_slots SET status='proposed',chosen_at=NULL
+                WHERE card_id=:id AND status='chosen_by_parent'
+            """), {"id": card["id"]})
             slots = [dict(connection.execute(text("""
                 UPDATE consultation_slots SET status='chosen_by_parent',chosen_at=clock_timestamp()
                 WHERE id=:id RETURNING id,status

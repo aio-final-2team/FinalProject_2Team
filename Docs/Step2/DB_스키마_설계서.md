@@ -416,7 +416,7 @@ FK를 걸 수 없는 참조가 두 곳 있다. `cards.subject_id`와 `notificati
 | `approvals` | `org_id` | `uuid` / NOT NULL, 기관 짝 FK에 들어감 | 기관(경계 짝) |
 | `approvals` | `card_version` | `integer` / NOT NULL | 결정할 때 본 카드 판 |
 | `approvals` | `decided_by` | `uuid` / NOT NULL, FK (decided_by, org_id) → users | 결정한 교직원 |
-| `approvals` | `decision` | `text` / NOT NULL, 값: approve·edit_approve·reject·hold·resume·dismiss·complete·escalate·instruct | 결정 종류(2.2 글머리) |
+| `approvals` | `decision` | `text` / NOT NULL, 값: approve·edit_approve·reject·hold·resume·dismiss·complete·escalate·instruct·acknowledge | 결정 종류(2.2 글머리). acknowledge는 상담 원장 보고 확인(0014) |
 | `approvals` | `reason_code` | `text` / NULL 허용 | 거절·반려 이유 코드 8가지(2.2 글머리). 기억·규칙 제안 재료 |
 | `approvals` | `reason_text` | `text` / NULL 허용 | 보류 이유·원장 지시 내용 |
 | `approvals` | `edited_content` | `jsonb` / NULL 허용 | 고쳐서 승인한 내용 |
@@ -475,7 +475,7 @@ FK를 걸 수 없는 참조가 두 곳 있다. `cards.subject_id`와 `notificati
   | 정보 요청(`needs_info`) · 규칙 제안(`rule_proposal`) | 없음(NULL). 지연 집계에서 빠짐 |
 - `check_attempts`: 검사 AI가 돌려보낸 횟수다. 최대 2를 넘으면 DB가 거부하므로, 3번째부터는 코드가 사람에게 넘겨야 한다(FR-08).
 - `version`: 카드가 바뀔 때마다 1씩 올린다. 화면은 결정을 보낼 때 자기가 본 `version`을 함께 보낸다. `approvals`는 한 `(card_id, card_version)`에 결정을 하나만 받으므로, 승인 버튼이나 재개를 여러 번 눌러도 한 번만 처리된다(AC-05).
-- `decision`: `approve`(승인) · `edit_approve`(고쳐서 승인) · `reject`(거절 → 초안 다시) · `hold`(보류) · `resume`(보류 재개 → `awaiting_review`) · `dismiss`(반려 → 요청을 처리하지 않음, `rejected`) · `complete`(민원 처리 완료) · `escalate`(담임이 원장님께 올리기) · `instruct`(원장 지시 → 원장 보고 카드 `done`, 요청 `escalated → awaiting_review`). 거절과 반려를 다른 값으로 나눈 것은 T04 2.1이 둘을 다른 길로 그리기 때문이다.
+- `decision`: `approve`(승인) · `edit_approve`(고쳐서 승인) · `reject`(거절 → 초안 다시) · `hold`(보류) · `resume`(보류 재개 → `awaiting_review`) · `dismiss`(반려 → 요청을 처리하지 않음, `rejected`) · `complete`(민원 처리 완료) · `escalate`(담임이 원장님께 올리기) · `instruct`(원장 지시 → 원장 보고 카드 `done`, 요청 `escalated → awaiting_review`) · `acknowledge`(상담 원장 보고 확인 → 보고 카드만 `done`, 요청 상태 그대로; 0014). 상담 보고의 보류·수동/자동 재개도 카드만 바꾸고 학부모 요청 상태와 알림은 그대로 둔다. 거절과 반려를 다른 값으로 나눈 것은 T04 2.1이 둘을 다른 길로 그리기 때문이다.
 - 회신 카드(`reply_draft`)를 거절하면 같은 요청에 새 회신 카드를 만든다. 이때 `draft.text`는 빈 문자열, `check_result`는 NULL로 두어 새 카드가 앞 카드의 검사 통과를 물려받지 않게 한다. 그래서 새 카드는 담임이 직접 쓴 글로 `edit_approve`할 때만 학부모에게 나간다.
 - 결정에 따라 함께 있어야 저장되는 이유가 다르다. 거절·반려에는 `reason_code`가, 보류와 원장 지시에는 `reason_text`(지시 내용)가, 학부모가 확인하지 않은 민원의 처리 완료에는 `reason_text`(마무리한 방법)가 있어야 한다. 이렇게 남긴 거절 이유가 기억과 규칙 제안의 재료가 된다(FR-06).
 - `reason_code` 값 8가지: `wrong_fact`(사실이 틀림) · `tone`(말투) · `missing_info`(근거·정보 부족) · `privacy`(개인정보) · `policy`(원 방침과 다름) · `slot_unavailable`(시간 안 됨) · `room_unavailable`(상담실 없음) · `other`(기타). 목록은 설정값이므로 DB CHECK로 묶지 않고 API가 검사한다. 다만 `other`일 때 `reason_text`가 있어야 저장되는 규칙은 DB CHECK가 지킨다. 같은 사람에게 같은 코드가 3번 쌓이면 규칙을 제안하므로(2.5), 상담을 거절할 때는 시간·상담실 코드로 남겨야 규칙이 생긴다.
@@ -813,9 +813,10 @@ CREATE TABLE approvals (
     decided_by      uuid NOT NULL,
     -- reject = 거절(초안 다시) · dismiss = 반려(요청을 처리하지 않음) · complete = 민원 처리 완료(T04 합의 2)
     -- resume = 보류 재개 · escalate = 담임이 원장님께 올리기(T04 8장 #5) · instruct = 원장 지시(내용은 reason_text)
+    -- acknowledge = 상담 원장 보고만 확인(요청 상태 그대로)
     decision        text NOT NULL CHECK (decision IN ('approve', 'edit_approve', 'reject', 'hold',
                                                       'resume', 'dismiss', 'complete',
-                                                      'escalate', 'instruct')),
+                                                      'escalate', 'instruct', 'acknowledge')),
     -- 거절·반려 이유 코드(기억·규칙 제안에 씀). 값 목록은 설정값이라 CHECK로 묶지 않음(설계서 2.2):
     -- wrong_fact · tone · missing_info · privacy · policy · slot_unavailable · room_unavailable · other
     reason_code     text,

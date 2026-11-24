@@ -286,9 +286,10 @@ CREATE TABLE approvals (
     decided_by      uuid NOT NULL,
     -- reject = 거절(초안 다시) · dismiss = 반려(요청을 처리하지 않음) · complete = 민원 처리 완료(T04 합의 2)
     -- resume = 보류 재개 · escalate = 담임이 원장님께 올리기(T04 8장 #5) · instruct = 원장 지시(내용은 reason_text)
+    -- acknowledge = 상담 원장 보고만 확인(요청 상태 그대로)
     decision        text NOT NULL CHECK (decision IN ('approve', 'edit_approve', 'reject', 'hold',
                                                       'resume', 'dismiss', 'complete',
-                                                      'escalate', 'instruct')),
+                                                      'escalate', 'instruct', 'acknowledge')),
     -- 거절·반려 이유 코드(기억·규칙 제안에 씀). 값 목록은 설정값이라 CHECK로 묶지 않음(설계서 2.2):
     -- wrong_fact · tone · missing_info · privacy · policy · slot_unavailable · room_unavailable · other
     reason_code     text,

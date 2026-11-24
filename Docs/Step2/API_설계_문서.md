@@ -439,7 +439,7 @@ data: {"request_status": "needs_info"}
 | 필드 | 위치 | 타입 | 필수 | 빈값 | 제약 | 설명 |
 | --- | --- | --- | --- | --- | --- | --- |
 | `version` | 본문 | integer | 필수 | 불가 | 1 이상 | 화면에서 본 카드 판 |
-| `decision` | 본문 | string | 필수 | 불가 | `approve`·`edit_approve`·`reject`·`hold`·`resume`·`dismiss`·`complete`·`escalate` | 결정. 원장 지시(`instruct`)는 18번 API |
+| `decision` | 본문 | string | 필수 | 불가 | `approve`·`edit_approve`·`reject`·`hold`·`resume`·`dismiss`·`complete`·`escalate`·`acknowledge` | 결정. 원장 지시(`instruct`)는 18번 API |
 | `reason_code` | 본문 | string | `reject`·`dismiss`면 필수 | 불가 | 이유 코드 8개(4.1) | 거절·반려 이유 |
 | `reason_text` | 본문 | string | `hold`·`reason_code = other`면 필수, `complete`이고 학부모가 아직 확인하지 않았으면 필수 | 불가 | 1~500자 | 보류 이유·기타 이유·마무리한 방법 |
 | `hold_until` | 본문 | date | `hold`면 필수 | 불가 | 내일부터(오늘 날짜는 422) | 보류 예정일 |
@@ -471,11 +471,13 @@ X-Request-ID: 0e7d4a51-2c3b-4f6e-9a18-5b7c9d0e1f23
 | --- | --- | --- | --- | --- |
 | `approve`·`edit_approve` | `approved` → 발송 뒤 `done` | `approved` → `sent_or_booked` | `approved`, `sent` | 학부모 `sent_or_booked` |
 | `reject` | `rejected`, 같은 요청에 새 초안 카드가 생김. 회신 카드(`reply_draft`)를 거절했다면 새 카드에는 초안 문장도 검사 결과도 없다. 그래서 그대로 `approve`하면 409 `INVALID_TRANSITION`이 나고, 담임이 직접 쓴 글을 `edit_approve`로 보내야 한다 | `awaiting_review` → `assigned`, 새 초안이 나오면 다시 `awaiting_review` | `rejected` | 없음(이유는 기억 AI의 재료로 씀) |
-| `hold` | `on_hold` + `hold_until` | `on_hold` | `held` | 학부모 `on_hold`(예정일만) |
-| `resume` | `pending` | `on_hold` → `awaiting_review` | `resumed` | 없음 |
-| `dismiss` | `rejected` | `rejected` | `dismissed` | 학부모 `rejected` |
+| `hold` | `on_hold` + `hold_until` | `on_hold`(상담 원장 보고는 그대로) | `held` | 학부모 `on_hold`(예정일만; 상담 원장 보고는 없음) |
+| `resume` | `pending` | `on_hold` → `awaiting_review`(상담 원장 보고는 그대로) | `resumed` | 없음 |
+| `dismiss` | `rejected`, 상담이면 체크한 후보도 `discarded` | `rejected` | `dismissed` | 학부모 `rejected` |
 | `complete` | `done` | `sent_or_booked` → `completed`(민원만) | `completed` | 학부모 `completed` |
 | `escalate` | 원장 보고 카드(`director_report`)가 새로 생김 | `escalated` | `escalated` | 원장 `director_report` |
+
+상담 원장 보고 카드에서는 원장만 `acknowledge`(확인)·`hold`·`resume`를 쓴다. 확인은 `pending`·`in_review`·`on_hold` 카드만 `done`으로 닫고 `report_acknowledged` 이력을 남긴다. 보류·수동 재개·자동 재개도 그 카드만 바꾸고 요청 상태·학부모 표시·알림·체크는 그대로 둔다. 이 결정들도 `approvals`에 저장한다(`acknowledge`는 0014 마이그레이션). 다른 종류 카드의 `acknowledge`는 409 `INVALID_TRANSITION`이다.
 
 **오류**
 
@@ -499,7 +501,7 @@ X-Request-ID: 0e7d4a51-2c3b-4f6e-9a18-5b7c9d0e1f23
 | ② 요청 헤더 | `Authorization`(필수), `X-Request-ID`(권장) |
 | ③ 경로·쿼리 | `request_id` 또는 `card_id`(경로, UUID, 필수) |
 | ④ 요청 본문 | 아래 필드 표 |
-| ⑤ 검증·권한 | 체크는 요청한 학부모만, 확정은 그 반 담임만 할 수 있다(원장은 대신 확정하지 않음). 범위 밖이면 404, 역할이 다르면 403 |
+| ⑤ 검증·권한 | 체크는 요청한 학부모만, 확정은 그 상담 후보 카드의 담당 교사만 할 수 있다(다른 반에서 재배정받은 교사도 가능, 원장은 대신 확정하지 않음). 범위 밖이면 404, 역할이 다르면 403 |
 | ⑥ 정상 응답 | 체크: 200 + 후보 상태, 요청은 `awaiting_review`. 확정: 200 + 예약 |
 | ⑦ 오류 응답 | 아래 오류 표 |
 | ⑧ 실행 규칙 | 체크한 시간은 다른 요청의 확정 예약·유효 체크와 겹치면 안 된다. 이미 시작한 후보는 체크하든 확정하든 409 `SLOT_PAST`다. 체크 만료와 보류·원장 지시 때의 처리는 아래 규칙을 따른다 |
@@ -507,16 +509,20 @@ X-Request-ID: 0e7d4a51-2c3b-4f6e-9a18-5b7c9d0e1f23
 체크할 때 상담실이나 담임의 시간이 다른 요청의 확정 예약 또는 24시간 안의 체크와 겹치면 409 `SLOT_TAKEN`이다.
 24시간이 지난 체크는 요청이 `awaiting_review`일 때만 풀고 `needs_info`로 돌린다. 이때 담임에게 `slot_hold_expired` 알림을 남긴다.
 보류나 원장 보고 중에는 체크와 요청 상태를 그대로 두고, 재개되거나 원장이 지시한 뒤에 만료를 검사한다.
-긴급·판단 필요 상담에는 원장 보고 카드가 함께 생기지만 요청은 `escalated`가 되지 않는다(5.7). 원장 지시는 `escalated`인 요청만 받으므로, 담임이 예약을 확정하거나 상담을 반려(`dismiss`)할 때 같은 요청의 열린 원장 보고 카드도 함께 닫는다. 이때 알림을 더 보내지는 않는다. 판단 필요(`uncertain`)로 결정을 막는 규칙은 재분류로 풀 수 있는 문의·민원에만 쓰고, 상담은 판단 필요여도 담임이 그대로 확정·반려한다.
+긴급·판단 필요 상담에는 원장 보고 카드가 함께 생기지만 요청은 `escalated`가 되지 않는다(5.7). 원장은 별도 `acknowledge`로 보고만 확인할 수 있고(3.3), 지시는 `escalated`인 요청만 받는다. 담임이 예약을 확정하거나 상담을 반려(`dismiss`)할 때 같은 요청의 열린 원장 보고 카드도 함께 닫는다. 이때 알림을 더 보내지는 않는다. 판단 필요(`uncertain`)로 결정을 막는 규칙은 재분류로 풀 수 있는 문의·민원에만 쓰고, 상담은 판단 필요여도 담임이 그대로 확정·반려한다.
 `escalated`에서는 원장이 지시하기 전에 확정할 수 없다. 원장이 지시하면 보고 카드를 닫고 상담 후보 카드로 돌려보낸다.
 최종 확정은 담임 → 상담실 순서로 거는 자문 잠금과 DB 배제 제약으로 한 건만 받는다(DB 설계서 9.1 F1-7).
 확정하면 학부모에게 `consultation_booked` 알림을 한 번 남긴다. 제목은 "상담 예약 확정", 본문은 예약한 한국 날짜·시간(`YYYY-MM-DD HH:MM~HH:MM`)이다. 문의·민원 회신 알림은 기존 `sent_or_booked`("답변 도착")를 쓴다.
+
+`none_fit`은 기존 후보를 버리고 희망 시간과 겹치는 빈 후보를 먼저, 겹침이 없으면 시간 거리가 가까운 순으로 최대 3개 다시 제안한다. `preferred_times`의 명시 날짜(YYYY-MM-DD), 오늘·내일·모레·다음 주·요일, HH:MM·오전/오후 시각·범위·이후/이전·오전/오후를 코드가 읽고, 해석하지 못한 문장은 원문을 이력에 보존한 채 빠른 시간 순서를 쓴다. 담임(없으면 원장)에게 원문을 담은 `parent_message` 알림을 남긴다. 다음 재제안·재배정에도 마지막 희망 시간을 반영한다.
+담임 없는 반은 `unassigned` 상담 카드의 생성 때 원장에게 `new_card`를 보낸다. 후보가 있으면 학부모 체크를 허용하고, 후보가 없으면 원장 재배정으로 새 담당 기준 후보를 계산한다.
+확정 순간 충돌은 해당 후보만 `discarded`, 나머지 후보·체크는 보존하고 새 회차 후보를 최대 3개 더 만든다. 카드 판을 1 올리고 요청을 `needs_info`로 돌려 `slot_conflict_reproposed`(detail.slot_id·new_slot_ids)와 학부모 `needs_info` 알림을 같은 트랜잭션에 저장한다. 그 뒤 409 `SLOT_TAKEN`을 반환하므로 요청·카드를 새로 읽고 다시 선택한다. 충돌 때 승인·예약은 만들지 않는다. 재체크는 살아 있는 이전 후보도 받으며 최종 체크 목록을 교체한다. 알림 저장 실패는 재제안도 함께 롤백한다.
 
 **필드**
 
 | 필드 | 위치 | 타입 | 필수 | 빈값 | 제약 | 설명 |
 | --- | --- | --- | --- | --- | --- | --- |
-| `slot_ids[]` | 체크 본문 | integer[] | `none_fit`이 아니면 필수 | 불가 | 1~3개, 그 요청의 지금 회차 후보 | 가능한 시간 |
+| `slot_ids[]` | 체크 본문 | integer[] | `none_fit`이 아니면 필수 | 불가 | 1~3개, 그 카드의 살아 있는 후보(충돌 뒤 보존된 후보 포함) | 가능한 시간 |
 | `none_fit` | 체크 본문 | boolean | 선택 | — | 기본 `false` | 맞는 시간이 없음 → 후보를 다시 계산 |
 | `preferred_times` | 체크 본문 | string | `none_fit`이면 필수 | 불가 | 1~200자 | 원하는 시간 설명 |
 | `version` | 확정 본문 | integer | 필수 | 불가 | 1 이상 | 상담 후보 카드 판 |
@@ -548,11 +554,11 @@ HTTP/1.1 200 OK
 
 | HTTP | `code` | 조건 |
 | --- | --- | --- |
-| 403 | `FORBIDDEN_ROLE` | 교직원이 체크, 학부모·원장이 확정 |
+| 403 | `FORBIDDEN_ROLE` | 교직원이 체크, 학부모·원장·카드 담당이 아닌 교사가 확정 |
 | 404 | `NOT_FOUND` | 남의 요청, 다른 반 카드, 그 요청의 후보가 아닌 `slot_id` |
 | 409 | `INVALID_TRANSITION` | 시간을 고를 단계(`needs_info`)가 아닌데 체크, 원장 보고 중 지시 전에 확정 |
 | 409 | `SLOT_NOT_CHOSEN` | 학부모가 체크하지 않은 후보로 확정 |
-| 409 | `SLOT_TAKEN` | 같은 상담실·담임의 확정 예약 또는 다른 요청의 유효 체크와 겹침 → 후보를 다시 내도록 안내 |
+| 409 | `SLOT_TAKEN` | 체크 때 다른 확정·유효 체크와 겹침. 확정 때 예약과 겹치면 충돌 후보만 버리고 재제안·알림까지 저장한 뒤 409 |
 | 409 | `SLOT_PAST` | 시작 시각이 현재 시각 이하인 후보를 체크·확정 |
 | 409 | `CARD_VERSION_CONFLICT` | 확정할 때 카드 판이 다름 |
 | 422 | `VALIDATION_FAILED` | `slot_ids` 0개·4개 이상, `none_fit`인데 `preferred_times` 없음 |
@@ -1004,7 +1010,7 @@ HTTP/1.1 200 OK
 | ⑤ 검증·권한 | director만. 배정 대상은 같은 기관의 활성 teacher여야 한다. director_report 카드나 done·rejected 카드는 재배정하지 못한다. |
 | ⑥ 정상 응답 | 200 + card { assignee { id, display_name }, version }. |
 | ⑦ 오류 응답 | 아래 오류 표. |
-| ⑧ 실행 규칙 | 카드의 담당과 연결된 요청의 담당을 함께 바꾸고 카드 판을 1 올린다. unassigned 카드는 pending으로 바꾼다. 새 담당에게 reassigned("요청이 배정됐어요") 알림을 남긴다. 상담 후보 카드에 proposed·chosen_by_parent 후보가 하나도 없으면 새 담당 기준으로 다음 회차 후보를 계산하고 요청을 needs_info로 바꿔 학부모에게 needs_info 알림을 남긴다. 후보가 있으면 후보와 체크를 보존하며, 그 밖의 요청 상태와 기한도 그대로 둔다. 다른 반 교사에게도 배정할 수 있고, 이력에는 from·to·reason을 남긴다. |
+| ⑧ 실행 규칙 | 카드의 담당과 연결된 요청의 담당을 함께 바꾸고 카드 판을 1 올린다. unassigned 카드는 pending으로 바꾼다. 새 담당에게 reassigned("요청이 배정됐어요") 알림을 남긴다. 상담 후보 카드에 proposed·chosen_by_parent 후보가 하나도 없으면 새 담당 기준으로 다음 회차 후보를 계산하고 요청을 needs_info로 바꿔 학부모에게 needs_info 알림을 남긴다. 후보가 있으면 시각·체크를 보존하고 후보의 teacher_id를 새 담당으로 바꾼다. 그 밖의 요청 상태와 기한도 그대로 둔다. 다른 반 교사에게도 배정할 수 있고, 이력에는 from·to·reason을 남긴다. |
 
 | 필드 | 위치 | 타입 | 필수 | 빈값 | 제약 | 설명 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -1567,7 +1573,7 @@ DB 값을 봐야 알 수 있는 조건은 Pydantic에 넣지 않는다. 승인�
 # schemas.py — 형식만 본다. 여기서 걸리면 422
 class CardDecision(BaseModel):
     version: int = Field(ge=1)
-    decision: Literal["approve", "edit_approve", "reject", "hold", "resume", "dismiss", "complete", "escalate"]
+    decision: Literal["approve", "edit_approve", "reject", "hold", "resume", "dismiss", "complete", "escalate", "acknowledge"]
     reason_code: Literal["wrong_fact", "tone", "missing_info", "privacy", "policy",
                          "slot_unavailable", "room_unavailable", "other"] | None = None
     reason_text: str | None = Field(default=None, min_length=1, max_length=500)
@@ -1843,8 +1849,8 @@ def decide(card_id: UUID, body: CardDecision, user: User = Depends(current_staff
 | 단계 | 누가 | API·도구 | 입력 → 출력 | 권한(누가 할 수 있나) | DB 상태 변화(`requests.status`·`cards.status`·제약) | 실패하면 |
 | --- | --- | --- | --- | --- | --- | --- |
 | 접수·후보 | 학부모·감독 AI·코드 | `POST /requests`, `route_request`, `find_consult_slots` | `type=consultation`, `body`, `child_id` 등 → 요청; `teacher_id`, `date` → `slots[]`(최대 3개) | 본인 아이·담임 일정, 기관·반은 서버가 확인 | 요청 `received → classified → assigned → needs_info`, `consult_slots` 카드 `pending`, 후보 `proposed` | 후보 조회가 실패하면 1번 다시 부르고, 그래도 실패하면 시간을 지어내지 않음(5.4) |
-| 가능한 시간 체크 | 학부모·감독 AI | `POST /requests/{request_id}/slot-choices`; 대화에서는 `request_consultation` | 화면 `slot_ids[]`; 도구 `teacher_id`, `date`, `time`, `topic?` → `slots[]`, 요청 상태 | 요청한 학부모만. 예약을 확정할 권한은 없음 | 후보 `chosen_by_parent` + `chosen_at`, 요청 `awaiting_review`, 카드 `pending` 유지 | 맞는 시간이 없으면 `none_fit` + `preferred_times`를 받아 후보를 다시 계산. 고른 후보는 24시간이 지나면 `proposed`로 풀림 |
-| 담임 확정 | 담임·코드 | `POST /cards/{card_id}/bookings`, `book_slot` | `version`, `slot_id`; 도구 `slot_id`, `confirmed_by` → `booking_id`, API `booking { id, room, period }` | 그 반 담임만. 원장은 대신 확정하지 못함 | `approvals` 저장 후 요청 `approved → sent_or_booked`, 카드 `done`, 예약과 선택된 후보 `confirmed`. 요청당 확정 예약은 하나, 상담실과 담임 시간이 겹치지 않게 하는 배제 제약 | 409 `SLOT_NOT_CHOSEN`·`SLOT_TAKEN`·`CARD_VERSION_CONFLICT`. 충돌이면 후보를 다시 내도록 안내 |
+| 가능한 시간 체크 | 학부모·감독 AI | `POST /requests/{request_id}/slot-choices`; 대화에서는 `request_consultation` | 화면 `slot_ids[]`; 도구 `teacher_id`, `date`, `time`, `topic?` → `slots[]`, 요청 상태 | 요청한 학부모만. 예약을 확정할 권한은 없음 | 후보 `chosen_by_parent` + `chosen_at`, 요청 `awaiting_review`, 카드 `pending` 유지 | 맞는 시간이 없으면 `none_fit` + `preferred_times`의 겹침·거리 순으로 후보를 다시 계산하고 담임에게 `parent_message`. 고른 후보는 24시간이 지나면 `proposed`로 풀림 |
+| 담임 확정 | 담임·코드 | `POST /cards/{card_id}/bookings`, `book_slot` | `version`, `slot_id`; 도구 `slot_id`, `confirmed_by` → `booking_id`, API `booking { id, room, period }` | 카드 담당 교사만(다른 반 재배정 포함). 원장은 대신 확정하지 못함 | `approvals` 저장 후 요청 `approved → sent_or_booked`, 카드 `done`, 예약과 선택된 후보 `confirmed`. 요청당 확정 예약은 하나, 상담실과 담임 시간이 겹치지 않게 하는 배제 제약 | 409 `SLOT_NOT_CHOSEN`·`SLOT_TAKEN`·`CARD_VERSION_CONFLICT`. 확정 충돌은 해당 후보만 폐기하고 재제안·요청 needs_info·학부모 알림·slot_conflict_reproposed 저장 후 409 |
 
 **긴급 민원 사람 인계**
 

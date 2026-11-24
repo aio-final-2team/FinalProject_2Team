@@ -80,7 +80,7 @@ def test_upgrade_downgrade_upgrade(db_engine, alembic_config):
     command.upgrade(alembic_config, "head")
     with db_engine.connect() as connection:
         assert dict(catalog(connection)) == first_catalog
-        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0013"
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0014"
     assert schema_dump() == first_dump
 
     # 최신 설계를 직접 적용한 스키마도 마이그레이션 head와 같아야 한다.
@@ -141,7 +141,7 @@ def test_child_memos_backfill_constraints_and_revision_round_trip(db_engine, ale
     command.upgrade(alembic_config, "head")
     with db_engine.begin() as connection:
         assert dict(catalog(connection)) == HEAD_CATALOG
-        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0013"
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0014"
         assert dict(connection.execute(text("SELECT * FROM daily_note_inputs WHERE id=:id"),
                                        {"id": before["id"]}).mappings().one()) == {**before, "child_memos": []}
         connection.execute(text("DELETE FROM daily_note_inputs"))
@@ -278,6 +278,42 @@ def test_0012_care_backfill_and_round_trip_preserve_events_and_notifications(see
         connection.execute(text("DELETE FROM events WHERE action=ANY(:values)"), {"values": list(new_actions)})
         connection.execute(text("DELETE FROM notifications WHERE kind=ANY(:values)"), {"values": list(new_kinds)})
     command.downgrade(alembic_config, "0011")
+    assert schema_dump() == old_dump
+    command.upgrade(alembic_config, "head")
+
+
+def test_consultation_report_acknowledge_revision_preserves_decisions_on_downgrade(seeded_db, alembic_config):
+    command.downgrade(alembic_config, "0013")
+    old_dump = schema_dump()
+    command.upgrade(alembic_config, "head")
+    with seeded_db.begin() as connection:
+        rid = connection.scalar(text("""
+            INSERT INTO requests (org_id,requester_id,client_request_id,type,body)
+            VALUES (:org,:parent,'[TEST] acknowledge-migration','consultation','[TEST] 원장 보고') RETURNING id
+        """), {"org": seed.ORG, "parent": seed.PARENT})
+        cid = connection.scalar(text("""
+            INSERT INTO cards (org_id,request_id,kind,assignee_id)
+            VALUES (:org,:request,'director_report',:director) RETURNING id
+        """), {"org": seed.ORG, "request": rid, "director": seed.DIRECTOR})
+        row = dict(connection.execute(text("""
+            INSERT INTO approvals (org_id,card_id,card_version,decided_by,decision)
+            VALUES (:org,:card,1,:director,'acknowledge') RETURNING *
+        """), {"org": seed.ORG, "card": cid, "director": seed.DIRECTOR}).mappings().one())
+    command.downgrade(alembic_config, "0013")
+    with seeded_db.begin() as connection:
+        assert dict(connection.execute(text("SELECT * FROM approvals WHERE id=:id"),
+                                       {"id": row["id"]}).mappings().one()) == row
+        assert connection.scalar(text("SELECT convalidated FROM pg_constraint WHERE conname='approvals_decision_check'")) is False
+        with pytest.raises(IntegrityError) as error, connection.begin_nested():
+            connection.execute(text("UPDATE approvals SET decision='acknowledge' WHERE id=:id"), {"id": row["id"]})
+        assert error.value.orig.diag.constraint_name == "approvals_decision_check"
+    command.upgrade(alembic_config, "head")
+    with seeded_db.begin() as connection:
+        assert dict(connection.execute(text("SELECT * FROM approvals WHERE id=:id"),
+                                       {"id": row["id"]}).mappings().one()) == row
+        assert connection.scalar(text("SELECT convalidated FROM pg_constraint WHERE conname='approvals_decision_check'")) is True
+        connection.execute(text("DELETE FROM approvals WHERE id=:id"), {"id": row["id"]})
+    command.downgrade(alembic_config, "0013")
     assert schema_dump() == old_dump
     command.upgrade(alembic_config, "head")
 

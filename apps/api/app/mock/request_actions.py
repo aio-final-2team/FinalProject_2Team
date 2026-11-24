@@ -85,16 +85,16 @@ def choices(user, request_id, body):
         if req.type != "consultation" or req.status != "needs_info":
             raise ApiError(409, "INVALID_TRANSITION")
         card = next((c for c in reversed(store.cards_of(req.id)) if c.kind == "consult_slots"
-                     and c.status in ("pending", "in_review")), None)
+                     and c.status in ("pending", "in_review", "unassigned")), None)
         if card is None:
             raise ApiError(409, "INVALID_TRANSITION")
         round_no = max((s.round for s in store.slots_of_request(req.id) if s.card_id == card.id), default=0)
         slots = [s for s in store.slots_of_request(req.id) if s.card_id == card.id
-                 and s.round == round_no and s.status == "proposed"]
+                 and s.status in ("proposed", "chosen_by_parent")]
         if body.none_fit:
             for slot in slots:
                 slot.status = "discarded"
-            slots = store._propose_slots(card, card.assignee_id, round_no + 1)
+            slots = store._propose_slots(card, card.assignee_id, round_no + 1, preferred_times=body.preferred_times)
             store.add_event(req, "info_requested", card=card, actor_type="user", actor_id=user.id,
                             preferred_times=body.preferred_times)
         else:
@@ -114,6 +114,9 @@ def choices(user, request_id, body):
                        and slot.period["start"] < (getattr(other, "expected_end_at", None) or other.period["end"])
                        and other.period["start"] < slot.period["end"] for other in others):
                     raise ApiError(409, "SLOT_TAKEN")
+            for slot in slots:
+                if slot.status == "chosen_by_parent":
+                    slot.status, slot.chosen_at = "proposed", None
             for slot in chosen:
                 slot.status, slot.chosen_at = "chosen_by_parent", store.now()
             slots = chosen

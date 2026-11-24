@@ -36,6 +36,17 @@ def notify_event(connection, event, req, card):
             enqueue(connection, event, None, card["assignee_id"], "new_card")
         return
     to, action = event["to_status"], event["action"]
+    if req.get("type") == "consultation" and (
+        (action == "created" and card and card["kind"] == "consult_slots" and not card["assignee_id"])
+        or (action == "info_requested" and "preferred_times" in event["detail"])
+    ):
+        recipient = card["assignee_id"] or connection.scalar(text(
+            "SELECT id FROM users WHERE org_id=:org AND role='director' AND is_active ORDER BY id LIMIT 1"),
+            {"org": req["org_id"]})
+        enqueue(connection, event, req, recipient,
+                "parent_message" if "preferred_times" in event["detail"] else "new_card",
+                event["detail"].get("preferred_times"))
+        return
     if req.get("type") in CARE_REQUEST_TYPES:
         if event["detail"].get("unregistered_pickup"):
             director = connection.scalar(text(

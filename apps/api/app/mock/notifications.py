@@ -44,6 +44,14 @@ def notify_event(ev, req, card):
             for guardian in store.state().children[note.child_id].guardian_ids:
                 create(ev, guardian, "note_sent", subject_id=note.id)
         return
+    if req.type == "consultation" and (
+        (ev.action == "created" and card and card.kind == "consult_slots" and not card.assignee_id)
+        or (ev.action == "info_requested" and "preferred_times" in ev.detail)
+    ):
+        create(ev, card.assignee_id or store.director_of(req.org_id),
+               "parent_message" if "preferred_times" in ev.detail else "new_card",
+               ev.detail.get("preferred_times"))
+        return
     if req.type in CARE_REQUEST_TYPES:
         if ev.detail.get("unregistered_pickup"):
             create(ev, store.director_of(req.org_id), "care_requested", UNREGISTERED_PICKUP_CHECK,

@@ -229,9 +229,13 @@ def test_distinct_requests_simultaneously_confirming_conflict_only_store_one(db_
         assert connection.scalar(text("SELECT count(*) FROM consultation_bookings")) == 1
         assert connection.scalar(text("SELECT count(*) FROM approvals")) == 1
         assert connection.scalar(text("SELECT count(*) FROM events WHERE action='booked'")) == 1
-        assert connection.scalar(text("SELECT status FROM requests WHERE id=:id"), {"id": loser[0]}) == "awaiting_review"
-        assert connection.execute(text("SELECT status,version FROM cards WHERE id=:id"), {"id": loser[1]}).one() == ("pending", 1)
-        assert connection.scalar(text("SELECT status FROM consultation_slots WHERE id=:id"), {"id": loser[2]["id"]}) == "chosen_by_parent"
+        assert connection.scalar(text("SELECT status FROM requests WHERE id=:id"), {"id": loser[0]}) == "needs_info"
+        assert connection.execute(text("SELECT status,version FROM cards WHERE id=:id"), {"id": loser[1]}).one() == ("pending", 2)
+        assert connection.scalar(text("SELECT status FROM consultation_slots WHERE id=:id"), {"id": loser[2]["id"]}) == "discarded"
+        assert connection.scalar(text("SELECT count(*) FROM events WHERE request_id=:id AND action='slot_conflict_reproposed'"),
+                                 {"id": loser[0]}) == 1
+        assert connection.scalar(text("SELECT count(*) FROM consultation_slots WHERE card_id=:id AND round=2"),
+                                 {"id": loser[1]}) == 3
         notifications = connection.execute(text("""
             SELECT recipient_id,kind,status,dedupe_key,deliver_after,created_at FROM notifications WHERE kind='consultation_booked'
         """)).mappings().all()
@@ -241,10 +245,17 @@ def test_distinct_requests_simultaneously_confirming_conflict_only_store_one(db_
         assert notice["dedupe_key"] and notice["deliver_after"] == notice["created_at"]
 
 
-def test_notification_failure_rolls_back_booking_approval_and_slot_state(db_client, seeded_db, monkeypatch):
+@pytest.mark.parametrize("conflict", [False, True])
+def test_notification_failure_rolls_back_booking_or_reproposal_and_slot_state(db_client, seeded_db, monkeypatch, conflict):
     from app.modules.requests import events
 
     rid, cid, slot = prepare_chosen(db_client)
+    if conflict:
+        with seeded_db.begin() as connection:
+            chosen = connection.execute(text("SELECT * FROM consultation_slots WHERE id=:id"),
+                                        {"id": slot["id"]}).mappings().one()
+            add_booking(connection, chosen["teacher_id"], chosen["room_id"],
+                        chosen["period"].lower, chosen["period"].upper)
 
     def failed(*args):
         raise RuntimeError("[TEST] 상담 알림 저장 실패")
@@ -254,12 +265,14 @@ def test_notification_failure_rolls_back_booking_approval_and_slot_state(db_clie
                               json={"version": 1, "slot_id": slot["id"]})
     assert response.status_code == 500 and response.json()["error"]["code"] == "INTERNAL_ERROR"
     with seeded_db.connect() as connection:
-        assert connection.scalar(text("SELECT count(*) FROM consultation_bookings")) == 0
+        assert connection.scalar(text("SELECT count(*) FROM consultation_bookings")) == int(conflict)
         assert connection.scalar(text("SELECT count(*) FROM approvals")) == 0
         assert connection.scalar(text("SELECT count(*) FROM events WHERE action IN ('approved','booked')")) == 0
         assert connection.scalar(text("SELECT status FROM requests WHERE id=:id"), {"id": rid}) == "awaiting_review"
         assert connection.scalar(text("SELECT status FROM consultation_slots WHERE id=:id"), {"id": slot["id"]}) == "chosen_by_parent"
         assert connection.execute(text("SELECT status,version FROM cards WHERE id=:id"), {"id": cid}).one() == ("pending", 1)
+        assert connection.scalar(text("SELECT count(*) FROM events WHERE action='slot_conflict_reproposed'")) == 0
+        assert connection.scalar(text("SELECT max(round) FROM consultation_slots WHERE card_id=:id"), {"id": cid}) == 1
 
 
 @pytest.mark.parametrize("rule", [None, "after", [], 42, {"after": "25:00"}, {"after": "14:7"},
@@ -298,7 +311,7 @@ def test_active_non_time_reason_and_malformed_rule_do_not_affect_proposals(db_cl
 
 
 @pytest.mark.parametrize("sqlstate", ["40P01", "23P01"])
-def test_booking_database_collision_errors_become_slot_taken_and_roll_back(db_client, seeded_db, sqlstate):
+def test_booking_database_collision_errors_become_slot_taken_and_repropose(db_client, seeded_db, sqlstate):
     from psycopg.errors import DeadlockDetected, ExclusionViolation
     from sqlalchemy.exc import OperationalError, IntegrityError
 
@@ -322,8 +335,41 @@ def test_booking_database_collision_errors_become_slot_taken_and_roll_back(db_cl
         assert connection.scalar(text("SELECT count(*) FROM consultation_bookings")) == 0
         assert connection.scalar(text("SELECT count(*) FROM approvals")) == 0
         assert connection.scalar(text("SELECT count(*) FROM events WHERE action='booked'")) == 0
-        assert connection.scalar(text("SELECT status FROM requests WHERE id=:id"), {"id": rid}) == "awaiting_review"
-        assert connection.scalar(text("SELECT status FROM consultation_slots WHERE id=:id"), {"id": slot["id"]}) == "chosen_by_parent"
+        assert connection.scalar(text("SELECT status FROM requests WHERE id=:id"), {"id": rid}) == "needs_info"
+        assert connection.scalar(text("SELECT status FROM consultation_slots WHERE id=:id"), {"id": slot["id"]}) == "discarded"
+        assert connection.scalar(text("SELECT count(*) FROM events WHERE request_id=:id AND action='slot_conflict_reproposed'"),
+                                 {"id": rid}) == 1
+
+
+def test_preferred_candidates_use_closest_available_times_when_no_overlap(seeded_db):
+    day = future_day()
+    with seeded_db.begin() as connection:
+        early = find(connection, day)
+        assert early[0]["start"] == at(day, 9)
+        result = slots.find_consult_slots(connection, seed.TEACHER, day, org_id=seed.ORG,
+                                   rules=[{"before": "12:00"}], preferred_times=f"[TEST] {day} 16:00~17:00")
+        assert [s["start"] for s in result] == [at(day, 11, 30), at(day, 11), at(day, 10, 30)]
+
+
+def test_actual_postgres_error_recovers_savepoint_and_commits_reproposal(db_client, seeded_db, monkeypatch):
+    from app.modules.consultations import bookings
+
+    rid, cid, slot = prepare_chosen(db_client)
+
+    def failed_lock(connection, selected):
+        connection.execute(text("DO $$ BEGIN RAISE EXCEPTION '[TEST] exclusion' USING ERRCODE='23P01'; END $$"))
+
+    monkeypatch.setattr(bookings, "lock_resources", failed_lock)
+    response = db_client.post(f"{BASE}/cards/{cid}/bookings", headers=auth(seed.TEACHER),
+                              json={"version": 1, "slot_id": slot["id"]})
+    assert response.status_code == 409, response.text
+    assert response.json()["error"]["code"] == "SLOT_TAKEN"
+    with seeded_db.connect() as connection:
+        assert connection.scalar(text("SELECT status FROM requests WHERE id=:id"), {"id": rid}) == "needs_info"
+        assert connection.scalar(text("SELECT count(*) FROM events WHERE request_id=:id AND action='slot_conflict_reproposed'"),
+                                 {"id": rid}) == 1
+        assert connection.scalar(text("SELECT count(*) FROM consultation_slots WHERE card_id=:id AND round=2"),
+                                 {"id": cid}) == 3
 
 
 def test_simultaneous_parent_checks_only_hold_one_overlapping_candidate(db_client, seeded_db):

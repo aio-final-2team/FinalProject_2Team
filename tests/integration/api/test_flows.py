@@ -114,10 +114,13 @@ def test_slot_collision_is_atomic_and_nonoverlap_is_allowed(client, parent, teac
     second[1].period = dict(first[0].period)  # 이전 중복 체크를 가정해 최종 제약도 확인해요.
     assert client.post(f"{BASE}/cards/{pairs[0][1]}/bookings", headers=teacher, json={"version": 1, "slot_id": first[0].id}).status_code == 200
     err(client.post(f"{BASE}/cards/{pairs[1][1]}/bookings", headers=teacher, json={"version": 1, "slot_id": second[1].id}), 409, "SLOT_TAKEN")
-    assert store.state().cards[UUID(pairs[1][1])].version == 1
-    assert second[1].status == "chosen_by_parent"
-    second[1].period = dict(first[1].period)
-    assert client.post(f"{BASE}/cards/{pairs[1][1]}/bookings", headers=teacher, json={"version": 1, "slot_id": second[1].id}).status_code == 200
+    assert store.state().cards[UUID(pairs[1][1])].version == 2
+    assert second[1].status == "discarded"
+    assert store.state().requests[UUID(pairs[1][0])].status == "needs_info"
+    assert client.post(f"{BASE}/requests/{pairs[1][0]}/slot-choices", headers=parent,
+                       json={"slot_ids": [second[2].id]}).status_code == 200
+    assert client.post(f"{BASE}/cards/{pairs[1][1]}/bookings", headers=teacher,
+                       json={"version": 2, "slot_id": second[2].id}).status_code == 200
 
 
 def test_none_fit_regenerates_and_hold_expires_once(client, parent, teacher):
@@ -198,7 +201,7 @@ def test_director_report_permission_instructions_reassign(client, parent, teache
     overview = client.get(BASE + "/overview", headers=director).json()
     assert overview["reassignments"][-1]["from"] == str(seed.TEACHER)
     assert overview["reassignments"][-1]["to"] == str(seed.TEACHER_OTHER)
-    err(client.post(f"{BASE}/cards/{cid}/bookings", headers=teacher_other, json={"version": 2, "slot_id": 1}), 403, "FORBIDDEN_ROLE")
+    err(client.post(f"{BASE}/cards/{cid}/bookings", headers=teacher_other, json={"version": 2, "slot_id": 1}), 404, "NOT_FOUND")
 
 
 def test_reclassify_uncertain_and_escalate(client, teacher, director):

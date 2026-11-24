@@ -1,4 +1,4 @@
-"""API의 담임 확인 뒤 호출해요. 최종 충돌 판정은 DB 배제 제약이 맡아요."""
+"""API의 카드 담당 교사 확인 뒤 호출해요. 최종 충돌 판정은 DB 배제 제약이 맡아요."""
 
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
@@ -36,6 +36,6 @@ def book_slot(connection, slot, *, request_id, confirmed_by):
             error.orig.sqlstate == "23505"
             and error.orig.diag.constraint_name == "consultation_bookings_one_per_request"
         ):
-            # 호출 쪽 트랜잭션도 빠져나가므로 승인·상태·알림은 함께 롤백돼요.
+            # 호출 쪽 savepoint를 되돌린 뒤 승인 없이 재제안·상태·알림을 저장해요.
             raise ApiError(409, "SLOT_TAKEN") from error
         raise

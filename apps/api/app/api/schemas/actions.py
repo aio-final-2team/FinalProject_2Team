@@ -40,7 +40,7 @@ class VersionIn(BaseModel):
 
 
 class DecisionIn(VersionIn):
-    decision: Literal["approve", "edit_approve", "reject", "hold", "resume", "dismiss", "complete", "escalate"]
+    decision: Literal["approve", "edit_approve", "reject", "hold", "resume", "dismiss", "complete", "escalate", "acknowledge"]
     reason_code: Reason | None = None
     reason_text: str | None = Field(default=None, min_length=1, max_length=500)
     hold_until: date | None = None

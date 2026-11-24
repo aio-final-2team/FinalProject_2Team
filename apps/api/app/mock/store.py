@@ -408,16 +408,18 @@ def _next_weekday(d: date) -> date:
     return d
 
 
-def _propose_slots(card: Card, teacher: UUID | None, round_no: int = 1) -> list[Slot]:
+def _propose_slots(card: Card, teacher: UUID | None, round_no: int = 1, *, preferred_times=None) -> list[Slot]:
     """평일 15:00·16:00 중 확정·살아 있는 체크와 겹치지 않는 세 칸을 골라요."""
-    first = now().date()
-    for _ in range(round_no):
-        first = _next_weekday(first)
+    from app.modules.consultations.slots import preference_key
+    if preferred_times is None:
+        preferred_times = next((e.detail["preferred_times"] for e in reversed(events_of(card.request_id))
+                                if "preferred_times" in e.detail), None)
+    first = _next_weekday(now().date())
     room = next(iter(_state.rooms))
     teacher = teacher or seed.TEACHER
-    out = []
+    candidates = []
     day = first
-    for _ in range(14):
+    while day <= now().date()+timedelta(days=14):
         for hour in (15, 16):
             start = datetime.combine(day, time(hour), KST)
             end = start + timedelta(minutes=30)
@@ -435,13 +437,14 @@ def _propose_slots(card: Card, teacher: UUID | None, round_no: int = 1) -> list[
                     or (s.status == "chosen_by_parent" and s.chosen_at > now()-timedelta(hours=24)
                         and (s.teacher_id == teacher or s.room_id == room))) for s in _state.slots.values()):
                 continue
-            slot = Slot(id=_state.next_int(), card_id=card.id, org_id=card.org_id, teacher_id=teacher,
-                        room_id=room, period={"start": start, "end": end}, round=round_no, rank=len(out)+1)
-            _state.slots[slot.id] = slot
-            out.append(slot)
-            if len(out) == 3:
-                return out
+            candidates.append({"start": start, "end": end})
         day = _next_weekday(day)
+    out = []
+    for rank, period in enumerate(sorted(candidates, key=preference_key(preferred_times, now()))[:3], 1):
+        slot = Slot(id=_state.next_int(), card_id=card.id, org_id=card.org_id, teacher_id=teacher,
+                    room_id=room, period=period, round=round_no, rank=rank)
+        _state.slots[slot.id] = slot
+        out.append(slot)
     return out
 
 
@@ -494,7 +497,8 @@ def slots_of_request(request_id: UUID) -> list[Slot]:
 
 
 def hold_until_of(request_id: UUID) -> date | None:
-    return next((c.hold_until for c in cards_of(request_id) if c.status == "on_hold"), None)
+    return next((c.hold_until for c in cards_of(request_id) if c.status == "on_hold"
+                 and not (c.kind == "director_report" and _state.requests[request_id].type == "consultation")), None)
 
 
 def repeat_count(req):
@@ -516,7 +520,9 @@ def expire(request_id=None):
                 card.status, card.hold_until = "pending", None
                 card.version += 1
                 card.updated_at = now()
-                if req:
+                if req and card.kind == "director_report" and req.type == "consultation":
+                    add_event(req, "resumed", card=card, automatic=True)
+                elif req:
                     set_request_status(req, "awaiting_review", action="resumed", card=card, automatic=True)
             if req is None or req.status != "awaiting_review":
                 continue
