@@ -11,6 +11,7 @@ import { ClassPage } from "@/features/teacher/ClassPage";
 import { FeedScreen } from "@/features/feed/FeedScreen";
 import { ChildAlbum } from "@/features/feed/ChildAlbum";
 import { OverviewPage } from "@/features/director/OverviewPage";
+import { DocumentPage } from "@/features/teacher/DocumentPage";
 import { TeacherNotifications } from "@/features/common/NotificationList";
 import { RecordsPage } from "@/features/records/RecordsPage";
 import { ParentHome } from "@/features/parent/ParentHome";
@@ -42,6 +43,7 @@ export const router = createBrowserRouter([
       { path: "notes/:noteId", element: <NoteDetail /> },
       { path: "soon/:key", element: <SoonPage /> },
       { path: "class", element: <ClassPage /> },
+      { path: "class/:id", element: <DocumentPage /> },
       { path: "care", element: <CarePage /> },
       { path: "feed", element: <FeedScreen role="teacher" /> },
       /* 문의·민원 받은함은 11/27 범위 밖(알림장과 따로). 주소만 남겨 둔다 */
