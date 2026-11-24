@@ -16,7 +16,7 @@
 | 항목 | 내용 |
 |---|---|
 | 2차 검토 링크 | `develop` 브랜치의 [기획서](https://github.com/aio-final-2team/FinalProject_2Team/blob/develop/Docs/Step1/기획서.md) · [WBS](https://github.com/aio-final-2team/FinalProject_2Team/blob/develop/Docs/Step1/WBS.md) · [T17 숫자·출처 검증표](https://github.com/aio-final-2team/FinalProject_2Team/blob/develop/Docs/Step3/T17_숫자_출처_검증표.md). 설계서별 링크는 [레포 README](../../README.md#2차-검토-문서)에 모았습니다 |
-| 시연 코드 기준 커밋 | [레포 README '2차 검토 문서'](../../README.md#2차-검토-문서)의 '시연 코드 기준 커밋' 한 줄을 봅니다. 11/27 알림장 시연에 쓰는 팀 서버 커밋이고, 값은 그 한 줄에만 둡니다 |
+| 시연 코드 기준 커밋 | [레포 README '2차 검토 문서'](../../README.md#2차-검토-문서)의 '시연 코드 기준 커밋' 한 줄을 봅니다. 팀 서버에 배포된 커밋이고, 값은 그 한 줄에만 둡니다 |
 
 ## 핵심 반영 내용
 
