@@ -17,14 +17,15 @@ _TOPIC_WORDS = {
     "pickup_bus": ("버스", "등원", "하원"), "meal": ("급식", "밥", "식단", "간식"),
     "safety": ("안전", "다쳤", "다침"), "fee": ("원비", "비용", "환불"),
     "belongings": ("소지품", "가방", "옷", "분실"), "peer_conflict": ("친구", "다툼", "다퉜", "싸움"),
-    "health_hygiene": ("열", "아파", "위생", "감기"), "photo_record": ("사진", "앨범"),
+    "health_hygiene": ("열", "아파", "위생", "감기", "수족구"), "photo_record": ("사진", "앨범"),
     "communication": ("연락", "답장", "알림장"), "teacher": ("선생님",),
 }
 
 
 def classify(request_type, body):
-    result = {"topic_key": next((k for k, words in _TOPIC_WORDS.items()
-                                 if any(w in body for w in words)), "other"), "urgency": "normal"}
+    topic = "health_hygiene" if "수족구" in body else next((
+        k for k, words in _TOPIC_WORDS.items() if any(w in body for w in words)), "other")
+    result = {"topic_key": topic, "urgency": "normal"}
     if request_type in RISK_TYPES:
         extra = _COMPLAINT_WORDS if request_type == "complaint" else {}
         category = next((k for k, words in _URGENT_WORDS.items()

@@ -30,6 +30,16 @@ def test_normal_or_safety_questions_are_not_scope_rejections(body):
     assert validate_proposal("inquiry", body, {})["out_of_scope_kind"] is None
 
 
+@pytest.mark.parametrize("body", [
+    "다른 아이랑 다퉜다는데 무슨 일인지 알려주세요",
+    "다른 반 아이가 장난감을 가져갔다는데 내용 좀 알려주세요",
+    "친구 엄마가 오늘 하원 같이 한다고 했는데 정보 전달 부탁드려요",
+    "우리 아이가 다른 반으로 옮기는 요청 드려요",
+])
+def test_other_family_does_not_swallow_ordinary_requests(body):
+    assert validate_proposal("inquiry", body, {"out_of_scope_kind": None})["out_of_scope_kind"] is None
+
+
 def test_model_kind_allowlist_and_code_floor():
     body = "이번 달 원비 카드로 결제해 주세요"
     assert validate_proposal("inquiry", body, {"out_of_scope_kind": "invented"})["out_of_scope_kind"] == "payment"
