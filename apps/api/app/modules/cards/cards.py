@@ -226,15 +226,16 @@ def decide(user, card_id, body):
             )
             draft = dict(card["draft"])
             draft["no_evidence"] = True
+            check = card["check_result"]
             if card["kind"] == "reply_draft":
-                draft["text"] = "(모의 재초안) 내용을 다시 확인해서 안내드릴게요."
+                # 거절 뒤 재초안은 초안 없는 카드(API 5.7, T47 결정 4). 앞 카드의 검사 통과를 물려받지 않아
+                # 일반 승인은 409로 막히고 담임이 직접 쓴 글(edit_approve)만 나간다.
+                draft["text"] = ""
+                check = None
             next_card = new_card(connection, req, card["kind"], card["assignee_id"], draft)
             connection.execute(
                 text("UPDATE cards SET check_result=CAST(:check AS jsonb) WHERE id=:id"),
-                {
-                    "id": next_card["id"],
-                    "check": json.dumps(card["check_result"]) if card["check_result"] is not None else None,
-                },
+                {"id": next_card["id"], "check": json.dumps(check) if check is not None else None},
             )
             if card["kind"] == "consult_slots":
                 connection.execute(
