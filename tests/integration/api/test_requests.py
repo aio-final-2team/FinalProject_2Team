@@ -83,6 +83,70 @@ def test_complaint_goes_to_teacher_review_with_topic(client, parent, teacher):
     assert client.get(f"/api/v1/requests/{rid}", headers=teacher).json()["request"]["status_label"] == "확인 필요"
 
 
+@pytest.mark.parametrize("kind,status,assignee,expected", [
+    ("inquiry", "received", None, "접수됨"),
+    ("inquiry", "classified", None, "담당 선생님 배정 중"),
+    ("inquiry", "classified", seed.TEACHER, "담당 선생님 배정 중"),
+    ("inquiry", "assigned", seed.TEACHER, "선생님께 전달됨"),
+    ("complaint", "awaiting_review", None, "담당 선생님 배정 중"),
+    ("complaint", "awaiting_review", seed.TEACHER, "선생님 확인 중"),
+    ("consultation", "on_hold", None, "담당 선생님 배정 중"),
+    ("consultation", "on_hold", seed.TEACHER, "확인이 늦어지고 있어요"),
+    ("consultation", "needs_info", None, "시간을 골라 주세요"),
+    ("consultation", "sent_or_booked", seed.TEACHER, "예약 확정"),
+    ("medication", "received", None, "선생님 확인 대기"),
+    ("pickup", "assigned", seed.TEACHER, "선생님 확인 완료"),
+    ("medication", "completed", seed.TEACHER, "투약 완료"),
+    ("pickup", "completed", seed.TEACHER, "인계 완료"),
+])
+def test_parent_labels_follow_assignment_and_keep_type_branches(kind, status, assignee, expected):
+    from app.api.labels import parent_label
+
+    assert parent_label(status, kind, assignee) == expected
+
+
+def test_unassigned_request_label_changes_after_director_reassign(client, parent, director, request_backend, monkeypatch):
+    if request_backend == "mock":
+        from app.mock import cards
+        store.state().classroom_staff[:] = [s for s in store.state().classroom_staff if s.classroom_id != seed.CLASS_STAR]
+    else:
+        from app.modules.cards import cards
+        with transaction() as connection:
+            connection.execute(text("DELETE FROM classroom_staff WHERE classroom_id=:id"), {"id": seed.CLASS_STAR})
+    monkeypatch.setattr(backend, "cards", cards)
+    rid = _create(client, parent, type="inquiry", body="[TEST] 버스 문의").json()["request"]["id"]
+    card = reply_card(request_backend, rid)
+    assert card["status"] == "unassigned" and card["assignee_id"] is None
+
+    def check_label(expected):
+        detail = client.get(f"/api/v1/requests/{rid}", headers=parent).json()
+        assert detail["request"]["status_label"] == expected
+        assert detail["timeline"][-1]["label"] == expected
+        listing = client.get("/api/v1/requests", headers=parent).json()["items"]
+        assert next(r for r in listing if r["id"] == rid)["status_label"] == expected
+
+    check_label("담당 선생님 배정 중")
+    response = client.post(f"/api/v1/cards/{card['id']}/reassign", headers=director,
+                           json={"assignee_id": str(seed.TEACHER), "reason": "[TEST] 담당 배정"})
+    assert response.status_code == 200, response.text
+    check_label("선생님 확인 중")
+
+
+def test_received_request_label_before_agent_runs(client, parent, request_backend, monkeypatch):
+    if request_backend == "mock":
+        monkeypatch.setattr(store, "_run_mock_ai", lambda *args: None)
+    else:
+        from app.modules.requests import requests
+        monkeypatch.setattr(requests, "dispatch", lambda *args: None)
+    created = _create(client, parent, type="inquiry")
+    assert created.status_code == 202 and created.json()["request"]["status"] == "received"
+    rid = created.json()["request"]["id"]
+    detail = client.get(f"/api/v1/requests/{rid}", headers=parent).json()
+    assert detail["request"]["status_label"] == detail["timeline"][-1]["label"] == "접수됨"
+    listing = client.get("/api/v1/requests", headers=parent).json()["items"]
+    assert next(r for r in listing if r["id"] == rid)["status_label"] == "접수됨"
+
+
 def test_consultation_asks_parent_to_choose_time(client, parent):
     rid = _create(client, parent, type="consultation", body="아이 친구 관계로 상담하고 싶어요.").json()["request"]["id"]
     detail = client.get(f"/api/v1/requests/{rid}", headers=parent).json()

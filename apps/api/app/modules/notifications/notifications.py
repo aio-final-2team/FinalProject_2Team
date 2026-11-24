@@ -51,14 +51,14 @@ def notify_event(connection, event, req, card):
             enqueue(connection, event, req, recipient, "care_requested")
         elif event["detail"].get("care_decision") in ("confirm", "complete"):
             enqueue(connection, event, req, req["requester_id"],
-                    "care_confirmed" if to == "assigned" else "completed", parent_label(to, req["type"]))
+                    "care_confirmed" if to == "assigned" else "completed", parent_label(to, req["type"], req["assignee_id"]))
         return
     parent_kinds = {"needs_info": "needs_info", "on_hold": "on_hold", "sent_or_booked": "sent_or_booked",
                     "rejected": "rejected"}
     if to == "completed" and req["type"] == "complaint":
         enqueue(connection, event, req, req["requester_id"], "completed")
     elif to in parent_kinds:
-        body = parent_label(to, req["type"])
+        body = parent_label(to, req["type"], req["assignee_id"])
         if to == "on_hold":
             body += f" · 예정일 {card['hold_until']}"
         if action == "dismissed":

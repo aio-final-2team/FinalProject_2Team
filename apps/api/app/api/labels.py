@@ -2,7 +2,7 @@
 
 PARENT_LABELS = {
     "received": "접수됨",
-    "classified": "접수됨",
+    "classified": "담당 선생님 배정 중",
     "needs_info": "정보가 더 필요해요",
     "assigned": "선생님께 전달됨",
     "awaiting_review": "선생님 확인 중",
@@ -29,11 +29,13 @@ STAFF_LABELS = {
 }
 
 
-def parent_label(status: str, request_type: str) -> str:
+def parent_label(status: str, request_type: str, assignee_id) -> str:
     """상담은 같은 상태라도 표시가 다르다(needs_info = 시간 고르기, sent_or_booked = 예약 확정)."""
     if request_type in ("medication", "pickup"):
         return {"received": "선생님 확인 대기", "assigned": "선생님 확인 완료",
                 "completed": "투약 완료" if request_type == "medication" else "인계 완료"}.get(status, PARENT_LABELS[status])
+    if status == "classified" or (status in ("awaiting_review", "on_hold") and not assignee_id):
+        return "담당 선생님 배정 중"
     if request_type == "consultation":
         if status == "needs_info":
             return "시간을 골라 주세요"
@@ -42,9 +44,9 @@ def parent_label(status: str, request_type: str) -> str:
     return PARENT_LABELS[status]
 
 
-def staff_label(status: str, request_type: str) -> str:
+def staff_label(status: str, request_type: str, assignee_id=None) -> str:
     if request_type in ("medication", "pickup"):
-        return parent_label(status, request_type)
+        return parent_label(status, request_type, assignee_id)
     if request_type == "consultation" and status == "sent_or_booked":
         return "예약됨"
     return STAFF_LABELS[status]

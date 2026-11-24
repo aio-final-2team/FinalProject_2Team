@@ -50,14 +50,14 @@ def notify_event(ev, req, card):
             create(ev, req.assignee_id or store.director_of(req.org_id), "care_requested")
         elif ev.detail.get("care_decision") in ("confirm", "complete"):
             create(ev, req.requester_id, "care_confirmed" if ev.to_status == "assigned" else "completed",
-                   parent_label(ev.to_status, req.type))
+                   parent_label(ev.to_status, req.type, req.assignee_id))
         return
     parent_kinds = {"needs_info": "needs_info", "on_hold": "on_hold", "sent_or_booked": "sent_or_booked",
                     "rejected": "rejected"}
     if ev.to_status == "completed" and req.type == "complaint":
         create(ev, req.requester_id, "completed")
     elif ev.to_status in parent_kinds:
-        body = parent_label(ev.to_status, req.type)
+        body = parent_label(ev.to_status, req.type, req.assignee_id)
         if ev.to_status == "on_hold":
             body += f" · 예정일 {card.hold_until}"
         if ev.action == "dismissed":
