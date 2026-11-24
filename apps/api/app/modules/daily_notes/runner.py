@@ -19,6 +19,8 @@ from sqlalchemy import text
 from app.api.schemas.actions import NoteContent
 from app.api.schemas.views import OpenCheck
 from app.core.config import settings
+from app.core.care import missed_request_check
+from app.core.constants import NOTE_REQUEST_TYPES
 from app.core.db import transaction
 from app.core.schedule import KST
 from app.modules.daily_notes.stub_writer import failed_child
@@ -55,12 +57,12 @@ def _payload(connection, entry):
     start = datetime.combine(entry["note_date"], time.min, KST)
     requests = connection.execute(text("""
         SELECT r.id AS request_id, r.child_id, r.type, r.body AS text FROM requests r
-        WHERE r.org_id=:org AND r.classroom_id=:class AND r.type IN ('medication','pickup','inquiry')
+        WHERE r.org_id=:org AND r.classroom_id=:class AND r.type=ANY(CAST(:types AS text[]))
           AND r.created_at>=:start AND r.created_at<:end
           AND EXISTS (SELECT 1 FROM child_guardians g
                       WHERE (g.child_id,g.org_id,g.user_id)=(r.child_id,r.org_id,r.requester_id))
         ORDER BY r.created_at, r.id
-    """), {**values, "start": start, "end": start + timedelta(days=1)}).mappings().all()
+    """), {**values, "types": list(NOTE_REQUEST_TYPES), "start": start, "end": start + timedelta(days=1)}).mappings().all()
     menu = connection.execute(text("""
         SELECT d.id AS document_id, d.title,
                string_agg(c.content, E'\n' ORDER BY c.chunk_index) AS text
@@ -156,6 +158,17 @@ def requeued(connection, input_id, actor_type, actor_id=None):
                 retry_count=incident_state(connection, input_id)[0] + 1)
 
 
+def queue_failed(input_id):
+    with transaction() as connection:
+        failed = connection.execute(text("""
+            UPDATE daily_note_inputs SET draft_status='failed' WHERE id=:id AND draft_status='queued' RETURNING id
+        """), {"id": input_id}).one_or_none()
+        if failed is not None:
+            batch_event(connection, input_id, "tool_failed", "system", detected_failure="queue_error",
+                        retry_count=incident_state(connection, input_id)[0], detection_ms=0, fallback_used=False,
+                        validation_result="job_failed", recovery_status="pending")
+
+
 def requeue_daily_note_drafts(*, stale_only=False):
     """API 단독 실행은 시작 때 복구하고, worker 모드는 제한을 넘긴 실행만 복구해요."""
     with transaction() as connection:
@@ -228,6 +241,8 @@ def run_daily_note_drafts(input_id):
             if current != entry["run_token"]:
                 return
             edited = edited_child_ids(connection, input_id)
+            current_children = {c["child_id"]: c for c in _payload(connection, entry)["children"]}
+            input_children = {c["child_id"]: c for c in payload["children"]}
             counts = {"saved": 0, "needs_check": 0, "draft_failed": 0}
             for row in rows:
                 previous = connection.execute(text("""
@@ -238,6 +253,13 @@ def run_daily_note_drafts(input_id):
                 # c1 같은 writer 내부 ID는 저장 전에 바꾼다. 아이별 실패 확인에도 같은 규칙을 쓴다.
                 checks = [{**check, "id": str(uuid4()), "request_id": check.get("request_id")}
                           for check in row["open_checks"]]
+                # 모델이 입력을 읽은 뒤 접수된 요청은 새 초안에도 확인으로 남긴다.
+                known = {r["request_id"] for r in input_children[row["child_id"]]["requests"]}
+                previous_checks = {c.get("request_id"): c for c in previous["open_checks"]} if previous else {}
+                for request in current_children.get(row["child_id"], {}).get("requests", []):
+                    if request["request_id"] not in known:
+                        checks.append(previous_checks.get(request["request_id"]) or
+                                      missed_request_check(request["type"], request["request_id"]))
                 saved = connection.execute(text("""
                     INSERT INTO daily_notes (org_id,input_id,child_id,note_date,status,content,open_checks,ai_original)
                     VALUES (:org,:input,:child,:date,:status,CAST(:content AS jsonb),CAST(:checks AS jsonb),CAST(:content AS jsonb))
@@ -247,7 +269,7 @@ def run_daily_note_drafts(input_id):
                     WHERE daily_notes.input_id=EXCLUDED.input_id AND daily_notes.status IN ('draft','needs_check')
                     RETURNING *
                 """), {"org": entry["org_id"], "input": input_id, "child": row["child_id"], "date": entry["note_date"],
-                       "status": "needs_check" if row["open_checks"] else "draft",
+                       "status": "needs_check" if checks else "draft",
                        "content": json.dumps(row["content"], default=str),
                        "checks": json.dumps(checks, default=str)}).mappings().one()
                 counts["saved"] += 1

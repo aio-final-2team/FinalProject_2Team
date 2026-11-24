@@ -3116,6 +3116,10 @@ components:
             format: date
           - type: 'null'
           title: Hold Until
+        note_batch:
+          anyOf:
+          - $ref: '#/components/schemas/NoteBatchView'
+          - type: 'null'
       type: object
       required:
       - id
@@ -3230,6 +3234,15 @@ components:
         check_attempts:
           type: integer
           title: Check Attempts
+        status_label:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Status Label
+        note_batch:
+          anyOf:
+          - $ref: '#/components/schemas/NoteBatchView'
+          - type: 'null'
       type: object
       required:
       - id
@@ -4211,6 +4224,37 @@ components:
       required:
       - message
       title: MessageResponse
+    NoteBatchChild:
+      properties:
+        child_id:
+          type: string
+          format: uuid
+          title: Child Id
+        display_name:
+          type: string
+          title: Display Name
+        note_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Note Id
+        status:
+          type: string
+          enum:
+          - missing
+          - draft
+          - needs_check
+          - ready
+          - sent
+          title: Status
+      type: object
+      required:
+      - child_id
+      - display_name
+      - note_id
+      - status
+      title: NoteBatchChild
     NoteBatchIn:
       properties:
         classroom_id:
@@ -4226,6 +4270,31 @@ components:
       - classroom_id
       - note_date
       title: NoteBatchIn
+    NoteBatchView:
+      properties:
+        input_id:
+          type: string
+          format: uuid
+          title: Input Id
+        draft_status:
+          type: string
+          enum:
+          - queued
+          - running
+          - succeeded
+          - failed
+          title: Draft Status
+        children:
+          items:
+            $ref: '#/components/schemas/NoteBatchChild'
+          type: array
+          title: Children
+      type: object
+      required:
+      - input_id
+      - draft_status
+      - children
+      title: NoteBatchView
     NoteContent:
       properties:
         items:

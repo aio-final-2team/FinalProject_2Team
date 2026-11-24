@@ -5,7 +5,8 @@ from datetime import datetime
 from uuid import uuid4
 
 from app.core.errors import ApiError
-from app.core.care import note_content
+from app.core.care import missed_request_check, note_content
+from app.core.constants import LATE_NOTE_REQUEST_NOTICE, NOTE_REQUEST_TYPES
 from app.core.config import settings
 from app.core.schedule import KST, due_at
 from app.mock import seed, store
@@ -18,6 +19,41 @@ def input_in_scope(user, input_id):
         store.deny(user)
     store.classroom_in_scope(user, entry.classroom_id)
     return entry
+
+
+def batch_view(input_id, org_id):
+    entry = store.state().note_inputs.get(input_id)
+    if entry is None or entry.org_id != org_id:
+        return None
+    notes = {n.child_id: n for n in store.state().notes.values() if n.input_id == input_id}
+    return {"input_id": input_id, "draft_status": entry.draft_status, "children": [
+        {"child_id": c.id, "display_name": c.display_name,
+         "note_id": notes[c.id].id if c.id in notes else None,
+         "status": notes[c.id].status if c.id in notes else "missing"}
+        for c in sorted(store.state().children.values(), key=lambda c: (c.display_name, str(c.id)))
+        if c.org_id == entry.org_id and c.classroom_id == entry.classroom_id]}
+
+
+def request_received(req, event):
+    if req.type not in NOTE_REQUEST_TYPES:
+        return
+    entry = next((i for i in store.state().note_inputs.values() if i.org_id == req.org_id
+                  and i.classroom_id == req.classroom_id and i.note_date == req.created_at.astimezone(KST).date()), None)
+    note = next((n for n in store.state().notes.values() if entry and n.input_id == entry.id
+                 and n.child_id == req.child_id), None)
+    if note is None:
+        return
+    if note.status != "sent":
+        previous = note.status
+        note.open_checks.append(missed_request_check(req.type, req.id))
+        note.status, note.confirmed_by, note.confirmed_at = "needs_check", None, None
+        if previous == "ready":
+            record(note, "returned", from_status="ready", request_id=str(req.id))
+    card = next(c for c in store.state().cards.values() if c.subject_type == "daily_note_batch" and c.subject_id == entry.id)
+    from dataclasses import replace
+    from app.mock.notifications import create
+    create(replace(event, card_id=card.id), card.assignee_id, "new_card", LATE_NOTE_REQUEST_NOTICE,
+           dedupe_key=f"late_note_request:{req.id}:{card.id}", subject_id=note.id)
 
 
 def record(note, action, *, actor_id=None, from_status=None, **detail):
@@ -55,7 +91,7 @@ def requests_for_child(child, note_date):
     requests = [req for req in store.state().requests.values()
                 if req.org_id == child.org_id and req.classroom_id == child.classroom_id
                 and req.child_id == child.id and req.requester_id in child.guardian_ids
-                and req.type in ("medication", "pickup", "inquiry")
+                and req.type in NOTE_REQUEST_TYPES
                 and req.created_at.astimezone(KST).date() == note_date]
     return [{"request_id": req.id, "type": req.type, "text": req.body}
             for req in sorted(requests, key=lambda req: (req.created_at, str(req.id)))]
@@ -228,13 +264,17 @@ def send(user, body):
         selected = [n for n in store.state().notes.values() if n.org_id == user.org_id and n.note_date == body.note_date
                     and store.state().note_inputs[n.input_id].classroom_id == body.classroom_id and n.status != "sent"]
         blocked = [{"note_id": n.id, "child_id": n.child_id, "open_checks": n.open_checks} for n in selected if n.status != "ready"]
+        if entry:
+            blocked.extend({"note_id": None, "child_id": c["child_id"], "status": "missing", "open_checks": []}
+                           for c in batch_view(entry.id, user.org_id)["children"] if c["status"] == "missing")
         if blocked:
             raise ApiError(409, "NOTE_BATCH_BLOCKED", blocked=blocked)
         for note in selected:
             note.status, note.sent_at = "sent", store.now()
-            card = next(c for c in store.state().cards.values() if c.subject_id == note.input_id)
             record(note, "daily_note_sent", actor_id=user.id, from_status="ready")
-        if selected:
+        if entry and all(c["status"] == "sent" for c in batch_view(entry.id, user.org_id)["children"]):
+            card = next(c for c in store.state().cards.values() if c.subject_type == "daily_note_batch" and c.subject_id == entry.id)
             from app.mock.cards import touch
-            touch(card, "done")
+            if card.status != "done":
+                touch(card, "done")
         return {"sent_count": len(selected)}

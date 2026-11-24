@@ -325,8 +325,10 @@ def create_request(user, *, client_request_id: str, type: str, body: str, child_
                                        sender_id=user.id, body=body))
         if type in CARE_REQUEST_TYPES:
             req.assignee_id = homeroom_teacher(req.classroom_id)
-        add_event(req, "created", actor_type="user", actor_id=user.id, to_status="received", trace_id=trace_id,
-                  **detail)
+        event = add_event(req, "created", actor_type="user", actor_id=user.id, to_status="received", trace_id=trace_id,
+                          **detail)
+        from app.mock.notes import request_received
+        request_received(req, event)
         if type not in CARE_REQUEST_TYPES:
             _run_mock_ai(req, trace_id)
         return req, True

@@ -717,7 +717,7 @@ FK를 걸 수 없는 참조가 두 곳 있다. `cards.subject_id`와 `notificati
 - `notifications` 표 제약: `CHECK ((subject_type IS NULL) = (subject_id IS NULL))` · `CHECK (subject_type = 'daily_note')`
 - `eval_runs` 표 제약: `CHECK ((passed + errors) <= total)`
 
-**알림장.** 상태 값 `draft`·`needs_check`·`ready`·`sent`는 T04 6장의 `note_drafted`·`note_needs_check`·`note_ready`·`note_sent`와 뜻이 같다. 알림장 표가 따로 있어서 앞의 `note_`만 뺐다. MVP는 반 전체를 한 번에 보내고, 반에 `needs_check`가 하나라도 있으면 보내기를 잠근다. 잠금은 두 겹이다. **아이별로는 DB CHECK가** `open_checks`가 남은 알림장을 `sent`로 바꾸지 못하게 막고, **반 단위 잠금은 API 트랜잭션이** 맡는다. API는 그 반·그날의 알림장을 모두 잠근 뒤, 하나라도 `ready`가 아니면 아무것도 보내지 않고 409 `NOTE_BATCH_BLOCKED`로 답한다(FR-10, AC-04). `ready`·`sent`로 저장하려면 교사 확인(`confirmed_by`·`confirmed_at`)도 있어야 한다(NFR-03). `content`에는 식단·일정을 `documents`에서, 투약·귀가 줄을 `requests`에서 가져와 넣는다.
+**알림장.** 상태 값 `draft`·`needs_check`·`ready`·`sent`는 T04 6장의 `note_drafted`·`note_needs_check`·`note_ready`·`note_sent`와 뜻이 같다. 알림장 표가 따로 있어서 앞의 `note_`만 뺐다. MVP는 반 전체를 한 번에 보내고, 반에 `needs_check`가 하나라도 있으면 보내기를 잠근다. 잠금은 두 겹이다. **아이별로는 DB CHECK가** `open_checks`가 남은 알림장을 `sent`로 바꾸지 못하게 막고, **반 단위 잠금은 API 트랜잭션이** 맡는다. API는 그 반·그날의 알림장을 모두 잠근 뒤, 하나라도 `ready`가 아니면 아무것도 보내지 않고 409 `NOTE_BATCH_BLOCKED`로 답한다(FR-10, AC-04). `ready`·`sent`로 저장하려면 교사 확인(`confirmed_by`·`confirmed_at`)도 있어야 한다(NFR-03). `content`에는 식단·일정을 `documents`에서, 투약·귀가 줄을 `requests`에서 가져와 넣는다. 초안 뒤 접수된 당일 보호자 투약·귀가·문의는 입력→아이 알림장 순서로 같은 잠금을 잡고 `request_missed`·`request_id`를 붙인다. ready도 확인자·시각을 비우고 needs_check로 되돌리며 기존 returned 이력을 남긴다. sent는 보존하고 반 카드 담당자에게 new_card 알림만 보낸다. 전입 아이처럼 알림장 행이 없는 현재 반 아이도 API가 발송을 막고 카드 조회에서 missing으로 표시한다. 모든 아이가 sent이면 반 카드를 done으로 닫는다.
 
 `child_memos`는 입력한 메모 원문을 보관한다. DB는 배열인지와 NOT NULL만 검사한다. 아이 ID, 메모 길이(1~500자), 같은 아이가 두 번 들어갔는지, 그 아이가 그 반 소속인지는 API가 검사한다(API 설계 문서). 0002를 0001로 되돌리면 이 컬럼과 CHECK가 없어지므로 저장한 메모도 함께 사라지고, 다른 입력 칸은 그대로 남는다. 0003을 되돌리면 `ai_original`과 알림장 이력 연결(`events.daily_note_id`), 알림장 이력 네 종류가 사라진다.
 
@@ -732,7 +732,7 @@ FK를 걸 수 없는 참조가 두 곳 있다. `cards.subject_id`와 `notificati
 
 칸마다 넣는 값은 다음과 같다.
 
-- `detected_failure`: 작업 시간 초과면 `writer_timeout`이고, 결과 형식·설정·저장 오류처럼 그 밖의 예외면 `writer_error`다. `tool_failed`가 되는 것은 작업 전체가 실패한 경우뿐이다. 모델 호출 하나가 시간 초과·429·5xx로 실패할 때는 작성기 안에서 1초, 2초 뒤에 두 번 다시 부르고, 그래도 실패하면 그 아이만 템플릿으로 저장한다(`fallback_used`).
+- `detected_failure`: 작업 시간 초과면 `writer_timeout`이고, 결과 형식·설정·저장 오류처럼 그 밖의 예외면 `writer_error`다. 워커 큐 등록 실패는 queued 입력을 failed로 바꾸고 `queue_error`로 기록한다. 이때 `detection_ms=0`은 워커 실행 전 실패를 뜻하며 `recovery_status=pending`으로 담임의 다시 만들기를 기다린다. 이미 running·succeeded·failed인 입력에는 늦은 큐 오류 이력을 덧붙이지 않는다. `tool_failed`가 되는 것은 작업 전체가 실패한 경우뿐이다. 모델 호출 하나가 시간 초과·429·5xx로 실패할 때는 작성기 안에서 1초, 2초 뒤에 두 번 다시 부르고, 그래도 실패하면 그 아이만 템플릿으로 저장한다(`fallback_used`).
 - `retry_count`: 작업을 다시 넣은 횟수다. 처음 실행은 0이고, `agent_requeued`에는 다음에 돌 실행의 값을 적는다. 시스템은 실패한 작업을 저절로 다시 돌리지 않으므로, 담임이 다시 만들기를 눌러야 다시 시도한다. 점검 작업이 되돌리는 것도 `running`에 멈춘 작업뿐이다.
 - `detection_ms`: 그 실행이 시작된 때부터 실패를 기록할 때까지 걸린 시간, 곧 감지 시간이다.
 - `saved`·`needs_check`·`draft_failed`: `saved`는 이번 실행에서 저장한 아이별 알림장 수, `needs_check`는 그중 확인 필요로 저장한 수, `draft_failed`는 다시 그중 아이 초안을 만들지 못한 수다. 그래서 `draft_failed`는 `needs_check`에 들어 있다.
@@ -756,7 +756,7 @@ FK를 걸 수 없는 참조가 두 곳 있다. `cards.subject_id`와 `notificati
 
 현재 `runner.py`와 [`tools/daily_note_recovery.py`](../../tools/daily_note_recovery.py)는 **반 작업 단위**로 `draft_failed=0`이면 `recovered`를 기록하고 `needs_check`도 포함한다. 재시도 전 `pending`은 복구율 분모에서 빠진다. 따라서 현재 숫자를 T58 수치로 그대로 제출하지 않는다. 기존 `test_daily_note_recovery.py::test_timeout_then_regenerate_is_one_recovered_incident_with_times`와 `::test_failed_retry_is_handed_off_then_partial_template_is_fallback`은 그 구현의 이력·분류 시험이다(2026-11-24, 이 PR HEAD, 0011, `tools/test_db.sh -p no:cacheprovider`).
 
-T58에서 채울 기록도 남아 있다. 아이별 이력은 현재 `to_status`만 남기고 당시 `open_checks`는 보관하지 않으므로 수정 전 검증 통과 여부를 사후 완전 복원할 수 없다. 큐 등록 오류는 로그에만 남고, 실행되지 않은 작업의 실패 시각·당시 반 명단을 보존하는 전용 표도 없다. T58 실행에서는 장애 주입 기록에 `input_id`·대상 아이 명단·실패 시각·아이별 통과 저장 시각과 확인 항목 유무를 함께 남겨 원 로그·분모를 연결한다. 이 기록이 없는 사례는 측정 불가로 밝히고 성공에 넣지 않는다. 이 PR은 집계 설계만 보완하며 새 칸이나 집계 구현을 만들지 않는다.
+T58에서 채울 기록도 남아 있다. 아이별 이력은 현재 `to_status`만 남기고 당시 `open_checks`는 보관하지 않으므로 수정 전 검증 통과 여부를 사후 완전 복원할 수 없다. 큐 등록 오류는 반 카드의 tool_failed·queue_error 이력으로 실패 시각을 남기지만, 당시 반 명단을 보존하는 전용 표는 없다. T58 실행에서는 장애 주입 기록에 `input_id`·대상 아이 명단·실패 시각·아이별 통과 저장 시각과 확인 항목 유무를 함께 남겨 원 로그·분모를 연결한다. 이 기록이 없는 사례는 측정 불가로 밝히고 성공에 넣지 않는다. 이 PR은 집계 설계만 보완하며 새 칸이나 집계 구현을 만들지 않는다.
 
 **알림**
 

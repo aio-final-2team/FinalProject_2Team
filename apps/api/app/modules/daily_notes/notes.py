@@ -10,13 +10,58 @@ from app.core import scope
 from app.core.config import settings
 from app.core.db import transaction
 from app.core.errors import ApiError
-from app.core.care import note_content
+from app.core.care import missed_request_check, note_content
+from app.core.constants import LATE_NOTE_REQUEST_NOTICE, NOTE_REQUEST_TYPES
 from app.core.jobs import dispatch
 from app.core.schedule import KST, deliver_after, due_at
 from app.modules.daily_notes.events import edited_child_ids, record
 from app.modules.daily_notes.runner import requeued
+from app.modules.notifications.notifications import enqueue
 
 input_in_scope = scope.note_input_in_scope
+
+
+def batch_view(connection, input_id, org_id):
+    entry = connection.execute(text("SELECT * FROM daily_note_inputs WHERE id=:id AND org_id=:org"),
+                               {"id": input_id, "org": org_id}).mappings().one_or_none()
+    if entry is None:
+        return None
+    children = connection.execute(text("""
+        SELECT c.id AS child_id,c.display_name,n.id AS note_id,coalesce(n.status,'missing') AS status
+        FROM children c LEFT JOIN daily_notes n
+          ON (n.child_id,n.org_id,n.input_id)=(c.id,c.org_id,:id)
+        WHERE c.org_id=:org AND c.classroom_id=:class ORDER BY c.display_name,c.id
+    """), {"id": input_id, "org": entry["org_id"], "class": entry["classroom_id"]}).mappings()
+    return {"input_id": input_id, "draft_status": entry["draft_status"], "children": [dict(c) for c in children]}
+
+
+def request_received(connection, req, event):
+    if req["type"] not in NOTE_REQUEST_TYPES:
+        return
+    entry = connection.execute(text("""
+        SELECT * FROM daily_note_inputs WHERE org_id=:org AND classroom_id=:class AND note_date=:date FOR UPDATE
+    """), {"org": req["org_id"], "class": req["classroom_id"],
+           "date": req["created_at"].astimezone(KST).date()}).mappings().one_or_none()
+    if entry is None:
+        return
+    note = connection.execute(text("""
+        SELECT * FROM daily_notes WHERE input_id=:input AND child_id=:child AND org_id=:org FOR UPDATE
+    """), {"input": entry["id"], "child": req["child_id"], "org": req["org_id"]}).mappings().one_or_none()
+    if note is None:
+        return
+    if note["status"] != "sent":
+        connection.execute(text("""
+            UPDATE daily_notes SET open_checks=open_checks || CAST(:check AS jsonb),
+                status='needs_check',confirmed_by=NULL,confirmed_at=NULL WHERE id=:id
+        """), {"id": note["id"], "check": json.dumps([missed_request_check(req["type"], req["id"])])})
+        if note["status"] == "ready":
+            record(connection, {**note, "status": "needs_check"}, "returned", from_status="ready",
+                   request_id=str(req["id"]))
+    card = connection.execute(text("""
+        SELECT * FROM cards WHERE org_id=:org AND subject_type='daily_note_batch' AND subject_id=:id
+    """), {"org": req["org_id"], "id": entry["id"]}).mappings().one()
+    enqueue(connection, {**event, "card_id": card["id"]}, req, card["assignee_id"], "new_card",
+            LATE_NOTE_REQUEST_NOTICE, dedupe_key=f"late_note_request:{req['id']}:{card['id']}", subject_id=note["id"])
 
 
 def classroom_children(user, classroom_id, *, connection=None):
@@ -218,6 +263,8 @@ def send(user, body):
         """), values).mappings().all()
         blocked = [{"note_id": n["id"], "child_id": n["child_id"], "open_checks": n["open_checks"]}
                    for n in selected if n["status"] != "ready" or n["open_checks"]]
+        blocked.extend({"note_id": None, "child_id": c["child_id"], "status": "missing", "open_checks": []}
+                       for c in batch_view(connection, entry["id"], user.org_id)["children"] if c["status"] == "missing")
         if blocked:
             raise ApiError(409, "NOTE_BATCH_BLOCKED", blocked=blocked)
         now = datetime.now(KST)
@@ -238,7 +285,7 @@ def send(user, body):
                 """), {"org": user.org_id, "recipient": guardian["id"], "note": note["id"],
                        "key": f"daily_note:{note['id']}:{guardian['id']}",
                        "after": deliver_after(now, guardian["role"])})
-        if selected:
+        if not any(c["status"] != "sent" for c in batch_view(connection, entry["id"], user.org_id)["children"]):
             connection.execute(text("""
                 UPDATE cards SET status='done', version=version+1, updated_at=:now, closed_at=:now
                 WHERE org_id=:org AND subject_type='daily_note_batch' AND subject_id=:input AND status<>'done'

@@ -9,19 +9,21 @@ from app.core.schedule import deliver_after
 
 
 
-def enqueue(connection, event, req, recipient_id, kind, body=None, *, dedupe_key=None):
+def enqueue(connection, event, req, recipient_id, kind, body=None, *, dedupe_key=None, subject_id=None):
     org_id = req["org_id"] if req else event["org_id"]
     recipient = connection.execute(text("SELECT role FROM users WHERE id=:id AND org_id=:org"),
                                    {"id": recipient_id, "org": org_id}).mappings().one_or_none()
     if recipient is None:
         return
     connection.execute(text("""
-        INSERT INTO notifications (org_id,recipient_id,request_id,card_id,kind,title,body,dedupe_key,deliver_after)
-        VALUES (:org,:recipient,:request,:card,:kind,:title,:body,:key,:deliver)
+        INSERT INTO notifications (org_id,recipient_id,request_id,card_id,kind,title,body,dedupe_key,deliver_after,
+                                   subject_type,subject_id)
+        VALUES (:org,:recipient,:request,:card,:kind,:title,:body,:key,:deliver,
+                CASE WHEN CAST(:subject AS uuid) IS NULL THEN NULL ELSE 'daily_note' END,:subject)
         ON CONFLICT (dedupe_key) DO NOTHING
     """), {"org": org_id, "recipient": recipient_id, "request": req["id"] if req else None, "card": event["card_id"],
            "kind": kind, "title": notification_title(kind, req.get("type") if req else None), "body": body,
-           "key": dedupe_key or f"event:{event['id']}:{recipient_id}",
+           "key": dedupe_key or f"event:{event['id']}:{recipient_id}", "subject": subject_id,
            "deliver": deliver_after(event["created_at"], recipient["role"], req["risk_level"] if req else None,
                                     req["risk_category"] if req else None, request_type=req.get("type") if req else None)})
 

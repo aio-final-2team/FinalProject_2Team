@@ -90,6 +90,19 @@ class CheckSummary(BaseModel):
     issue_count: int
 
 
+class NoteBatchChild(BaseModel):
+    child_id: UUID
+    display_name: str
+    note_id: UUID | None
+    status: Literal["missing", "draft", "needs_check", "ready", "sent"]
+
+
+class NoteBatchView(BaseModel):
+    input_id: UUID
+    draft_status: Literal["queued", "running", "succeeded", "failed"]
+    children: list[NoteBatchChild]
+
+
 class CardItem(BaseModel):
     id: UUID
     kind: CardKind
@@ -111,6 +124,7 @@ class CardItem(BaseModel):
     due_at: datetime | None
     is_delayed: bool
     hold_until: date | None
+    note_batch: NoteBatchView | None = None
 
 
 class CardList(Page):
@@ -125,6 +139,8 @@ class CardView(CardState):
     draft: dict
     check_result: dict | None
     check_attempts: int
+    status_label: str | None = None
+    note_batch: NoteBatchView | None = None
 
 
 class EvidenceView(SourceOut):

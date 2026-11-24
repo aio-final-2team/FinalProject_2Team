@@ -590,6 +590,8 @@ HTTP/1.1 200 OK
              "open_checks": [ { "id": "c1", "item_key": "supplies", "kind": "date_check", "problem": "준비물 날짜가 식단표와 달라요", "sentence": "내일 실내화" } ] } ] } } }
 ```
 
+초안 뒤 반에 들어온 아이처럼 알림장 자체가 없는 아이도 발송을 막는다. 이때 `details.blocked[]`의 해당 항목은 `{ note_id: null, child_id, status: "missing", open_checks: [] }`다. 기존 알림장 미확인 항목은 기존 `{ note_id, child_id, open_checks }` 모양을 유지한다. 반의 모든 아이 알림장이 `sent`이면 묶음 카드를 `done`으로 닫고, 같은 발송을 반복해도 카드 판·학부모 알림을 늘리지 않는다.
+
 ### 3.7 화면이 쓰는 조회 응답 칸
 
 T12 화면 지도에 나온 화면들이 조회 응답에서 쓰는 칸을 여기에 모았다. 계약표 2장에도 같은 이름으로 실려 있다. 모두 서버가 조회할 때 채우는 칸이라 DB에 새로 더하는 칸은 없다.
@@ -622,13 +624,19 @@ T12 화면 지도에 나온 화면들이 조회 응답에서 쓰는 칸을 여�
 | `risk_category` | string | 긴급 요청만 | 긴급 사유 4가지(`child_safety`·`staff_attack`·`legal_external`·`privacy_leak`) | `requests.risk_category` |
 | `repeat_count` | integer | 민원만 | 같은 반에서 최근 30일 안에 들어온 같은 주제 민원 수. `topic_key = other`면 `null` | 조회 때 셈(`requests_repeat_idx`) |
 | `check { passed, issue_count }` | 객체 | 검사가 끝난 카드 | 검사 AI 결과 요약. 검사를 못 했으면 `null` | `cards.check_result` |
+| `note_batch { input_id, draft_status, children[] }` | 객체 또는 null | 알림장 묶음 카드 | 현재 반 아이 전체와 `missing`을 포함한 상태 | `daily_note_inputs`·`children`·`daily_notes` 조회 |
 | `parent_choice_count` | integer | 상담 후보 카드 | 학부모가 체크한 시간 수(지금 회차) | `consultation_slots`(`status = chosen_by_parent`) 개수 |
 | `classroom { id, name }` | 객체 | 항상 | 반 이름. 원장 화면에서 반을 구분하려고 준다. 반이 없는 규칙 제안 카드는 null이다 | `requests.classroom_id` → `classrooms.name` |
+
+알림장 묶음 카드(`daily_note_batch`)는 목록의 `items[].note_batch`와 상세의 `card.note_batch`에 `{ input_id, draft_status, children[] }`를 준다. `children[]`은 현재 같은 기관·반의 아이마다 `{ child_id, display_name, note_id, status }`다. 알림장이 없는 아이도 `note_id = null`, `status = "missing"`으로 포함한다. 실제 알림장 상태는 `draft`·`needs_check`·`ready`·`sent`이고, 다른 종류 카드는 `note_batch = null`이다. 초안 뒤에 들어온 아이를 숨기지 않기 위한 조회 값이며, 가짜 알림장 행을 저장하지 않는다.
+
+목록의 `status_label`과 알림장 상세의 `card.status_label`은 초안 작업이 `queued`·`running`이면 "만드는 중", `failed`면 "만들기 실패 · 다시 만들기", 성공한 미완료 카드는 "확인 필요", 발송 완료 카드는 "완료"다. 다른 종류 카드의 상세 `card.status_label`은 null이다. 작업의 원래 상태는 `note_batch.draft_status`로도 구분한다.
 
 **카드 상세** (`GET /api/v1/cards/{card_id}`)
 
 | 화면용 필드 | 타입 | 언제 | 설명 | DB |
 | --- | --- | --- | --- | --- |
+| `card.note_batch`·`card.status_label` | 객체·string 또는 null | 알림장 묶음 카드 | 목록과 같은 반 아이별 상태·초안 진행/실패 표시 | 위 목록 규칙과 같음 |
 | `card.summary` | string | AI가 만든 카드 | AI 요약(`create_card`의 `summary`) | `cards.draft->>'summary'` |
 | `evidence[].is_current` | boolean | 근거가 있을 때 | 근거 문서가 지금 판이면 참. 옛 판(`superseded`)이거나 충돌 확인 대기(`conflict_pending`)이거나 적용 기간이 지난 문서면 거짓 | `documents.status`·`effective_to` |
 | `warnings[]` | string[] | 항상(없으면 빈 목록) | 화면 경고. `stale_evidence`(옛 판 근거가 있음) · `no_evidence`(근거 없음) · `law_unchecked`(법령 확인 못 함) · `check_unavailable`(검사 못 함) · `notify_failed`(교직원 알림을 못 만듦) | `evidence[].is_current`, 자료 AI 결과(`cards.draft`), `cards.check_result` |
@@ -1094,7 +1102,7 @@ HTTP/1.1 200 OK
 | ⑤ 검증·권한 | teacher만, 현재 담당 반에 대해서만 호출할 수 있다. note_date는 오늘이나 지난날이어야 한다. 같은 반·날짜의 작업이 이미 있으면 입력 내용이 달라도 기존 작업을 돌려준다. |
 | ⑥ 정상 응답 | 생성은 202, 중복은 200, 상태 조회는 200이고, 셋 다 input_id·draft_status·error를 담는다. |
 | ⑦ 오류 응답 | 아래 오류 표. |
-| ⑧ 실행 규칙 | 202를 받은 뒤 작업 상태는 GET /daily-notes/drafts/{input_id}로, 아이별 결과는 GET /daily-notes?classroom_id=&date=(3.20)로 확인한다. 모의 생성은 바로 succeeded가 되지만, activities에 [실패]가 들어 있으면 failed가 된다. 실패한 경우에도 작업과 확인 카드는 남는다. 다만 아이별 알림장은 없다. |
+| ⑧ 실행 규칙 | 202를 받은 뒤 작업 상태는 GET /daily-notes/drafts/{input_id}로, 아이별 결과는 GET /daily-notes?classroom_id=&date=(3.20)로 확인한다. 모의 생성은 바로 succeeded가 되지만, activities에 [실패]가 들어 있으면 failed가 된다. 실패한 경우에도 작업과 확인 카드는 남는다. 첫 생성 실패에는 아이별 알림장이 없고, 다시 만들기 실패에는 기존 알림장을 보존한다. 워커 큐 등록(`publish`)이 실패해도 입력을 `queued`에 남기지 않고 `failed`로 바꾸며 반 카드에 `tool_failed` 이력과 `detail.detected_failure = "queue_error"`를 남긴다. 담임이 다시 만들기로 재접수한다. |
 
 | 필드 | 위치 | 타입 | 필수 | 빈값 | 제약 | 설명 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -1216,6 +1224,8 @@ HTTP/1.1 200 OK
 | 확인 항목 | 5명 `needs_check`: 하늘 `date_check`·`sensitive`, 아라 `sensitive`, 윤슬 `sensitive`, 지아 `sensitive` 2개(1개는 투약 요청 코드 검사), 지안 `other_child`. 15명 `draft` |
 | 발송 막힘 | 지아를 확인하기 전 반 발송은 409 `NOTE_BATCH_BLOCKED`(`blocked`에 지아만). 지아의 항목을 모두 풀어도 확인 전이면 409. 확인 뒤 200 `sent_count=20`, 확인 카드 `done` |
 | 학부모 쪽 | `parent01`이 하늘 알림장(`sent`)을 받았고, 담임이 고친 줄이 그대로 보였다. 알림 1건 |
+
+초안 저장 뒤 같은 기관·반·아이의 당일 보호자 투약·귀가·문의가 새로 접수되면 기존 본문은 유지하고 `request_missed` 확인 항목을 해당 `request_id`와 함께 붙인다. `draft`·`needs_check`는 `needs_check`가 되고, `ready`도 확인자·확인 시각을 비우고 `needs_check`로 돌아간다. 이미 `sent`면 내용·확인 항목·상태는 유지한다. 두 경우 모두 반 카드 담당자에게 기존 `new_card` 알림을 보내며 `subject_type=daily_note`·`subject_id=아이 알림장 ID`로 알림장 화면에 연결하고, 같은 요청 재전송에는 확인·알림을 늘리지 않는다. 본문과 알림 제목에 보호자 원문을 복사하지 않는다. 다른 날짜·다른 반과 상담·민원은 이 처리에서 제외한다. 작성기가 입력을 읽은 뒤 저장하기 전 접수된 요청도 저장 직전 다시 읽어 `request_missed`로 남긴다.
 
 ### 3.20 알림장 보기 — `GET /api/v1/daily-notes`
 
@@ -1451,7 +1461,7 @@ HTTP/1.1 200 OK
 | ③ 경로·본문 | input_id는 UUID이고 본문은 없다. activities·supplies·child_memos는 저장된 입력을 그대로 쓰고, 보호자 요청과 식단은 실행할 때 다시 모은다. |
 | ④ 정상 응답 | 202 + RegenerateResponse `{input_id, draft_status, error, kept_edited}`. kept_edited는 접수할 때 교사가 고쳐서 보존한 미확인 알림장 수(0 이상 정수)다. DB는 queued를 거쳐 running→succeeded 또는 failed로 가고, 모의는 결과를 바로 만든다. 진행과 결과는 API 23·24와 똑같이 조회하며, 기존 DraftResponse에는 kept_edited를 더하지 않는다. |
 | ⑤ 차단 | 입력에 sent 알림장이 하나라도 있으면 409 INVALID_TRANSITION이다. 잠금은 발송과 같은 입력 잠금을 쓴다. |
-| ⑥ 보존 | ready 알림장은 내용·확인자·시각·검사 항목을 그대로 둔다. draft·needs_check 알림장도 content ≠ ai_original이거나 daily_note_edited 이력이 있으면 모두 보존한다. 나머지는 새 초안, 새 확인 ID, 새 ai_original로 갱신하되 기존 알림장 ID는 유지한다. 실행하는 동안 생긴 수정·확인은 저장 직전에 다시 검사하고, 초안이 아직 없는 아이는 새로 저장한다. |
+| ⑥ 보존 | ready 알림장은 내용·확인자·시각·검사 항목을 그대로 둔다. draft·needs_check 알림장도 content ≠ ai_original이거나 daily_note_edited 이력이 있으면 모두 보존한다. 나머지는 새 초안, 새 확인 ID, 새 ai_original로 갱신하되 기존 알림장 ID는 유지한다. 실행하는 동안 생긴 수정·확인은 저장 직전에 다시 검사하고, 초안이 아직 없는 아이는 새로 저장한다. 전입 아이는 카드 목록·상세의 `note_batch.children[].status = missing`으로 먼저 보이며, 기존 아이가 모두 ready라면 보존 규칙에 따라 전입 아이만 새로 생성한다. |
 | ⑦ 복구·동시성 | failed면 다시 접수한다. queued·running은 시작한 지 DAILY_NOTE_WRITER_TIMEOUT(기본 300초)이 지나지 않았으면 현재 상태만 돌려주고 작성기를 다시 부르지 않는다. 시작 시점은 반 묶음 카드의 draft.draft_started_at으로 판단하며, 대기 중이면 접수 시각, 실행 중이면 실행 시각이 담긴다. 이 기록이 없는 옛 입력은 created_at을 쓴다. 제한을 넘겼으면 다시 접수하고, 이전 실행이 늦게 낸 성공·실패는 버린다. 재생성 도중에 생긴 교사 수정·확인도 보존한다. |
 | ⑧ 이력 | 이력은 아이별 events.daily_note_id에 연결한다. 처음 저장과 재생성 저장은 daily_note_drafted, 내용이 실제로 바뀐 PATCH만 daily_note_edited, 확인은 daily_note_confirmed, 보내기는 daily_note_sent다. 빈 PATCH나 확인 항목 해소만으로는 edited 이력을 남기지 않는다. 확인을 취소하면 기존 returned로 ready→draft를 남기고, 검사가 해소되어 needs_check→draft가 되면 기존 checked로 상태 변화를 남긴다. 재생성을 요청한 사람은 반 묶음 카드의 draft.regenerated_by와 새 drafted 이력의 detail.regenerated_by에 저장하며, 이 저장은 상태 변경과 같은 트랜잭션에서 한다. |
 
@@ -1992,7 +2002,7 @@ Beat는 1분마다 시작이 하루 이내인 확정 예약을 읽고, 그중 �
 | 기존 장애 시험 | 자동 복구 | 사람에게 넘김 | 이유·검증 |
 | --- | --- | --- | --- |
 | `unit/test_daily_note_graph.py::test_writer_retry_once_then_succeeds` | 재시도 뒤 확인 항목 없는 아이 초안 | — | `open_checks=[]`·메모 줄 있음. 저장·실제 모델 시험은 아님 |
-| `db/test_worker_db.py::test_broker_failure_preserves_rows_and_periodic_sweep_recovers` | 요청 다시 등록 뒤 회신 카드·본문 저장 | — | `card_missing` 없음. 같은 시험의 알림장 `succeeded`만으로 T58 성공은 판정하지 않음 |
+| `db/test_worker_db.py::test_broker_failure_marks_note_failed_and_teacher_regenerates_while_request_sweep_recovers` | 요청 다시 등록 뒤 회신 카드·본문 저장 | — | `card_missing` 없음. 알림장 큐 실패는 `failed`·`queue_error`로 남고 담임 재생성으로 복구. `succeeded`만으로 T58 성공은 판정하지 않음 |
 | `db/test_request_lock_timeout.py::test_ai_timeout_hands_off_empty_card_and_drops_late_draft` | — | 초안 없는 미배정 카드 | `ai_timeout`; 늦은 초안이 덮지 못함 |
 | `db/test_requests.py::test_agent_failure_preserves_request_and_hands_off_without_private_error` | — | 초안 없는 미배정 카드 | `ai_failed`; 요청 보존·배정 대기 표시·원장 알림 |
 | `db/test_worker_db.py::test_queued_request_is_republished_once_then_handed_off_after_five_more_minutes` | — | 재등록 뒤에도 카드가 없어 미배정 카드 | `card_missing` |

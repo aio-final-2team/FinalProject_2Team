@@ -50,3 +50,11 @@ def staff_label(status: str, request_type: str, assignee_id=None) -> str:
     if request_type == "consultation" and status == "sent_or_booked":
         return "예약됨"
     return STAFF_LABELS[status]
+
+
+def note_batch_label(status, draft_status):
+    if draft_status == "failed":
+        return "만들기 실패 · 다시 만들기"
+    if draft_status in ("queued", "running"):
+        return "만드는 중"
+    return "완료" if status == "done" else "확인 필요"

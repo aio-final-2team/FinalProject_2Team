@@ -67,7 +67,7 @@ def test_eager_note_request_and_regenerate_use_same_db_guards(eager_worker):
         assert connection.scalar(text("SELECT count(*) FROM events WHERE daily_note_id IS NOT NULL")) == 40
 
 
-def test_broker_failure_preserves_rows_and_periodic_sweep_recovers(eager_worker, monkeypatch):
+def test_broker_failure_marks_note_failed_and_teacher_regenerates_while_request_sweep_recovers(eager_worker, monkeypatch):
     tasks = BackgroundTasks()
     input_id, request_id = draft(tasks), request(tasks)
     def fail(**kwargs):
@@ -78,9 +78,19 @@ def test_broker_failure_preserves_rows_and_periodic_sweep_recovers(eager_worker,
         anyio.run(tasks)
     with eager_worker.begin() as connection:
         connection.execute(text("UPDATE requests SET created_at=now()-interval '6 minutes' WHERE id=:id"), {"id": request_id})
-        assert connection.scalar(text("SELECT draft_status FROM daily_note_inputs WHERE id=:id"), {"id": input_id}) == "queued"
+        assert connection.scalar(text("SELECT draft_status FROM daily_note_inputs WHERE id=:id"), {"id": input_id}) == "failed"
+        assert connection.execute(text("""
+            SELECT e.action,e.detail->>'detected_failure' FROM events e JOIN cards c ON c.id=e.card_id
+            WHERE c.subject_type='daily_note_batch' AND c.subject_id=:id
+        """), {"id": input_id}).all() == [("tool_failed", "queue_error")]
     worker.sweep.delay().get()
     worker.sweep.delay().get()
+    with eager_worker.connect() as connection:
+        assert connection.scalar(text("SELECT draft_status FROM daily_note_inputs WHERE id=:id"), {"id": input_id}) == "failed"
+        assert connection.scalar(text("SELECT count(*) FROM daily_notes WHERE input_id=:id"), {"id": input_id}) == 0
+    retry = BackgroundTasks()
+    assert notes.regenerate(users.get_user(seed.TEACHER), input_id, retry)["draft_status"] == "queued"
+    anyio.run(retry)
     with eager_worker.connect() as connection:
         assert connection.scalar(text("SELECT draft_status FROM daily_note_inputs WHERE id=:id"), {"id": input_id}) == "succeeded"
         assert connection.scalar(text("SELECT count(*) FROM cards WHERE request_id=:id"), {"id": request_id}) == 1
@@ -90,6 +100,21 @@ def test_broker_failure_preserves_rows_and_periodic_sweep_recovers(eager_worker,
         assert connection.scalar(text("SELECT count(*) FROM events WHERE request_id=:id AND detail->>'handoff_reason'='card_missing'"),
                                  {"id": request_id}) == 0
         assert connection.scalar(text("SELECT draft->>'text' FROM cards WHERE request_id=:id"), {"id": request_id})
+
+
+@pytest.mark.parametrize("status", ["running", "succeeded", "failed"])
+def test_late_publish_failure_does_not_overwrite_progress_or_duplicate_failure(eager_worker, monkeypatch, status):
+    input_id = draft(BackgroundTasks())
+    with eager_worker.begin() as connection:
+        connection.execute(text("UPDATE daily_note_inputs SET draft_status=:status WHERE id=:id"),
+                           {"id": input_id, "status": status})
+    def fail(**kwargs):
+        raise ConnectionError("[TEST] queue unavailable")
+    monkeypatch.setattr(worker.daily_note_drafts, "apply_async", fail)
+    jobs.publish("daily_note", input_id)
+    with eager_worker.connect() as connection:
+        assert connection.scalar(text("SELECT draft_status FROM daily_note_inputs WHERE id=:id"), {"id": input_id}) == status
+        assert connection.scalar(text("SELECT count(*) FROM events WHERE action='tool_failed'")) == 0
 
 
 def test_api_restart_keeps_active_worker_run_and_sweep_recovers_only_stale_run(eager_worker):

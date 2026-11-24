@@ -24,8 +24,11 @@ def publish(job, object_id):
     try:
         task.apply_async(args=[str(object_id)], retry=False)
     except Exception as error:
-        # 접수한 DB 행은 유지해요. 주기 점검이 한 번 재전달하고, 계속 실패한 요청만 인계해요.
+        # 접수한 행은 유지해요. 요청은 주기 점검으로, 알림장은 실패 표시 뒤 담임의 다시 만들기로 복구해요.
         log.error("작업 전달 실패 job=%s id=%s error_type=%s", job, object_id, type(error).__name__)
+        if job == "daily_note":
+            from app.modules.daily_notes.runner import queue_failed
+            queue_failed(object_id)
 
 
 def dispatch(job, object_id, background_tasks):

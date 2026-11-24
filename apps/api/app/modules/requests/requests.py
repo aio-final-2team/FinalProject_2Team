@@ -65,8 +65,10 @@ def create(user, *, background_tasks, client_request_id, type, body, child_id, p
             req["assignee_id"] = teacher
             connection.execute(text("UPDATE requests SET assignee_id=:teacher WHERE id=:id"),
                                {"id": req["id"], "teacher": teacher})
-        record(connection, req, "created", actor_type="user", actor_id=user.id, to_status="received", trace_id=trace_id,
-               **detail)
+        event = record(connection, req, "created", actor_type="user", actor_id=user.id, to_status="received", trace_id=trace_id,
+                       **detail)
+        from app.modules.daily_notes.notes import request_received
+        request_received(connection, req, event)
     if type not in CARE_REQUEST_TYPES:
         dispatch("request", req["id"], background_tasks)
     return req, True

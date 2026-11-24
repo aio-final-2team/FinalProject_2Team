@@ -22,6 +22,8 @@ def notification_title(kind, request_type=None):
 
 
 CARE_REQUEST_TYPES = ("medication", "pickup")
+NOTE_REQUEST_TYPES = (*CARE_REQUEST_TYPES, "inquiry")
+LATE_NOTE_REQUEST_NOTICE = "초안 뒤에 보호자 요청이 왔어요. 아이 알림장을 확인해 주세요."
 MEDICATION_FIELDS = ("medication_name", "medication_dose", "medication_time")
 UNREGISTERED_PICKUP_CHECK = "미등록 인계자 확인"
 CARE_MESSAGE_NOTICE = "보호자가 내용을 추가했어요. 다시 확인해 주세요."

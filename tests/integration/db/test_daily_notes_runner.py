@@ -49,6 +49,42 @@ def set_writer(monkeypatch, writer):
                                                   daily_note_writer="app.modules.daily_notes.stub_writer:test_write"))
 
 
+@pytest.mark.parametrize("regenerating", [False, True])
+def test_request_received_during_writer_is_kept_as_missed_check_at_save(db_client, teacher, monkeypatch, regenerating):
+    started, release = Event(), Event()
+    input_id = draft(db_client, teacher).json()["input_id"] if regenerating else None
+
+    def writer(payload):
+        started.set()
+        assert release.wait(15)
+        return stub_writer.write(payload)
+
+    set_writer(monkeypatch, writer)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(lambda: db_client.post(f"{BASE}/daily-notes/drafts/{input_id}/regenerate", headers=teacher)
+                             if regenerating else draft(db_client, teacher))
+        try:
+            assert started.wait(15)
+            parent = {"Authorization": "Bearer " + issue_token(users.get_user(seed.PARENT))}
+            created = db_client.post(BASE + "/requests", headers=parent, json={
+                "client_request_id": f"late-writer-{regenerating}", "child_id": str(seed.CHILD),
+                "type": "medication", "body": "[TEST] 작성 중 새 투약 요청"})
+            assert created.status_code == 202, created.text
+            request_id = created.json()["request"]["id"]
+            pending = next((n for n in notes(db_client, teacher) if n["child_id"] == str(seed.CHILD)), None)
+            original_check = next(c for c in pending["open_checks"] if c["request_id"] == request_id) if pending else None
+        finally:
+            release.set()
+        assert future.result(timeout=15).status_code == 202
+    note = next(n for n in notes(db_client, teacher) if n["child_id"] == str(seed.CHILD))
+    checks = [c for c in note["open_checks"] if c["request_id"] == request_id]
+    assert note["status"] == "needs_check" and len(checks) == 1
+    assert checks[0]["kind"] == "request_missed"
+    if original_check:
+        assert checks[0] == original_check
+    assert not any(line["source"]["request_id"] == request_id for line in note["content"]["items"])
+
+
 def test_startup_recovers_running_and_queued_without_replaying_finished(seeded_db, monkeypatch):
     from app import backend, main
     from app.api.schemas.actions import NoteDraftIn

@@ -2,12 +2,13 @@
 
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import text
 
 from app import backend
+from app.core.constants import LATE_NOTE_REQUEST_NOTICE
 from app.mock import notes as mock_notes, seed, store
 from tests.integration.api.helpers import BASE, err
 from tests.integration.api.test_resources import draft, note_list
@@ -37,6 +38,173 @@ def confirm_all(client, teacher, notes):
             "resolved_checks": [c["id"] for c in note["open_checks"]], "confirm": True})
         assert response.status_code == 200, response.text
         assert response.json()["note"]["status"] == "ready"
+
+
+@pytest.fixture
+def note_flow_backend(note_backend, monkeypatch):
+    if note_backend == "db":
+        from app.modules.cards import card_views
+        from app.modules.notifications import notifications
+        from app.modules.requests import requests as request_actions
+    else:
+        from app.mock import card_views, notifications, request_actions
+    for name, module in dict(card_views=card_views, notifications=notifications, request_actions=request_actions).items():
+        monkeypatch.setattr(backend, name, module)
+    return note_backend
+
+
+def batch_card(client, teacher, *, done=False):
+    response = client.get(BASE + "/cards", headers=teacher,
+                          params={"kind": "daily_note", "filter": "done" if done else "needs_review"})
+    assert response.status_code == 200, response.text
+    return response.json()["items"][0]
+
+
+@pytest.mark.parametrize("request_type", ["medication", "pickup", "inquiry"])
+@pytest.mark.parametrize("status", ["draft", "needs_check", "ready", "sent"])
+def test_late_request_reopens_unsent_note_and_notifies_batch_owner_once(
+        client, teacher, parent, note_flow_backend, request_type, status):
+    assert draft(client, teacher, activities="[TEST] 늦은 요청 전 활동").status_code == 202
+    listed = note_list(client, teacher).json()["items"]
+    target = next(n for n in listed if n["child_id"] == str(seed.CHILD))
+    if status != "needs_check":
+        response = client.patch(f"{BASE}/daily-notes/{target['id']}", headers=teacher, json={
+            "resolved_checks": [c["id"] for c in target["open_checks"]], "confirm": status in ("ready", "sent")})
+        assert response.status_code == 200
+    if status == "sent":
+        confirm_all(client, teacher, note_list(client, teacher).json()["items"])
+        assert client.post(BASE + "/daily-notes/send", headers=teacher, json=batch()).json()["sent_count"] == 20
+    before = {n["id"]: n for n in note_list(client, teacher).json()["items"]}
+    card = batch_card(client, teacher, done=status == "sent")
+    payload = {"client_request_id": str(uuid4()), "type": request_type,
+               "child_id": str(seed.CHILD), "body": "[TEST] 초안 뒤에 접수한 보호자 요청"}
+    created = client.post(BASE + "/requests", headers=parent, json=payload)
+    assert created.status_code == 202, created.text
+    rid = created.json()["request"]["id"]
+    after = {n["id"]: n for n in note_list(client, teacher).json()["items"]}
+    assert all(after[nid] == row for nid, row in before.items() if nid != target["id"])
+    current = after[target["id"]]
+    assert current["content"] == before[target["id"]]["content"]
+    missed = [c for c in current["open_checks"] if c["request_id"] == rid]
+    if status == "sent":
+        assert current == before[target["id"]] and missed == []
+    else:
+        assert current["status"] == "needs_check" and current["confirmed_at"] is None
+        assert len(missed) == 1 and missed[0]["kind"] == "request_missed"
+        assert missed[0]["item_key"] == request_type and missed[0]["sentence"] is None
+        assert current["open_checks"][:-1] == before[target["id"]]["open_checks"]
+        err(client.patch(f"{BASE}/daily-notes/{target['id']}", headers=teacher, json={"confirm": True}),
+            409, "INVALID_TRANSITION")
+        confirm_all(client, teacher, [n for n in after.values() if n["id"] != target["id"]])
+        err(client.post(BASE + "/daily-notes/send", headers=teacher, json=batch()), 409, "NOTE_BATCH_BLOCKED")
+        confirm_all(client, teacher, [current])
+    # 재전송은 이미 해결한 확인을 다시 열거나 알림을 늘리지 않는다.
+    stable = note_list(client, teacher).json()
+    assert client.post(BASE + "/requests", headers=parent, json=payload).status_code == 200
+    assert note_list(client, teacher).json() == stable
+    notices = client.get(BASE + "/notifications", headers=teacher, params={"size": 100}).json()["items"]
+    notices = [n for n in notices if n["body"] == LATE_NOTE_REQUEST_NOTICE and n["request_id"] == rid]
+    assert len(notices) == 1 and notices[0]["kind"] == "new_card"
+    assert notices[0]["subject_type"] == "daily_note" and notices[0]["subject_id"] == target["id"]
+    assert "아이 알림장을 확인" in notices[0]["body"]
+    if note_flow_backend == "mock":
+        assert str(store.state().notifications[notices[0]["id"]].card_id) == card["id"]
+    else:
+        from app.core.db import transaction
+        with transaction() as connection:
+            assert str(connection.scalar(text("SELECT card_id FROM notifications WHERE id=:id"),
+                                         {"id": notices[0]["id"]})) == card["id"]
+    if status == "sent":
+        assert batch_card(client, teacher, done=True)["status"] == "done"
+
+
+@pytest.mark.parametrize("excluded", ["past_date", "other_class", "consultation", "complaint"])
+def test_late_request_does_not_change_other_date_class_or_unrelated_type(
+        client, teacher, parent, parent_other, note_flow_backend, excluded):
+    day = store.now().date() - timedelta(days=1) if excluded == "past_date" else store.now().date()
+    assert draft(client, teacher, activities="[TEST] 범위 검사", note_date=day.isoformat()).status_code == 202
+    params = {"date": day.isoformat(), "classroom_id": str(seed.CLASS_STAR)}
+    before = client.get(BASE + "/daily-notes", headers=teacher, params=params).json()
+    payload = {"client_request_id": str(uuid4()), "body": "[TEST] 다른 범위 요청",
+               "type": excluded if excluded in ("consultation", "complaint") else "inquiry",
+               "child_id": str(seed.CHILD_OTHER if excluded == "other_class" else seed.CHILD)}
+    result = client.post(BASE + "/requests", headers=parent_other if excluded == "other_class" else parent, json=payload)
+    assert result.status_code == 202, result.text
+    assert client.get(BASE + "/daily-notes", headers=teacher, params=params).json() == before
+    notices = client.get(BASE + "/notifications", headers=teacher, params={"size": 100}).json()["items"]
+    assert not any(n["body"] == LATE_NOTE_REQUEST_NOTICE and n["request_id"] == result.json()["request"]["id"] for n in notices)
+
+
+def test_batch_card_shows_missing_child_and_regenerate_only_creates_unprotected_child(
+        client, teacher, parent, note_flow_backend):
+    input_id = draft(client, teacher, activities="[TEST] 전입 전 활동").json()["input_id"]
+    confirm_all(client, teacher, note_list(client, teacher).json()["items"])
+    before = {n["id"]: n for n in note_list(client, teacher).json()["items"]}
+    child_id = uuid4()
+    if note_flow_backend == "mock":
+        store.state().children[child_id] = store.Child(child_id, seed.ORG, seed.CLASS_STAR, "[TEST] 전입 아이", [])
+    else:
+        from app.core.db import transaction
+        with transaction() as connection:
+            connection.execute(text("""
+                INSERT INTO children (id,org_id,classroom_id,display_name) VALUES (:id,:org,:class,'[TEST] 전입 아이')
+            """), {"id": child_id, "org": seed.ORG, "class": seed.CLASS_STAR})
+    card = batch_card(client, teacher)
+    detail = client.get(f"{BASE}/cards/{card['id']}", headers=teacher).json()["card"]
+    assert detail["note_batch"] == card["note_batch"]
+    assert card["note_batch"]["input_id"] == input_id and card["note_batch"]["draft_status"] == "succeeded"
+    missing = [c for c in card["note_batch"]["children"] if c["status"] == "missing"]
+    assert missing == [{"child_id": str(child_id), "display_name": "[TEST] 전입 아이", "note_id": None, "status": "missing"}]
+    err(client.get(f"{BASE}/cards/{card['id']}", headers=parent), 403, "FORBIDDEN_ROLE")
+    blocked = client.post(BASE + "/daily-notes/send", headers=teacher, json=batch())
+    err(blocked, 409, "NOTE_BATCH_BLOCKED")
+    assert blocked.json()["error"]["details"]["blocked"] == [
+        {"note_id": None, "child_id": str(child_id), "status": "missing", "open_checks": []}]
+    assert client.post(f"{BASE}/daily-notes/drafts/{input_id}/regenerate", headers=teacher).status_code == 202
+    listing = client.get(BASE + "/daily-notes", headers=teacher, params={
+        "date": batch()["note_date"], "classroom_id": str(seed.CLASS_STAR), "size": 100})
+    assert listing.status_code == 200 and listing.json()["total"] == 21
+    after = {n["id"]: n for n in listing.json()["items"]}
+    assert len(after) == 21 and all(after[nid] == row for nid, row in before.items())
+    new_note = next(n for n in after.values() if n["child_id"] == str(child_id))
+    confirm_all(client, teacher, [new_note])
+    assert client.post(BASE + "/daily-notes/send", headers=teacher, json=batch()).json()["sent_count"] == 21
+    done = batch_card(client, teacher, done=True)
+    assert done["status"] == "done" and done["status_label"] == "완료"
+    assert {c["status"] for c in done["note_batch"]["children"]} == {"sent"}
+    assert client.post(BASE + "/daily-notes/send", headers=teacher, json=batch()).json()["sent_count"] == 0
+    assert batch_card(client, teacher, done=True)["version"] == done["version"]
+
+
+@pytest.mark.parametrize("status,label", [("queued", "만드는 중"), ("running", "만드는 중"),
+                                         ("failed", "만들기 실패 · 다시 만들기"), ("succeeded", "확인 필요")])
+def test_batch_card_reports_job_status_in_list_and_detail(client, teacher, note_flow_backend, status, label):
+    input_id = draft(client, teacher, activities="[TEST] 상태 표시").json()["input_id"]
+    if note_flow_backend == "mock":
+        store.state().note_inputs[UUID(input_id)].draft_status = status
+    else:
+        from app.core.db import transaction
+        with transaction() as connection:
+            connection.execute(text("UPDATE daily_note_inputs SET draft_status=:status WHERE id=:id"),
+                               {"status": status, "id": input_id})
+    card = batch_card(client, teacher)
+    detail = client.get(f"{BASE}/cards/{card['id']}", headers=teacher).json()["card"]
+    for row in (card, detail):
+        assert row["status_label"] == label
+        assert row["note_batch"]["draft_status"] == status
+
+
+def test_batch_card_metadata_requires_matching_input_organization(client, teacher, note_flow_backend):
+    input_id = draft(client, teacher, activities="[TEST] 기관 경계").json()["input_id"]
+    if note_flow_backend == "mock":
+        assert mock_notes.batch_view(UUID(input_id), uuid4()) is None
+        assert mock_notes.batch_view(uuid4(), seed.ORG) is None
+    else:
+        from app.core.db import transaction
+        from app.modules.daily_notes import notes
+        with transaction() as connection:
+            assert notes.batch_view(connection, input_id, uuid4()) is None
+            assert notes.batch_view(connection, uuid4(), seed.ORG) is None
 
 
 def test_return_limit_check_blocks_confirmation_and_send_until_all_resolved(
