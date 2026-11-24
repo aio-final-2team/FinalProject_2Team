@@ -85,6 +85,7 @@ class Request:
     topic_key: str | None = None
     parent_confirmed_at: datetime | None = None
     missing_fields: list[str] = field(default_factory=list)
+    care_detail: dict = field(default_factory=dict)
     assignee_id: UUID | None = None
     previous_request_id: UUID | None = None
     created_at: datetime = field(default_factory=lambda: now())
@@ -317,7 +318,7 @@ def create_request(user, *, client_request_id: str, type: str, body: str, child_
                 raise ApiError(409, "INVALID_TRANSITION")
         req = Request(id=uuid4(), org_id=user.org_id, classroom_id=child.classroom_id, child_id=child.id,
                       requester_id=user.id, client_request_id=client_request_id, type=type, body=body,
-                      title=body.split("\n")[0][:40], previous_request_id=previous_request_id)
+                      title=body.split("\n")[0][:40], previous_request_id=previous_request_id, care_detail=detail)
         if type == "medication":
             req.missing_fields = [key for key in MEDICATION_FIELDS if not (detail.get(key) or "").strip()]
         _state.requests[req.id] = req
@@ -326,7 +327,7 @@ def create_request(user, *, client_request_id: str, type: str, body: str, child_
         if type in CARE_REQUEST_TYPES:
             req.assignee_id = homeroom_teacher(req.classroom_id)
         add_event(req, "created", actor_type="user", actor_id=user.id, to_status="received", trace_id=trace_id,
-                  **detail)
+                  **({"fields": list(detail)} if type in CARE_REQUEST_TYPES else {}))
         if type not in CARE_REQUEST_TYPES:
             _run_mock_ai(req, trace_id)
         return req, True

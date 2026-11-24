@@ -7,7 +7,7 @@ from app.mock import seed, store
 
 
 def view(req):
-    return care_view([e.__dict__ for e in store.events_of(req.id)], req.type)
+    return care_view([e.__dict__ for e in store.events_of(req.id)], req.type, req.care_detail)
 
 
 def guardians(user, child_id):
@@ -67,6 +67,7 @@ def listing(user, classroom_id, status, page, size, sort):
         from app.api.labels import staff_label
         rows.sort(key=lambda r: (getattr(r, sort.lstrip("-")), str(r.id)), reverse=sort.startswith("-"))
         return {"items": [{"id": r.id, "type": r.type, "title": r.title, "status": r.status,
+                           "child_id": r.child_id, "child_name": store.state().children[r.child_id].display_name,
                            "status_label": staff_label(r.status, r.type), "updated_at": r.updated_at,
                            **{k: v for k, v in view(r).items() if k in ("version", "unregistered_pickup", "missing_fields")},
                            "next_action": "confirm" if r.status == "received" else "complete" if r.status == "assigned" else None}

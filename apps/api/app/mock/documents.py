@@ -70,14 +70,21 @@ def upload(user, filename, data, doc_type, visibility, classroom_ids, effective_
         return doc, True
 
 
-def view(doc):
+def view(doc, *, include_chunks=False):
     error = next((e.detail for e in reversed(store.state().events)
                   if e.action == "tool_failed" and e.detail.get("document_id") == doc.id), None)
-    return {"id": doc.id, "title": doc.title, "doc_type": doc.doc_type, "visibility": doc.visibility,
+    item = {"id": doc.id, "title": doc.title, "doc_type": doc.doc_type, "visibility": doc.visibility,
             "classroom_ids": store.state().document_classrooms.get(doc.id, []), "status": doc.status,
             "effective_from": doc.effective_from, "effective_to": doc.effective_to,
             "ingest_status": doc.ingest_status, "supersedes_id": doc.supersedes_id, "conflicts": [],
             "chunk_count": len(chunks(doc)), "error": {k: error[k] for k in ("code", "message")} if error else None}
+    if include_chunks:
+        from agents.guardrails.injection import suspicious_chunk
+
+        item["chunks"] = [{"index": c.chunk_index, "location": c.location, "content": c.content,
+                           "suspicious": suspicious_chunk(c.content)}
+                          for c in sorted(chunks(doc), key=lambda c: c.chunk_index)]
+    return item
 
 
 def attach_evidence(card):

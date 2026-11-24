@@ -27,6 +27,8 @@ class RequestList(Page):
 
 
 class CareRequestItem(RequestItem):
+    child_id: UUID
+    child_name: str
     version: int
     unregistered_pickup: bool
     missing_fields: list[str]
@@ -346,6 +348,21 @@ class DocumentView(BaseModel):
 
 class DocumentResponse(BaseModel):
     document: DocumentView
+
+
+class DocumentChunk(BaseModel):
+    index: int
+    location: str | None
+    content: str
+    suspicious: bool
+
+
+class DocumentDetailView(DocumentView):
+    chunks: list[DocumentChunk]
+
+
+class DocumentDetailResponse(BaseModel):
+    document: DocumentDetailView
 
 
 class DocumentList(Page):

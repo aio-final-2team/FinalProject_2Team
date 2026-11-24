@@ -2034,7 +2034,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DocumentResponse'
+                $ref: '#/components/schemas/DocumentDetailResponse'
         '401':
           content:
             application/json:
@@ -3391,6 +3391,13 @@ components:
             format: date
           - type: 'null'
           title: Hold Until
+        child_id:
+          type: string
+          format: uuid
+          title: Child Id
+        child_name:
+          type: string
+          title: Child Name
         version:
           type: integer
           title: Version
@@ -3411,6 +3418,8 @@ components:
       - status_label
       - updated_at
       - next_action
+      - child_id
+      - child_name
       - version
       - unregistered_pickup
       - missing_fields
@@ -3694,6 +3703,120 @@ components:
       - status
       - expected_end_at
       title: DelayedBooking
+    DocumentChunk:
+      properties:
+        index:
+          type: integer
+          title: Index
+        location:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Location
+        content:
+          type: string
+          title: Content
+        suspicious:
+          type: boolean
+          title: Suspicious
+      type: object
+      required:
+      - index
+      - location
+      - content
+      - suspicious
+      title: DocumentChunk
+    DocumentDetailResponse:
+      properties:
+        document:
+          $ref: '#/components/schemas/DocumentDetailView'
+      type: object
+      required:
+      - document
+      title: DocumentDetailResponse
+    DocumentDetailView:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        title:
+          type: string
+          title: Title
+        doc_type:
+          type: string
+          title: Doc Type
+        visibility:
+          type: string
+          title: Visibility
+        classroom_ids:
+          items:
+            type: string
+            format: uuid
+          type: array
+          title: Classroom Ids
+        effective_from:
+          type: string
+          format: date
+          title: Effective From
+        effective_to:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Effective To
+        status:
+          type: string
+          title: Status
+        ingest_status:
+          type: string
+          enum:
+          - queued
+          - running
+          - succeeded
+          - failed
+          title: Ingest Status
+        supersedes_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Supersedes Id
+        conflicts:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Conflicts
+        chunk_count:
+          type: integer
+          title: Chunk Count
+        error:
+          anyOf:
+          - $ref: '#/components/schemas/JobError'
+          - type: 'null'
+        chunks:
+          items:
+            $ref: '#/components/schemas/DocumentChunk'
+          type: array
+          title: Chunks
+      type: object
+      required:
+      - id
+      - title
+      - doc_type
+      - visibility
+      - classroom_ids
+      - effective_from
+      - effective_to
+      - status
+      - ingest_status
+      - supersedes_id
+      - conflicts
+      - chunk_count
+      - error
+      - chunks
+      title: DocumentDetailView
     DocumentList:
       properties:
         total:

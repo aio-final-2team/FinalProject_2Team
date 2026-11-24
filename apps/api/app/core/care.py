@@ -23,10 +23,9 @@ def input_detail(req_type, *, pickup_guardian_id=None, pickup_name=None, pickup_
     return {}
 
 
-def care_view(events, req_type):
-    created = next((e for e in events if e["action"] == "created" and e["to_status"] == "received"), None)
-    fields = input_detail(req_type, **{k: created["detail"].get(k) for k in (
-        "pickup_guardian_id", "pickup_name", "pickup_relation", *MEDICATION_FIELDS)}) if created else input_detail(req_type)
+def care_view(events, req_type, care_detail):
+    fields = input_detail(req_type, **{k: care_detail.get(k) for k in (
+        "pickup_guardian_id", "pickup_name", "pickup_relation", *MEDICATION_FIELDS)})
     result = {**fields, "version": 1, "unregistered_pickup": req_type == "pickup" and not fields.get("pickup_guardian_id"),
               "confirmed_at": None, "completed_at": None,
               "missing_fields": [key for key in MEDICATION_FIELDS if not (fields.get(key) or "").strip()]

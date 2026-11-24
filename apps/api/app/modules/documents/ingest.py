@@ -63,7 +63,7 @@ def in_scope(user, document_id):
     return scope._checked(user, row, allowed, "document", document_id)
 
 
-def view(row) -> dict:
+def view(row, *, include_chunks=False) -> dict:
     item = {key: row[key] for key in FIELDS}
     item["effective_from"] = row["effective_from"] or row["created_at"].astimezone(KST).date()
     item["classroom_ids"] = list(row["classroom_ids"] or [])
@@ -71,6 +71,13 @@ def view(row) -> dict:
     error = row["job_error"]
     item["error"] = ({key: error[key] for key in ("code", "message")}
                      if error and row["ingest_status"] == "failed" else None)
+    if include_chunks:
+        with transaction() as connection:
+            chunks = connection.execute(text("""
+                SELECT chunk_index AS index,location,content FROM document_chunks
+                WHERE document_id=:id AND org_id=:org ORDER BY chunk_index
+            """), {"id": row["id"], "org": row["org_id"]}).mappings().all()
+        item["chunks"] = [{**chunk, "suspicious": suspicious_chunk(chunk["content"])} for chunk in chunks]
     return item
 
 

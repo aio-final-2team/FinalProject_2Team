@@ -9,7 +9,8 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Path, Query
 from app.api.schemas.actions import NoteDraftIn, NoteBatchIn, NotePatchIn
 from app.api.schemas.auth import ChildList
 from app.api.schemas.views import (NotificationList, NotificationResponse, DraftResponse, NoteList, NoteResponse,
-                                  SendResponse, DocumentResponse, DocumentList, MemoryKind, MemoryList, RegenerateResponse)
+                                  SendResponse, DocumentResponse, DocumentDetailResponse, DocumentList,
+                                  MemoryKind, MemoryList, RegenerateResponse)
 from app.api.schemas.common import errors
 from app.core.auth import CurrentUser, current_user as note_user, require_roles as note_roles
 from app.core.constants import MAX_DOCUMENT_BYTES
@@ -114,6 +115,6 @@ def document_list(page: int = Query(1, ge=1), size: int = Query(20, ge=1, le=100
     return backend.documents.list_documents(user, page, size, sort)
 
 
-@router.get("/documents/{document_id}", response_model=DocumentResponse, responses=errors(401, 403, 404, 422))
+@router.get("/documents/{document_id}", response_model=DocumentDetailResponse, responses=errors(401, 403, 404, 422))
 def document_detail(document_id: UUID, user: CurrentUser = Depends(require_roles("teacher", "director"))):
-    return {"document": backend.documents.view(backend.documents.in_scope(user, document_id))}
+    return {"document": backend.documents.view(backend.documents.in_scope(user, document_id), include_chunks=True)}

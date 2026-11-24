@@ -50,6 +50,54 @@ def events(mode, rid):
                                                    {"id": rid}).mappings()]
 
 
+@pytest.mark.parametrize("kind,fields", [
+    ("medication", {"medication_name": "[TEST] 시럽", "medication_dose": "2.5mL", "medication_time": "점심 뒤"}),
+    ("pickup", {"pickup_guardian_id": None, "pickup_name": "[TEST] 할머니", "pickup_relation": "할머니"}),
+    ("pickup", {"pickup_guardian_id": str(seed.PARENT)}),
+])
+def test_care_values_live_on_request_and_receipt_only_names_fields(client, parent, teacher, care_backend, kind, fields):
+    key = str(uuid4())
+    response = create(client, parent, kind, client_request_id=key, **fields)
+    assert response.status_code == 202, response.text
+    rid = response.json()["request"]["id"]
+    detail = client.get(f"{BASE}/requests/{rid}", headers=teacher).json()["care"]
+    names = ("medication_name", "medication_dose", "medication_time") if kind == "medication" else (
+        "pickup_guardian_id", "pickup_name", "pickup_relation")
+    expected = {name: detail[name] for name in names}
+    assert all(detail[name] == value for name, value in fields.items())
+    if kind == "pickup" and fields["pickup_guardian_id"]:
+        assert detail["pickup_name"] and detail["pickup_relation"]
+    if care_backend == "mock":
+        stored = store.state().requests[UUID(rid)].care_detail
+    else:
+        with transaction() as connection:
+            stored = connection.scalar(text("SELECT care_detail FROM requests WHERE id=:id"), {"id": rid})
+    assert stored == expected
+    receipt = next(e for e in events(care_backend, rid) if e["action"] == "created" and e["to_status"] == "received")
+    assert set(receipt["detail"]) == {"trace_id", "fields"}
+    assert set(receipt["detail"]["fields"]) == set(expected)
+    # 같은 접수 키의 재전송은 구조화 값·이력도 처음 것 그대로 둔다.
+    repeated = create(client, parent, kind, client_request_id=key, **fields)
+    assert repeated.status_code == 200 and repeated.json()["request"]["id"] == rid
+    assert len(events(care_backend, rid)) == 1
+    assert client.get(f"{BASE}/requests/{rid}", headers=parent).json()["care"] == detail
+
+
+def test_care_list_includes_current_child_identity(client, parent, teacher, director, care_backend):
+    rid = create(client, parent).json()["request"]["id"]
+    if care_backend == "mock":
+        store.state().children[seed.CHILD].display_name = "[TEST] 바뀐 아이 이름"
+    else:
+        with transaction() as connection:
+            connection.execute(text("UPDATE children SET display_name='[TEST] 바뀐 아이 이름' WHERE id=:id"),
+                               {"id": seed.CHILD})
+    for actor in (teacher, director):
+        result = client.get(BASE + "/care-requests?size=100", headers=actor)
+        assert result.status_code == 200, result.text
+        item = next(r for r in result.json()["items"] if r["id"] == rid)
+        assert item["child_id"] == str(seed.CHILD) and item["child_name"] == "[TEST] 바뀐 아이 이름"
+
+
 @pytest.mark.parametrize("kind", ["medication", "pickup"])
 def test_care_requires_human_confirm_then_complete_and_keeps_original(client, parent, teacher, care_backend, kind):
     response = create(client, parent, kind, client_request_id="care-once-1234")
@@ -168,6 +216,7 @@ def test_note_lines_show_current_care_state_without_rewriting_draft(client, pare
         return note, next(line for line in note["content"]["items"] if line["source"]["request_id"] == rid)
     original, line = note_line()
     assert line["key"] == kind and line["request_status"] == "received"
+    assert line["value"] == "[TEST] 보호자가 적은 원문 2mL\n점심 뒤 1회"
     before = line["value"]
     pickup = {"pickup_guardian_id": str(seed.PARENT)} if kind == "pickup" else {}
     for action, expected in (("confirm", "assigned"), ("complete", "completed")):

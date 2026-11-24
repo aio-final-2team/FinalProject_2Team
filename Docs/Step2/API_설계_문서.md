@@ -1377,6 +1377,8 @@ HTTP/1.1 200 OK
 | `document.effective_from`·`effective_to`·`supersedes_id` | 상세 응답 | date·UUID | 항상 | effective_to·supersedes_id는 null 가능 | 새 판에만 이전 문서 ID | 적용 기간·판 연결 |
 | `document.status`·`ingest_status` | 상세 응답 | string | 항상 | 불가 | status는 모의 구현에서 active·superseded이고 DB 모드는 conflict_pending도 쓴다. ingest_status는 queued·running·succeeded·failed | 사용 상태·적재 진행 |
 | `document.chunk_count`·`conflicts[]`·`error` | 상세 응답 | integer·object[]·object | 항상 | error는 null 가능 | 조각 수, 오류는 {code, message}, 충돌 항목 모양은 3.22 | 실패면 code는 UPSTREAM_UNAVAILABLE이고 이유는 message에 있다(3.22 DB 모드 적재 결과). 충돌 판별은 모의 구현에 없음 |
+| `document.chunks[]` | GET 상세 응답만 | object[] | 항상 | 조각이 없으면 [] | index 오름차순. 목록·업로드 응답에는 없음 | 교직원이 읽을 원문 조각. 검색에서 제외하는 의심 조각도 숨기지 않음 |
+| `document.chunks[] { index, location, content, suspicious }` | GET 상세 응답만 | integer·string·string·boolean | 항상 | location은 null 가능 | index는 0부터인 조각 순번, location은 근거 위치, content는 저장된 원문 | suspicious는 `agents.guardrails.injection.suspicious_chunk(content)` 판정. true면 검색에서 제외되는 모델 지시 의심 조각 |
 | `total`·`page`·`size` | 응답 | integer | 항상 | 불가 | 전체 건수·요청한 쪽·크기 | 목록 공통 칸 |
 
 ```http
@@ -1385,7 +1387,7 @@ HTTP/1.1 200 OK
 {"items": [{"id": "00000000-0000-4000-8000-000000000b01", "title": "가상 식단표", "status": "active", "ingest_status": "succeeded"}], "total": 3, "page": 1, "size": 1}
 GET /api/v1/documents/00000000-0000-4000-8000-000000000b01
 HTTP/1.1 200 OK
-{"document": {"id": "00000000-0000-4000-8000-000000000b01", "title": "가상 식단표", "doc_type": "menu", "visibility": "all", "classroom_ids": [], "effective_from": "2026-11-08", "effective_to": null, "status": "active", "ingest_status": "succeeded", "supersedes_id": null, "conflicts": [], "chunk_count": 1, "error": null}}
+{"document": {"id": "00000000-0000-4000-8000-000000000b01", "title": "가상 식단표", "doc_type": "menu", "visibility": "all", "classroom_ids": [], "effective_from": "2026-11-08", "effective_to": null, "status": "active", "ingest_status": "succeeded", "supersedes_id": null, "conflicts": [], "chunk_count": 1, "error": null, "chunks": [{"index": 0, "location": "1쪽", "content": "가상 식단 안내", "suspicious": false}]}}
 ```
 
 | HTTP | `code` | 조건 |
@@ -1461,7 +1463,7 @@ HTTP/1.1 200 OK
 | --- | --- | --- |
 | 기존 3 `POST /requests` | type에 medication·pickup도 받는다. body·child_id·client_request_id는 기존과 같다. pickup이면 pickup_guardian_id 또는 pickup_name·pickup_relation을, medication이면 medication_name·medication_dose·medication_time을 선택으로 보낸다. 문자열은 각각 100자 이하다. | 202 received. 같은 키로 다시 보내면 기존 요청과 현재 상태를 200으로 돌려준다. 자기 아이의 보호자만 등록할 수 있다. |
 | 34 `GET /children/{child_id}/pickup-guardians` | 아이 UUID | 200 `{items:[{id,display_name}]}`, 이름순이다. 자기 아이의 보호자, 배정 기간 안의 담임, 같은 기관 원장만 읽을 수 있다. 연락처·로그인 ID는 보내지 않는다. |
-| 35 `GET /care-requests` | classroom_id·status(received·assigned·completed)는 선택이다. page=1·size=20(최대 100)이고, sort는 -created_at(기본)·created_at·-updated_at·updated_at이다. | CareRequestList. 기존 RequestList 항목에 version·unregistered_pickup·missing_fields를 더한다. 담임은 현재 반, 원장은 기관 전체를 본다. next_action은 confirm·complete·null 중 하나다. |
+| 35 `GET /care-requests` | classroom_id·status(received·assigned·completed)는 선택이다. page=1·size=20(최대 100)이고, sort는 -created_at(기본)·created_at·-updated_at·updated_at이다. | CareRequestList. 기존 RequestList 항목에 child_id(UUID)·child_name(string)·version·unregistered_pickup·missing_fields를 더한다. child_name은 children.display_name의 현재 이름이며 두 아이를 구분할 때 쓴다. 담임은 현재 반, 원장은 기관 전체를 본다. next_action은 confirm·complete·null 중 하나다. |
 | 36 `POST /requests/{request_id}/care-decisions` | `{decision:"confirm"|"complete", version:1, pickup_guardian_id?:UUID}` 형식이다. version은 필수이며 양의 정수다. | 200 `{request:{id,status},care:CareOut}`. 배정 기간 안의 담임과 같은 기관 원장만 실제 확인을 기록할 수 있다. |
 
 등록 인계자는 같은 기관·같은 아이의 child_guardians에 연결된 활성 학부모 계정이다. 요청에 UUID를 명시했으면 접수할 때와 새로 confirm할 때 검사하고, 틀린 UUID는 422 VALIDATION_FAILED다. 등록 인계자로 확인하면 확인 당시의 UUID·이름·관계를 이력에 보존하므로, 그 뒤 계정이 비활성되거나 아이 연결이 해제되어도 complete를 막지 않는다. 등록 인계자에 대한 결정에는 같은 pickup_guardian_id를 다시 보내고, 미등록이면 생략한다. 현장 신원 확인은 교직원이 맡는다.
@@ -1485,7 +1487,7 @@ CareOut은 version·pickup_guardian_id·pickup_name·pickup_relation·unregister
 
 오류는 기존 공통 형식을 따른다. 인증이 없으면 401, 학부모가 교직원 기능을 부르면 403 FORBIDDEN_ROLE, 범위 밖이면 404 NOT_FOUND, 단계·유형이 맞지 않으면 409 INVALID_TRANSITION, 옛 입력 판으로 보내면 409 CARD_VERSION_CONFLICT다. 명시한 인계자 UUID가 맞지 않거나 형식이 틀리면 422 VALIDATION_FAILED이고, 이때 details.field는 pickup_guardian_id다. 다만 미등록 인계자와 투약 누락 자체는 422 사유가 아니다.
 
-저장에는 기존 requests·request_messages·events·notifications를 쓴다. 접수의 detail에는 구조화 입력을, confirm에는 pickup_snapshot·version·care_decision을, 추가 대화의 returned에는 care_message·message_id·version을 남긴다. 시각과 입력 판은 이 순서 있는 이력에서 읽는다. 투약·귀가 때문에 새 컬럼을 더하지는 않으며, 0008에서 알림 종류 care_requested·care_confirmed만 더한다. 피드·앨범(3.29)의 새 표·칸은 0010에서 더한다.
+저장에는 requests·request_messages·events·notifications를 쓴다. 투약·귀가 구조화 입력은 requests.care_detail(jsonb)에 저장하며, 접수 이벤트 detail에는 값 대신 fields(구조화 입력의 칸 이름 목록)와 trace_id만 남긴다. 상세 care와 missing_fields는 care_detail에서 읽고, 보호자 원문을 옮기는 알림장 줄은 기존처럼 requests.body를 쓴다. confirm에는 pickup_snapshot·version·care_decision을, 추가 대화의 returned에는 care_message·message_id·version을 남긴다. 시각과 입력 판은 이 순서 있는 이력에서 읽는다. 0012가 care_detail을 추가하고 기존 접수 이력의 입력 값을 이관한다. 알림 종류 care_requested·care_confirmed는 0008에서, 피드·앨범(3.29)의 새 표·칸은 0010에서 더한다.
 
 ### 3.28 [제안] 상담 지연 입력
 

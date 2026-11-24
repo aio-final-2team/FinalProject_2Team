@@ -15,7 +15,7 @@ def view(connection, req):
         SELECT action,to_status,detail,created_at FROM events
         WHERE request_id=:id AND org_id=:org AND card_id IS NULL ORDER BY id
     """), {"id": req["id"], "org": req["org_id"]}).mappings().all()
-    return care_view(rows, req["type"])
+    return care_view(rows, req["type"], req["care_detail"])
 
 
 def _guardians(connection, org_id, child_id):
@@ -73,7 +73,9 @@ def listing(user, classroom_id, status, page, size, sort):
         if classroom_id:
             scope.classroom_in_scope(user, classroom_id, connection=connection)
         rows = connection.execute(text("""
-            SELECT * FROM requests r WHERE r.org_id=:org AND r.type IN ('medication','pickup')
+            SELECT r.*,c.display_name AS child_name FROM requests r
+            JOIN children c ON (c.id,c.org_id)=(r.child_id,r.org_id)
+            WHERE r.org_id=:org AND r.type IN ('medication','pickup')
               AND (CAST(:class AS uuid) IS NULL OR r.classroom_id=CAST(:class AS uuid))
               AND (CAST(:status AS text) IS NULL OR r.status=:status)
               AND (:director OR EXISTS (SELECT 1 FROM classroom_staff s
@@ -84,7 +86,7 @@ def listing(user, classroom_id, status, page, size, sort):
         """), {"org": user.org_id, "class": classroom_id, "status": status,
                "user": user.id, "director": user.role == "director"}).mappings().all()
         rows = sorted(rows, key=lambda r: (r[sort.lstrip("-")], str(r["id"])), reverse=sort.startswith("-"))
-        return {"items": [{**{k: r[k] for k in ("id", "type", "title", "status", "updated_at")},
+        return {"items": [{**{k: r[k] for k in ("id", "type", "title", "status", "updated_at", "child_id", "child_name")},
                            "status_label": staff_label(r["status"], r["type"]),
                            **{k: v for k, v in view(connection, r).items()
                               if k in ("version", "unregistered_pickup", "missing_fields")},

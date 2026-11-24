@@ -37,11 +37,11 @@ def create(user, *, background_tasks, client_request_id, type, body, child_id, p
             if prev["status"] not in ("completed", "rejected"):
                 raise ApiError(409, "INVALID_TRANSITION")
         row = connection.execute(text("""
-            INSERT INTO requests (org_id,classroom_id,child_id,requester_id,client_request_id,type,body,title,previous_request_id,missing_fields)
-            VALUES (:org,:class,:child,:user,:key,:type,:body,:title,:previous,CAST(:missing AS jsonb))
+            INSERT INTO requests (org_id,classroom_id,child_id,requester_id,client_request_id,type,body,title,previous_request_id,missing_fields,care_detail)
+            VALUES (:org,:class,:child,:user,:key,:type,:body,:title,:previous,CAST(:missing AS jsonb),CAST(:care AS jsonb))
             ON CONFLICT (requester_id,client_request_id) DO NOTHING RETURNING *
         """), {**values, "class": child["classroom_id"], "child": child_id, "type": type, "body": body,
-               "title": body.split("\n")[0][:40], "previous": previous_request_id,
+               "title": body.split("\n")[0][:40], "previous": previous_request_id, "care": json.dumps(detail),
                "missing": json.dumps([k for k in MEDICATION_FIELDS if not (detail.get(k) or "").strip()]
                                      if type == "medication" else [])}).mappings().one_or_none()
         if row is None:
@@ -66,7 +66,7 @@ def create(user, *, background_tasks, client_request_id, type, body, child_id, p
             connection.execute(text("UPDATE requests SET assignee_id=:teacher WHERE id=:id"),
                                {"id": req["id"], "teacher": teacher})
         record(connection, req, "created", actor_type="user", actor_id=user.id, to_status="received", trace_id=trace_id,
-               **detail)
+               **({"fields": list(detail)} if type in CARE_REQUEST_TYPES else {}))
     if type not in CARE_REQUEST_TYPES:
         dispatch("request", req["id"], background_tasks)
     return req, True
