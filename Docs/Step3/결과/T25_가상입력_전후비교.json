@@ -1,0 +1,69 @@
+{
+  "purpose": "12/4 자기 성찰 결과서용",
+  "mode": "가상 입력·가짜 모델, 실제 OpenAI 호출 없음",
+  "input_memo": "점심 조금 먹고 낮잠 잘 잠",
+  "first_draft": "친구와 사이좋게 놀았어요.",
+  "detected_checks": [
+    "not_in_memo"
+  ],
+  "final_draft": "점심을 조금 먹고 낮잠을 잘 잤어요.",
+  "final_end": "done",
+  "elapsed_seconds": 0.0013,
+  "rewrite_count": 1,
+  "model_requests": {
+    "writer": 2,
+    "checker": 2,
+    "transport_retries": 0,
+    "format_reprompts": 0,
+    "total": 4
+  },
+  "trace": [
+    {
+      "step": "write",
+      "attempt": 0,
+      "result": "ok",
+      "lines": [
+        {
+          "key": "child",
+          "value": "친구와 사이좋게 놀았어요."
+        }
+      ]
+    },
+    {
+      "step": "check",
+      "attempt": 0,
+      "result": "ok",
+      "kinds": [
+        "not_in_memo"
+      ]
+    },
+    {
+      "step": "return",
+      "attempt": 0,
+      "kinds": [
+        "not_in_memo"
+      ]
+    },
+    {
+      "step": "write",
+      "attempt": 1,
+      "result": "ok",
+      "lines": [
+        {
+          "key": "child",
+          "value": "점심을 조금 먹고 낮잠을 잘 잤어요."
+        }
+      ]
+    },
+    {
+      "step": "check",
+      "attempt": 1,
+      "result": "ok",
+      "kinds": []
+    },
+    {
+      "step": "end",
+      "result": "done"
+    }
+  ]
+}

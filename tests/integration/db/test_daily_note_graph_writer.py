@@ -155,6 +155,29 @@ def test_graph_model_failure_isolated_to_one_child(db_client, teacher, graph_mod
     assert sum(v["child_memo"] == "[TEST] 실패" for v in models[failed_role].inputs) == 1
 
 
+def test_medication_code_check_and_checker_failure_are_both_saved(db_client, teacher, seeded_db, graph_models):
+    medication_id = seed.demo_id("7201")
+    child_id = seed.demo_id("5412")
+    with seeded_db.begin() as connection:
+        connection.execute(text("UPDATE requests SET created_at=:at WHERE id=:id"),
+                           {"at": datetime.now(KST), "id": medication_id})
+
+    def check(value):
+        if value["child_memo"] == "[TEST] 투약 확인":
+            raise ModelError("[TEST] 검사 실패")
+        return {"checks": []}
+
+    graph_models(echo_writer, check)
+    listed = notes(db_client, teacher, draft(db_client, teacher, [
+        {"child_id": str(child_id), "memo": "[TEST] 투약 확인"}]))
+    target = next(n for n in listed if n["child_id"] == str(child_id))
+    assert target["status"] == "needs_check"
+    assert [c["kind"] for c in target["open_checks"]] == ["sensitive", "check_failed"]
+    with seeded_db.connect() as connection:
+        stored = connection.scalar(text("SELECT open_checks FROM daily_notes WHERE id=:id"), {"id": target["id"]})
+    assert [c["kind"] for c in stored] == ["sensitive", "check_failed"]
+
+
 def test_graph_entry_exception_marks_whole_job_failed(db_client, teacher, seeded_db, graph_models, monkeypatch):
     def fail(payload):
         raise RuntimeError("[TEST] 그래프 전체 실패")

@@ -140,6 +140,14 @@ def test_checker_failure_handoff_reason():
     assert note["end"] == "handoff" and note["handoff_reason"] == "check_failed"
 
 
+def test_medication_code_check_survives_checker_failure():
+    req = {"request_id": "r1", "type": "medication", "text": "점심 후 약 먹여 주세요"}
+    writer = Script({"child": None, "requests": [{"request_id": "r1", "value": "점심 후 약 요청이 있었어요."}]})
+    [note] = draft_daily_notes(payload([kid("a", "가온", "", [req])]), writer, Script(ModelError))
+    assert [c["kind"] for c in note["open_checks"]] == ["sensitive", "check_failed"]
+    assert note["end"] == "handoff" and note["handoff_reason"] == "check_failed"
+
+
 def test_return_limit_handoff_reason():
     req = {"request_id": "r1", "type": "pickup", "text": "오늘 할머니가 데리러 가요"}
     writer = Script({"child": "블록 놀이를 했어요.", "requests": []})
