@@ -80,7 +80,7 @@ def run_case(case, graph_kind, chunks, real=False):
     high_risk = classify(case["request_type"], case["body"]).get("risk_level") in ("urgent", "uncertain")
     saved = {}
 
-    def card(request_id, route, result=None):
+    def card(request_id, route, result=None, classification=None):
         if high_risk:
             result = {"text": "", "evidence": [], "no_evidence": True}
         elif result is None and route == "inquiry":
@@ -117,7 +117,7 @@ def run_case(case, graph_kind, chunks, real=False):
 
         graph = build_new(InMemorySaver(), lambda _: case["request_type"], card, lambda _: "pending",
                           search=lambda _: picked, load_memory=lambda _: [], write=write, check=check,
-                          high_risk=lambda _: high_risk)
+                          high_risk=lambda _: {"risk_level": "urgent" if high_risk else "normal"})
     graph.invoke({"request_id": case["id"]}, {"configurable": {"thread_id": f"{graph_kind}:{case['id']}"}})
     return saved
 

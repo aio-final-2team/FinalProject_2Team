@@ -3,12 +3,14 @@
 import logging
 import os
 from types import SimpleNamespace
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import text
 
 from agents.graphs.request import build_graph
 from app.core.db import database_url, transaction
+from app.core.schedule import KST
 from app.modules.requests.agent_stub import run_request as prepare_request
 
 log = logging.getLogger(__name__)
@@ -24,11 +26,11 @@ def _route_request(request_id):
         return connection.scalar(text("SELECT type FROM requests WHERE id=:id"), {"id": request_id})
 
 
-def _prepare_card(request_id, route, answer=None):
-    if answer is None:
+def _prepare_card(request_id, route, answer=None, classification=None):
+    if answer is None and classification is None:
         prepare_request(UUID(request_id))
     else:
-        prepare_request(UUID(request_id), prepared_answer=answer)  # 기존 상태·카드·알림의 트랜잭션 경계를 그대로 쓴다
+        prepare_request(UUID(request_id), prepared_answer=answer, prepared_fields=classification)
     kind = "consult_slots" if route == "consultation" else "reply_draft"
     with transaction() as connection:
         card_id = connection.scalar(text("""
@@ -50,22 +52,39 @@ def _request_context(request_id):
     with transaction() as connection:
         return connection.execute(text("""
             SELECT r.type,r.body,r.org_id,r.classroom_id,r.requester_id,
-                   (SELECT s.user_id FROM classroom_staff s WHERE s.org_id=r.org_id
-                    AND s.classroom_id=r.classroom_id ORDER BY s.is_homeroom DESC,s.created_at LIMIT 1) AS teacher_id
+                   (SELECT s.user_id FROM classroom_staff s
+                    JOIN users u ON (u.id,u.org_id)=(s.user_id,s.org_id)
+                    WHERE s.org_id=r.org_id AND s.classroom_id=r.classroom_id
+                      AND u.role='teacher' AND u.is_active
+                      AND (s.valid_from IS NULL OR s.valid_from<=:today)
+                      AND (s.valid_to IS NULL OR s.valid_to>=:today)
+                    ORDER BY s.is_homeroom DESC,s.created_at,s.user_id LIMIT 1) AS teacher_id
             FROM requests r WHERE r.id=:id
-        """), {"id": request_id}).mappings().one()
+        """), {"id": request_id, "today": datetime.now(KST).date()}).mappings().one()
 
 
 def _high_risk_request(request_id):
     from app.core.request_rules import classify
+    from app.modules.requests.supervisor import classify_request, validate_proposal
 
     req = _request_context(request_id)
-    return classify(req["type"], req["body"]).get("risk_level") in ("urgent", "uncertain")
+    proposal = classify_request(req["type"], req["body"])
+    fields = validate_proposal(req["type"], req["body"], proposal)
+    if req["type"] == "inquiry":
+        risk = classify("complaint", req["body"])
+        if risk["risk_level"] in ("urgent", "uncertain"):
+            fields.update(risk_level=risk["risk_level"], risk_category=risk["risk_category"],
+                          urgency=risk["urgency"])
+        if isinstance(proposal, dict) and proposal.get("risk_level") in ("urgent", "uncertain"):
+            fields["risk_level"] = proposal["risk_level"]
+            fields["risk_category"] = proposal.get("risk_category")
+    return fields
 
 
 def _search_request(request_id):
     from app.modules.documents.answer import graph_enabled
     from app.modules.documents.search import search_documents
+    from app.modules.documents.public_sources import forecast_evidence, prefetch_public
 
     req = _request_context(request_id)
     if req["type"] == "inquiry" and not graph_enabled():
@@ -74,12 +93,20 @@ def _search_request(request_id):
         return [{"skip": True}]
     user = SimpleNamespace(id=req["requester_id"], org_id=req["org_id"], role="parent")
     chunks = []
+    forecast = None
+    if req["type"] == "inquiry":
+        public = prefetch_public("inquiry", req["body"], "other", datetime.now(KST).date())
+        day, fetched = public.get("forecast", (None, None))
+        if fetched:
+            with transaction() as connection:
+                forecast = forecast_evidence(connection, req["org_id"], day, forecast=fetched)
     types = ("notice", "policy") if req["type"] == "complaint" else ("notice", "schedule", "menu", "policy")
     for doc_type in types:
         for attempt in range(2):
             try:
-                chunks.extend(search_documents(user, str(req["org_id"]), doc_type, req["body"],
-                                               classroom_id=req["classroom_id"], top_k=8)["chunks"])
+                found = search_documents(user, str(req["org_id"]), doc_type, req["body"],
+                                         classroom_id=req["classroom_id"], top_k=8)["chunks"]
+                chunks.extend(([forecast] if forecast and doc_type == "schedule" else []) + found)
                 break
             except Exception:
                 if attempt:

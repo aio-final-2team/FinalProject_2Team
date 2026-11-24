@@ -34,12 +34,15 @@ def build_graph(checkpointer, route_request, prepare_card, card_status,
                 search=None, load_memory=None, write=None, check=None, high_risk=None):
     """한 번의 실행에서만 자료를 들고 다닌다. 승인 재개에는 카드 ID만 쓴다."""
     builder = StateGraph(CollaborationState)
-    work = {"chunks": [], "memories": [], "draft": {}, "issues": [], "answer": None}
+    work = {"chunks": [], "memories": [], "draft": {}, "issues": [], "answer": None, "classification": None}
 
     def supervisor(state):
         route = route_request(state["request_id"])
+        work["classification"] = high_risk(state["request_id"]) if high_risk and route in ROUTES else None
+        risk = work["classification"]
         return {"route": route if route in ROUTES else "other", "attempt": 0,
-                "skip_draft": bool(high_risk and route == "complaint" and high_risk(state["request_id"]))}
+                "skip_draft": (risk.get("risk_level") in ("urgent", "uncertain")
+                               if isinstance(risk, dict) else bool(risk))}
 
     def route_after_supervisor(state):
         if state.get("skip_draft"):
@@ -68,12 +71,11 @@ def build_graph(checkpointer, route_request, prepare_card, card_status,
 
     def after_write(state):
         return "handoff" if (state["parallel"].get("search_failed")
-                             or state["parallel"].get("memory_failed")
                              or state.get("draft_no_evidence")
                              or state.get("draft_conflict")) else "checker"
 
     def document_write(state):
-        if state["parallel"].get("search_failed") or state["parallel"].get("memory_failed"):
+        if state["parallel"].get("search_failed"):
             return {"draft_no_evidence": True}
         if write is None:
             return {"draft_no_evidence": False, "draft_conflict": False}
@@ -114,20 +116,21 @@ def build_graph(checkpointer, route_request, prepare_card, card_status,
 
     def finish_answer(state):
         work["answer"] = {**work["draft"], "check_result": {
-            "passed": True, "issues": [], "attempt": state.get("attempt", 0) + 1}}
+            "passed": True, "issues": [], "attempt": state.get("attempt", 0) + 1,
+            **({"memory_unavailable": True} if state.get("parallel", {}).get("memory_failed") else {})}}
         return {}
 
     def handoff(state):
         work["answer"] = {"text": "", "evidence": [], "no_evidence": True,
                           "handoff": True, "conflict": False,
                           "check_result": {"passed": False, "issues": work["issues"],
-                                           "attempt": state.get("attempt", 0) + 1}}
+                                           "attempt": state.get("attempt", 0) + 1,
+                                           **({"memory_unavailable": True}
+                                              if state.get("parallel", {}).get("memory_failed") else {})}}
         reason = state.get("handoff_reason")
         if not reason:
             if state.get("parallel", {}).get("search_failed"):
                 reason = "search_failed"
-            elif state.get("parallel", {}).get("memory_failed"):
-                reason = "memory_failed"
             elif state.get("draft_conflict"):
                 reason = "conflict"
             elif state.get("draft_no_evidence"):
@@ -137,7 +140,8 @@ def build_graph(checkpointer, route_request, prepare_card, card_status,
         return {"handoff": True, "handoff_reason": reason}
 
     def prepare(state):
-        return {"card_id": prepare_card(state["request_id"], state["route"], work["answer"]) or ""}
+        return {"card_id": prepare_card(state["request_id"], state["route"],
+                                        work["answer"], work["classification"]) or ""}
 
     def wait_for_approval(state):
         if not state.get("card_id"):

@@ -114,20 +114,20 @@ def test_collaboration_timeout_keeps_empty_card(db_client, seeded_db, monkeypatc
     assert late["id"] == card["id"] and not late["draft"].get("text")
 
 
-def test_collaboration_memory_failure_blanks_complaint(db_client, seeded_db, monkeypatch):
-    from tests.integration.db.test_request_graph_t29 import graph_request
+def test_collaboration_memory_failure_keeps_complaint_draft(db_client, seeded_db, monkeypatch):
+    from tests.integration.db.test_request_collaboration_complaint import setup, submit as complaint_submit
     from app.modules.requests import graph_agent
 
-    enable_graph(monkeypatch)
+    setup(seeded_db, monkeypatch)
 
     def broken(_):
         raise RuntimeError("[TEST] 기억 읽기 실패")
 
     monkeypatch.setattr(graph_agent, "_load_request_memory", broken)
-    request_id, _ = graph_request(db_client, monkeypatch, "complaint")
-    [card] = cards_of(seeded_db, request_id)
-    assert card["draft"]["text"] == ""
-    assert card["check_result"]["passed"] is False
+    cards, status, evidence = complaint_submit(db_client, seeded_db)
+    assert status == "awaiting_review" and evidence
+    assert cards[0]["draft"]["text"] == "[TEST] 행정실 안내를 확인해 주세요."
+    assert cards[0]["check_result"]["memory_unavailable"] is True
 
 
 def test_collaboration_checkpoint_excludes_content_and_resumes(db_client, seeded_db, monkeypatch):

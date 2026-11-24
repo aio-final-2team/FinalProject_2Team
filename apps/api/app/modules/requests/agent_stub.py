@@ -45,7 +45,7 @@ def draft_outside_lock(initial, first, prefetched):
     return answer_for_request(initial, forecast=forecast)
 
 
-def run_request(request_id, prepared_answer=None):
+def run_request(request_id, prepared_answer=None, prepared_fields=None):
     # LLM 호출은 요청 행 잠금 밖에서 한다. 요청 본문·유형은 접수 후 고정이다.
     with transaction() as connection:
         initial = connection.execute(text("""
@@ -60,11 +60,12 @@ def run_request(request_id, prepared_answer=None):
             return
     if initial["type"] not in ("inquiry", "consultation", "complaint"):
         return
-    proposal = classify_request(initial["type"], initial["body"])
+    proposal = prepared_fields if prepared_fields is not None else classify_request(initial["type"], initial["body"])
     # 법령·예보 공공 API(법령은 최악 약 20초)는 DB 연결을 잡기 전에 가져와 둔다(T52). 저장만 아래 트랜잭션에서 한다.
-    first = validate_proposal(initial["type"], initial["body"], proposal)
+    first = prepared_fields if prepared_fields is not None else validate_proposal(initial["type"], initial["body"], proposal)
     prefetched = prefetch_public(initial["type"], initial["body"], first["topic_key"], datetime.now(KST).date(),
-                                 with_forecast=graph_enabled(), risk_category=first.get("risk_category"))
+                                 with_forecast=graph_enabled() and prepared_answer is None and prepared_fields is None,
+                                 risk_category=first.get("risk_category"))
     drafted = (prepared_answer if prepared_answer is not None
                else draft_outside_lock(initial, first, prefetched))
     with transaction() as connection:
@@ -79,13 +80,17 @@ def run_request(request_id, prepared_answer=None):
         has_card = connection.scalar(text("SELECT EXISTS (SELECT 1 FROM cards WHERE request_id=:id)"), {"id": request_id})
         if has_card and (req["status"] != "needs_info" or req["type"] == "consultation"):
             return
-        fields = validate_proposal(req["type"], req["body"],
-                                   proposal if req["type"] == initial["type"] and req["body"] == initial["body"] else {})
+        fields = (prepared_fields if prepared_fields is not None and req["type"] == initial["type"]
+                  and req["body"] == initial["body"] else validate_proposal(req["type"], req["body"],
+                  proposal if req["type"] == initial["type"] and req["body"] == initial["body"] else {}))
         if req["type"] == "complaint" and fields["topic_key"] != "other":
             # 서로 다른 요청의 동시 분류도 앞선 커밋을 포함해 세 번째를 셀 수 있어야 해요.
             # FK가 잡는 반 행 잠금과 충돌하지 않도록 묶음별 트랜잭션 자문 잠금을 써요.
             connection.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))"), {
                 "key": f"complaint:{req['org_id']}:{req['classroom_id']}:{fields['topic_key']}"})
+        forced_inquiry_risk = req["type"] == "inquiry" and fields.get("risk_level") in ("urgent", "uncertain")
+        if req["type"] == "inquiry":
+            fields = {key: value for key, value in fields.items() if key not in ("risk_level", "risk_category")}
         req.update(fields)
         connection.execute(text("""
             UPDATE requests SET topic_key=:topic_key,urgency=:urgency,risk_level=:risk_level,risk_category=:risk_category
@@ -107,7 +112,7 @@ def run_request(request_id, prepared_answer=None):
             set_status(connection, req, "needs_info", action="info_requested", card=card,
                        actor_type="agent", agent_name="code")
             return
-        high_risk = req["risk_level"] in ("urgent", "uncertain")
+        high_risk = forced_inquiry_risk or req["risk_level"] in ("urgent", "uncertain")
         draft = {"summary": req["body"][:60], "no_evidence": True}
         answer, check = None, None
         if not high_risk:
