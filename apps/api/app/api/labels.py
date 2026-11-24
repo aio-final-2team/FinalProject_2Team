@@ -2,7 +2,7 @@
 
 PARENT_LABELS = {
     "received": "접수됨",
-    "classified": "담당 선생님 배정 중",
+    "classified": "접수됨",
     "needs_info": "정보가 더 필요해요",
     "assigned": "선생님께 전달됨",
     "awaiting_review": "선생님 확인 중",
@@ -34,7 +34,7 @@ def parent_label(status: str, request_type: str, assignee_id) -> str:
     if request_type in ("medication", "pickup"):
         return {"received": "선생님 확인 대기", "assigned": "선생님 확인 완료",
                 "completed": "투약 완료" if request_type == "medication" else "인계 완료"}.get(status, PARENT_LABELS[status])
-    if status == "classified" or (status in ("awaiting_review", "on_hold") and not assignee_id):
+    if status in ("assigned", "awaiting_review", "on_hold") and not assignee_id:
         return "담당 선생님 배정 중"
     if request_type == "consultation":
         if status == "needs_info":

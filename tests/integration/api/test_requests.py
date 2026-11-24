@@ -85,9 +85,10 @@ def test_complaint_goes_to_teacher_review_with_topic(client, parent, teacher):
 
 @pytest.mark.parametrize("kind,status,assignee,expected", [
     ("inquiry", "received", None, "접수됨"),
-    ("inquiry", "classified", None, "담당 선생님 배정 중"),
-    ("inquiry", "classified", seed.TEACHER, "담당 선생님 배정 중"),
+    ("inquiry", "classified", None, "접수됨"),
+    ("inquiry", "classified", seed.TEACHER, "접수됨"),
     ("inquiry", "assigned", seed.TEACHER, "선생님께 전달됨"),
+    ("inquiry", "assigned", None, "담당 선생님 배정 중"),
     ("complaint", "awaiting_review", None, "담당 선생님 배정 중"),
     ("complaint", "awaiting_review", seed.TEACHER, "선생님 확인 중"),
     ("consultation", "on_hold", None, "담당 선생님 배정 중"),

@@ -400,9 +400,9 @@ X-Request-ID: 6b0f1c2e-9a7d-4c1e-8f3a-2d5b7e9c1a40
 | 요청 상태·조건 | 학부모 표시 |
 | --- | --- |
 | `received` | 접수됨 |
-| `classified` | 담당 선생님 배정 중 |
+| `classified` | 접수됨 |
 | `assigned`(담임 배정 뒤) | 선생님께 전달됨 |
-| `awaiting_review`·`on_hold`, `assignee_id`가 비어 있음 | 담당 선생님 배정 중 |
+| `assigned`·`awaiting_review`·`on_hold`, `assignee_id`가 비어 있음 | 담당 선생님 배정 중 |
 | `awaiting_review`, 담당 있음 | 선생님 확인 중 |
 | `on_hold`, 담당 있음 | 확인이 늦어지고 있어요 |
 
@@ -1860,7 +1860,7 @@ def decide(card_id: UUID, body: CardDecision, user: User = Depends(current_staff
 | 알림장 초안 | `GET /daily-notes/drafts/{input_id}` | `draft_status = queued·running` | `succeeded`. 아이별 초안은 `GET /daily-notes?classroom_id=&date=`로 받음 | `failed` + `error { code, message }`(자세한 이유는 `events`의 `tool_failed`) |
 | 자료 올리기 | `GET /documents/{document_id}` | `ingest_status = queued·running` | `succeeded` + `chunk_count`(조각 수). 충돌이 있으면 `status = conflict_pending` + `conflicts[]` | `failed` + `error { code, message }` |
 
-**카드가 끝내 안 생긴 요청.** 요청은 `POST /requests`에서 먼저 저장된다. 그래서 AI가 카드 만들기(`create_card`)까지 실패하거나 처리 중에 멈춰도 요청은 남는다. 서버 점검 작업은 5분마다 돌면서, 진행 중 상태(`received`·`classified`·`assigned`)인데 5분 넘게 카드가 없는 요청을 찾는다. 처음 찾았을 때는 처리를 한 번 다시 넣고 `agent_requeued` 이력만 남긴다. 다시 넣고 5분이 지나도 카드가 없으면, 초안 없는 카드를 담당자 없이 만들고(받은함 '미배정') 요청을 `awaiting_review`로 바꾼다. 이때 넘긴 이유 `card_missing`을 이력 `events.detail.handoff_reason`에 남긴다. 그동안 학부모 화면은 `received`면 '접수됨', `classified`면 '담당 선생님 배정 중', 담당 배정 뒤 `assigned`면 '선생님께 전달됨'으로 보인다. 미배정 카드가 생긴 뒤에도 담당이 없으면 '담당 선생님 배정 중'이다. 채팅 안내는 '받았지만 선생님 확인이 늦어질 수 있음'으로 맞출 예정이지만, 이 문장은 아직 코드에 없다. 이 점검 작업은 실제 서버의 백그라운드 워커에서 돌고, 모의 API에서는 돌리지 않는다. 두 모드를 나란히 비교한 결과는 6.7 마지막 사례에 있다.
+**카드가 끝내 안 생긴 요청.** 요청은 `POST /requests`에서 먼저 저장된다. 그래서 AI가 카드 만들기(`create_card`)까지 실패하거나 처리 중에 멈춰도 요청은 남는다. 서버 점검 작업은 5분마다 돌면서, 진행 중 상태(`received`·`classified`·`assigned`)인데 5분 넘게 카드가 없는 요청을 찾는다. 처음 찾았을 때는 처리를 한 번 다시 넣고 `agent_requeued` 이력만 남긴다. 다시 넣고 5분이 지나도 카드가 없으면, 초안 없는 카드를 담당자 없이 만들고(받은함 '미배정') 요청을 `awaiting_review`로 바꾼다. 이때 넘긴 이유 `card_missing`을 이력 `events.detail.handoff_reason`에 남긴다. 그동안 학부모 화면은 `received`·`classified`면 '접수됨', 담당 배정 뒤 `assigned`면 '선생님께 전달됨'으로 보인다. 미배정 카드가 생긴 뒤에도 담당이 없으면 '담당 선생님 배정 중'이다. 채팅 안내는 '받았지만 선생님 확인이 늦어질 수 있음'으로 맞출 예정이지만, 이 문장은 아직 코드에 없다. 이 점검 작업은 실제 서버의 백그라운드 워커에서 돌고, 모의 API에서는 돌리지 않는다. 두 모드를 나란히 비교한 결과는 6.7 마지막 사례에 있다.
 
 
 ```json
@@ -1972,7 +1972,7 @@ Beat는 1분마다 시작이 하루 이내인 확정 예약을 읽고, 그중 �
 | 시점 | 학부모 `status_label` | 모의·시험 PG에서 확인하는 것 |
 | --- | --- | --- |
 | 접수 직후, 실행 전 | 접수됨 | `received`, 담당·카드 없음(`test_received_request_label_before_agent_runs`) |
-| 분류 뒤 | 담당 선생님 배정 중 | `classified`, 문구 단위 표 |
+| 분류 뒤 | 접수됨 | `classified`, 문구 단위 표 |
 | 담임 배정 뒤 | 선생님께 전달됨 | `assigned`, 문구 단위 표 |
 | 담당 없는 반의 카드 생성 / 카드 저장 장애의 인계 | 담당 선생님 배정 중 | 요청 `awaiting_review`, 카드 `unassigned`, 요청 담당 없음. 전자는 공용 HTTP, 후자는 `db/test_requests.py::test_agent_failure_preserves_request_and_hands_off_without_private_error` |
 | 카드가 끝내 없고 점검에서 다시 넣음 | 현재 상태에 따른 표시 유지 | `agent_requeued`만으로 담임 전달로 표시하지 않음 |
