@@ -6,10 +6,11 @@ from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Path, Query, Response, UploadFile
 
-from app.api.schemas.actions import NoteDraftIn, NoteBatchIn, NotePatchIn
+from app.api.schemas.actions import NoteDraftIn, NoteBatchIn, NotePatchIn, NoteCorrectIn
 from app.api.schemas.auth import ChildList
 from app.api.schemas.views import (NotificationList, NotificationResponse, DraftResponse, NoteList, NoteResponse,
-                                  SendResponse, DocumentResponse, DocumentList, MemoryKind, MemoryList, RegenerateResponse)
+                                  SendResponse, DocumentResponse, DocumentDetailResponse, DocumentList,
+                                  MemoryKind, MemoryList, RegenerateResponse)
 from app.api.schemas.common import errors
 from app.core.auth import CurrentUser, current_user as note_user, require_roles as note_roles
 from app.core.constants import MAX_DOCUMENT_BYTES
@@ -85,6 +86,13 @@ def patch_note(note_id: UUID, body: NotePatchIn, user: CurrentUser = Depends(not
     return backend.notes.patch(user, note_id, body)
 
 
+@router.post("/daily-notes/{note_id}/correct", response_model=NoteResponse,
+             responses=errors(401, 403, 404, 409, 422),
+             description="[제안] 보낸 알림장만 정정하고 보호자에게 알림을 남겨요. 현재 version이 필요해요.")
+def correct_note(note_id: UUID, body: NoteCorrectIn, user: CurrentUser = Depends(note_roles("teacher", "director"))):
+    return backend.notes.correct(user, note_id, body)
+
+
 @router.post("/daily-notes/send", response_model=SendResponse, responses=errors(401, 403, 404, 409, 422),
              description="초안 작업이 queued·running·failed면 409 NOTE_BATCH_BLOCKED, details.blocked=[]로 답해요.")
 def send_notes(body: NoteBatchIn, user: CurrentUser = Depends(note_roles("teacher"))):
@@ -114,6 +122,6 @@ def document_list(page: int = Query(1, ge=1), size: int = Query(20, ge=1, le=100
     return backend.documents.list_documents(user, page, size, sort)
 
 
-@router.get("/documents/{document_id}", response_model=DocumentResponse, responses=errors(401, 403, 404, 422))
+@router.get("/documents/{document_id}", response_model=DocumentDetailResponse, responses=errors(401, 403, 404, 422))
 def document_detail(document_id: UUID, user: CurrentUser = Depends(require_roles("teacher", "director"))):
-    return {"document": backend.documents.view(backend.documents.in_scope(user, document_id))}
+    return {"document": backend.documents.view(backend.documents.in_scope(user, document_id), include_chunks=True)}

@@ -106,11 +106,11 @@ def test_seed_upgrade_matches_fresh_db_and_mock_and_restores_missing_files(db_en
     with db_engine.begin() as connection:
         seed_demo(connection)
     assert snapshot() == (mock_scopes, mock_total)
-    photo_path = media.path(f"{seed.FEED_PHOTOS[0][0]}.png")
+    photo_path = media.path(f"{seed.FEED_PHOTOS[0][0]}.jpg")
     photo_path.unlink()
     with db_engine.begin() as connection:
         seed_demo(connection)
-    assert photo_path.read_bytes() == seed.feed_png()
+    assert photo_path.read_bytes() == seed.feed_photo(seed.FEED_PHOTOS[0][0])
     # 삭제 표시가 있는 글의 사진은 파일이 없어도 복원하지 않아요.
     with db_engine.begin() as connection:
         connection.execute(text("UPDATE feed_posts SET deleted_at=now() WHERE id=:id"),
@@ -119,3 +119,36 @@ def test_seed_upgrade_matches_fresh_db_and_mock_and_restores_missing_files(db_en
     with db_engine.begin() as connection:
         seed_demo(connection)
     assert not photo_path.exists()
+
+
+@pytest.mark.parametrize("preserve", [None, "changed", "deleted", "withdrawn"])
+def test_seed_replaces_only_active_legacy_png_and_preserves_tags(seeded_db, monkeypatch, tmp_path, preserve):
+    from app.core import media
+    monkeypatch.setattr(media, "settings", replace(media.settings, media_dir=str(tmp_path)))
+    photo_id, post_id, tags = seed.FEED_PHOTOS[0]
+    old_data = seed.feed_png() + (b"[TEST] changed" if preserve == "changed" else b"")
+    old_meta = media.inspect(old_data)
+    old_path = media.save(old_data, old_meta, file_id=photo_id)
+    tag_sql = text("SELECT photo_id,child_id FROM feed_photo_children ORDER BY 1,2")
+    with seeded_db.begin() as connection:
+        before = connection.execute(tag_sql).all()
+        connection.execute(text("""
+            UPDATE feed_photos SET storage_path=:path,media_type=:media_type,size_bytes=:size_bytes,sha256=:sha256
+            WHERE id=:id
+        """), {**old_meta, "path": old_path, "id": photo_id})
+        if preserve == "deleted":
+            connection.execute(text("UPDATE feed_posts SET deleted_at=now() WHERE id=:id"), {"id": post_id})
+        if preserve == "withdrawn":
+            connection.execute(text("INSERT INTO events(org_id,actor_type,action,detail) VALUES (:org,'system',"
+                                    "'photo_scope_changed',jsonb_build_object('child_id',CAST(:child AS text),'withdrawn',true))"),
+                               {"org": seed.ORG, "child": str(tags[0])})
+        seed_demo(connection)
+        row = connection.execute(text("SELECT storage_path,media_type,size_bytes,sha256 FROM feed_photos WHERE id=:id"),
+                                 {"id": photo_id}).mappings().one()
+        expected = old_meta if preserve else media.inspect(seed.feed_photo(photo_id))
+        assert dict(row) == {k: expected[k] for k in ("media_type", "size_bytes", "sha256")} | {
+            "storage_path": old_path if preserve else f"{photo_id}.jpg"}
+        assert connection.execute(tag_sql).all() == before
+    assert media.path(old_path).read_bytes() == old_data
+    assert media.path(f"{photo_id}.jpg").exists() is (preserve is None)
+    assert preserve is not None or media.path(f"{photo_id}.jpg").read_bytes() == seed.feed_photo(photo_id)

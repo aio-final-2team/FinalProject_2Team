@@ -8,14 +8,25 @@ from datetime import datetime
 
 from sqlalchemy import text
 
+from app.core.constants import OUT_OF_SCOPE_MESSAGES
 from app.core.db import transaction
-from app.modules.requests.supervisor import classify_request, validate_proposal
+from app.core.request_rules import direct_notice_kind
+from app.modules.requests.supervisor import classify_request, topic_conflict, validate_proposal
 from app.core.schedule import KST, due_at
 from app.modules.requests.complaints import repeat_count
 from app.modules.requests.events import record, set_status
 from app.modules.consultations.slots import propose_slots
 from app.modules.documents.answer import answer_for_request, graph_enabled, save_evidence
 from app.modules.documents.public_sources import attach_law_evidence, forecast_evidence, prefetch_public
+
+
+def homeroom_teacher(connection, req):
+    return connection.scalar(text("""
+        SELECT s.user_id FROM classroom_staff s JOIN users u ON (u.id,u.org_id)=(s.user_id,s.org_id)
+        WHERE s.org_id=:org AND s.classroom_id=:class AND u.role='teacher' AND u.is_active
+          AND (s.valid_from IS NULL OR s.valid_from<=:today) AND (s.valid_to IS NULL OR s.valid_to>=:today)
+        ORDER BY s.is_homeroom DESC,s.created_at,s.user_id LIMIT 1
+    """), {"org": req["org_id"], "class": req["classroom_id"], "today": datetime.now(KST).date()})
 
 
 def new_card(connection, req, kind, assignee, draft=None):
@@ -63,11 +74,12 @@ def run_request(request_id, prepared_answer=None, prepared_fields=None):
     proposal = prepared_fields if prepared_fields is not None else classify_request(initial["type"], initial["body"])
     # 법령·예보 공공 API(법령은 최악 약 20초)는 DB 연결을 잡기 전에 가져와 둔다(T52). 저장만 아래 트랜잭션에서 한다.
     first = prepared_fields if prepared_fields is not None else validate_proposal(initial["type"], initial["body"], proposal)
-    prefetched = prefetch_public(initial["type"], initial["body"], first["topic_key"], datetime.now(KST).date(),
+    notice = direct_notice_kind(initial["type"], initial["body"], first)
+    prefetched = {} if notice else prefetch_public(initial["type"], initial["body"], first["topic_key"], datetime.now(KST).date(),
                                  with_forecast=graph_enabled() and prepared_answer is None and prepared_fields is None,
                                  risk_category=first.get("risk_category"))
-    drafted = (prepared_answer if prepared_answer is not None
-               else draft_outside_lock(initial, first, prefetched))
+    drafted = None if notice else (prepared_answer if prepared_answer is not None
+                                  else draft_outside_lock(initial, first, prefetched))
     with transaction() as connection:
         row = connection.execute(text("SELECT * FROM requests WHERE id=:id FOR UPDATE"),
                                  {"id": request_id}).mappings().one_or_none()
@@ -93,16 +105,23 @@ def run_request(request_id, prepared_answer=None, prepared_fields=None):
             UPDATE requests SET topic_key=:topic_key,urgency=:urgency,risk_level=:risk_level,risk_category=:risk_category
             WHERE id=:id
         """), {"id": request_id, "risk_level": None, "risk_category": None, **fields})
-        set_status(connection, req, "classified", action="classified", actor_type="agent", agent_name="supervisor")
-        teacher = connection.scalar(text("""
-            SELECT s.user_id FROM classroom_staff s JOIN users u ON (u.id,u.org_id)=(s.user_id,s.org_id)
-            WHERE s.org_id=:org AND s.classroom_id=:class AND u.role='teacher' AND u.is_active
-              AND (s.valid_from IS NULL OR s.valid_from<=:today) AND (s.valid_to IS NULL OR s.valid_to>=:today)
-            ORDER BY s.is_homeroom DESC,s.created_at,s.user_id LIMIT 1
-        """), {"org": req["org_id"], "class": req["classroom_id"], "today": datetime.now(KST).date()})
+        set_status(connection, req, "classified", action="classified", actor_type="agent", agent_name="supervisor",
+                   topic_model_rejected=topic_conflict(req["type"], req["body"], proposal)
+                   if req["type"] == initial["type"] and req["body"] == initial["body"] else False)
+        teacher = homeroom_teacher(connection, req)
         req["assignee_id"] = teacher
         connection.execute(text("UPDATE requests SET assignee_id=:teacher WHERE id=:id"), {"teacher": teacher, "id": request_id})
         set_status(connection, req, "assigned", action="assigned", actor_type="agent", agent_name="supervisor")
+        notice = direct_notice_kind(req["type"], req["body"], fields)
+        if notice:
+            connection.execute(text("""
+                INSERT INTO request_messages (org_id,request_id,sender_type,body)
+                VALUES (:org,:request,'agent',:body)
+            """), {"org": req["org_id"], "request": request_id, "body": OUT_OF_SCOPE_MESSAGES[notice]})
+            if req["type"] == "inquiry":
+                set_status(connection, req, "sent_or_booked", action="out_of_scope_answered", kind=notice,
+                           actor_type="agent", agent_name="supervisor")
+                return
         high_risk = req["risk_level"] in ("urgent", "uncertain")
         director = connection.scalar(text("""
             SELECT id FROM users WHERE org_id=:org AND role='director' AND is_active ORDER BY id LIMIT 1
@@ -115,7 +134,7 @@ def run_request(request_id, prepared_answer=None, prepared_fields=None):
             if high_risk and director:
                 # 상담 시간 고르기·확정은 담임 흐름 그대로 두고, 원장에게 보고 카드와 알림만 더해요.
                 report = new_card(connection, req, "director_report", director, {"summary": req["body"][:60]})
-                record(connection, req, "escalated", card=report, actor_type="agent", agent_name="supervisor")
+                record(connection, req, "escalated", card=report, actor_type="agent", agent_name="supervisor", reason="risk")
             return
         draft = {"summary": req["body"][:60], "no_evidence": True}
         answer, check = None, None
@@ -150,7 +169,7 @@ def run_request(request_id, prepared_answer=None, prepared_fields=None):
         if (high_risk or repeated) and director:
             report = new_card(connection, req, "director_report", director, {"summary": req["body"][:60]})
             set_status(connection, req, "escalated", action="escalated", card=report,
-                       actor_type="agent", agent_name="supervisor")
+                       actor_type="agent", agent_name="supervisor", reason="risk" if high_risk else "repeat")
         else:
             set_status(connection, req, "awaiting_review", action="checked", card=card,
                        actor_type="agent", agent_name="checker")

@@ -59,6 +59,7 @@ def test_child_line_from_memo():
     line = note["content"]["items"][1]
     assert line == {"key": "child", "label": "아이 메모", "value": "점심을 조금 먹었어요.", "source": {"type": "teacher_input"}}
     assert note["open_checks"] == []
+    assert "handoff_reason" not in note
 
 
 def test_other_child_name_is_caught_by_code_even_if_checker_passes():
@@ -67,6 +68,15 @@ def test_other_child_name_is_caught_by_code_even_if_checker_passes():
     note = draft_daily_notes(payload(children), writer, Script(OK))[0]
     assert [c["kind"] for c in note["open_checks"]] == ["other_child"]
     assert note["open_checks"][0]["id"] == "c1" and "지아" in note["open_checks"][0]["sentence"]
+
+
+def test_roster_names_catches_other_child_outside_draft_batch():
+    one_child = payload([kid("a", "지안", "블록 놀이")])
+    one_child["roster_names"] = ["지안", "지아"]
+    writer = Script({"child": "지아와 블록 놀이를 했어요.", "requests": []})
+    [note] = draft_daily_notes(one_child, writer, Script(OK))
+    assert [c["kind"] for c in note["open_checks"]] == ["other_child"]
+    assert note["end"] == "needs_check"
 
 
 def test_missing_request_is_returned_then_fixed():
@@ -84,9 +94,10 @@ def test_returns_stop_after_two_and_leave_check():
     writer = Script({"child": "잘 지냈어요.", "requests": [{"request_id": "모르는-id", "value": "x"}]})
     [note] = draft_daily_notes(payload([kid("a", "아라", "블록놀이", [req])]), writer, Script(OK))
     assert writer.calls == MAX_RETURNS + 1
-    [check] = note["open_checks"]
+    check = note["open_checks"][0]
     assert check["kind"] == "request_missed" and check["request_id"] == "r1" and check["item_key"] == "medication"
     assert check["sentence"] is None
+    assert note["open_checks"][1]["kind"] == "return_limit"
 
 
 def test_not_in_memo_from_checker_is_returned_but_sensitive_is_not():
@@ -126,6 +137,43 @@ def test_checker_fails_twice_gives_check_failed_and_keeps_draft():
     [note] = draft_daily_notes(payload([kid("a", "가온", "블록")]), Script({"child": "블록 놀이를 했어요."}), checker)
     assert checker.calls == 2 and "child" in keys(note)
     assert [c["kind"] for c in note["open_checks"]] == ["check_failed"]
+
+
+def test_writer_failure_handoff_reason():
+    [note] = draft_daily_notes(payload([kid("a", "가온", "블록")]), Script(ModelError), Script(OK))
+    assert note["end"] == "handoff" and note["handoff_reason"] == "draft_failed"
+
+
+def test_checker_failure_handoff_reason():
+    [note] = draft_daily_notes(payload([kid("a", "가온", "블록")]),
+                               Script({"child": "블록 놀이를 했어요."}), Script(ModelError))
+    assert note["end"] == "handoff" and note["handoff_reason"] == "check_failed"
+
+
+def test_medication_code_check_survives_checker_failure():
+    req = {"request_id": "r1", "type": "medication", "text": "점심 후 약 먹여 주세요"}
+    writer = Script({"child": None, "requests": [{"request_id": "r1", "value": "점심 후 약 요청이 있었어요."}]})
+    [note] = draft_daily_notes(payload([kid("a", "가온", "", [req])]), writer, Script(ModelError))
+    assert [c["kind"] for c in note["open_checks"]] == ["sensitive", "check_failed"]
+    assert note["end"] == "handoff" and note["handoff_reason"] == "check_failed"
+
+
+def test_return_limit_handoff_reason():
+    req = {"request_id": "r1", "type": "pickup", "text": "오늘 할머니가 데리러 가요"}
+    writer = Script({"child": "블록 놀이를 했어요.", "requests": []})
+    [note] = draft_daily_notes(payload([kid("a", "가온", "블록", [req])]), writer, Script(OK))
+    assert writer.calls == MAX_RETURNS + 1
+    assert note["end"] == "handoff" and note["handoff_reason"] == "return_limit"
+
+
+def test_return_limit_adds_explicit_open_check():
+    req = {"request_id": "r1", "type": "pickup", "text": "오늘 할머니가 데리러 가요"}
+    writer = Script({"child": "블록 놀이를 했어요.", "requests": []})
+    [note] = draft_daily_notes(payload([kid("a", "가온", "블록", [req])]), writer, Script(OK))
+    assert [c["kind"] for c in note["open_checks"]] == ["request_missed", "return_limit"]
+    assert note["open_checks"][-1]["item_key"] == "child"
+    assert note["open_checks"][-1]["problem"] == "AI가 두 번 고쳐도 남은 문제가 있어요. 직접 확인해 주세요."
+    assert note["end"] == "handoff"
 
 
 def test_one_note_per_child_in_order():
@@ -323,3 +371,27 @@ def test_trace_keeps_first_and_final_draft_and_end():
     assert note["trace"][0]["lines"][0]["value"] == "편식이 심해요."
     assert note["trace"][3]["lines"][0]["value"] == "점심을 조금 먹었어요."
     assert note["end"] == "done" and "생각" not in str(note["trace"])
+
+
+def test_stub_and_graph_have_same_common_lines_with_fake_models():
+    from app.modules.daily_notes import stub_writer
+
+    for supplies in ("[TEST] 앞치마", "없음", "", "  없음  "):
+        for menu in (None, {**MENU, "text": WEEK}):
+            data = payload([kid("a", "가온", "[TEST] 블록 놀이")], supplies=supplies, menu=menu)
+            graph = draft_daily_notes(data, Script({"child": "[TEST] 블록 놀이", "requests": []}), Script(OK))[0]
+            stub = stub_writer.write(data)[0]
+            def common(row):
+                return [line for line in row["content"]["items"] if line["key"] in ("day", "supplies", "meal")]
+            assert common(stub) == common(graph)
+            assert stub_writer.failed_child(data, data["children"][0])["content"]["items"] == common(graph)
+
+
+def test_stub_checks_protected_roster_name_during_partial_regenerate():
+    from app.modules.daily_notes import stub_writer
+
+    data = payload([kid("a", "가온", "[TEST] 나래와 블록 놀이")])
+    data["roster_names"] = ["가온", "나래"]
+    [note] = stub_writer.write(data)
+    checks = [c for c in note["open_checks"] if c["kind"] == "other_child"]
+    assert len(checks) == 1 and checks[0]["id"] and "나래" in checks[0]["sentence"]

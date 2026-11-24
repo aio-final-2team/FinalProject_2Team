@@ -4,12 +4,12 @@
 | --- | --- |
 | 작업 | T09 데이터베이스 스키마 설계서 (#166) |
 | 작성 · 검토 | 태웅 · 영민 |
-| 판 | v0.21 · 2026-11-24 (판마다 바뀐 내용은 맨 끝 변경 이력에 있다) |
+| 판 | v0.23 · 2026-11-24 (판마다 바뀐 내용은 맨 끝 변경 이력에 있다) |
 | 2차 검토 링크 | `develop` 브랜치의 [DB 스키마 설계서](https://github.com/aio-final-2team/FinalProject_2Team/blob/develop/Docs/Step2/DB_스키마_설계서.md) |
-| 시연 코드 기준 커밋 | 레포 [README](../../README.md#2차-검토-문서)의 '시연 코드 기준 커밋' 한 줄을 본다(11/24 기준 develop `97fda0b`, 위험 등급 확대 #326·요청 처리 AI 스위치 #321까지 팀 서버에 배포). 11/27 시연 전까지 팀 서버를 다시 배포하면 README 그 한 줄만 고친다 |
+| 시연 코드 기준 커밋 | 레포 [README](../../README.md#2차-검토-문서)의 '시연 코드 기준 커밋' 한 줄을 본다(11/24 밤 기준 develop `641591f`, 흐름 고치기 #338까지 팀 서버에 배포). 팀 서버를 다시 배포하면 README 그 한 줄만 고친다 |
 | 대상 DB | PostgreSQL 16 + pgvector 0.8 (`compose.yaml`의 `pgvector/pgvector:pg16`). Supabase를 쓰지 않는 이유는 5.1에 있다 |
-| DDL | 최종 모양은 [`db_schema_draft.sql`](db_schema_draft.sql)에 있고, 실제 DB에는 `apps/api/migrations`의 0001~0010을 차례로 적용한다 |
-| 함께 보는 문서 | 기획서 3장(FR-01~FR-13)·4장(NFR)·6장(공통 상태)·7장, T04 흐름·권한 명세, [입출력 계약표](입출력_계약표_초안.md), [API 설계 문서](API_설계_문서.md) |
+| DDL | 최종 모양은 [`db_schema_draft.sql`](db_schema_draft.sql)에 있고, 실제 DB에는 `apps/api/migrations`의 0001~0015를 차례로 적용한다 |
+| 함께 보는 문서 | 기획서 11/23 develop 판(`8f45d51`, #319) 3장(FR-01~FR-13)·4장(NFR)·6장(공통 상태)·7장, T04 흐름·권한 명세, [입출력 계약표 v0.21](입출력_계약표_초안.md), [API 설계 문서 v0.12](API_설계_문서.md) |
 
 **1차 검토 뒤 보완.** 1차 검토 뒤에 바뀐 내용과 그 내용을 지키는 시험을 표 하나에 모았다. 시험은 모두 시연 코드 기준 커밋에서 `tools/test_db.sh`로 다시 돌려 통과했다. 표의 시험 파일은 모두 `tests/integration/`(DB는 `db/`, HTTP는 `api/`) 아래에 있고, `api/` 시험은 모의·시험 PG 두 모드에서 모두 돈다. 반영 커밋 칸에는 develop에 합쳐진 커밋을 적었다.
 
@@ -21,6 +21,17 @@
 | **초안 실패 뒤 처리 — 요청 처리 3분 마감.** 사람에게 넘긴 이유(`ai_timeout`·`ai_failed`·`card_missing`)를 이력에 남긴다. 모델 응답을 기다리는 동안에는 요청 행 잠금을 잡지 않고, 늦게 끝난 결과는 먼저 만든 카드를 덮지 못한다 | [2.2](#22-요청카드승인이력) '처리 이력' | `db/test_request_lock_timeout.py::test_answer_models_run_outside_request_row_lock`, `db/test_request_lock_timeout.py::test_ai_timeout_hands_off_empty_card_and_drops_late_draft`, `db/test_request_lock_timeout.py::test_timeout_error_raised_by_agent_is_ai_failed` | [`ab58b7c`](https://github.com/aio-final-2team/FinalProject_2Team/commit/ab58b7c) |
 | **초안 실패 뒤 처리 — 거절 뒤 재초안.** 회신 카드를 거절하면 새 카드의 `draft.text`는 빈 문자열, `check_result`는 NULL이다 | [2.2](#22-요청카드승인이력) `decision` | `api/test_cards.py::test_reject_redraft_has_no_text_and_needs_teacher_text` | [`ab58b7c`](https://github.com/aio-final-2team/FinalProject_2Team/commit/ab58b7c) |
 | 0010을 기존 데모 아이가 있는 DB에 적용한 기록과 적용 순서 | [9.2](#92-마이그레이션-적용-기록) | `db/test_feed_migration.py::test_0010_on_existing_demo_children_fills_every_photo_scope_with_family`, `db/test_migrations.py::test_upgrade_downgrade_upgrade` | [`bf75f8f`](https://github.com/aio-final-2team/FinalProject_2Team/commit/bf75f8f) |
+
+**2차 검토 뒤 보완.** 기준은 `taewoong-fb020-2nd`의 이 PR 최종 HEAD다. 커밋 값은 `git rev-parse HEAD`로 확인하고, 병합 뒤 develop의 시연 커밋으로 맞춘다. 시험 수치의 날짜·범위·명령은 API 설계서 2.2와 DB 설계서 9.2에 적는다.
+
+| 강사 의견 번호 | 바뀐 내용 | 고친 절 | 지키는 시험(또는 확인 기록) | 반영 커밋 |
+| --- | --- | --- | --- | --- |
+| API 1 | 실제 모델로 알림장 한 반을 담임 입력부터 학부모 수신까지 돌리고 커밋·모델·아이 수·시간·실패 수를 남긴다 | API 3.19.1 ④ 실제 모델 실측 | 팀 서버 2026-11-24 14:45 KST, `tools/rehearse_daily_note.py --remote-ok`(#320). 20명·초안 17초·실패 0 | 이 PR |
+| API 2 | 접수·담당 배정 대기·담임 전달 표시를 나누고, 장애 결과는 자동 복구와 사람에게 넘김으로 나눈다 | API 3.2·6.3·6.7·6.8 | `api/test_requests.py::test_unassigned_request_label_changes_after_director_reassign`, `::test_received_request_label_before_agent_runs`, API 6.8의 기존 장애 시험 | 이 PR |
+| API 3 | 실제 OpenAPI·목록·계약표·모의 응답을 같은 코드에서 대조하고 MVP·팀 확인 남음을 표시한다 | API 2장·2.2 | `api/test_openapi.py`와 API 2.2 대조표 | 이 PR |
+| DB 1 | 백업 뒤 삭제·공개 제한을 재적용하고 공개 전에 목록·앨범·파일을 확인한다 | DB '복원 뒤 서비스 열기 전 확인' | `db/test_backup_restore.py::test_dump_restore_revives_later_deletions_until_after_restore_applies_them` | 이 PR |
+| DB 2 | 검사를 통과한 아이별 초안만 복구 성공으로 세고, 사람에게 넘김·재시도 진입 실패를 따로 센다 | DB 2.6 'T58 복구 집계 기준' | `db/test_daily_note_recovery.py`의 현재 집계와 T58 기준 차이 기록, `daily_note_drafted` 저장 코드·0001/0003 DDL 확인 | 이 PR |
+| DB 3 | 시험 수치마다 커밋·날짜·alembic 판·범위·명령을 붙이고 권한·마이그레이션을 다시 확인한다 | API 2.2, DB 4.4·6.2·9.2 | `db/test_scope.py`, `db/test_scope_cases.py`, `db/test_migrations.py`, `db/test_feed_migration.py`, `db/test_request_risk_types.py` | 이 PR |
 
 이 문서는 유치온 DB에 있는 표 30개, 뷰 2개, 트리거 2개를 설명한다. 1~6장은 강사님의 'DB 스키마 설계서 작성법'에 나온 여섯 가지 순서를 따른다. 7장부터는 이 서비스에만 있는 범위·원칙·상태 값·시험 결과를 덧붙였다. 피드·앨범 표처럼 제목에 [제안]이 붙은 절은 아직 팀이 확인하지 않았다.
 
@@ -275,7 +286,7 @@ FK를 걸 수 없는 참조가 두 곳 있다. `cards.subject_id`와 `notificati
 
 ## 2. 엔터티 정의
 
-이 장은 컬럼마다 타입 / 제약 / 의미를 적는다(표 27개, 컬럼 271개). 피드·앨범 표 3개와 `children.photo_scope`는 맨 끝 절에 있다. 표는 DDL을 적용한 DB 카탈로그에서 뽑았으므로 DDL과 내용이 같다. 값이 정해진 컬럼에는 허용 값을 적었고, 여러 컬럼에 걸친 제약은 영역마다 표 아래 '표 제약'에 모았다.
+이 장은 컬럼마다 타입 / 제약 / 의미를 적는다(표 27개, 컬럼 272개). 피드·앨범 표 3개와 `children.photo_scope`는 맨 끝 절에 있다. 표는 DDL을 적용한 DB 카탈로그에서 뽑았으므로 DDL과 내용이 같다. 값이 정해진 컬럼에는 허용 값을 적었고, 여러 컬럼에 걸친 제약은 영역마다 표 아래 '표 제약'에 모았다.
 
 ### 2.0 공통 규칙과 ID 형식
 
@@ -369,6 +380,7 @@ FK를 걸 수 없는 참조가 두 곳 있다. `cards.subject_id`와 `notificati
 | `requests` | `topic_key` | `text` / NULL 허용 | 감독 AI가 정해진 목록(2.2 글머리)에서 고른 민원 주제. 같은 주제 반복 수를 셈(`other`는 안 셈) |
 | `requests` | `parent_confirmed_at` | `timestamptz` / NULL 허용 | 학부모가 '확인했어요'를 누른 시각(민원만) |
 | `requests` | `missing_fields` | `jsonb` / NOT NULL, 기본값 '[]' | 빠진 필수 정보 목록(FR-02) |
+| `requests` | `care_detail` | `jsonb` / NOT NULL, 기본값 '{}' | 투약·귀가 입력 값. 투약명·용량·시간 또는 인계자 UUID·이름·관계(0012) |
 | `requests` | `assignee_id` | `uuid` / NULL 허용, FK (assignee_id, org_id) → users | 요청 담당 교직원 |
 | `requests` | `previous_request_id` | `uuid` / NULL 허용, FK (previous_request_id, org_id) → requests | 다시 연 요청이면 이전 요청 |
 | `requests` | `created_at` | `timestamptz` / NOT NULL, 기본값 now() | 접수 시각 |
@@ -404,7 +416,7 @@ FK를 걸 수 없는 참조가 두 곳 있다. `cards.subject_id`와 `notificati
 | `approvals` | `org_id` | `uuid` / NOT NULL, 기관 짝 FK에 들어감 | 기관(경계 짝) |
 | `approvals` | `card_version` | `integer` / NOT NULL | 결정할 때 본 카드 판 |
 | `approvals` | `decided_by` | `uuid` / NOT NULL, FK (decided_by, org_id) → users | 결정한 교직원 |
-| `approvals` | `decision` | `text` / NOT NULL, 값: approve·edit_approve·reject·hold·resume·dismiss·complete·escalate·instruct | 결정 종류(2.2 글머리) |
+| `approvals` | `decision` | `text` / NOT NULL, 값: approve·edit_approve·reject·hold·resume·dismiss·complete·escalate·instruct·acknowledge | 결정 종류(2.2 글머리). acknowledge는 상담 원장 보고 확인(0014) |
 | `approvals` | `reason_code` | `text` / NULL 허용 | 거절·반려 이유 코드 8가지(2.2 글머리). 기억·규칙 제안 재료 |
 | `approvals` | `reason_text` | `text` / NULL 허용 | 보류 이유·원장 지시 내용 |
 | `approvals` | `edited_content` | `jsonb` / NULL 허용 | 고쳐서 승인한 내용 |
@@ -424,10 +436,10 @@ FK를 걸 수 없는 참조가 두 곳 있다. `cards.subject_id`와 `notificati
 | `events` | `actor_id` | `uuid` / NULL 허용, FK (actor_id, org_id) → users | 한 사람(사람일 때만. 시스템·AI면 비움) |
 | `events` | `agent_name` | `text` / NULL 허용 | 한 AI(감독·자료·기억·검사 등) |
 | `events` | `daily_note_id` | `uuid` / NULL 허용, FK (daily_note_id, org_id) → daily_notes | 아이별 알림장 이력 |
-| `events` | `action` | `text` / NOT NULL, 값 36가지 | 처리 이력 종류(2.2 글머리). 기본 25가지, 알림장 4가지, 요청 재전달 1가지, 상담 지연 기록·알림 2가지(`consultation_delay_reported`·`consultation_reminded`), 피드 4가지(맨 끝 절) |
+| `events` | `action` | `text` / NOT NULL, 값 43가지 | 처리 이력 종류(2.2 글머리). 기존 36가지 + 추가 글·권한 밖 안내·취소·돌봄 수정·알림장 정정·상담 충돌 재제안·보고 확인 7가지(0012) |
 | `events` | `from_status` | `text` / NULL 허용 | 바뀌기 전 상태 |
 | `events` | `to_status` | `text` / NULL 허용 | 바뀐 뒤 상태 |
-| `events` | `detail` | `jsonb` / NOT NULL, 기본값 '{}' | 부가 정보. 비밀값·불필요한 개인정보 금지 |
+| `events` | `detail` | `jsonb` / NOT NULL, 기본값 '{}' | 부가 정보. 비밀값·불필요한 개인정보 금지. 새 escalated의 reason은 risk(위험·장애 인계)·repeat(반복 민원)·manual(사람 올리기·긴급 재분류). risk_reclassified의 reason은 사람이 쓴 재분류 이유 |
 | `events` | `created_at` | `timestamptz` / NOT NULL, 기본값 now() | 일어난 시각 |
 
 - `requests` 표 제약: `CHECK (previous_request_id IS DISTINCT FROM id)` · `CHECK ((risk_level IS NULL) OR (type IN ('inquiry', 'consultation', 'complaint')))` · `CHECK ((risk_level IS DISTINCT FROM 'urgent') OR (risk_category IS NOT NULL))` · `CHECK ((parent_confirmed_at IS NULL) OR (type = 'complaint'))` · `UNIQUE (id, org_id)` · `UNIQUE (requester_id, client_request_id)`
@@ -436,7 +448,8 @@ FK를 걸 수 없는 참조가 두 곳 있다. `cards.subject_id`와 `notificati
 
 **요청**
 
-- `type`: `inquiry`(안내 문의) · `consultation`(상담) · `complaint`(민원) · `medication`(투약) · `pickup`(귀가). 투약·귀가(T46, 팀 확인 전 초안)는 세부 칸을 따로 두지 않고 이력에 남긴다. 접수 내용(등록된 인계자 UUID `pickup_guardian_id` 등)은 접수 이력의 `events.detail`에 넣고, 교직원이 실제로 확인·완료한 일은 이력의 `care_decision`·행위자·`created_at`으로 남긴다. 상태는 `received → assigned → completed` 순서로 바뀐다. 알림장 줄에 보이는 `request_status`는 따로 저장하지 않고, 조회할 때 요청 상태를 읽어 온다.
+- `type`: `inquiry`(안내 문의) · `consultation`(상담) · `complaint`(민원) · `medication`(투약) · `pickup`(귀가). 투약·귀가(T46, 팀 확인 전 초안)의 접수 입력은 0012에서 `requests.care_detail`로 옮긴다. 교직원이 실제로 확인·완료한 일은 이력의 `care_decision`·행위자·`created_at`으로 남긴다. 상태는 `received → assigned → completed` 순서로 바뀐다. 알림장 줄에 보이는 `request_status`는 따로 저장하지 않고, 조회할 때 요청 상태를 읽어 온다.
+- `care_detail`: 투약은 `medication_name`·`medication_dose`·`medication_time`, 귀가는 `pickup_guardian_id`·`pickup_name`·`pickup_relation`을 담는다. 0012는 기존 투약·귀가의 첫 접수 이력(`created`, `to_status = received`, 요청 자체 이력)의 값을 백필한다. 접수 이력에서는 값 키를 빼고 `fields`에 키 이름 목록만 남기며, `trace_id` 등 다른 정보는 보존한다. SQL NULL은 허용하지 않고, 입력이나 접수 이력이 없으면 빈 객체다. JSON null과 빠진 키는 구별해 그대로 옮긴다. 접수·조회·학부모 부분 수정은 이 칸을 사용한다. 부분 수정 때 missing_fields도 다시 저장하고 care_updated 이력에는 값 없이 fields·version만 남긴다. 반려는 dismissed(care_decision=reject·reason_text), 학부모 취소는 cancelled(cancelled_by_parent=true)로 남기며 둘 다 요청은 rejected다. 입력 수정·추가 글의 판 증가와 실제 확인은 순서 있는 이력에서 읽는다.
 - `client_request_id`: 화면이 제출할 때 만드는 키다. 같은 사람이 같은 키로 다시 보내면 DB가 거부하므로, 네트워크 재시도로 요청이 두 번 생기지 않는다.
 - `urgency`: 모든 요청에 붙는 급한 정도(`low`·`normal`·`high`·`urgent`)로, 받은함을 정렬할 때 쓴다.
 - `risk_level`: 보호자 글을 받는 문의·상담·민원에 붙이는 위험 등급으로(기획서 FR-03), `normal`(일반) · `urgent`(긴급) · `uncertain`(판단 필요) 중 하나다. 긴급으로 저장하려면 `risk_category`에 다음 네 가지 중 어느 것인지도 넣어야 한다: `child_safety`(아이 안전) · `staff_attack`(교직원 비난·위협) · `legal_external`(법적 조치·외부 기관) · `privacy_leak`(개인정보 유출 주장). 감독 AI가 얼마나 확신했는지는 `risk_confidence`(0~1)에 남기고, 긴급과 판단 필요를 가르는 기준값은 T06 평가로 정한다. 판단 필요였던 문의·민원을 사람이 일반이나 긴급으로 다시 나누면, `events`에 `risk_reclassified`로 이전 값·새 값·이유를 남긴다. 투약·귀가 요청에는 위험 등급이 없으므로 이 값을 NULL로 둔다. 이 CHECK는 0001에서 이름 없이 만들었기 때문에 PostgreSQL이 붙인 `requests_check1`이라는 이름을 갖고 있다. 0011에서는 이 이름은 그대로 두고 조건만 바꾼다.
@@ -462,7 +475,7 @@ FK를 걸 수 없는 참조가 두 곳 있다. `cards.subject_id`와 `notificati
   | 정보 요청(`needs_info`) · 규칙 제안(`rule_proposal`) | 없음(NULL). 지연 집계에서 빠짐 |
 - `check_attempts`: 검사 AI가 돌려보낸 횟수다. 최대 2를 넘으면 DB가 거부하므로, 3번째부터는 코드가 사람에게 넘겨야 한다(FR-08).
 - `version`: 카드가 바뀔 때마다 1씩 올린다. 화면은 결정을 보낼 때 자기가 본 `version`을 함께 보낸다. `approvals`는 한 `(card_id, card_version)`에 결정을 하나만 받으므로, 승인 버튼이나 재개를 여러 번 눌러도 한 번만 처리된다(AC-05).
-- `decision`: `approve`(승인) · `edit_approve`(고쳐서 승인) · `reject`(거절 → 초안 다시) · `hold`(보류) · `resume`(보류 재개 → `awaiting_review`) · `dismiss`(반려 → 요청을 처리하지 않음, `rejected`) · `complete`(민원 처리 완료) · `escalate`(담임이 원장님께 올리기) · `instruct`(원장 지시 → 원장 보고 카드 `done`, 요청 `escalated → awaiting_review`). 거절과 반려를 다른 값으로 나눈 것은 T04 2.1이 둘을 다른 길로 그리기 때문이다.
+- `decision`: `approve`(승인) · `edit_approve`(고쳐서 승인) · `reject`(거절 → 초안 다시) · `hold`(보류) · `resume`(보류 재개 → `awaiting_review`) · `dismiss`(반려 → 요청을 처리하지 않음, `rejected`) · `complete`(민원 처리 완료) · `escalate`(담임이 원장님께 올리기) · `instruct`(원장 지시 → 원장 보고 카드 `done`, 요청 `escalated → awaiting_review`) · `acknowledge`(상담 원장 보고 확인 → 보고 카드만 `done`, 요청 상태 그대로; 0014). 상담 보고의 보류·수동/자동 재개도 카드만 바꾸고 학부모 요청 상태와 알림은 그대로 둔다. 거절과 반려를 다른 값으로 나눈 것은 T04 2.1이 둘을 다른 길로 그리기 때문이다.
 - 회신 카드(`reply_draft`)를 거절하면 같은 요청에 새 회신 카드를 만든다. 이때 `draft.text`는 빈 문자열, `check_result`는 NULL로 두어 새 카드가 앞 카드의 검사 통과를 물려받지 않게 한다. 그래서 새 카드는 담임이 직접 쓴 글로 `edit_approve`할 때만 학부모에게 나간다.
 - 결정에 따라 함께 있어야 저장되는 이유가 다르다. 거절·반려에는 `reason_code`가, 보류와 원장 지시에는 `reason_text`(지시 내용)가, 학부모가 확인하지 않은 민원의 처리 완료에는 `reason_text`(마무리한 방법)가 있어야 한다. 이렇게 남긴 거절 이유가 기억과 규칙 제안의 재료가 된다(FR-06).
 - `reason_code` 값 8가지: `wrong_fact`(사실이 틀림) · `tone`(말투) · `missing_info`(근거·정보 부족) · `privacy`(개인정보) · `policy`(원 방침과 다름) · `slot_unavailable`(시간 안 됨) · `room_unavailable`(상담실 없음) · `other`(기타). 목록은 설정값이므로 DB CHECK로 묶지 않고 API가 검사한다. 다만 `other`일 때 `reason_text`가 있어야 저장되는 규칙은 DB CHECK가 지킨다. 같은 사람에게 같은 코드가 3번 쌓이면 규칙을 제안하므로(2.5), 상담을 거절할 때는 시간·상담실 코드로 남겨야 규칙이 생긴다.
@@ -475,11 +488,13 @@ FK를 걸 수 없는 참조가 두 곳 있다. `cards.subject_id`와 `notificati
 **처리 이력**
 
 - `events.action`: 생성·분류·정보 요청·배정·재배정·초안·검사·돌려보내기·승인·거절·보류·보류 재개(`resumed`)·원장 보고·원장 지시(`instructed`)·발송·예약·완료·도구 호출·도구 실패·권한 거부·학부모 확인·위험 등급 다시 분류·반려·원에 남은 답으로 답함. 부재로 담당을 바꾼 일(FR-19)은 `reassigned`로 남기고, 이전 담당·새 담당·이유를 `detail`에 넣는다. 권한이 없는 요청도 `permission_denied`로 남긴다(NFR-01).
+- 0012는 `message_added`(학부모 추가 글) · `out_of_scope_answered`(권한 밖 안내) · `cancelled`(취소) · `care_updated`(투약·귀가 수정) · `daily_note_corrected`(알림장 정정) · `slot_conflict_reproposed`(상담 충돌 뒤 재제안) · `report_acknowledged`(원장 보고 확인)를 허용한다. 발생 시점의 애플리케이션 변경은 후속 묶음에서 한다.
+- 0012를 0011로 되돌리면 `care_detail` 값을 첫 접수 이력의 `detail`로 돌려놓고 `fields`와 칸을 없앤다. 새 action·kind를 쓴 이력·알림 행은 삭제하거나 값을 바꾸지 않는다. 해당 행이 남아 있으면 이전 CHECK를 `NOT VALID`로 복구해 기존 행을 보존하고 이후 쓰기에는 이전 값 목록을 적용한다. 새 값이 없으면 제약 검증도 마쳐 원래 0011 스키마로 돌아간다. 다시 0012를 올리면 전체 제약을 검증한다.
 - 누가 한 일인지는 행위자 칸으로 나눈다. 사람이 한 일은 `actor_type = 'user'`와 `actor_id`로, AI가 한 일은 `actor_type = 'agent'`와 `agent_name`으로 남긴다. 시스템이 한 일(보류 자동 재개, 상담 시간 잡아 두기 풀림 `slot_hold_expired`)은 `actor_type = 'system'`으로 남기고 `actor_id`는 비운다.
 - 알림장 이력은 `daily_note_drafted`·`daily_note_edited`·`daily_note_confirmed`·`daily_note_sent` 네 가지이고, `daily_note_id`로 해당 알림장에 잇는다. 상태를 바꾸는 트랜잭션 안에서 함께 저장하며, 메모·초안 원문은 이력에 복사하지 않는다.
 - `agent_requeued`: 접수하고 5분이 지나도 카드가 없는 요청을 시스템이 한 번 다시 전달했다는 이력이다. 이 이력의 `created_at`부터 5분이 더 지나도 카드가 없을 때만 `card_missing`으로 인계한다. 요청 상태와 알림은 바꾸지 않는다.
 - 요청을 사람에게 넘긴 이유는 `events.detail.handoff_reason`에 남긴다. 요청 처리 AI가 3분 안에 끝나지 않으면 `ai_timeout`, 처리하다 예외로 멈추면 `ai_failed`, 다시 전달하고도 카드가 생기지 않으면 `card_missing`이다. 세 경우 모두 카드가 아직 없으면 초안 없는 미배정 회신 카드를 만들고 요청을 `awaiting_review`로 바꾼다. 모델 응답을 기다리는 동안에는 요청 행 잠금(`FOR UPDATE`)도 DB 연결도 잡지 않는다. 잠금은 저장할 때만 짧게 걸고, 그때 요청이 아직 처리 중인지 다시 확인한다. 그래서 3분이 지나 사람에게 넘어간 요청에 늦게 끝난 결과는 먼저 만든 카드를 덮지 못하고 버려진다(API 설계 문서 6.1).
-- `events`에는 INSERT만 하고, 고치거나 지우지 않는다. `detail`에는 비밀값이나 불필요한 개인정보를 넣지 않는다(NFR-05).
+- 애플리케이션은 `events`에 INSERT만 하고, 고치거나 지우지 않는다. 0012 데이터 이관·되돌리기에서는 접수 입력 위치만 옮긴다. `detail`에는 비밀값이나 불필요한 개인정보를 넣지 않는다(NFR-05).
 
 ### 2.3 자료·검색
 
@@ -665,6 +680,8 @@ FK를 걸 수 없는 참조가 두 곳 있다. `cards.subject_id`와 `notificati
 | `daily_notes` | `confirmed_by` | `uuid` / NULL 허용, FK (confirmed_by, org_id) → users | 확인한 교사 |
 | `daily_notes` | `confirmed_at` | `timestamptz` / NULL 허용 | 교사 확인 시각 |
 | `daily_notes` | `sent_at` | `timestamptz` / NULL 허용 | 보낸 시각 |
+| `daily_notes` | `version` | `integer` / NOT NULL, 기본값 1, CHECK >=1 (0015) | 정정용 판. 정정 성공 때만 +1, 현재 판을 보내야 정정 가능 |
+| `daily_notes` | `corrected_at` | `timestamptz` / NULL 허용 (0015) | 마지막 정정 시각. 정정 전 null, 학부모 응답에도 포함 |
 | `daily_notes` | `created_at` | `timestamptz` / NOT NULL, 기본값 now() | 만든 시각 |
 | `notifications` | `id` | `bigint` / PK, 자동 증가 | 알림 ID |
 | `notifications` | `org_id` | `uuid` / NOT NULL, FK → organizations.id | 기관 |
@@ -673,7 +690,7 @@ FK를 걸 수 없는 참조가 두 곳 있다. `cards.subject_id`와 `notificati
 | `notifications` | `card_id` | `uuid` / NULL 허용, FK (card_id, org_id) → cards | 관련 카드 |
 | `notifications` | `subject_type` | `text` / NULL 허용 | 요청·카드가 아닌 대상 종류 |
 | `notifications` | `subject_id` | `uuid` / NULL 허용 | 그 대상 ID |
-| `notifications` | `kind` | `text` / NOT NULL, 값 17가지 | 알림 종류 17가지(2.6 글머리) |
+| `notifications` | `kind` | `text` / NOT NULL, 값 23가지 | 기존 17가지 + 추가 글·재배정·상담 확정·알림장 정정·취소·돌봄 반려 6가지(0012, 2.6 글머리) |
 | `notifications` | `title` | `text` / NOT NULL | 제목 |
 | `notifications` | `body` | `text` / NULL 허용 | 내용 |
 | `notifications` | `dedupe_key` | `text` / NOT NULL, UNIQUE | 중복 막는 키(2.6 글머리) |
@@ -702,46 +719,59 @@ FK를 걸 수 없는 참조가 두 곳 있다. `cards.subject_id`와 `notificati
 - `notifications` 표 제약: `CHECK ((subject_type IS NULL) = (subject_id IS NULL))` · `CHECK (subject_type = 'daily_note')`
 - `eval_runs` 표 제약: `CHECK ((passed + errors) <= total)`
 
-**알림장.** 상태 값 `draft`·`needs_check`·`ready`·`sent`는 T04 6장의 `note_drafted`·`note_needs_check`·`note_ready`·`note_sent`와 뜻이 같다. 알림장 표가 따로 있어서 앞의 `note_`만 뺐다. MVP는 반 전체를 한 번에 보내고, 반에 `needs_check`가 하나라도 있으면 보내기를 잠근다. 잠금은 두 겹이다. **아이별로는 DB CHECK가** `open_checks`가 남은 알림장을 `sent`로 바꾸지 못하게 막고, **반 단위 잠금은 API 트랜잭션이** 맡는다. API는 그 반·그날의 알림장을 모두 잠근 뒤, 하나라도 `ready`가 아니면 아무것도 보내지 않고 409 `NOTE_BATCH_BLOCKED`로 답한다(FR-10, AC-04). `ready`·`sent`로 저장하려면 교사 확인(`confirmed_by`·`confirmed_at`)도 있어야 한다(NFR-03). `content`에는 식단·일정을 `documents`에서, 투약·귀가 줄을 `requests`에서 가져와 넣는다.
+**알림장.** 상태 값 `draft`·`needs_check`·`ready`·`sent`는 T04 6장의 `note_drafted`·`note_needs_check`·`note_ready`·`note_sent`와 뜻이 같다. 알림장 표가 따로 있어서 앞의 `note_`만 뺐다. MVP는 반 전체를 한 번에 보내고, 반에 `needs_check`가 하나라도 있으면 보내기를 잠근다. 잠금은 두 겹이다. **아이별로는 DB CHECK가** `open_checks`가 남은 알림장을 `sent`로 바꾸지 못하게 막고, **반 단위 잠금은 API 트랜잭션이** 맡는다. API는 그 반·그날의 알림장을 모두 잠근 뒤, 하나라도 `ready`가 아니면 아무것도 보내지 않고 409 `NOTE_BATCH_BLOCKED`로 답한다(FR-10, AC-04). `ready`·`sent`로 저장하려면 교사 확인(`confirmed_by`·`confirmed_at`)도 있어야 한다(NFR-03). `content`에는 식단·일정을 `documents`에서, 투약·귀가 줄을 `requests`에서 가져와 넣는다. 초안 뒤 접수된 당일 보호자 투약·귀가·문의는 입력→아이 알림장 순서로 같은 잠금을 잡고 `request_missed`·`request_id`를 붙인다. ready도 확인자·시각을 비우고 needs_check로 되돌리며 기존 returned 이력을 남긴다. sent는 보존하고 반 카드 담당자에게 new_card 알림만 보낸다. 전입 아이처럼 알림장 행이 없는 현재 반 아이도 API가 발송을 막고 카드 조회에서 missing으로 표시한다. 모든 아이가 sent이면 반 카드를 done으로 닫는다.
 
 `child_memos`는 입력한 메모 원문을 보관한다. DB는 배열인지와 NOT NULL만 검사한다. 아이 ID, 메모 길이(1~500자), 같은 아이가 두 번 들어갔는지, 그 아이가 그 반 소속인지는 API가 검사한다(API 설계 문서). 0002를 0001로 되돌리면 이 컬럼과 CHECK가 없어지므로 저장한 메모도 함께 사라지고, 다른 입력 칸은 그대로 남는다. 0003을 되돌리면 `ai_original`과 알림장 이력 연결(`events.daily_note_id`), 알림장 이력 네 종류가 사라진다.
 
-**초안 실패와 복구 기록.** 초안 작업이 실패하면 반 입력에는 `draft_status = 'failed'`만 남는다. 그래서 실패를 감지한 때부터 다시 시도해 결과를 검증할 때까지를 이력으로 따로 남긴다. 기록 형식은 Auto-Healing 가이드의 incident 기록 칸을 그대로 쓴다. 칸은 `incident_id`·`detected_failure`·`selected_strategy`·`retry_count`·`fallback_used`·`recovery_status`·`validation_result`·`duration_ms` 여덟 개다. 이력을 붙이는 곳은 반 묶음 카드의 `card_id`다. 반 묶음 카드는 `cards.subject_type = 'daily_note_batch'`이고 `subject_id`가 입력 ID인 카드다. 가이드의 `incident_id`에는 반 입력 ID(`daily_note_inputs.id`)를 넣는다. 가이드의 작업 조회 예시에 나오는 `job_id`도 이 값에 해당한다. 알림장 초안 작업 하나가 반 입력 하나이고, API가 202로 돌려주는 작업 ID도 이 값이기 때문이다. 한 작업 안에서 난 실패는 첫 실패부터 묶어 incident 하나로 센다. 아이별 저장 이력(`daily_note_drafted`)은 그대로 두고, 아래 이력을 작업마다 한 줄씩 더한다. 세 종류 모두 지금 `events.action` 목록에 있는 값이라 새 마이그레이션은 필요 없다.
+**보낸 알림장 정정([제안], API 3.30).** 0015_daily_note_correction은 down_revision=0014로 상담 보고 확인 뒤에 이어진다(0012→0013→0014→0015). daily_notes에 version(기본 1·NOT NULL·CHECK >=1)과 corrected_at(NULL 허용)을 더한다. 기존 내용·상태·AI 원본은 그대로 두고 기존 행도 version=1·corrected_at=null로 채운다. 현재 담당 반 담임·같은 기관 원장만 sent를 정정하며, 입력→알림장 순서 잠금 아래 판 검사 후 내용 교체·시각 기록·판 +1을 한다. 판 충돌은 CARD_VERSION_CONFLICT, 미발송 상태는 INVALID_TRANSITION으로 409다. 발송 전 PATCH·확인·재생성·발송에서는 정정 판을 유지한다. daily_note_corrected 이력에는 행위자·sent→sent·reason_text·version·trace_id만 남기며, 기존 0012 action을 쓴다. 연결된 활성 parent마다 기존 note_corrected kind로 제목 "알림장이 고쳐졌어요" 알림을 한 건 저장한다. 중복 키는 알림장·정정 판·수신자이고, body는 비워 정정 이유를 노출하지 않는다. 내용·시각·판·이력·알림은 같은 트랜잭션이다. 0015를 0014로 내리면 새 두 칸만 사라지고 내용·기존 이력·알림은 보존된다. 다시 올리면 판·시각은 기본값으로 초기화되므로 운영 되돌리기 때 이 점을 고려한다. 최종 DDL도 이 두 칸을 포함하며 head 카탈로그는 표 30·뷰 2·트리거 2·FK 64·컬럼 295다.
+
+**초안 실패와 복구 기록.** 초안 작업이 실패하면 반 입력에는 `draft_status = 'failed'`만 남는다. 그래서 실패를 감지한 때부터 다시 시도해 결과를 검증할 때까지를 이력으로 따로 남긴다. 기록 형식은 Auto-Healing 가이드의 incident 기록 칸을 그대로 쓴다. 칸은 `incident_id`·`detected_failure`·`selected_strategy`·`retry_count`·`fallback_used`·`recovery_status`·`validation_result`·`duration_ms` 여덟 개다. 이력을 붙이는 곳은 반 묶음 카드의 `card_id`다. 반 묶음 카드는 `cards.subject_type = 'daily_note_batch'`이고 `subject_id`가 입력 ID인 카드다. 가이드의 `incident_id`에는 반 입력 ID(`daily_note_inputs.id`)를 넣는다. 가이드의 작업 조회 예시에 나오는 `job_id`도 이 값에 해당한다. 알림장 초안 작업 하나가 반 입력 하나이고, API가 202로 돌려주는 작업 ID도 이 값이기 때문이다. 한 작업 안에서 난 실패는 첫 실패부터 묶어 incident 하나로 센다. 아이별 저장 이력(`daily_note_drafted`)에는 본문 대신 `draft_failed`(참/거짓)·`open_check_count`·`trigger`를 함께 남기고, 아래 반 이력을 실행마다 한 줄씩 더한다. 세 종류 모두 지금 `events.action` 목록에 있는 값이라 새 마이그레이션은 필요 없다.
 
 | 시점 | `action` | `actor_type` | `detail` |
 | --- | --- | --- | --- |
 | 작업이 실패함(감지) | `tool_failed` | `system` | `incident_id`, `detected_failure`, `retry_count`, `detection_ms`, `fallback_used = false`, `validation_result = job_failed`, `recovery_status`(처음 실패면 `pending`, 다시 시도한 뒤의 실패면 `handed_off`) |
-| 담임이 다시 만들기를 요청함(API 3.26) | `agent_requeued` | `user` | `incident_id`, `selected_strategy = retry_by_teacher`, `retry_count` |
-| 점검 작업이 멈춘 작업을 대기로 되돌림 | `agent_requeued` | `system` | `incident_id`, `selected_strategy = requeue_stale`, `retry_count` |
-| 초안을 저장하고 검증함 | `drafted` | `agent` | `incident_id`, `retry_count`, `saved`, `needs_check`, `draft_failed`, `fallback_used`, `validation_result`. 앞에 실패가 있었으면 `recovery_status`와 `duration_ms`도 |
+| 담임이 다시 만들기를 요청함(API 3.26) | `agent_requeued` | `user` | `incident_id`, `selected_strategy = retry_by_teacher`, `trigger = teacher_regenerate`, `retry_count`(증가하지 않음) |
+| 점검 작업이 멈춘 작업을 대기로 되돌림 | `agent_requeued` | `system` | `incident_id`, `selected_strategy = requeue_stale`, `trigger = auto_retry`, `retry_count` |
+| 초안을 저장하고 검증함 | `drafted` | `agent` | `incident_id`, `retry_count`, `saved`, `needs_check`, `draft_failed`, `fallback_used`, `validation_result`. 모든 실행에 `trigger`·`queue_wait_ms`·`detection_ms`, 앞에 실패가 있었으면 `recovery_status`와 `duration_ms`도 |
 
 칸마다 넣는 값은 다음과 같다.
 
-- `detected_failure`: 작업 시간 초과면 `writer_timeout`이고, 결과 형식·설정·저장 오류처럼 그 밖의 예외면 `writer_error`다. `tool_failed`가 되는 것은 작업 전체가 실패한 경우뿐이다. 모델 호출 하나가 시간 초과·429·5xx로 실패할 때는 작성기 안에서 1초, 2초 뒤에 두 번 다시 부르고, 그래도 실패하면 그 아이만 템플릿으로 저장한다(`fallback_used`).
-- `retry_count`: 작업을 다시 넣은 횟수다. 처음 실행은 0이고, `agent_requeued`에는 다음에 돌 실행의 값을 적는다. 시스템은 실패한 작업을 저절로 다시 돌리지 않으므로, 담임이 다시 만들기를 눌러야 다시 시도한다. 점검 작업이 되돌리는 것도 `running`에 멈춘 작업뿐이다.
+- `detected_failure`: 작업 시간 초과면 `writer_timeout`이고, 결과 형식·설정·저장 오류처럼 그 밖의 예외면 `writer_error`다. 워커 큐 등록 실패는 queued 입력을 failed로 바꾸고 `queue_error`로 기록한다. 이때 `detection_ms=0`은 워커 실행 전 실패를 뜻하며 첫 접수는 `recovery_status=pending`으로 담임의 다시 만들기를 기다리고, 재시도의 큐 등록 실패는 `handed_off`로 기록한다. 이미 running·succeeded·failed인 입력에는 늦은 큐 오류 이력을 덧붙이지 않는다. `tool_failed`가 되는 것은 작업 전체가 실패한 경우뿐이다. 모델 호출 하나가 시간 초과·429·5xx로 실패할 때는 작성기 안에서 1초, 2초 뒤에 두 번 다시 부르고, 그래도 실패하면 그 아이만 템플릿으로 저장한다(`fallback_used`).
+- `retry_count`: 시스템이 멈춘 실행을 자동으로 다시 넣은 횟수다. 처음 실행은 0이고, `agent_requeued` 중 `actor_type=system`만 1을 더한다. 담임의 다시 만들기는 이 값을 늘리지 않는다. `trigger`는 첫 실행 `initial`, 점검 재등록 `auto_retry`, 담임 다시 만들기 `teacher_regenerate`다. 실패 작업을 저절로 재실행하는 기능을 새로 만들지는 않는다. 점검은 기존대로 멈춘 `running`만 되돌린다.
+- `queue_wait_ms`: 접수·재등록부터 워커가 실행을 가져갈 때까지의 대기(ms)다. 반 카드 `draft.draft_queued_at`·`draft.draft_trigger`에서 읽고, 첫 실행은 입력 `created_at`을 쓴다. `drafted`·실행 실패 `tool_failed`에 한 번 기록한다. 큐 등록 자체의 실패는 실행 전이므로 0이다.
 - `detection_ms`: 그 실행이 시작된 때부터 실패를 기록할 때까지 걸린 시간, 곧 감지 시간이다.
 - `saved`·`needs_check`·`draft_failed`: `saved`는 이번 실행에서 저장한 아이별 알림장 수, `needs_check`는 그중 확인 필요로 저장한 수, `draft_failed`는 다시 그중 아이 초안을 만들지 못한 수다. 그래서 `draft_failed`는 `needs_check`에 들어 있다.
 - `fallback_used`: 대체 응답을 썼는지 적는다. 알림장의 대체 응답은 한 가지뿐이다. 아이 한 명의 초안이 실패하거나 검증을 통과하지 못하면, 그 아이 알림장을 반 공통 줄(활동·준비물·식단)만 담은 템플릿으로 저장하고 확인 항목 `draft_failed`를 붙인다. 담임은 화면에서 이 확인 항목을 보고 그 아이 메모 줄을 직접 쓴다. 작성기를 다른 제공자나 대역 작성기로 바꾸는 경로는 없으므로 그런 대체는 0건이다.
-- `validation_result`: 저장하기 전에 아이별 결과 모양·출처·확인 항목을 보는 계약 검사의 결과다. 모든 아이가 통과하면 `all_children_passed`, 일부만 템플릿이면 `some_children_template`, 모두 템플릿이면 `all_children_template`, 작업 자체가 실패하면 `job_failed`다.
-- `recovery_status`: `recovered`(정상 복구), `fallback`(대체 응답), `handed_off`(사람 이관), `pending`(다시 시도 전이거나 진행 중) 가운데 하나다. 가이드 예시의 `success`는 우리 `recovered`에, `health_check_passed`는 `validation_result`의 `all_children_passed`에 해당한다.
-- `duration_ms`: 복구 시간이다. 첫 `tool_failed`부터 검증을 통과한 초안을 저장할 때까지 걸린 시간을 잰다.
+- `validation_result`: 저장하기 전에 아이별 결과 모양·출처·확인 항목을 보는 계약 검사의 결과다. 모든 아이가 통과하면 `all_children_passed`, 일부만 템플릿이면 `some_children_template`, 모두 템플릿이면 `all_children_template`, 작업 자체가 실패하면 `job_failed`다. 전원 템플릿도 반 incident의 실패로 집계하며 `handed_off`로 분류한다. 템플릿은 담임이 직접 고칠 수 있으므로 입력 상태는 `succeeded`로 두지만, 반 카드에는 "AI가 못 만들었어요 · 직접 쓰거나 다시 만들기"를 표시한다.
+- `recovery_status`: `recovered`(정상 복구), `fallback`(대체 응답), `handed_off`(사람 이관), `pending`(다시 시도 전이거나 진행 중) 가운데 하나다. 가이드의 `success`·검증 통과와 대응할 제출 기준은 아래 T58 규칙이다. 현재 `all_children_passed`는 `draft_failed=0`을 뜻하며, 다른 확인 항목이 없는지는 보장하지 않는다.
+- `duration_ms`: 첫 실패부터 반 단위 저장까지의 경과 시간에서 실패 뒤 각 실행의 `queue_wait_ms`를 뺀 값이다. 담임이 다시 만들기를 누를 때까지의 시간은 포함한다. `tool_failed`뿐 아니라 아이 템플릿 저장도 실패 시작점으로 삼는다. 검증 통과 결과가 없으면 NULL이며, 아이별 시간은 아래 별도 결과를 쓴다. 새 계측 이전 이력의 시간에는 대기가 섞일 수 있으므로 신규 수치와 섞어 제출하지 않는다.
 
-이 문서와 집계 스크립트 [`tools/daily_note_recovery.py`](../../tools/daily_note_recovery.py)는 같은 규칙으로 판정하며, 세 결과를 섞어 세지 않는다.
+**T58 복구 집계 기준.** 12/18 WBS T58(Auto-Healing 구현·결과서)의 집계는 이 기준과 같다. Step4 가이드 14·20·21쪽의 감지→전략→실행→검증→기록을 같은 `input_id`로 잇고, 정상 복구·대체 응답·사람에게 넘김·복구 실패를 섞어 세지 않는다.
 
-- **정상 복구**(`recovered`): 실패한 뒤 다시 시도해 저장했고, 모든 아이가 검증을 통과했다(`draft_failed = 0`). 저장된 초안은 `draft`·`needs_check` 상태라 담임이 화면에서 바로 검토할 수 있다.
-- **대체 응답**(`fallback`): 실패한 뒤 다시 시도해 저장했지만 일부 아이는 템플릿이다(`0 < draft_failed < saved`). 검증을 통과한 아이의 초안은 검토할 수 있다.
-- **사람 이관**(`handed_off`): 다시 시도한 뒤에도 작업이 실패했거나, 저장한 아이 알림장이 모두 템플릿인 경우다.
-- **복구율**은 정상 복구 건수를 다시 시도해 결과가 난 incident 수로 나눈 값이다. 분모에는 정상 복구, 대체 응답, 사람 이관을 합친 수가 들어간다. 실패한 작업은 담임이 다시 시도해야 복구 대상이 되므로, 아직 다시 시도하지 않은 incident는 분모에서 뺀다. 가이드와 다른 점도 여기서 생긴다. 가이드의 '자동 복구 대상'은 시스템이 스스로 복구를 시도하는 실패를 뜻하지만, 알림장은 사람이 다시 시도를 누른 실패를 대상으로 센다.
-- 감지 시간은 `detection_ms`, 복구 시간은 `duration_ms`로 잰다. 스크립트는 두 값 모두 중앙값과 최대를 낸다. 마지막 저장 때 템플릿으로 남아 있어 담임이 직접 쓴 아이 수도 따로 센다.
+| 항목 | 제출 기준 | 실제 칸·읽는 곳 |
+| --- | --- | --- |
+| 복구 성공 | 재시도 뒤 검사에 통과한 쓸 수 있는 아이 초안이 저장된 경우만 센다. `status='draft' AND open_checks='[]'::jsonb`가 기준이며 `needs_check`는 성공이 아니다 | `daily_notes.input_id`·`child_id`·`status`·`open_checks`·`content` |
+| 사람에게 넘김 | 재시도 뒤에도 확인 항목(`draft_failed`·`check_failed` 등)이 남아 담임이 직접 작성·해결해야 하는 아이는 성공에서 뺀다. 담임의 후속 수정·확인은 자동 복구로 바꾸어 세지 않는다 | `daily_note_edited`·`daily_note_confirmed` 이력의 `actor_type='user'`, `daily_notes.ai_original`과 수정 내용 |
+| 대체 응답 | 반 공통 템플릿을 썼으면 별도로 표시한다. `draft_failed`가 남은 아이는 사람에게 넘긴 결과다 | `events.detail.fallback_used`·`draft_failed`, 아이의 `open_checks` |
+| 실패 시각 | 같은 반 작업의 첫 실패를 읽는다. 작업 상태 표에는 `failed_at` 칸이 없다 | 반 묶음 카드 `tool_failed` 또는 아이의 `daily_note_drafted.detail.draft_failed=true` 이력 `created_at` |
+| 통과 초안 저장 시각 | 같은 `input_id`·아이의 검사 통과 초안이 저장된 `daily_note_drafted` 이력 시각을 쓴다. 첫 생성 시각이나 교사 확인 시각으로 대체하지 않는다 | `events.daily_note_id → daily_notes.id`, `events.created_at`·`to_status='draft'`·`actor_type='agent'` |
+| 복구 시간 | 실패 시각부터 통과 초안 저장 시각까지의 차이(ms)다. 통과 저장이 없으면 시간은 NULL이다. 결과서에는 평균·중앙값·최대를 함께 낸다 | 위 두 이력의 `created_at` 차이에서 실패 뒤 완료까지 실행별 큐 대기를 뺀 값. `daily_notes`에는 `updated_at`·`validated_at` 칸이 없다 |
+| 집계 단위·분모 | 기본은 장애의 영향을 받은 아이별 `(input_id, child_id)` 결과다. 같은 아이의 재시도를 중복 합산하지 않고, 반 작업(`input_id`) 수를 옆에 같이 적는다. 복구율은 검사 통과 아이 수 ÷ 자동 복구 대상 아이 수다 | `daily_note_inputs`와 작업 당시 반 명단·아이별 이력. 담임이 재시도를 누른 경로는 `retry_by_teacher`로 따로 표시한다 |
+| 재시도 진입 실패 | 큐 등록 실패·작업 미기동으로 재시도하지 못했어도 `복구 실패`로 분모에 포함하고 별도 줄에 센다. 판정 시한 안에 완료되지 않은 대기도 성공으로 빼지 않는다 | `daily_note_inputs.draft_status`, `cards.draft.draft_started_at`, 큐 등록 오류 로그·장애 주입 실행 기록 |
 
-스크립트는 위 요약 표 말고도 `selected_strategy`별 표를 낸다. 이 표는 담임 다시 만들기(`retry_by_teacher`), 점검 작업의 되돌리기(`requeue_stale`), 아이별 템플릿(`template_fallback`)을 쓴 incident를 결과별로 따로 세기 때문에, 결과서에서는 다른 분모로도 복구율을 계산할 수 있다. 마지막으로 incident마다 가이드의 여덟 칸을 한 줄씩 낸다. 이 기록을 12/18 결과서의 복구 건수와 소요 시간 근거로 쓴다. 장애를 일부러 넣어 확인한 시험은 두 개다. `test_daily_note_recovery.py::test_timeout_then_regenerate_is_one_recovered_incident_with_times`는 작성기 시간 초과, 다시 만들기, 저장이 차례로 일어났을 때 incident 하나의 정상 복구로 집계되는지 본다. `::test_failed_retry_is_handed_off_then_partial_template_is_fallback`은 다시 시도해도 실패하면 사람 이관이 되는지, 그다음 시도에서 두 아이만 템플릿이면 대체 응답으로 바뀌고 직접 쓸 아이가 2명으로 나오는지 본다.
+현재 [`tools/daily_note_recovery.py`](../../tools/daily_note_recovery.py)는 기존 **반 작업 단위** 결과와 `child_recovery`를 함께 준다. 반 결과는 `draft_failed=0`이면 `recovered`로 분류해 `needs_check`도 포함하고, 재시도 전 `pending`은 반 복구율 분모에서 빠진다. 전원 템플릿은 `tool_failed`가 없어도 실패 incident로 포함한다. `retry_count`는 시스템 재등록만 세고 담임 재생성은 `trigger`·`selected_strategy`로 나눈다. CLI도 실행 계기·큐 대기를 별도 열로 보여 준다. 기존 반 복구율을 T58 아이 복구율로 제출하지 않는다.
+
+`child_recovery`는 기간 안에 `daily_note_drafted.detail.draft_failed=true`가 기록된 `(input_id, child_id)`를 한 번만 대상으로 삼는다. 이후 같은 아이의 첫 `actor_type=agent`·`to_status=draft`·`open_check_count=0` 저장만 `recovered`다. 확인 항목이 남거나 교사가 수정·확인해 재생성에서 보호된 아이는 `handed_off`이고 성공으로 바뀌지 않는다. 원문을 읽거나 현재 알림장 상태로 과거를 추측하지 않는다. 결과는 `children[]`(입력·아이 ID, trigger, 상태, 실패/통과 시각, duration_ms), 대상·성공·이관 수, 복구율, `teacher_regenerate`·`not_retried` 수와 시간 평균·중앙값·최대를 준다. `automatic_targets`·`automatic_recovery_rate`는 담임 경로를 제외한 현재 자동 경로와 아직 재시도하지 못한 실패를 포함한다. 담임이 누른 뒤의 결과는 별도 경로로 표시하며 자동 복구 성공으로 세지 않는다.
+
+이 구현으로 측정할 수 있는 범위는 **아이별 템플릿 실패→재생성→검사 통과 저장**이다. 새 스냅샷 전 `needs_check` 이력은 원인 복원이 불가능하므로 `unmeasurable`에 따로 센다. 큐 등록 오류·전체 작업 예외로 아이별 저장 이력 자체가 없는 경우는 반 incident에는 포함하지만 당시 대상 명단을 보존하지 않아 아이별 분모는 아직 측정할 수 없다. T58 전체 제출에는 장애 주입 기록의 `input_id`·대상 아이 명단·실패 시각·판정 시한을 추가로 연결하고, 이 진입 실패도 실패 분모에 포함해야 한다. 계측이 없는 옛 자료·기간 밖 실패를 성공으로 추정하지 않으며, 집계 기간은 장애 주입부터 재시도 종료까지를 모두 포함해 잡는다. `test_daily_note_recovery.py`는 전원 템플릿 집계, 교사 경로와 자동 재등록 분리, 큐 대기 제외, 확인 항목·교사 확인을 성공에서 제외하고 같은 아이를 중복 합산하지 않는 경계를 검사한다.
 
 **알림**
 
 - `notifications.dedupe_key`: 알림은 처리 이력 한 건에서 생기므로 키를 `event:<events.id>:<받는 사람 ID>`로 만든다. 같은 이력으로 발송을 다시 시도하면 키가 같아서 한 번만 들어간다. 반대로 같은 카드가 다시 보류되는 것처럼 새 이력이 생기면 새 알림이 된다. 상담 종료·지연 알림(T48)은 `consultation:<예약 ID>:<종류>:<받는 사람 ID>`로 만들어, 같은 예약의 같은 안내를 한 번만 남긴다.
 - 발송 시도: 한 알림은 최대 3번까지 보낸다(FR-12, `attempts`). 보내기에 실패하면 60초 뒤, 그다음 실패면 120초 뒤로 `next_attempt_at`을 미뤄 다시 보낸다. 이때 `deliver_after`와 목록에 보이는 시각은 바꾸지 않는다.
-- `notifications.kind`: 다음 17가지만 받는다. `needs_info` · `new_card`(새 카드) · `urgent_complaint`(긴급 요청) · `uncertain_complaint`(판단 필요 요청) · `director_report`(반복 3번째 원장 보고) · `on_hold` · `sent_or_booked` · `parent_confirmed`(학부모가 확인함) · `completed`(민원 완료) · `rejected` · `note_sent`(오늘 알림장) · `slot_hold_expired`(잡아 둔 상담 시간이 풀림 → 담임) · `hold_resumed`(보류 카드가 예정일에 자동 재개 → 담당) · `care_requested`(투약·귀가 요청 접수) · `care_confirmed`(교직원이 투약·귀가 요청을 확인함). 나머지 두 가지는 상담 알림이다. `consultation_ending`은 예정 종료 10분 이내에 담임에게 가는 알림이고, `consultation_delayed`는 앞 상담의 명시된 예상 종료와 겹치는 예약의 담임·학부모에게 대체 시간을 제안하는 알림이다. 자세한 기준은 API 설계 6.6.2에 있다. 두 위험 알림(`urgent_complaint`·`uncertain_complaint`)은 이름에 complaint가 남아 있지만 문의·상담 위험에도 그대로 쓴다. 요청 유형에 따라 달라지는 것은 제목(`title`)뿐이라 '긴급 문의'·'긴급 상담'처럼 붙는다.
-- `subject_type`·`subject_id`: 요청·카드가 아닌 대상을 가리킨다. 지금은 `note_sent` 알림이 아이별 알림장(`daily_note`)을 가리킬 때만 쓴다.
+- `notifications.kind`: 다음 23가지만 받는다. `needs_info` · `new_card`(새 카드) · `urgent_complaint`(긴급 요청) · `uncertain_complaint`(판단 필요 요청) · `director_report`(반복 3번째 원장 보고) · `on_hold` · `sent_or_booked` · `parent_confirmed`(학부모가 확인함) · `completed`(민원 완료) · `rejected` · `note_sent`(오늘 알림장) · `slot_hold_expired`(잡아 둔 상담 시간이 풀림 → 담임) · `hold_resumed`(보류 카드가 예정일에 자동 재개 → 담당) · `care_requested`(투약·귀가 요청 접수) · `care_confirmed`(교직원이 투약·귀가 요청을 확인함). 기존 상담 알림 두 가지도 있다. `consultation_ending`은 예정 종료 10분 이내에 담임에게 가는 알림이고, `consultation_delayed`는 앞 상담의 명시된 예상 종료와 겹치는 예약의 담임·학부모에게 대체 시간을 제안하는 알림이다. 자세한 기준은 API 설계 6.6.2에 있다. 두 위험 알림(`urgent_complaint`·`uncertain_complaint`)은 이름에 complaint가 남아 있지만 문의·상담 위험에도 그대로 쓴다. 요청 유형에 따라 달라지는 것은 제목(`title`)뿐이라 '긴급 문의'·'긴급 상담'처럼 붙는다.
+- 0012에서 더한 알림은 `parent_message`(학부모 추가 글) · `reassigned`(재배정받음) · `consultation_booked`(상담 예약 확정) · `note_corrected`(알림장 정정) · `cancelled`(취소) · `care_rejected`(투약·귀가 반려)다. 추가 글은 parent_message로 열린 카드 담당에게, 재배정은 reassigned("요청이 배정됐어요")로 새 담당에게, 상담 확정은 consultation_booked("상담 예약 확정", 본문 한국 날짜·시간)로 학부모에게 알린다. cancelled는 투약·귀가 학부모 취소 때 담당자(없으면 원장), care_rejected는 교직원 반려 때 사유와 함께 학부모에게 보낸다. note_corrected는 알림장 정정(0015·API 3.30)에서 연결한다. 반려 알림 본문은 사유 코드 표시 이름과 reason_text를 함께 쓴다.
+- `subject_type`·`subject_id`: 요청·카드가 아닌 대상을 가리킨다. `note_sent`·`note_corrected` 및 알림장 확인 안내 알림이 아이별 알림장(`daily_note`)을 가리킬 때 쓴다.
 - `deliver_after`: 이 시각이 지나야 보낸다. 근무 시간(평일 09~18시) 밖에 생긴 알림에는 다음 근무 시작 시각을 넣는다. 긴급 민원 가운데 **아이 안전(`risk_category = child_safety`)만** 지금 시각을 넣어 바로 보내고, 나머지 긴급 3가지와 판단 필요 민원은 다음 근무 시간에 보낸다(FR-21). 발송기는 `status = 'pending' AND deliver_after <= now()`인 알림만 꺼낸다(9.1 F3-5).
 
 **평가.** `eval_runs`는 요청한 모델 ID와 응답에 돌아온 모델 ID를 함께 남긴다. 그래서 원장 현황의 '평가 결과'와 모델 선택 근거(T05)를 같은 기록에서 볼 수 있다.
@@ -754,13 +784,15 @@ FK를 걸 수 없는 참조가 두 곳 있다. `cards.subject_id`와 `notificati
 | `inbox_filter` | 받은함 필터 | 들어가는 카드 |
 | --- | --- | --- |
 | `unassigned` | 미배정 | 담당이 없는 카드 |
-| `needs_review` | 확인 필요 | 요청이 `awaiting_review`·`escalated`, 학부모가 확인한 민원(`sent_or_booked` + `parent_confirmed_at`), 요청 없는 카드(규칙 제안 등) 중 결정 대기 |
+| `needs_review` | 확인 필요 | 요청이 `awaiting_review`·`escalated`(원장 대기 중인 `reply_draft` 제외), 학부모가 확인한 민원(`sent_or_booked` + `parent_confirmed_at`), 요청 없는 카드(규칙 제안 등) 중 결정 대기 |
 | `uncertain` | 판단 필요 | 위험 등급 `uncertain` 민원 |
 | `on_hold` | 보류 | 카드나 요청이 보류 |
-| `in_progress` | 진행 중 | 학부모·AI·시스템 차례인 것 |
+| `in_progress` | 진행 중 | 학부모·AI·시스템 차례인 것, 원장 확인 대기(`escalated`)의 담임 `reply_draft` |
 | `done` | 완료 | 카드 `done`·`rejected`, 요청 `completed`·`rejected` |
 
-긴급 요청에는 필터를 따로 두지 않고, `is_urgent`로 '확인 필요' 맨 위에 올린다. `is_urgent`는 `urgency`가 아니라 `risk_level = 'urgent'`인지로 정한다. 판단 필요 문의·민원을 사람이 다시 나누면 `risk_level`이 바뀌면서 '확인 필요'로 옮겨 간다.
+0013은 요청이 `escalated`인 담임 회신 카드를 `in_progress`로 분류한다. 완료·보류·미배정 분기 뒤, `uncertain` 분기 앞에 적용하므로 원장 확인을 기다리는 동안 위험 등급과 관계없이 같은 필터에 남는다. 카드 표시 이름은 "원장 확인 중"이며 원장 보고 카드는 기존 필터를 유지한다. 원장 지시 등으로 `awaiting_review`가 되면 기존 위험 등급 기준을 다시 따른다. downgrade는 0012의 뷰 정의로만 되돌리고 행을 바꾸지 않는다.
+
+긴급 요청에는 필터를 따로 두지 않고, `is_urgent`로 '확인 필요' 맨 위에 올린다. `is_urgent`는 `urgency`가 아니라 `risk_level = 'urgent'`인지로 정한다. 판단 필요 문의·민원을 사람이 다시 나누어도 열린 원장 보고 카드가 있으면 회신은 원장 대기 필터에 남으며, 원장이 지시하거나 원장이 일반으로 내린 뒤 기존 필터로 돌아간다.
 
 회신한 민원 카드는 처리 완료 전까지 받은함에 남는다. 발송한 `reply_draft` 카드는 학부모가 확인하기 전에는 `in_progress`, 확인한 뒤에는 `needs_review`에 있다가 처리 완료 뒤 `done`이 된다. 거절한 옛 회신 카드는 `done`에 그대로 남는다.
 
@@ -788,9 +820,10 @@ CREATE TABLE approvals (
     decided_by      uuid NOT NULL,
     -- reject = 거절(초안 다시) · dismiss = 반려(요청을 처리하지 않음) · complete = 민원 처리 완료(T04 합의 2)
     -- resume = 보류 재개 · escalate = 담임이 원장님께 올리기(T04 8장 #5) · instruct = 원장 지시(내용은 reason_text)
+    -- acknowledge = 상담 원장 보고만 확인(요청 상태 그대로)
     decision        text NOT NULL CHECK (decision IN ('approve', 'edit_approve', 'reject', 'hold',
                                                       'resume', 'dismiss', 'complete',
-                                                      'escalate', 'instruct')),
+                                                      'escalate', 'instruct', 'acknowledge')),
     -- 거절·반려 이유 코드(기억·규칙 제안에 씀). 값 목록은 설정값이라 CHECK로 묶지 않음(설계서 2.2):
     -- wrong_fact · tone · missing_info · privacy · policy · slot_unavailable · room_unavailable · other
     reason_code     text,
@@ -924,6 +957,8 @@ API 설계 문서의 403·404 조건은 이 표와 내용이 같고, AI 보안 �
 
 ### 4.4 차단 시험
 
+실행 기준: 2026-11-24, 이 PR 최종 HEAD, alembic `0011`, 시험 PG의 `test_scope.py`·`test_scope_cases.py`와 두 모드의 `api/test_feed.py`. 명령은 `tools/test_db.sh -p no:cacheprovider`이고 결과는 9.2에 있다.
+
 기관 복합 FK는 다른 기관의 행이 이 원의 행에 잘못 이어져 저장되는 것을 막는다. 하지만 조회·수정·파일 열람 권한은 API가 요청마다 확인하는 일이라, 아래 세 사람으로 실제 HTTP를 불러 시험했다. 기대값은 API 설계 문서 4장의 규칙과 같다. 다른 기관이면 언제나 404이고, 같은 기관이라도 범위 밖이면 404다. 피드만 예외다. 반 칸에서는 같은 기관 사람이라도 그 반 아이의 보호자가 아니면, 원 칸에서는 지금 연결된 아이가 없는 보호자면 403 `FORBIDDEN`으로 거부한다. 거부한 요청은 `events`에 `permission_denied`로 남는다. 사례마다 같은 시험 안에서 권한 있는 사람의 정상 호출 한 번과 막혀야 하는 호출을 함께 부른다. 표의 실제 결과는 9.2의 실행에서 나온 값이다.
 
 - **다른 기관 사용자**: 다른 원에 속한 담임·학부모 계정
@@ -1019,6 +1054,8 @@ Supabase도 속은 PostgreSQL + pgvector이므로, 가이드의 테이블·제�
 | `notifications (deliver_after)` 보낼 것만 | 알림 발송 대기열 | — |
 
 ### 6.2 실행 계획 (EXPLAIN ANALYZE)
+
+아래 시간·배수·검색 일치 수는 과거 로컬 SQL 측정값이다. 기준 날짜는 2026-11-17(v0.5), 반 조건 ③-c는 2026-11-18(v0.6)이며 alembic 도입 전이다. **당시 실행 커밋·원 로그는 미확인**이므로 이번 HEAD의 성능 수치로 쓰지 않는다. 재현 명령은 이 절·3.3의 SQL 앞에 `EXPLAIN (ANALYZE, BUFFERS)`를 붙이는 것이며, 데이터 규모·반복 조건은 아래와 같다.
 
 **환경.** 2026-11-17(③-c는 2026-11-18)에 `pgvector/pgvector:pg16` 임시 컨테이너(PostgreSQL 16.16, pgvector 0.8.7, CPU 2개·메모리 3GB 제한)에서 쟀다. 가상 데이터는 기관 20곳 · 반 200개 · 계정 4,200개 · 요청 50,000건(1년 치, 40%가 민원) · 카드 50,000장(15%가 열림) · 문서 1,000개 · 조각 20,000개(1024차원 무작위 벡터)다.
 **방법.** 같은 조회를 두 경우로 나눠 `EXPLAIN (ANALYZE, BUFFERS)`를 실행했다. 하나는 인덱스가 있을 때이고, 다른 하나는 트랜잭션 안에서 그 인덱스를 지웠을 때다(`DROP INDEX` 뒤 `ROLLBACK`). 시간은 같은 조회를 먼저 두 번 돌린 뒤 세 번째로 잰 값이다.
@@ -1133,7 +1170,7 @@ WHERE type = 'complaint' AND classroom_id = :classroom_id AND topic_key = :topic
 
 ## 9. DB가 막는 것과 확인 결과
 
-2026-11-17에 v0.5 DDL을 `pgvector/pgvector:pg16` 임시 컨테이너(Supabase가 아니라 같은 PostgreSQL 16 이미지)에 적용하고, 가상 데이터로 아래 시험을 돌렸다. 표 26개와 뷰 2개, 트리거 1개가 오류 없이 만들어졌고, 시험 64개도 모두 기대대로 나왔다(실패 0). 다음 날인 2026-11-18에는 자료·검색 부분만 v0.6 DDL로 다시 확인했다. 이때 표 27개가 오류 없이 만들어졌으며, B13·D1·D2와 C1~C3의 결과도 기대와 같았다. 나머지 표는 그 사이에 바뀌지 않았으므로 11/17 결과를 그대로 둔다.
+2026-11-17에 v0.5 DDL을 `pgvector/pgvector:pg16` 임시 컨테이너(Supabase가 아니라 같은 PostgreSQL 16 이미지)에 적용하고, 가상 데이터로 아래 시험을 돌렸다. 표 26개와 뷰 2개, 트리거 1개가 오류 없이 만들어졌고, 시험 64개도 모두 기대대로 나왔다(실패 0; 과거 SQL 기록: 2026-11-17, v0.5 DDL, alembic 도입 전, 실행 커밋·원 명령 미확인. 이번 판의 검증 수치는 9.2). 다음 날인 2026-11-18에는 자료·검색 부분만 v0.6 DDL로 다시 확인했다. 이때 표 27개가 오류 없이 만들어졌으며, B13·D1·D2와 C1~C3의 결과도 기대와 같았다. 나머지 표는 그 사이에 바뀌지 않았으므로 11/17 결과를 그대로 둔다.
 
 | 시험 | 기대 | 결과 | 막는 제약 |
 | --- | --- | --- | --- |
@@ -1191,7 +1228,7 @@ WHERE type = 'complaint' AND classroom_id = :classroom_id AND topic_key = :topic
 
 ### 9.1 세 흐름 시험
 
-2026-11-18에 같은 `pgvector/pgvector:pg16` 임시 컨테이너에 v0.7 DDL을 올리고, 8.3의 세 흐름을 처음부터 끝까지 따라가며 시험했다. 표 27개·뷰 2개·트리거 2개·FK 57개·컬럼 266개가 오류 없이 만들어졌다. 가상 원 하나(담임·원장·학부모 2명·아이 1명·상담실 1개)를 두고 시험 23개를 돌렸는데, 모두 기대대로 나왔다(실패 0). 그중 학부모 미확인 처리 완료는 F2-5~F2-8에서, 근무 시간 밖 긴급 알림은 F3-5에서 확인한다. 자료 올리기와 알림장 초안은 202로 접수하는 기능이라, 진행 상태 칸(`documents.ingest_status`·`daily_note_inputs.draft_status`)을 J1~J5로 따로 확인했다. 9장의 B13·D1·D2·C1~C3도 바뀐 뷰 위에서 다시 돌려 같은 결과를 얻었다.
+2026-11-18에 같은 `pgvector/pgvector:pg16` 임시 컨테이너에 v0.7 DDL을 올리고, 8.3의 세 흐름을 처음부터 끝까지 따라가며 시험했다. 표 27개·뷰 2개·트리거 2개·FK 57개·컬럼 266개가 오류 없이 만들어졌다. 가상 원 하나(담임·원장·학부모 2명·아이 1명·상담실 1개)를 두고 시험 23개를 돌렸는데, 모두 기대대로 나왔다(실패 0; 과거 SQL 기록: 2026-11-18, v0.7 DDL, alembic 도입 전, 실행 커밋·원 명령 미확인. 이번 판의 검증 수치는 9.2). 그중 학부모 미확인 처리 완료는 F2-5~F2-8에서, 근무 시간 밖 긴급 알림은 F3-5에서 확인한다. 자료 올리기와 알림장 초안은 202로 접수하는 기능이라, 진행 상태 칸(`documents.ingest_status`·`daily_note_inputs.draft_status`)을 J1~J5로 따로 확인했다. 9장의 B13·D1·D2·C1~C3도 바뀐 뷰 위에서 다시 돌려 같은 결과를 얻었다.
 
 | 시험 | 기대 | 결과 | 막는 제약 |
 | --- | --- | --- | --- |
@@ -1225,6 +1262,17 @@ WHERE type = 'complaint' AND classroom_id = :classroom_id AND topic_key = :topic
 
 ### 9.2 마이그레이션 적용 기록
 
+이번 판의 기준은 2026-11-24, `taewoong-fb020-2nd`의 이 PR 최종 HEAD, alembic head `0011`이다. 명령은 `tools/test_db.sh -p no:cacheprovider`다. 최종 커밋 뒤 권한·마이그레이션·복원·배정 표시는 같은 스크립트에 `-k "scope or migration or request_risk_types or feed or backup_restore or agent_failure_preserves or unassigned_request_label or received_request_label"`을 붙여 다시 확인한다. 아래 과거 행은 해당 DDL 판·커밋 당시 기록이며, 이번 실행의 통과 개수와 합치지 않는다. `76900bb`+v0.18은 2026-11-23·0010, `d82b81a`+v0.21은 2026-11-24·0011에서 같은 명령을 쓴 기록이다. 설계 DDL 시기의 실행 커밋·원 명령은 미확인이며 당시 alembic은 없었다.
+
+| 이번 실행 범위 | 마이그레이션·시험 | 결과 |
+| --- | --- | --- |
+| DB 통합 전체(전용 PG16·pgvector) | `tests/integration/db`, 0001 → 0011 | 343개 통과 |
+| 공유 HTTP(모의·시험 PG 두 모드) | `tools/test_db.sh`의 API 시험 목록 | 공유 HTTP 726개 통과(mock·시험 PG 두 모드) |
+| 권한 차단(4.4) | `db/test_scope.py`, `db/test_scope_cases.py`, `api/test_feed.py` | 전체 실행에 포함, 모두 통과 |
+| 마이그레이션(최종 HEAD에서 다시 확인) | `test_migrations.py::test_upgrade_downgrade_upgrade`, `test_feed_migration.py`, `test_request_risk_types.py` | 전체 실행에 포함, 모두 통과 |
+| 로컬 복원·재적용 | `db/test_backup_restore.py::test_dump_restore_revives_later_deletions_until_after_restore_applies_them` | 1개 통과(같은 전체 실행에 포함) |
+
+
 9장과 9.1은 마이그레이션을 만들기 전에 설계 DDL을 한 번에 올려 시험한 기록이라, 당시 판을 함께 적는다. 그 뒤로는 `apps/api/migrations`의 0001~0011을 차례로 올린 시험 PG에서 `tools/test_db.sh`로 확인한다.
 
 | 기준 | 적용 순서 | 확인한 것 | 시험(파일::함수) | 결과 |
@@ -1240,7 +1288,9 @@ WHERE type = 'complaint' AND classroom_id = :classroom_id AND topic_key = :topic
 | `develop` `d82b81a` + v0.21 변경 | 0011 → 0010 → 0011 | 되돌리면 문의·상담의 위험 등급만 지우고 민원 등급은 남김. 다시 올리면 문의에 위험 등급을 저장할 수 있음 | `test_request_risk_types.py::test_0011_round_trip_keeps_complaint_risk_and_clears_other_types` | 통과 |
 | `develop` `d82b81a` + v0.21 변경 | 0011 | 답변 그래프를 켜도 위험 문의는 자료·검사 AI를 부르지 않고, 요청에 `risk_level = urgent`·`risk_category = legal_external`이 저장됨 | `test_request_risk_types.py::test_risky_inquiry_skips_answer_model_and_saves_risk` | 통과 |
 
-**다시 확인하는 방법.** 기준 커밋을 받은 뒤 레포 루트에서 `tools/test_db.sh`를 실행하면 된다. 이 스크립트는 `pgvector/pgvector:pg16` 임시 컨테이너를 빈 포트에 띄우며, 공용 DB는 쓰지 않는다. 그 컨테이너에서 `tests/integration/db` 전체와 공유 HTTP 시험을 모의·시험 PG 두 모드로 돌리고, 끝나면 컨테이너와 볼륨을 지운다. 실행 환경은 Python 3.12, 그리고 pgvector를 얹은 PostgreSQL 16이다. 실행 로그에는 시험 이름과 통과 수가 남는다. 이 판의 실행에서는 DB 시험 343개와 공유 HTTP 시험 690개가 모두 통과했다(실패 0).
+**0012 기반 마이그레이션 확인(2026-11-24, `taewoong-flow-fix` A0 커밋).** `tools/test_db.sh -p no:cacheprovider`의 임시 PG에서 DB 통합 367개가 통과했다. `test_migrations.py::test_upgrade_downgrade_upgrade`는 base 왕복과 설계 DDL의 `pg_dump` 일치를 확인했다(표 30·뷰 2·트리거 2·FK 64·컬럼 293). `test_0012_care_backfill_and_round_trip_preserve_events_and_notifications`는 투약·귀가 값·JSON null·빈 입력의 이관, 일반 문의·확인 이력 보존, 새 action 7개·kind 6개, 새 값을 쓰는 행을 남긴 0012 → 0011 → 0012 왕복과 새 값이 없을 때의 원래 스키마 복원을 확인했다. 정확한 커밋·공유 HTTP 결과·로그 위치는 루프 A `REPORT.md`에 남긴다. 앞의 0011 기록과 수치를 합치지 않는다.
+
+**다시 확인하는 방법.** 기준 커밋을 받은 뒤 레포 루트에서 `tools/test_db.sh`를 실행하면 된다. 이 스크립트는 `pgvector/pgvector:pg16` 임시 컨테이너를 빈 포트에 띄우며, 공용 DB는 쓰지 않는다. 그 컨테이너에서 `tests/integration/db` 전체와 공유 HTTP 시험을 모의·시험 PG 두 모드로 돌리고, 끝나면 컨테이너와 볼륨을 지운다. 실행 환경은 Python 3.12, 그리고 pgvector를 얹은 PostgreSQL 16이다. 실행 로그에는 시험 이름과 통과 수가 남는다. 현재 판의 통과 개수는 위 이번 실행 표를 따른다. 로컬 기록이며 CI 실행 URL은 없다. 명령·정확한 최종 커밋과 실행 로그 위치는 작업 보고서에도 함께 남긴다.
 
 ## 10. LangGraph 체크포인트
 
@@ -1309,7 +1359,7 @@ T50이 붙기 전까지는 사진을 올린 사람이 아이를 직접 표시한
 
 이력에 찍히는 시각은 트랜잭션이 시작된 시각이다. 백업 직전에 시작해 덤프 뒤에 커밋된 변경까지 잡으려고, export는 백업 시각보다 10분 앞부터 본다. apply는 이미 닫힌 행을 건너뛰므로 두 번 돌려도 결과가 같고, 파일은 지우지 않는다.
 
-시험 PG에서는 백업 뒤에 글을 지우고, `C-DEMO-01`의 공개 범위를 org에서 family로 좁히고, 기억을 지우고, `C-DEMO-03` 노을이를 퇴소 처리했다. 덤프를 복원하자 이 넷이 모두 되살아났다. 지운 글의 본문이 다시 보였지만, 사진 파일은 이미 지워져 있어서 404가 났다. 복원 전에 뽑아 둔 JSON을 apply하자 복원 전 상태로 돌아왔다. 이때 다시 적용된 것은 글 1건, 범위 2건(하늘이는 org에서 family로, 노을이는 class에서 family로), 퇴소 1건, 기억 1건, 이력 3줄이다. 같은 JSON을 한 번 더 적용했을 때는 모두 0건이었다(`test_backup_restore.py::test_dump_restore_revives_later_deletions_until_after_restore_applies_them`).
+시험 PG의 이번 확인은 2026-11-24, 이 PR HEAD, 0011에서 `tools/test_db.sh -p no:cacheprovider`로 실행한다(9.2). DB 덤프와 사진 tar를 보관하고 `meta.json.created_at`을 재적용 기준으로 읽는다. 백업 뒤 글 삭제·하늘 공개 범위 org→family·기억 삭제·노을 퇴소를 한 뒤 DB와 사진을 복원한다. 삭제했던 글과 사진 파일이 다시 200으로 열리는 것을 확인하고, 저장한 JSON을 재적용하면 글 1건·범위 2건·퇴소 1건·기억 1건·이력 3줄이 복원 전의 차단 상태로 돌아간다. 글 목록·앨범에서 삭제 대상이 빠지고, 상세·사진 파일은 404, 지운 기억은 목록에서 빠진다. 같은 JSON의 두 번째 적용은 전부 0건이다(`test_backup_restore.py::test_dump_restore_revives_later_deletions_until_after_restore_applies_them`). 이 시험은 전용 PG의 `pg_dump`/`psql`과 로컬 사진 tar를 쓰며 팀 서버용 Compose 스크립트 전체를 실행하는 시험은 아니다.
 
 복원은 `infra/backup/restore.sh <백업 폴더>`로 하고, 스크립트가 아래 순서대로 진행한다. 폴더만 주면 할 일만 보여 주며, `--yes`를 붙여야 실행한다. 시작하기 전에 두 파일을 `meta.json`의 sha256과 맞춰 보고, 어느 단계든 실패하면 그 자리에서 멈춘다.
 
@@ -1320,49 +1370,66 @@ T50이 붙기 전까지는 사진을 올린 사람이 아이를 직접 표시한
 5. `media_sweep --apply`로 고아 파일을 지운다. 백업 뒤에 지운 글의 사진과 퇴소로 지운 사진은 백업에서 파일까지 함께 돌아오므로, 여기서 다시 지워야 한다.
 6. 2에서 멈춘 서비스를 다시 켠다.
 
-이 순서는 로컬 임시 Compose 프로젝트에서 실제로 돌려 보았다. 백업 뒤에 글 삭제, 범위 좁힘, 기억 삭제, 원 칸 글 숨김, 노을이 퇴소를 해 둔 다음 복원했다. 그러자 apply가 글 1건, 숨김 1건, 범위 2건, 퇴소 1건, 기억 1건을 다시 적용했고, 사진 정리에서 파일 2개가 지워졌다. 지금 DB의 `alembic_version`을 지운 상태에서는 1단계에서 멈췄고, api는 그대로 돌았다. 같은 상태에서 `SKIP_EXPORT=1`을 붙이자 나머지 단계까지 끝났다. 파일 하나를 바꿔 둔 경우에는 sha256이 맞지 않아 1단계에 들어가기 전에 멈췄다. 쓰는 법은 `infra/backup/README.md`에 있다.
+과거 로컬 Compose 기록(2026-11-23, 문서 반영 `1d2c228`, alembic 0010, `infra/backup/backup.sh` → `infra/backup/restore.sh <폴더> --yes`; 원 실행 커밋·로그는 미확인)은 다음과 같다. 이 PR에서 Compose 전체를 다시 실행하지는 않았다. 백업 뒤에 글 삭제, 범위 좁힘, 기억 삭제, 원 칸 글 숨김, 노을이 퇴소를 해 둔 다음 복원했다. 그러자 apply가 글 1건, 숨김 1건, 범위 2건, 퇴소 1건, 기억 1건을 다시 적용했고, 사진 정리에서 파일 2개가 지워졌다. 지금 DB의 `alembic_version`을 지운 상태에서는 1단계에서 멈췄고, api는 그대로 돌았다. 같은 상태에서 `SKIP_EXPORT=1`을 붙이자 나머지 단계까지 끝났다. 파일 하나를 바꿔 둔 경우에는 sha256이 맞지 않아 1단계에 들어가기 전에 멈췄다. 쓰는 법은 `infra/backup/README.md`에 있다.
 
 **지금 상태와 남은 일.**
 
 - 정기 백업 예약은 아직 없다. 주기와 보관 개수가 정해지면 `infra/backup/README.md`에 적는다.
 - 팀 서버에서는 2026-11-23 develop `a0106cf`에서 `backup.sh`를 한 번 돌렸다. DB 덤프와 사진 5개, `meta.json`(alembic `0010`)이 한 폴더에 받아졌고, 지금 DB의 사진 행 수와 묶음 안 파일 수가 같았다. 같은 날 `after_restore export`(백업 뒤 변경 0건)와 `media_sweep`(고아 0개)도 목록만 확인했다. 복원은 `restore.sh`로 할 일만 띄워 보았다. 실제 복원과 다시 적용은 로컬 임시 Compose 프로젝트에서만 해 보았다.
-- 지금 DB를 잃어 export를 할 수 없으면 `SKIP_EXPORT=1`로 복원할 수밖에 없다. 이때 백업 뒤에 지운 것과 좁힌 것은 되살아난 채로 남는다. 사진 파일이 없는 글을 지운 글로 보는 방법도 있다. 하지만 사진 볼륨을 복원하기 전에 파일 목록을 받아 둬야 해서 스크립트에는 넣지 않았고, 이 경우는 손으로 처리한다.
+- 지금 DB를 잃어 export를 못 하면 먼저 기존 `REAPPLY_FILE`이나 별도로 보관한 삭제 기록을 찾는다. `SKIP_EXPORT=1`은 삭제·공개 제한을 복구하지 않는다. 기록을 못 구하면 아래 확인을 마칠 때까지 서비스를 열지 않는다.
+
+### 복원 뒤 서비스 열기 전 확인
+
+MVP에서 이미 적용되는 삭제는 담임 기억의 내용 비우기·`deleted_at`, 퇴소 관리의 보호자 연결 종료·기억 삭제다. 요청·카드 자체를 지우는 API는 없고 감사 이력도 지우지 않는다(4.2). T54 사진·앨범은 [제안] 계약이며 모의·DB 구현과 시험은 있다. 서비스 전체에 사진 기능이 없다고 가정하지 않는다. 팀 확인·화면 연결은 아직 남아 있다.
+
+| 확인 범위 | 이번 판의 확인 | 남은 범위 |
+| --- | --- | --- |
+| 로컬 전용 PG·가상 사진 | 9.2의 백업→삭제/범위 좁힘→DB·사진 복원→JSON 재적용→차단 시험 통과 | 팀 서버 Compose 볼륨·역방향 프록시까지 검증한 것은 아님 |
+| 팀 서버 | 이 작업에서 접속·백업·복원 모두 안 함. 기존 2026-11-23 `a0106cf` 기록은 위에 보존 | 실제 복원·재적용·공개 전 검증 안 함 |
+
+공개 전에 다음 순서를 지킨다. 기존 `restore.sh`는 재적용·정리가 끝나면 서비스를 다시 켜므로, 아래 권한 확인까지 자동 보장하는 스크립트로 읽지 않는다. 운영 복원에서는 외부 진입을 닫은 상태로 검사하고 통과 뒤에만 연다.
+
+1. `meta.json.created_at`·`git_commit`·`alembic_version`·DB/사진 sha256을 확인한다. 복원 전에 현재 DB에서 `PYTHONPATH=apps/api .venv/bin/python -m app.maintenance.after_restore export --since <created_at> > reapply.json`으로 변경을 따로 보관한다. 찾는 표·이력은 바로 위 대응표다. 별도의 영구 삭제 원장은 없으며 현재 DB·export 파일을 둘 다 잃으면 백업만으로 이후 삭제를 알 수 없다.
+2. DB·사진 복원과 마이그레이션 뒤 같은 명령 접두어로 `app.maintenance.after_restore apply reapply.json`을 실행한다. `app.maintenance.media_sweep --apply --min-age 0`으로 되살아난 고아 파일도 지운다. 정리가 끝날 때까지 외부 목록·파일 경로를 열지 않는다.
+3. 권한 있는 계정의 정상 호출과 함께, 지운 글은 목록·상세에서 빠지고 앨범에 사진이 없으며 `/photos/{id}/file`도 404인지 본다. 숨긴 글·family로 좁힌 사진·퇴소 보호자도 목록·앨범·파일 전체에서 4.4와 API 3.29의 403/404를 받는지 본다. 파일 볼륨을 정적 URL로 공개하지 않는다. 지운 기억은 본인 목록에서 빠지고 내용이 비워져야 한다.
+4. 변경 기록을 못 가져오면 공개를 보류한다. 사진은 백업 시각 이후 것뿐 아니라 삭제·범위 변경 여부가 불명인 기존 사진도 우선 닫고, 보호자 연결·사진 범위·삭제·숨김·기억을 담임/관리자가 대조해 확인한 범위만 연다. 이후 복원에 쓸 삭제·공개 제한 기록을 외부에 보관하는 운영 방법은 T54 운영 확정 때 더한다. `SKIP_EXPORT=1`의 종료 코드나 파일이 없다는 사실을 공개 허가로 쓰지 않는다.
 
 ## 변경 이력
 
-| 판 | 날짜 | 바뀐 것 |
-| --- | --- | --- |
-| v0.1~v0.3 | 2026-11-17 | 초안 1~3. 표·DDL을 만들고 T04 흐름·권한 명세와 맞춤 |
-| v0.4 | 2026-11-17 | 강사님 'DB 스키마 설계서 작성법'의 목차와 제출 전 체크리스트에 맞춰 1~6장을 다시 짬 |
-| v0.5 | 2026-11-17 | 입출력 계약표의 규칙·기본값(알림 종류·보류 자동 재개·거절 이유·처리 기한)에 맞춤 |
-| v0.6 | 2026-11-18 | `topic_key`를 정해진 목록(`other`는 반복 수 제외)으로 두고 에이전트 `create_card` 인자와 맞춤. 같은 질문 묶기를 MVP에서 뺌. 여러 반 대상 자료를 위한 `document_classrooms`와 근거 검색 반 조건을 더함 |
-| v0.7 | 2026-11-18 | 학부모 미확인 처리 완료의 이유 필수 트리거, `ingest_status`·`draft_status`, `completed_unconfirmed`, 주제 10개 + `other`, 주말·공휴일 뺀 기한, 근무 시간 밖 긴급 알림, 세 흐름 대조(8.3)와 시험(9.1)을 더함 |
-| v0.8 | 2026-11-20 | 0002: 아이별 메모 `daily_note_inputs.child_memos`와 배열 CHECK |
-| v0.9 | 2026-11-20 | 0003: `daily_notes.ai_original`, `events.daily_note_id`, 알림장 이력 네 종류 |
-| v0.10 | 2026-11-20 | 0004: 회신한 민원 카드를 처리 완료 전까지 받은함에 남김 |
-| v0.11 | 2026-11-20 | 0005: 알림 다음 발송 시각 `notifications.next_attempt_at` |
-| v0.12 | 2026-11-20 | 0006: 요청 재전달 이력 `agent_requeued` |
-| v0.13 | 2026-11-20 | 0007: 상담 예상 종료 `expected_end_at`, 상담 종료·지연 알림과 이력 |
-| v0.14 | 2026-11-20 | 0008: 투약·귀가 접수·확인 알림 `care_requested`·`care_confirmed` |
-| v0.15 | 2026-11-21 | 0009: 상담 예상 종료를 예약 당일·원래 종료 + 3시간 안으로 제한 |
-| v0.16 | 2026-11-21 | 0010: 피드·사진 메타데이터 표 세 개, `children.photo_scope`, 피드 이력 네 종류 |
-| v0.17 | 2026-11-23 | 과정 이야기를 걷어내고 문장을 다듬음. 낡은 개수·진행 상태를 지금 DDL·코드에 맞춤. 원에 남은 답은 바로 답하지 않고 담임 카드 초안으로만 쓰도록 기획서·에이전트 명세(T14)에 맞춤 |
-| v0.18 | 2026-11-23 | 11/20 강사 피드백 반영. 다른 기관·다른 반·연결이 끝난 보호자 차단 시험(4.4), 알림장 초안 실패·복구 이력(2.6), 사진·기억의 보존과 삭제(피드·앨범 절), 마이그레이션 적용 기록(9.2)을 더함. 연결된 아이가 없는 보호자에게는 원 칸도 닫음 |
-| v0.19 | 2026-11-23 | 백업·복원 스크립트, 복원 뒤 다시 적용, 고아 사진 정리, 퇴소 관리 작업을 더하고 피드·앨범 절의 '지금 상태와 남은 일'을 그에 맞춤. 데모 시드가 퇴소한 아이를 다시 넣지 않게 하고, 지금 DB를 못 읽으면 복원이 멈추게 함 |
-| v0.19.1 | 2026-11-23 | 팀 서버 첫 백업 기록(`backup.sh` 1회, 복원은 할 일만 확인)으로 '지금 상태와 남은 일'을 고침 |
-| v0.20 | 2026-11-24 | 문서 머리에 2차 검토 링크, 시연 코드 기준 커밋(`ab58b7c`), 1차 검토 뒤 보완 표(바뀐 내용·고친 절·지키는 시험·반영 커밋)를 더함. 2.2에 사람에게 넘긴 이유(`ai_timeout`·`ai_failed`·`card_missing`)와 요청 행 잠금 규칙, 거절 뒤 새 회신 카드의 빈 초안을 더함 |
-| v0.21 | 2026-11-24 | 0011: 위험 등급을 문의·상담에도 저장(`requests_check1`), 위험 알림 제목 규칙(2.6)과 받은함 설명(2.7)을 세 유형에 맞춤 |
-
+| 판 | 날짜 | 바뀐 것 | 작성 |
+| --- | --- | --- | --- |
+| v0.1~v0.3 | 2026-11-17 | 초안 1~3. 표·DDL을 만들고 T04 흐름·권한 명세와 맞춤 | 태웅 |
+| v0.4 | 2026-11-17 | 강사님 'DB 스키마 설계서 작성법'의 목차와 제출 전 체크리스트에 맞춰 1~6장을 다시 짬 | 태웅 |
+| v0.5 | 2026-11-17 | 입출력 계약표의 규칙·기본값(알림 종류·보류 자동 재개·거절 이유·처리 기한)에 맞춤 | 태웅 |
+| v0.6 | 2026-11-18 | `topic_key`를 정해진 목록(`other`는 반복 수 제외)으로 두고 에이전트 `create_card` 인자와 맞춤. 같은 질문 묶기를 MVP에서 뺌. 여러 반 대상 자료를 위한 `document_classrooms`와 근거 검색 반 조건을 더함 | 태웅 |
+| v0.7 | 2026-11-18 | 학부모 미확인 처리 완료의 이유 필수 트리거, `ingest_status`·`draft_status`, `completed_unconfirmed`, 주제 10개 + `other`, 주말·공휴일 뺀 기한, 근무 시간 밖 긴급 알림, 세 흐름 대조(8.3)와 시험(9.1)을 더함 | 태웅 |
+| v0.8 | 2026-11-20 | 0002: 아이별 메모 `daily_note_inputs.child_memos`와 배열 CHECK | 태웅 |
+| v0.9 | 2026-11-20 | 0003: `daily_notes.ai_original`, `events.daily_note_id`, 알림장 이력 네 종류 | 태웅 |
+| v0.10 | 2026-11-20 | 0004: 회신한 민원 카드를 처리 완료 전까지 받은함에 남김 | 태웅 |
+| v0.11 | 2026-11-20 | 0005: 알림 다음 발송 시각 `notifications.next_attempt_at` | 태웅 |
+| v0.12 | 2026-11-20 | 0006: 요청 재전달 이력 `agent_requeued` | 태웅 |
+| v0.13 | 2026-11-20 | 0007: 상담 예상 종료 `expected_end_at`, 상담 종료·지연 알림과 이력 | 태웅 |
+| v0.14 | 2026-11-20 | 0008: 투약·귀가 접수·확인 알림 `care_requested`·`care_confirmed` | 태웅 |
+| v0.15 | 2026-11-21 | 0009: 상담 예상 종료를 예약 당일·원래 종료 + 3시간 안으로 제한 | 태웅 |
+| v0.16 | 2026-11-21 | 0010: 피드·사진 메타데이터 표 세 개, `children.photo_scope`, 피드 이력 네 종류 | 태웅 |
+| v0.17 | 2026-11-23 | 과정 이야기를 걷어내고 문장을 다듬음. 낡은 개수·진행 상태를 지금 DDL·코드에 맞춤. 원에 남은 답은 바로 답하지 않고 담임 카드 초안으로만 쓰도록 기획서·에이전트 명세(T14)에 맞춤 | 태웅 |
+| v0.18 | 2026-11-23 | 11/20 강사 피드백 반영. 다른 기관·다른 반·연결이 끝난 보호자 차단 시험(4.4), 알림장 초안 실패·복구 이력(2.6), 사진·기억의 보존과 삭제(피드·앨범 절), 마이그레이션 적용 기록(9.2)을 더함. 연결된 아이가 없는 보호자에게는 원 칸도 닫음 | 태웅 |
+| v0.19 | 2026-11-23 | 백업·복원 스크립트, 복원 뒤 다시 적용, 고아 사진 정리, 퇴소 관리 작업을 더하고 피드·앨범 절의 '지금 상태와 남은 일'을 그에 맞춤. 데모 시드가 퇴소한 아이를 다시 넣지 않게 하고, 지금 DB를 못 읽으면 복원이 멈추게 함 | 태웅 |
+| v0.19.1 | 2026-11-23 | 팀 서버 첫 백업 기록(`backup.sh` 1회, 복원은 할 일만 확인)으로 '지금 상태와 남은 일'을 고침 | 태웅 |
+| v0.20 | 2026-11-24 | 문서 머리에 2차 검토 링크, 시연 코드 기준 커밋(`ab58b7c`), 1차 검토 뒤 보완 표(바뀐 내용·고친 절·지키는 시험·반영 커밋)를 더함. 2.2에 사람에게 넘긴 이유(`ai_timeout`·`ai_failed`·`card_missing`)와 요청 행 잠금 규칙, 거절 뒤 새 회신 카드의 빈 초안을 더함 | 태웅 |
+| v0.21 | 2026-11-24 | 0011: 위험 등급을 문의·상담에도 저장(`requests_check1`), 위험 알림 제목 규칙(2.6)과 받은함 설명(2.7)을 세 유형에 맞춤 | 태웅 |
+| v0.22 | 2026-11-24 | 2차 의견 DB 1~3 반영. 공개 전 복원 확인·아이별 T58 복구 기준과 현 집계 차이·시험 수치의 실행 기준을 적고 권한·마이그레이션을 다시 확인함 | 태웅 |
+| v0.23 | 2026-11-24 | 요청 흐름 끝까지 점검(11/24) 반영. 0012: 이력 동작 7종(추가 글·권한 밖 안내·취소·돌봄 수정·알림장 정정·충돌 재제안·보고 확인)과 알림 종류 6종을 더하고, 투약·귀가 입력을 이력 detail에서 `requests.care_detail`로 옮김(되돌리기 가능). 0013: 원장 확인을 기다리는 회신 카드는 담임 받은함에서 '진행 중'. 0014: 상담 원장 보고 확인(`acknowledge`) 결정. 0015: 보낸 알림장 정정 판(`daily_notes.version`)·정정 시각(`corrected_at`). 머리의 '11/27 시연' 문구를 뺌 | 태웅 |
 
 ## 부록. 가이드 제출 전 체크리스트
 
 | 체크리스트(가이드 22쪽) | 이 문서 |
 | --- | --- |
 | ERD 그림과 관계 명세 표가 서로 일치한다 | 1.2·1.3. ERD 선 58개 = 관계 표 58행 = DDL FK 제약 64개 중 피드·앨범 표의 6개를 뺀 58개(1.3) |
-| 모든 컬럼에 타입·제약·의미가 적혀 있다 | 2장, 표 27개의 컬럼 271개 전부. 피드·앨범 표와 `children.photo_scope`는 맨 끝 [제안] 절 |
+| 모든 컬럼에 타입·제약·의미가 적혀 있다 | 2장, 표 27개의 컬럼 272개 전부. 피드·앨범 표와 `children.photo_scope`는 맨 끝 [제안] 절 |
 | 모든 테이블에 기본키와 created_at이 있다 | 2장. 표 27개 모두(9장 C1·C2). 피드·앨범 표 중 `feed_photo_children`에는 created_at이 없다 |
 | API 설계 문서와 필드명·ID 형식이 같다 | 2.0 ID 형식 표. 필드와 DB 컬럼 대응표는 API 설계 문서 7장 |
 | 벡터 차원, 인덱스 연산자, 임베딩 모델이 적혀 있다 | 3장 |
 | 테이블마다 역할별 권한 표가 있다 | 4.2. PostgreSQL RLS 대신 API가 검사함(4.1) |
 | Redis 키 이름 규칙과 TTL이 적혀 있다 | 5.3. 해당 없음(Redis를 쓰지 않음) |
-| 문서의 SQL을 실제로 실행해 확인했다 | 9장(시험 67개 + 세 흐름 시험 23개 + 진행 상태 5개), 9.2(마이그레이션 적용 기록), 6.2(실행 계획), 3.3(검색 SQL) |
+| 문서의 SQL을 실제로 실행해 확인했다 | 9장·9.1(과거 SQL 기록, 실행 커밋·원 명령 미확인), 9.2(마이그레이션 적용 기록), 6.2(실행 계획), 3.3(검색 SQL) |

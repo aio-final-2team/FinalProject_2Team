@@ -43,7 +43,8 @@ def list_documents(user, page, size, sort):
         item["effective_from"] = row["effective_from"] or row["created_at"].astimezone(KST).date()
         item["conflicts"] = []
         error = row["job_error"]
-        item["error"] = {key: error[key] for key in ("code", "message")} if error else None
+        item["error"] = ({key: error[key] for key in ("code", "message")}
+                         if error and row["ingest_status"] == "failed" else None)
         items.append(item)
     return {"items": items, "total": total, "page": page, "size": size}
 

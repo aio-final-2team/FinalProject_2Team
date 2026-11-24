@@ -50,7 +50,7 @@ def snapshot(engine):
 def test_sweep_lists_only_orphans_and_deletes_them_only_with_apply(media_root, seeded_db, tmp_path):
     with seeded_db.begin() as connection:
         connection.execute(text("UPDATE feed_posts SET deleted_at=now() WHERE id=:id"), {"id": seed.demo_id("e04")})
-    for path in media_root.glob("*.png"):
+    for path in media_root.glob("*.jpg"):
         os.utime(path, (1, 1))
     stray = old(media_root / "stray.png")
     outside = old(tmp_path / "outside.png")
@@ -58,14 +58,14 @@ def test_sweep_lists_only_orphans_and_deletes_them_only_with_apply(media_root, s
     old(media_root / "mock" / "seed.png")
     video = old(media_root / "videos" / "growth.mp4")   # 다른 기능의 하위 폴더는 사진 행이 없어도 고아가 아니다
     (media_root / "fresh.png").write_bytes(b"uploading")
-    expected = [f"{seed.demo_id('f05')}.png", "stray.png"]   # 지운 글의 사진과 행이 없는 파일
+    expected = [f"{seed.demo_id('f05')}.jpg", "stray.png"]   # 지운 글의 사진과 행이 없는 파일
 
     assert media_sweep.sweep() == expected
     assert stray.exists() and (media_root / expected[0]).exists()
     assert media_sweep.sweep(apply=True) == expected
     assert not stray.exists() and not (media_root / expected[0]).exists()
     remaining = sorted(p.name for p in media_root.iterdir())
-    assert remaining == sorted([f"{seed.demo_id(f'f0{n}')}.png" for n in range(1, 5)] + ["fresh.png", "link.png", "mock", "videos"])
+    assert remaining == sorted([f"{seed.demo_id(f'f0{n}')}.jpg" for n in range(1, 5)] + ["fresh.png", "link.png", "mock", "videos"])
     assert video.exists() and outside.exists() and media_sweep.sweep(apply=True) == []
 
 
@@ -93,7 +93,7 @@ def test_withdraw_dry_run_changes_nothing_then_apply_follows_four_steps(media_ro
     parent, class_feed = auth(seed.PARENT), f"{BASE}/classrooms/{seed.CLASS_STAR}/posts"
     assert db_client.patch(f"{BASE}/children/{seed.CHILD}/photo-scope", headers=parent,
                            json={"photo_scope": "org"}).status_code == 200
-    solo_file = media.path(f"{SOLO}.png")
+    solo_file = media.path(f"{SOLO}.jpg")
     before = snapshot(seeded_db)
 
     todo = withdraw_child.withdraw(seed.CHILD)
@@ -116,7 +116,7 @@ def test_withdraw_dry_run_changes_nothing_then_apply_follows_four_steps(media_ro
                                         "ORDER BY id DESC LIMIT 1")).one()
     assert event.actor_type == "system" and event.detail["withdrawn"] is True
     assert (event.detail["before"], event.detail["photo_ids"]) == ("org", [str(SOLO)])
-    assert not solo_file.exists() and media.path(f"{SHARED}.png").exists()
+    assert not solo_file.exists() and media.path(f"{SHARED}.jpg").exists()
     # 남은 아이가 없는 보호자는 반 칸·원 칸 모두 403이다. 함께 찍힌 사진은 노을이 보호자에게도 가려진다.
     assert db_client.get(class_feed, headers=parent).status_code == 403
     assert db_client.get(f"{BASE}/organizations/{seed.ORG}/posts", headers=parent).status_code == 403
@@ -145,4 +145,4 @@ def test_demo_seed_does_not_bring_back_a_withdrawn_child(media_root, seeded_db):
         assert set(connection.scalars(text("SELECT child_id FROM feed_photo_children WHERE photo_id=:p"),
                                       {"p": SHARED})) == {seed.CHILD, other["id"]}
         assert connection.scalar(text("SELECT photo_scope FROM children WHERE id=:c"), {"c": seed.CHILD}) == "family"
-    assert not media.path(f"{SOLO}.png").exists() and media.path(f"{SHARED}.png").exists()
+    assert not media.path(f"{SOLO}.jpg").exists() and media.path(f"{SHARED}.jpg").exists()

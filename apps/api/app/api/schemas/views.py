@@ -27,6 +27,8 @@ class RequestList(Page):
 
 
 class CareRequestItem(RequestItem):
+    child_id: UUID
+    child_name: str
     version: int
     unregistered_pickup: bool
     missing_fields: list[str]
@@ -75,6 +77,11 @@ class DecisionResponse(BaseModel):
     next_card_id: UUID | None = None
 
 
+class InstructionResponse(DecisionResponse):
+    next_action: Literal["reassign"] | None = None
+    message: str | None = None
+
+
 class Person(BaseModel):
     id: UUID
     display_name: str
@@ -88,6 +95,19 @@ class ClassroomView(BaseModel):
 class CheckSummary(BaseModel):
     passed: bool
     issue_count: int
+
+
+class NoteBatchChild(BaseModel):
+    child_id: UUID
+    display_name: str
+    note_id: UUID | None
+    status: Literal["missing", "draft", "needs_check", "ready", "sent"]
+
+
+class NoteBatchView(BaseModel):
+    input_id: UUID
+    draft_status: Literal["queued", "running", "succeeded", "failed"]
+    children: list[NoteBatchChild]
 
 
 class CardItem(BaseModel):
@@ -111,6 +131,7 @@ class CardItem(BaseModel):
     due_at: datetime | None
     is_delayed: bool
     hold_until: date | None
+    note_batch: NoteBatchView | None = None
 
 
 class CardList(Page):
@@ -125,6 +146,8 @@ class CardView(CardState):
     draft: dict
     check_result: dict | None
     check_attempts: int
+    status_label: str | None = None
+    note_batch: NoteBatchView | None = None
 
 
 class EvidenceView(SourceOut):
@@ -178,6 +201,7 @@ class EventView(BaseModel):
 class CardDetail(BaseModel):
     card: CardView
     request: StaffRequest | None
+    messages: list[MessageOut]
     evidence: list[EvidenceView]
     warnings: list[str]
     parent_choices: list[ParentChoice]
@@ -238,8 +262,9 @@ class Overview(BaseModel):
 class NotificationView(BaseModel):
     id: int
     kind: Literal["needs_info", "new_card", "urgent_complaint", "uncertain_complaint", "director_report",
-                  "on_hold", "sent_or_booked", "parent_confirmed", "completed", "rejected", "note_sent",
-                  "slot_hold_expired", "hold_resumed", "consultation_ending", "consultation_delayed", "care_requested", "care_confirmed"]
+                  "on_hold", "sent_or_booked", "parent_confirmed", "completed", "rejected", "note_sent", "note_corrected",
+                  "slot_hold_expired", "hold_resumed", "consultation_ending", "consultation_delayed", "care_requested", "care_confirmed",
+                  "care_rejected", "cancelled", "parent_message", "reassigned", "consultation_booked"]
     title: str
     body: str | None
     request_id: UUID | None
@@ -275,7 +300,7 @@ class RegenerateResponse(DraftResponse):
 class OpenCheck(BaseModel):
     id: str
     item_key: str
-    kind: Literal["not_in_memo", "sensitive", "other_child", "date_check", "absent", "draft_failed", "check_failed", "request_missed"]
+    kind: Literal["not_in_memo", "sensitive", "other_child", "date_check", "absent", "draft_failed", "check_failed", "request_missed", "return_limit"]
     problem: str
     sentence: str | None = None
     request_id: UUID | None = None
@@ -298,10 +323,16 @@ class NoteView(BaseModel):
     open_checks: list[OpenCheck]
     confirmed_at: datetime | None
     sent_at: datetime | None
+    version: int = Field(ge=1, description="정정용 판. 정정 성공마다 1 증가해요")
+    corrected_at: datetime | None
+
+
+class NoteListItem(NoteView):
+    input_id: UUID
 
 
 class NoteList(Page):
-    items: list[NoteView]
+    items: list[NoteListItem]
 
 
 class NoteResponse(BaseModel):
@@ -346,6 +377,21 @@ class DocumentView(BaseModel):
 
 class DocumentResponse(BaseModel):
     document: DocumentView
+
+
+class DocumentChunk(BaseModel):
+    index: int
+    location: str | None
+    content: str
+    suspicious: bool
+
+
+class DocumentDetailView(DocumentView):
+    chunks: list[DocumentChunk]
+
+
+class DocumentDetailResponse(BaseModel):
+    document: DocumentDetailView
 
 
 class DocumentList(Page):

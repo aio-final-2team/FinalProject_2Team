@@ -83,6 +83,7 @@ def test_third_complaint_counts_other_guardians_closed_cases_and_only_same_class
     assert saved["reply_draft"]["due_at"] == saved["director_report"]["due_at"]
     reply = detail(client, teacher, saved["reply_draft"]["id"])
     assert reply["request"]["status"] == "escalated" and reply["card"]["draft"]["text"]
+    assert [e["detail"]["reason"] for e in reply["timeline"] if e["action"] == "escalated"] == ["repeat"]
     assert len(client.get(f"{BASE}/requests/{third}", headers=parent).json()["messages"]) == 1
     fourth = cards(client, director, create(client, parent))
     assert set(fourth) == {"reply_draft", "director_report"}
@@ -121,11 +122,15 @@ def test_high_risk_handoff_has_two_cards_no_draft_or_automatic_reply(
         assert datetime.fromisoformat(row["due_at"]) == start + timedelta(hours=2)
         assert item["request"]["status"] == "escalated"
     history = detail(client, teacher, saved["reply_draft"]["id"])["timeline"]
+    assert [e["detail"]["reason"] for e in history if e["action"] == "escalated"] == ["risk"]
     assert [e["to_status"] for e in history if e["to_status"]] == ["received", "classified", "assigned", "escalated"]
     assert not {"approved", "sent"} & {e["action"] for e in history}
     bucket = "uncertain" if risk == "uncertain" else "needs_review"
     listed = client.get(f"{BASE}/cards?filter={bucket}&size=100", headers=director).json()["items"]
-    assert {c["id"] for c in saved.values()} <= {c["id"] for c in listed}
+    assert saved["director_report"]["id"] in {c["id"] for c in listed}
+    assert saved["reply_draft"]["id"] not in {c["id"] for c in listed}
+    progress = client.get(f"{BASE}/cards?filter=in_progress&size=100", headers=teacher).json()["items"]
+    assert next(c for c in progress if c["id"] == saved["reply_draft"]["id"])["status_label"] == "원장 확인 중"
     parent_view = client.get(f"{BASE}/requests/{rid}", headers=parent).json()
     assert len(parent_view["messages"]) == 1
     err(decision(client, teacher, saved["reply_draft"]["id"]), 409, "INVALID_TRANSITION")
@@ -147,18 +152,30 @@ def test_high_risk_handoff_has_two_cards_no_draft_or_automatic_reply(
                         edited_content={"text": "[TEST] 확인 뒤 직접 안내해요"}).status_code == 200
 
 
-def risk_titles(client, actor, rid):
+def risk_titles(client, actor, rid, complaint_backend):
+    # 제목 시험은 이 요청의 예약 알림만 발송 시각에 도달한 것으로 둬요. 야간에도 같은 제목을 확인해요.
+    if complaint_backend == "mock":
+        for notice in store.state().notifications.values():
+            if str(notice.request_id) == rid and notice.kind in ("urgent_complaint", "uncertain_complaint"):
+                notice.deliver_after = notice.created_at
+    else:
+        with transaction() as connection:
+            connection.execute(text("""
+                UPDATE notifications SET deliver_after=created_at WHERE request_id=:id
+                  AND kind IN ('urgent_complaint','uncertain_complaint')
+            """), {"id": rid})
     response = client.get(f"{BASE}/notifications?size=100", headers=actor)
     assert response.status_code == 200, response.text
     return {n["kind"]: n["title"] for n in response.json()["items"]
             if n["request_id"] == rid and n["kind"] in ("urgent_complaint", "uncertain_complaint")}
 
 
-def test_urgent_inquiry_can_be_lowered_by_teacher_and_director(client, parent, teacher, director):
+def test_urgent_inquiry_can_be_lowered_by_teacher_and_director(client, parent, teacher, director, complaint_backend):
     rid = create(client, parent, body="[TEST] 경찰에 알릴 거예요", kind="inquiry")
     saved = cards(client, director, rid)
     assert saved["reply_draft"]["risk_category"] == "legal_external"
-    assert risk_titles(client, director, rid) == risk_titles(client, teacher, rid) == {"urgent_complaint": "긴급 문의"}
+    assert risk_titles(client, director, rid, complaint_backend) == risk_titles(client, teacher, rid, complaint_backend) == {
+        "urgent_complaint": "긴급 문의"}
     cid, report = saved["reply_draft"]["id"], saved["director_report"]["id"]
     lowered = client.post(f"{BASE}/cards/{cid}/reclassify", headers=teacher, json={
         "version": 1, "risk_level": "normal", "reason": "[TEST] 문의로 확인했어요"})
@@ -177,7 +194,7 @@ def test_urgent_inquiry_can_be_lowered_by_teacher_and_director(client, parent, t
     ("[TEST] 판단 필요 상담이에요", "uncertain", "AI 판단 불확실 상담"),
 ])
 def test_risky_consultation_keeps_slot_flow_and_adds_director_report(
-    client, parent, teacher, director, body, risk, title
+    client, parent, teacher, director, complaint_backend, body, risk, title
 ):
     other = create(client, parent, body="[TEST] 아이가 다쳤어요", kind="inquiry")  # 다른 요청의 보고 카드는 그대로
     rid = create(client, parent, body=body, kind="consultation")
@@ -189,7 +206,7 @@ def test_risky_consultation_keeps_slot_flow_and_adds_director_report(
     start = datetime.fromisoformat(detail(client, director, saved["director_report"]["id"])["request"]["created_at"])
     assert all(datetime.fromisoformat(c["due_at"]) == start + timedelta(hours=2) for c in saved.values())
     kind = "urgent_complaint" if risk == "urgent" else "uncertain_complaint"
-    assert risk_titles(client, director, rid) == {kind: title}
+    assert risk_titles(client, director, rid, complaint_backend) == {kind: title}
     view = client.get(f"{BASE}/requests/{rid}", headers=parent).json()
     assert view["request"]["status"] == "needs_info"
     err(client.post(f"{BASE}/cards/{saved['consult_slots']['id']}/reclassify", headers=teacher, json={

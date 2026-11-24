@@ -42,4 +42,4 @@ def test_0011_round_trip_keeps_complaint_risk_and_clears_other_types(seeded_db, 
     command.upgrade(alembic_config, "head")
     with seeded_db.begin() as connection:
         connection.execute(text("UPDATE requests SET risk_level='uncertain' WHERE id=:id"), {"id": rows["inquiry"]})
-        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0011"
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0015"

@@ -280,6 +280,15 @@ def test_seed_four_posts_five_photos_and_anonymous_rejection(client, parent, fee
     err(client.get(f"{BASE}/photos/{seed.FEED_PHOTOS[0][0]}/file"), 401, "UNAUTHENTICATED")
 
 
+@pytest.mark.parametrize("photo_id,post_id,tags", seed.FEED_PHOTOS)
+def test_seed_photo_file_is_fixture_jpeg(client, parent, parent_other, teacher, photo_id, post_id, tags):
+    author = next(p["author_id"] for p in seed.FEED_POSTS if p["id"] == post_id)
+    headers = {seed.PARENT: parent, seed.PARENT_OTHER: parent_other, seed.TEACHER: teacher}[author]
+    response = client.get(f"{BASE}/photos/{photo_id}/file", headers=headers)
+    assert response.status_code == 200 and response.headers["content-type"] == "image/jpeg"
+    assert response.content.startswith(b"\xff\xd8\xff") and response.content == seed.feed_photo(photo_id)
+
+
 @pytest.mark.parametrize("signature,kind", [(b"\xff\xd8\xff", "image/jpeg"), (b"RIFFxxxxWEBP", "image/webp")])
 def test_format_uses_signature_even_with_misleading_filename_and_mime(client, parent, signature, kind):
     own = post(client, parent, data=signature + b"[TEST] synthetic signature")
@@ -490,4 +499,4 @@ def test_mock_reset_removes_only_mock_files(client, parent, feed_backend):
     store.reset()
     assert media.path(marker).is_file() and not media.path(mock_orphan).exists()
     assert path.exists() is (feed_backend == "db")
-    assert {p.name for p in media.path("mock").iterdir()} == {f"{p[0]}.png" for p in seed.FEED_PHOTOS}
+    assert {p.name for p in media.path("mock").iterdir()} == {f"{p[0]}.jpg" for p in seed.FEED_PHOTOS}

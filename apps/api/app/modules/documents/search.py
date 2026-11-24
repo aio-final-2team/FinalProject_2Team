@@ -20,6 +20,7 @@ from sqlalchemy import text
 from app.core.db import transaction
 from app.core.errors import ApiError
 from app.core.schedule import KST
+from agents.guardrails.injection import suspicious_chunk
 from . import embedding
 
 DOC_TYPES = ("notice", "schedule", "menu", "policy")
@@ -105,6 +106,8 @@ def search_documents(user, kindergarten_id: str, doc_type: str, query: str, clas
                "vector": vector, "version": embedding.VERSION}).mappings().all()
     ranked = []
     for row in rows:
+        if suspicious_chunk(row["content"]):
+            continue
         lexical = score(words, row["document_title"], row["location"] or "", row["content"])
         value = round(0.5 * lexical + 0.5 * max(0.0, row["vector_score"]), 3) if row["vector_score"] is not None else lexical
         if value > 0:

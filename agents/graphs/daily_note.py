@@ -26,6 +26,7 @@ NO_SUPPLIES = {"", "없음"}
 PROBLEM = {
     "draft_failed": "이 아이 초안을 만들지 못했어요. 다시 시도하거나 직접 써 주세요.",
     "check_failed": "메모와 대조하는 검사가 끝나지 않았어요. 직접 읽고 확인해 주세요.",
+    "return_limit": "AI가 두 번 고쳐도 남은 문제가 있어요. 직접 확인해 주세요.",
     "request_missed": "보호자 요청이 초안에 없어요. 요청 내용을 넣어 주세요.",
     "other_child": "다른 아이 이름이 들어 있어요. 이 아이 알림장에서는 빼 주세요.",
     "memo_left_out": "선생님 메모를 알림장에 옮기지 않았어요. 메모를 보고 직접 확인해 주세요.",
@@ -68,7 +69,9 @@ def draft_daily_notes(payload: dict, writer: JsonModel | None = None, checker: J
     """
     writer = writer or OpenAIModel("DOCUMENT")
     checker = checker or OpenAIModel("CHECKER")
-    names = [child["display_name"] for child in payload["children"]]
+    names = payload.get("roster_names")
+    if names is None:
+        names = [child["display_name"] for child in payload["children"]]
     common = common_lines(payload)
     def run(child):
         return draft_child(payload, child, common, names, writer, checker)
@@ -122,7 +125,7 @@ def draft_child(payload, child, common, names, writer, checker) -> dict:
             own = twice(lambda: write(writer, payload, child, issues))
         except ModelError as error:
             trace.append({"step": "write", "attempt": attempt, "result": "failed", "error": str(error)})
-            return result(child, common, [], [new_check("child", "draft_failed")], trace, "handoff")
+            return result(child, common, [], [new_check("child", "draft_failed")], trace, "handoff", "draft_failed")
         trace.append({"step": "write", "attempt": attempt, "result": "ok",
                       "lines": [{"key": line["key"], "value": line["value"]} for line in own]})
         found = code_checks(own, child, names)
@@ -137,11 +140,12 @@ def draft_child(payload, child, common, names, writer, checker) -> dict:
         trace.append({"step": "check", "attempt": attempt, "result": review_result,
                       "kinds": [f["kind"] for f in found]})
         if any(f["kind"] == "check_failed" for f in found):
-            return result(child, common, own, found, trace, "handoff")
+            return result(child, common, own, found, trace, "handoff", "check_failed")
         if not issues:
             return result(child, common, own, found, trace, "needs_check" if found else "done")
         if attempt == MAX_RETURNS:
-            return result(child, common, own, found, trace, "handoff")
+            found.append(new_check("child", "return_limit"))
+            return result(child, common, own, found, trace, "handoff", "return_limit")
         trace.append({"step": "return", "attempt": attempt, "kinds": [f["kind"] for f in issues]})
     raise AssertionError("unreachable")
 
@@ -163,8 +167,9 @@ def write(model: JsonModel, payload, child, issues) -> list[dict]:
         "menu": (payload.get("menu") or {}).get("text"),
         "child_name": child["display_name"], "child_memo": child.get("memo") or "",
         "requests": child.get("requests") or [], "review_issues": issues,
+        "untrusted_data_fields": ["child_memo", "requests", "menu"],
     }, ensure_ascii=False)
-    answer = model.json(section("documents.md", "## 알림장 초안 쓰기") + WRITE_FORMAT, user)
+    answer = model.json(section("common.md", "# 공통 규칙") + section("documents.md", "## 알림장 초안 쓰기") + WRITE_FORMAT, user)
     by_id = {req["request_id"]: req for req in child.get("requests") or []}
     lines = []
     text = (answer.get("child") or "").strip() if isinstance(answer.get("child"), str) else ""
@@ -233,8 +238,9 @@ def review(model: JsonModel, payload, child, own) -> list[dict]:
         "activities": payload["activities"], "supplies": payload.get("supplies"),
         "menu": (payload.get("menu") or {}).get("text"),
         "child_memo": child.get("memo") or "", "requests": child.get("requests") or [], "draft": own,
+        "untrusted_data_fields": ["child_memo", "requests", "menu", "draft"],
     }, ensure_ascii=False)
-    answer = model.json(section("checker.md", "## 알림장: 메모와 대조한다") + CHECK_FORMAT, user)
+    answer = model.json(section("common.md", "# 공통 규칙") + section("checker.md", "## 알림장: 메모와 대조한다") + CHECK_FORMAT, user)
     checks = answer.get("checks")
     if not isinstance(checks, list):
         raise ModelError("checks 목록이 없어요", format=True)
@@ -266,9 +272,12 @@ def unique(found: list[dict]) -> list[dict]:
     return list(kept.values())
 
 
-def result(child, common, own, found, trace=None, end="done") -> dict:
-    """end: done(확인 없음) · needs_check(선생님 볼 일) · handoff(실패·한도 초과로 사람에게). 백엔드는 trace·end를 저장하지 않는다."""
+def result(child, common, own, found, trace=None, end="done", handoff_reason=None) -> dict:
+    """handoff일 때만 인계 이유를 돌려준다. 현재 백엔드는 trace·end·handoff_reason을 저장하지 않는다."""
     items = [common["day"], *own, *(common[k] for k in ("supplies", "meal") if k in common)]
     checks = [{"id": f"c{n}", **f} for n, f in enumerate(found, start=1)]
-    return {"child_id": child["child_id"], "content": {"items": items}, "open_checks": checks,
-            "end": end, "trace": (trace or []) + [{"step": "end", "result": end}]}
+    output = {"child_id": child["child_id"], "content": {"items": items}, "open_checks": checks,
+              "end": end, "trace": (trace or []) + [{"step": "end", "result": end}]}
+    if end == "handoff":
+        output["handoff_reason"] = handoff_reason
+    return output

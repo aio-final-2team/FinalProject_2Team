@@ -22,6 +22,7 @@ from app.core import scope
 from app.core.db import transaction
 from app.core.errors import ApiError
 from app.core.schedule import KST
+from agents.guardrails.injection import suspicious_chunk
 
 from .conflicts import find_conflicts
 from .parsing import Chunk, DocumentFormatError, DocumentMeta, ParsedDocument, parse_document, split_chunks
@@ -62,7 +63,7 @@ def in_scope(user, document_id):
     return scope._checked(user, row, allowed, "document", document_id)
 
 
-def view(row) -> dict:
+def view(row, *, include_chunks=False) -> dict:
     item = {key: row[key] for key in FIELDS}
     item["effective_from"] = row["effective_from"] or row["created_at"].astimezone(KST).date()
     item["classroom_ids"] = list(row["classroom_ids"] or [])
@@ -70,6 +71,13 @@ def view(row) -> dict:
     error = row["job_error"]
     item["error"] = ({key: error[key] for key in ("code", "message")}
                      if error and row["ingest_status"] == "failed" else None)
+    if include_chunks:
+        with transaction() as connection:
+            chunks = connection.execute(text("""
+                SELECT chunk_index AS index,location,content FROM document_chunks
+                WHERE document_id=:id AND org_id=:org ORDER BY chunk_index
+            """), {"id": row["id"], "org": row["org_id"]}).mappings().all()
+        item["chunks"] = [{**chunk, "suspicious": suspicious_chunk(chunk["content"])} for chunk in chunks]
     return item
 
 
@@ -77,16 +85,15 @@ def upload(user, filename, data, doc_type, visibility, classroom_ids, effective_
     """접수만 한다. 같은 기관에 같은 내용이 이미 있으면 그 문서를 돌려준다(created=False, 200)."""
     digest = hashlib.sha256(data).hexdigest()
     classroom_ids = list(dict.fromkeys(classroom_ids))
-    if replaces_document_id is not None:
-        old = in_scope(user, replaces_document_id)
-        if old["status"] != "active":
-            raise ApiError(409, "INVALID_TRANSITION")
+    old = in_scope(user, replaces_document_id) if replaces_document_id is not None else None
     with transaction() as connection:
         for classroom_id in classroom_ids:
             scope.classroom_in_scope(user, classroom_id, connection=connection)
         existing = connection.scalar(text("SELECT id FROM documents WHERE org_id=:org AND content_sha256=:sha"),
                                      {"org": user.org_id, "sha": digest})
         if existing is None:
+            if old is not None and old["status"] != "active":
+                raise ApiError(409, "INVALID_TRANSITION")
             existing = connection.scalar(text("""
                 INSERT INTO documents (org_id, title, doc_type, visibility, source, effective_from, status,
                                        ingest_status, supersedes_id, uploaded_by, content_sha256, is_virtual)
@@ -110,6 +117,8 @@ def upload(user, filename, data, doc_type, visibility, classroom_ids, effective_
     if not created:
         prior = in_scope(user, existing)
         if prior["ingest_status"] == "failed":
+            if old is not None and old["status"] != "active":
+                raise ApiError(409, "INVALID_TRANSITION")
             # 두 요청이 같이 failed를 읽어도 먼저 running으로 바꾼 쪽만 다시 적재한다.
             with transaction() as connection:
                 created = connection.scalar(text("""
@@ -179,6 +188,7 @@ def run_ingest(document_id, data: bytes, replaces):
                                      {"id": document_id}).mappings().one()
             parsed = _parsed_from_upload(row, data)
             conflicts = [c.to_dict() for c in find_conflicts(parsed, _others(connection, row, replaces))]
+            suspicious_indexes = [chunk.index for chunk in parsed.chunks if suspicious_chunk(chunk.content)]
             for chunk in parsed.chunks:
                 connection.execute(text("""
                     INSERT INTO document_chunks (document_id, org_id, chunk_index, location, content)
@@ -197,7 +207,8 @@ def run_ingest(document_id, data: bytes, replaces):
                 INSERT INTO events (org_id, actor_type, action, detail)
                 VALUES (:org, 'system', 'checked', CAST(:detail AS jsonb))
             """), {"org": row["org_id"], "detail": json.dumps(
-                {"document_id": str(document_id), "chunk_count": len(parsed.chunks), "conflicts": conflicts},
+                {"document_id": str(document_id), "chunk_count": len(parsed.chunks), "conflicts": conflicts,
+                 "suspicious_chunk_indexes": suspicious_indexes},
                 ensure_ascii=False)})
     except Exception as error:  # noqa: BLE001 - 어떤 실패든 화면에 failed로 보이게 한다
         message = str(error) if isinstance(error, DocumentFormatError) else "자료를 읽지 못했어요."

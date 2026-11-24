@@ -125,6 +125,7 @@ paths:
             - received
             - assigned
             - completed
+            - rejected
             type: string
           - type: 'null'
           title: Status
@@ -192,7 +193,7 @@ paths:
     post:
       tags:
       - 학부모 요청
-      summary: 투약·인계 실제 확인·완료 기록 (T46 팀 확인 전 초안)
+      summary: 투약·인계 실제 확인·완료·반려 기록 (T46 팀 확인 전 초안)
       operationId: care_decision_api_v1_requests__request_id__care_decisions_post
       security:
       - HTTPBearer: []
@@ -210,6 +211,118 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/CareDecisionIn'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CareDecisionOut'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+  /api/v1/requests/{request_id}/cancel:
+    post:
+      tags:
+      - 학부모 요청
+      summary: 학부모 투약·귀가 요청 취소 (제안)
+      operationId: cancel_care_api_v1_requests__request_id__cancel_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: request_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Request Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CareDecisionOut'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+  /api/v1/requests/{request_id}/care:
+    patch:
+      tags:
+      - 학부모 요청
+      summary: 학부모 투약·귀가 입력 수정 (제안)
+      operationId: update_care_api_v1_requests__request_id__care_patch
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: request_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Request Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CareUpdateIn'
       responses:
         '200':
           description: Successful Response
@@ -1115,7 +1228,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DecisionResponse'
+                $ref: '#/components/schemas/InstructionResponse'
         '401':
           content:
             application/json:
@@ -1836,6 +1949,66 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
           description: Unprocessable Entity
+  /api/v1/daily-notes/{note_id}/correct:
+    post:
+      tags:
+      - 알림장·자료
+      summary: Correct Note
+      description: '[제안] 보낸 알림장만 정정하고 보호자에게 알림을 남겨요. 현재 version이 필요해요.'
+      operationId: correct_note_api_v1_daily_notes__note_id__correct_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: note_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Note Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NoteCorrectIn'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NoteResponse'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
   /api/v1/daily-notes/send:
     post:
       tags:
@@ -2034,7 +2207,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DocumentResponse'
+                $ref: '#/components/schemas/DocumentDetailResponse'
         '401':
           content:
             application/json:
@@ -2979,6 +3152,11 @@ components:
           anyOf:
           - $ref: '#/components/schemas/StaffRequest'
           - type: 'null'
+        messages:
+          items:
+            $ref: '#/components/schemas/MessageOut'
+          type: array
+          title: Messages
         evidence:
           items:
             $ref: '#/components/schemas/EvidenceView'
@@ -3011,6 +3189,7 @@ components:
       required:
       - card
       - request
+      - messages
       - evidence
       - warnings
       - parent_choices
@@ -3116,6 +3295,10 @@ components:
             format: date
           - type: 'null'
           title: Hold Until
+        note_batch:
+          anyOf:
+          - $ref: '#/components/schemas/NoteBatchView'
+          - type: 'null'
       type: object
       required:
       - id
@@ -3230,6 +3413,15 @@ components:
         check_attempts:
           type: integer
           title: Check Attempts
+        status_label:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Status Label
+        note_batch:
+          anyOf:
+          - $ref: '#/components/schemas/NoteBatchView'
+          - type: 'null'
       type: object
       required:
       - id
@@ -3248,18 +3440,25 @@ components:
           enum:
           - confirm
           - complete
+          - reject
           title: Decision
         version:
           type: integer
           minimum: 1.0
           title: Version
-          description: 교직원이 본 care.version. 보호자 새 글마다 증가해요
+          description: 교직원이 본 care.version. 보호자 새 글·입력 수정마다 증가해요
         pickup_guardian_id:
           anyOf:
           - type: string
             format: uuid
           - type: 'null'
           title: Pickup Guardian Id
+        reason_text:
+          anyOf:
+          - type: string
+            maxLength: 1000
+          - type: 'null'
+          title: Reason Text
       type: object
       required:
       - decision
@@ -3391,6 +3590,13 @@ components:
             format: date
           - type: 'null'
           title: Hold Until
+        child_id:
+          type: string
+          format: uuid
+          title: Child Id
+        child_name:
+          type: string
+          title: Child Name
         version:
           type: integer
           title: Version
@@ -3411,6 +3617,8 @@ components:
       - status_label
       - updated_at
       - next_action
+      - child_id
+      - child_name
       - version
       - unregistered_pickup
       - missing_fields
@@ -3464,6 +3672,54 @@ components:
       - id
       - status
       title: CareState
+    CareUpdateIn:
+      properties:
+        version:
+          type: integer
+          minimum: 1.0
+          title: Version
+          description: 학부모가 본 care.version
+        pickup_guardian_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Pickup Guardian Id
+        pickup_name:
+          anyOf:
+          - type: string
+            maxLength: 100
+          - type: 'null'
+          title: Pickup Name
+        pickup_relation:
+          anyOf:
+          - type: string
+            maxLength: 100
+          - type: 'null'
+          title: Pickup Relation
+        medication_name:
+          anyOf:
+          - type: string
+            maxLength: 100
+          - type: 'null'
+          title: Medication Name
+        medication_dose:
+          anyOf:
+          - type: string
+            maxLength: 100
+          - type: 'null'
+          title: Medication Dose
+        medication_time:
+          anyOf:
+          - type: string
+            maxLength: 100
+          - type: 'null'
+          title: Medication Time
+      additionalProperties: false
+      type: object
+      required:
+      - version
+      title: CareUpdateIn
     CheckSummary:
       properties:
         passed:
@@ -3614,6 +3870,7 @@ components:
           - dismiss
           - complete
           - escalate
+          - acknowledge
           title: Decision
         reason_code:
           anyOf:
@@ -3694,6 +3951,120 @@ components:
       - status
       - expected_end_at
       title: DelayedBooking
+    DocumentChunk:
+      properties:
+        index:
+          type: integer
+          title: Index
+        location:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Location
+        content:
+          type: string
+          title: Content
+        suspicious:
+          type: boolean
+          title: Suspicious
+      type: object
+      required:
+      - index
+      - location
+      - content
+      - suspicious
+      title: DocumentChunk
+    DocumentDetailResponse:
+      properties:
+        document:
+          $ref: '#/components/schemas/DocumentDetailView'
+      type: object
+      required:
+      - document
+      title: DocumentDetailResponse
+    DocumentDetailView:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        title:
+          type: string
+          title: Title
+        doc_type:
+          type: string
+          title: Doc Type
+        visibility:
+          type: string
+          title: Visibility
+        classroom_ids:
+          items:
+            type: string
+            format: uuid
+          type: array
+          title: Classroom Ids
+        effective_from:
+          type: string
+          format: date
+          title: Effective From
+        effective_to:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Effective To
+        status:
+          type: string
+          title: Status
+        ingest_status:
+          type: string
+          enum:
+          - queued
+          - running
+          - succeeded
+          - failed
+          title: Ingest Status
+        supersedes_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Supersedes Id
+        conflicts:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Conflicts
+        chunk_count:
+          type: integer
+          title: Chunk Count
+        error:
+          anyOf:
+          - $ref: '#/components/schemas/JobError'
+          - type: 'null'
+        chunks:
+          items:
+            $ref: '#/components/schemas/DocumentChunk'
+          type: array
+          title: Chunks
+      type: object
+      required:
+      - id
+      - title
+      - doc_type
+      - visibility
+      - classroom_ids
+      - effective_from
+      - effective_to
+      - status
+      - ingest_status
+      - supersedes_id
+      - conflicts
+      - chunk_count
+      - error
+      - chunks
+      title: DocumentDetailView
     DocumentList:
       properties:
         total:
@@ -4011,6 +4382,35 @@ components:
       - version
       - instruction
       title: InstructionIn
+    InstructionResponse:
+      properties:
+        card:
+          $ref: '#/components/schemas/CardState'
+        request:
+          anyOf:
+          - $ref: '#/components/schemas/RequestState'
+          - type: 'null'
+        next_card_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Next Card Id
+        next_action:
+          anyOf:
+          - type: string
+            const: reassign
+          - type: 'null'
+          title: Next Action
+        message:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Message
+      type: object
+      required:
+      - card
+      title: InstructionResponse
     InstructionView:
       properties:
         text:
@@ -4211,6 +4611,37 @@ components:
       required:
       - message
       title: MessageResponse
+    NoteBatchChild:
+      properties:
+        child_id:
+          type: string
+          format: uuid
+          title: Child Id
+        display_name:
+          type: string
+          title: Display Name
+        note_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Note Id
+        status:
+          type: string
+          enum:
+          - missing
+          - draft
+          - needs_check
+          - ready
+          - sent
+          title: Status
+      type: object
+      required:
+      - child_id
+      - display_name
+      - note_id
+      - status
+      title: NoteBatchChild
     NoteBatchIn:
       properties:
         classroom_id:
@@ -4226,6 +4657,31 @@ components:
       - classroom_id
       - note_date
       title: NoteBatchIn
+    NoteBatchView:
+      properties:
+        input_id:
+          type: string
+          format: uuid
+          title: Input Id
+        draft_status:
+          type: string
+          enum:
+          - queued
+          - running
+          - succeeded
+          - failed
+          title: Draft Status
+        children:
+          items:
+            $ref: '#/components/schemas/NoteBatchChild'
+          type: array
+          title: Children
+      type: object
+      required:
+      - input_id
+      - draft_status
+      - children
+      title: NoteBatchView
     NoteContent:
       properties:
         items:
@@ -4248,6 +4704,26 @@ components:
       required:
       - items
       title: NoteContentOut
+    NoteCorrectIn:
+      properties:
+        version:
+          type: integer
+          minimum: 1.0
+          title: Version
+        content:
+          $ref: '#/components/schemas/NoteContent'
+        reason_text:
+          type: string
+          maxLength: 500
+          minLength: 1
+          pattern: \S
+          title: Reason Text
+      type: object
+      required:
+      - version
+      - content
+      - reason_text
+      title: NoteCorrectIn
     NoteDraftIn:
       properties:
         classroom_id:
@@ -4368,7 +4844,7 @@ components:
           title: Size
         items:
           items:
-            $ref: '#/components/schemas/NoteView'
+            $ref: '#/components/schemas/NoteListItem'
           type: array
           title: Items
       type: object
@@ -4378,6 +4854,76 @@ components:
       - size
       - items
       title: NoteList
+    NoteListItem:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        child_id:
+          type: string
+          format: uuid
+          title: Child Id
+        note_date:
+          type: string
+          format: date
+          title: Note Date
+        status:
+          type: string
+          enum:
+          - draft
+          - needs_check
+          - ready
+          - sent
+          title: Status
+        content:
+          $ref: '#/components/schemas/NoteContentOut'
+        open_checks:
+          items:
+            $ref: '#/components/schemas/OpenCheck'
+          type: array
+          title: Open Checks
+        confirmed_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Confirmed At
+        sent_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Sent At
+        version:
+          type: integer
+          minimum: 1.0
+          title: Version
+          description: 정정용 판. 정정 성공마다 1 증가해요
+        corrected_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Corrected At
+        input_id:
+          type: string
+          format: uuid
+          title: Input Id
+      type: object
+      required:
+      - id
+      - child_id
+      - note_date
+      - status
+      - content
+      - open_checks
+      - confirmed_at
+      - sent_at
+      - version
+      - corrected_at
+      - input_id
+      title: NoteListItem
     NotePatchIn:
       properties:
         content:
@@ -4474,6 +5020,17 @@ components:
             format: date-time
           - type: 'null'
           title: Sent At
+        version:
+          type: integer
+          minimum: 1.0
+          title: Version
+          description: 정정용 판. 정정 성공마다 1 증가해요
+        corrected_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Corrected At
       type: object
       required:
       - id
@@ -4484,6 +5041,8 @@ components:
       - open_checks
       - confirmed_at
       - sent_at
+      - version
+      - corrected_at
       title: NoteView
     NotificationList:
       properties:
@@ -4535,12 +5094,18 @@ components:
           - completed
           - rejected
           - note_sent
+          - note_corrected
           - slot_hold_expired
           - hold_resumed
           - consultation_ending
           - consultation_delayed
           - care_requested
           - care_confirmed
+          - care_rejected
+          - cancelled
+          - parent_message
+          - reassigned
+          - consultation_booked
           title: Kind
         title:
           type: string
@@ -4608,6 +5173,7 @@ components:
           - draft_failed
           - check_failed
           - request_missed
+          - return_limit
           title: Kind
         problem:
           type: string

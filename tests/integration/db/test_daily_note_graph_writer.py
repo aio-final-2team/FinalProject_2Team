@@ -3,11 +3,14 @@
 from dataclasses import replace
 from datetime import datetime
 import json
+from concurrent.futures import ThreadPoolExecutor
+from threading import Event
 from uuid import UUID
 
 import pytest
 from sqlalchemy import text
 
+from agents import llm
 from agents.graphs import daily_note as graph
 from agents.llm import ModelError, OpenAIModel
 from app.core.auth import issue_token
@@ -37,7 +40,7 @@ def graph_models(monkeypatch):
                 return self.answer(value)
 
         models = {"DOCUMENT": FakeModel(writer), "CHECKER": FakeModel(checker)}
-        monkeypatch.setattr(graph, "OpenAIModel", lambda role: models[role])
+        monkeypatch.setattr(llm, "OpenAIModel", lambda role: models[role])
         return models
 
     return install
@@ -122,8 +125,12 @@ def test_graph_keeps_request_missed_reference_after_returns(db_client, teacher, 
     listed = notes(db_client, teacher, draft(db_client, teacher))
     checks = [c for n in listed for c in n["open_checks"]]
     expected_requests = todays_requests()
-    assert len(checks) == len(expected_requests) and all(c["kind"] == "request_missed" for c in checks)
-    assert {c["request_id"] for c in checks} == {str(r["id"]) for r in expected_requests}
+    missed = [c for c in checks if c["kind"] == "request_missed"]
+    # 두 번 돌려보내도 요청이 빠져 있으면 아이마다 return_limit 확인이 하나씩 더 붙는다.
+    limit_children = [n["child_id"] for n in listed for c in n["open_checks"] if c["kind"] == "return_limit"]
+    assert len(missed) == len(expected_requests) and len(missed) + len(limit_children) == len(checks)
+    assert sorted(limit_children) == sorted({str(r["child_id"]) for r in expected_requests})
+    assert {c["request_id"] for c in missed} == {str(r["id"]) for r in expected_requests}
     assert all(UUID(c["id"]).version == 4 and c["sentence"] is None for c in checks)
     assert len(models["DOCUMENT"].inputs) == len(models["CHECKER"].inputs) == 3 * len({r["child_id"] for r in expected_requests})
     assert all(line["key"] != "child" for n in listed for line in n["content"]["items"])
@@ -155,8 +162,31 @@ def test_graph_model_failure_isolated_to_one_child(db_client, teacher, graph_mod
     assert sum(v["child_memo"] == "[TEST] 실패" for v in models[failed_role].inputs) == 1
 
 
+def test_medication_code_check_and_checker_failure_are_both_saved(db_client, teacher, seeded_db, graph_models):
+    medication_id = seed.demo_id("7201")
+    child_id = seed.demo_id("5412")
+    with seeded_db.begin() as connection:
+        connection.execute(text("UPDATE requests SET created_at=:at WHERE id=:id"),
+                           {"at": datetime.now(KST), "id": medication_id})
+
+    def check(value):
+        if value["child_memo"] == "[TEST] 투약 확인":
+            raise ModelError("[TEST] 검사 실패")
+        return {"checks": []}
+
+    graph_models(echo_writer, check)
+    listed = notes(db_client, teacher, draft(db_client, teacher, [
+        {"child_id": str(child_id), "memo": "[TEST] 투약 확인"}]))
+    target = next(n for n in listed if n["child_id"] == str(child_id))
+    assert target["status"] == "needs_check"
+    assert [c["kind"] for c in target["open_checks"]] == ["sensitive", "check_failed"]
+    with seeded_db.connect() as connection:
+        stored = connection.scalar(text("SELECT open_checks FROM daily_notes WHERE id=:id"), {"id": target["id"]})
+    assert [c["kind"] for c in stored] == ["sensitive", "check_failed"]
+
+
 def test_graph_entry_exception_marks_whole_job_failed(db_client, teacher, seeded_db, graph_models, monkeypatch):
-    def fail(payload):
+    def fail(payload, *, writer, checker):
         raise RuntimeError("[TEST] 그래프 전체 실패")
 
     monkeypatch.setattr(graph, "draft_daily_notes", fail)
@@ -166,3 +196,57 @@ def test_graph_entry_exception_marks_whole_job_failed(db_client, teacher, seeded
     assert status["draft_status"] == "failed" and status["error"]["code"] == "UPSTREAM_UNAVAILABLE"
     with seeded_db.connect() as connection:
         assert connection.scalar(text("SELECT count(*) FROM daily_notes")) == 0
+
+
+@pytest.mark.parametrize("blocked_role", ["DOCUMENT", "CHECKER"])
+def test_superseded_graph_stops_before_next_model_call(
+        db_client, teacher, seeded_db, monkeypatch, graph_models, blocked_role):
+    started, release = Event(), Event()
+    runs, calls = [], []
+
+    class FakeModel:
+        def __init__(self, role):
+            if role == "DOCUMENT":
+                runs.append(len(runs))
+            self.run, self.role = runs[-1], role
+
+        def json(self, system, user):
+            calls.append((self.run, self.role))
+            value = json.loads(user)
+            if self.run == 0 and self.role == blocked_role:
+                started.set()
+                assert release.wait(20), "[TEST] 이전 호출 해제 시간 초과"
+            if self.role == "DOCUMENT":
+                return echo_writer(value)
+            return {"checks": [{"item_key": "child", "kind": "not_in_memo", "problem": "[TEST] 다시 쓰기"}]
+                    if self.run == 0 else []}
+
+    monkeypatch.setattr(llm, "OpenAIModel", FakeModel)
+    with seeded_db.begin() as connection:
+        # 한 아이의 메모만 모델을 호출하게 해서 옛 실행의 호출 수를 정확히 센다.
+        connection.execute(text("UPDATE requests SET created_at=created_at-interval '1 day'"))
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        previous = pool.submit(draft, db_client, teacher,
+                               [{"child_id": str(seed.CHILD), "memo": "[TEST] 블록 놀이"}])
+        try:
+            assert started.wait(15), "[TEST] 이전 호출 시작 시간 초과"
+            with seeded_db.begin() as connection:
+                input_id = connection.scalar(text("SELECT id FROM daily_note_inputs"))
+                connection.execute(text("""
+                    UPDATE cards SET draft=draft || '{"draft_started_at":"2020-01-01T00:00:00+09:00"}'::jsonb
+                    WHERE subject_id=:id
+                """), {"id": input_id})
+            response = db_client.post(f"{BASE}/daily-notes/drafts/{input_id}/regenerate", headers=teacher)
+            before = notes(db_client, teacher, response)
+            assert all(n["status"] == "draft" for n in before)
+        finally:
+            release.set()
+        old_response = previous.result(timeout=15)
+    assert notes(db_client, teacher, old_response) == before
+    assert [role for run, role in calls if run == 0] == (
+        ["DOCUMENT"] if blocked_role == "DOCUMENT" else ["DOCUMENT", "CHECKER"])
+    assert [role for run, role in calls if run == 1] == ["DOCUMENT", "CHECKER"]
+    with seeded_db.connect() as connection:
+        assert connection.scalar(text("SELECT draft_status FROM daily_note_inputs")) == "succeeded"
+        assert connection.scalar(text("SELECT count(*) FROM events WHERE action='tool_failed'")) == 0
+        assert connection.scalar(text("SELECT count(*) FROM events WHERE action='daily_note_drafted'")) == 20

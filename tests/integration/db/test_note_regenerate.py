@@ -2,6 +2,7 @@
 
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
+from dataclasses import replace
 from threading import Event
 
 import pytest
@@ -58,6 +59,52 @@ def test_regenerate_supersedes_active_writer_success_or_failure(db_client, teach
         assert connection.scalar(text("SELECT count(*) FROM events WHERE action='daily_note_drafted'")) == 20
 
 
+def test_timeout_regenerate_keeps_new_draft_and_teacher_edit_after_old_writer_finishes(
+        db_client, teacher, seeded_db, monkeypatch):
+    old_started, release_old, old_finished = Event(), Event(), Event()
+
+    def writer(payload):
+        if not old_started.is_set():
+            old_started.set()
+            assert release_old.wait(20)
+            rows = stub_writer.write(payload)
+            rows[0]["content"]["items"][0]["value"] = "[TEST] 늦은 이전 초안"
+            old_finished.set()
+            return rows
+        rows = stub_writer.write(payload)
+        rows[0]["content"]["items"][0]["value"] = "[TEST] 새 초안"
+        return rows
+
+    set_writer(monkeypatch, writer)
+    # 실제 300초 제한과 같은 경로를 짧은 제한으로 재현한다.
+    monkeypatch.setattr(runner, "settings", replace(runner.settings, daily_note_writer_timeout=0.1))
+    try:
+        input_id = draft(db_client, teacher).json()["input_id"]
+        assert old_started.is_set() and not old_finished.is_set()
+        status = db_client.get(f"{BASE}/daily-notes/drafts/{input_id}", headers=teacher).json()
+        assert status["draft_status"] == "failed"
+
+        # 첫 실행만 짧게 마감하고 새 실행에는 충분한 시간을 줘 CI 속도에 의존하지 않는다.
+        monkeypatch.setattr(runner, "settings", replace(runner.settings, daily_note_writer_timeout=5))
+        response = db_client.post(f"{BASE}/daily-notes/drafts/{input_id}/regenerate", headers=teacher)
+        assert response.status_code == 202, response.text
+        assert not old_finished.is_set()  # 이전 모델 호출과 새 작업이 실제로 겹친다.
+        refreshed = notes(db_client, teacher)
+        target = next(n for n in refreshed if n["content"]["items"][0]["value"] == "[TEST] 새 초안")
+        edited = deepcopy(target["content"])
+        edited["items"][0]["value"] = "[TEST] 선생님 수정본"
+        changed = db_client.patch(f"{BASE}/daily-notes/{target['id']}", headers=teacher, json={"content": edited})
+        assert changed.status_code == 200, changed.text
+        before = notes(db_client, teacher)
+    finally:
+        release_old.set()
+        assert old_finished.wait(20)
+    assert notes(db_client, teacher) == before
+    assert next(n for n in before if n["id"] == target["id"])["content"] == edited
+    with seeded_db.connect() as connection:
+        assert connection.scalar(text("SELECT draft_status FROM daily_note_inputs WHERE id=:id"), {"id": input_id}) == "succeeded"
+
+
 @pytest.mark.parametrize("status", ["failed", "queued", "running"])
 def test_regenerate_recovers_input_without_any_saved_notes(db_client, teacher, seeded_db, status):
     from app.api.schemas.actions import NoteDraftIn
@@ -93,7 +140,8 @@ def test_confirmation_during_writer_preserves_ready_note(db_client, teacher, see
         finally:
             release.set()
         assert pending.result(timeout=15).status_code == 202
-    assert next(n for n in notes(db_client, teacher) if n["id"] == target["id"]) == confirmed.json()["note"]
+    assert next(n for n in notes(db_client, teacher) if n["id"] == target["id"]) == {
+        **confirmed.json()["note"], "input_id": input_id}
     with seeded_db.connect() as connection:
         assert connection.scalar(text("SELECT draft_status FROM daily_note_inputs")) == "succeeded"
 
@@ -168,7 +216,8 @@ def test_two_regenerates_dispatch_one_writer_and_keep_edit_during_run(db_client,
             release.set()
         assert pending.result(timeout=15).status_code == 202
     assert len(calls) == 1
-    assert next(n for n in notes(db_client, teacher) if n["id"] == target["id"]) == changed.json()["note"]
+    assert next(n for n in notes(db_client, teacher) if n["id"] == target["id"]) == {
+        **changed.json()["note"], "input_id": input_id}
     with seeded_db.connect() as connection:
         assert connection.scalar(text("SELECT count(*) FROM events WHERE action='daily_note_drafted'")) == 39
 

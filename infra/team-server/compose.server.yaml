@@ -3,6 +3,7 @@ services:
   api:
     restart: unless-stopped
     environment:
+      APP_ENV: production
       DATA_BACKEND: ${DATA_BACKEND:-db}
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL을 설정해 주세요}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET을 설정해 주세요}
@@ -18,10 +19,12 @@ services:
 
   worker:
     environment:
+      APP_ENV: production
       DATA_BACKEND: ${DATA_BACKEND:-db}
 
   beat:
     environment:
+      APP_ENV: production
       DATA_BACKEND: ${DATA_BACKEND:-db}
 
   web:

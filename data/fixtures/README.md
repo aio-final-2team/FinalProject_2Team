@@ -12,3 +12,9 @@
 
 - 만 4세 별빛반(담임 T-DEMO-01) 가상 아이 18명, 반 공통 입력 5일치(11/16~20), 아이별 메모 90개(함정 20개 포함)
 - 설명: [`kg-demo-01/daily_notes/README.md`](kg-demo-01/daily_notes/README.md) · 함정 평가 문항: [`../evaluation/daily_note/`](../evaluation/daily_note/README.md)
+
+## virtual_photos (사진 AI용 가상 아이 사진)
+
+- AI로 만든 가상 아이 사진 295장(기준 얼굴 42·장면 163·명단 밖 아이 21·얼굴 없음 9·반 전체 10·흐린 사진 50). 시드 아이 21명이 나오고, 같은 아이는 같은 얼굴이에요
+- 사진마다 누가 나오는지 정답: `virtual_photos/manifest.json` · Rekognition 얼굴 찾기 기준선: `virtual_photos/baseline.json`
+- 설명: [`virtual_photos/README.md`](virtual_photos/README.md). API 이미지에는 들어가지 않아요
