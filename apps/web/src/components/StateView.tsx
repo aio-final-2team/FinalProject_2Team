@@ -3,16 +3,32 @@ import { Button } from "./Button";
 import { Icon } from "./Icon";
 
 type Kind = "loading" | "empty" | "error" | "forbidden";
+/**
+ * 오류 원인별 모양 (11/23 정함). 같은 오류 상태 안에서 마크 움직임·배지·학부모 표정을 원인마다 다르게 쓴다.
+ * 새 그림은 없이 기존 '온' 심볼 움직임(blink·scan·closed)·배지 아이콘과 말풍선 친구 표정만 조합한다.
+ */
+export type Variant = "server" | "offline" | "timeout" | "forbidden" | "notfound" | "conflict";
+const LAV = "from-[#A8A3F4] to-[#5562F0]";
+const MINT = "from-[#5BE0BC] to-[#2FB58C]";
+const NAVY = "from-[#2A3B5C] to-[#0B1F3A]";
+const VARIANT: Record<Variant, { motion: "blink" | "scan" | "closed"; shake?: boolean; badge: { cls: string; icon: string }; face: "sorry" | "waiting" | "check" | "guide"; move: string }> = {
+  server: { motion: "blink", shake: true, badge: { cls: LAV, icon: "retry" }, face: "sorry", move: "m-shake" },
+  offline: { motion: "blink", badge: { cls: LAV, icon: "pending" }, face: "waiting", move: "m-float" },
+  timeout: { motion: "scan", badge: { cls: LAV, icon: "pending" }, face: "waiting", move: "m-bob" },
+  forbidden: { motion: "closed", badge: { cls: NAVY, icon: "lock" }, face: "check", move: "m-tilt" },
+  notfound: { motion: "blink", badge: { cls: MINT, icon: "approve" }, face: "guide", move: "m-float" },
+  conflict: { motion: "scan", badge: { cls: LAV, icon: "retry" }, face: "guide", move: "m-bob" },
+};
 /** 배지 색도 브랜드 색: + 블루 · 체크 민트 · 다시 시도 라벤더→블루 · 자물쇠 네이비 */
 const BADGE: Record<Exclude<Kind, "loading">, { cls: string; icon: string }> = {
   empty: { cls: "from-[#3D63F2] to-[#2440C8]", icon: "plus" },
-  error: { cls: "from-[#A8A3F4] to-[#5562F0]", icon: "retry" },
-  forbidden: { cls: "from-[#2A3B5C] to-[#0B1F3A]", icon: "lock" },
+  error: { cls: LAV, icon: "retry" },
+  forbidden: { cls: NAVY, icon: "lock" },
 };
 
 /**
  * 모든 화면의 4가지 상태. 학부모는 말풍선 친구, 교사·원장은 '온' 심볼 (고정).
- * 상태마다 모양 + 배지 + 움직임이 달라서 그림만 봐도 구분된다.
+ * 상태마다 모양 + 배지 + 움직임이 달라서 그림만 봐도 구분된다. 오류는 variant로 원인별 모양을 더 나눈다.
  */
 export function StateView({
   kind,
@@ -20,24 +36,27 @@ export function StateView({
   title,
   sub,
   action,
+  variant,
 }: {
   kind: Kind;
   audience: "parent" | "staff";
   title?: string;
   sub?: string;
   action?: { label: string; run: () => void; primary?: boolean };
+  variant?: Variant;
 }) {
-  const staffBadge = kind === "empty" ? { cls: "from-[#5BE0BC] to-[#2FB58C]", icon: "approve" } : kind !== "loading" ? BADGE[kind] : null;
-  const parentBadge = kind !== "loading" ? BADGE[kind] : null;
+  const v = variant ? VARIANT[variant] : undefined;
+  const staffBadge = v ? v.badge : kind === "empty" ? { cls: MINT, icon: "approve" } : kind !== "loading" ? BADGE[kind] : null;
+  const parentBadge = v ? v.badge : kind !== "loading" ? BADGE[kind] : null;
   const badge = audience === "parent" ? parentBadge : staffBadge;
   const mark =
     audience === "parent" ? (
-      <span className={kind === "loading" ? "m-bob" : kind === "empty" ? "m-float" : kind === "error" ? "m-shake" : "m-tilt"}>
-        <Buddy face={kind === "loading" ? "processing" : kind === "empty" ? "guide" : kind === "error" ? "sorry" : "check"} className="size-24" />
+      <span className={v ? v.move : kind === "loading" ? "m-bob" : kind === "empty" ? "m-float" : kind === "error" ? "m-shake" : "m-tilt"}>
+        <Buddy face={v ? v.face : kind === "loading" ? "processing" : kind === "empty" ? "guide" : kind === "error" ? "sorry" : "check"} className="size-24" />
       </span>
     ) : (
-      <span className={kind === "error" ? "m-shake" : ""}>
-        <SymbolMark className="size-16" motion={kind === "loading" ? "scan" : kind === "forbidden" ? "closed" : "blink"} />
+      <span className={v ? (v.shake ? "m-shake" : "") : kind === "error" ? "m-shake" : ""}>
+        <SymbolMark className="size-16" motion={v ? v.motion : kind === "loading" ? "scan" : kind === "forbidden" ? "closed" : "blink"} />
       </span>
     );
   return (

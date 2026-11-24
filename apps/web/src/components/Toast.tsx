@@ -19,7 +19,7 @@ const BADGE: Record<Kind, { cls: string; icon: string }> = {
 };
 
 /**
- * 토스트는 한 번에 하나. 위에서 내려오고, 위로 밀면 닫힌다. 손을 대고 있는 동안은 사라지지 않는다.
+ * 토스트는 한 번에 하나. 탭바·아래 버튼 칸 바로 위에 아래에서 튀어 오르고, 아래로 밀면 닫힌다 (디자인 시스템 7.7). 손을 대고 있는 동안은 사라지지 않는다.
  * 아래 막대는 남은 시간. 실패는 직접 닫거나 다시 시도할 때까지 남는다.
  * 왼쪽 마크: 학부모 = 말풍선 친구, 교사·원장 = '온' 심볼 + 상태 배지.
  */
@@ -29,7 +29,7 @@ export function ToastProvider({ role, children }: { role: Role; children: ReactN
   return (
     <Ctx.Provider value={show}>
       {children}
-      <div className="pointer-events-none fixed inset-x-0 top-[max(12px,env(safe-area-inset-top))] z-[60] flex justify-center px-3" role="status" aria-live="polite">
+      <div className="pointer-events-none fixed inset-x-0 bottom-[calc(156px+env(safe-area-inset-bottom))] z-[60] flex justify-center px-3 lg:bottom-8" role="status" aria-live="polite">
         <AnimatePresence mode="wait">{t && <ToastView key={t.id} t={t} role={role} onDone={() => setT(null)} />}</AnimatePresence>
       </div>
     </Ctx.Provider>
@@ -56,17 +56,17 @@ function ToastView({ t, role, onDone }: { t: ToastState; role: Role; onDone: () 
   const b = BADGE[t.kind];
   return (
     <motion.div
-      className="glass pointer-events-auto relative flex w-full max-w-[420px] cursor-grab touch-none select-none items-center gap-3 overflow-hidden rounded-[18px] bg-bar px-3.5 pb-3.5 pt-3 shadow-[0_10px_30px_rgba(11,31,58,.2),0_0_0_.5px_var(--sep)] backdrop-blur-xl backdrop-saturate-[1.8]"
-      initial={reduce ? { opacity: 0 } : { y: -120 }}
+      className="pointer-events-auto relative flex w-full max-w-[420px] cursor-grab touch-none select-none items-center gap-3 overflow-hidden rounded-[18px] bg-raise px-3.5 pb-3.5 pt-3 shadow-float ring-[.5px] ring-edge"
+      initial={reduce ? { opacity: 0 } : { y: 120 }}
       animate={reduce ? { opacity: 1 } : { y: 0 }}
-      exit={reduce ? { opacity: 0 } : { y: -140, transition: { duration: 0.28, ease: [0.4, 0, 1, 1] } }}
+      exit={reduce ? { opacity: 0 } : { y: 140, transition: { duration: 0.28, ease: [0.4, 0, 1, 1] } }}
       transition={{ type: "spring", bounce: 0.15, duration: 0.5 }}
       drag="y"
       dragConstraints={{ top: 0, bottom: 0 }}
-      dragElastic={{ top: 1, bottom: 0.15 }}
+      dragElastic={{ top: 0.15, bottom: 1 }}
       onDragStart={() => ctrl.current?.pause()}
       onDragEnd={(_, i) => {
-        if (i.offset.y < -28 || i.velocity.y < -350) onDone();
+        if (i.offset.y > 28 || i.velocity.y > 350) onDone();
         else ctrl.current?.play();
       }}
     >
