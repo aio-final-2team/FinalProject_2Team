@@ -1,6 +1,6 @@
--- 유치온 DB 스키마 초안 (T09) · 문서 버전 v0.16 ([제안] T54 피드·앨범 11/21 반영)
+-- 유치온 DB 스키마 초안 (T09) · 문서 버전 v0.24 ([제안] 필수 동의 11/24 반영)
 -- 설계서: Docs/Step2/DB_스키마_설계서.md
--- 이 파일은 최종 설계 모양이다. 실제 적용은 apps/api/migrations의 0001 → 0002 → 0003 → 0004 → 0005 → 0006 → 0007 → 0008 → 0009 → 0010 → 0011 → 0012로 한다.
+-- 이 파일은 최종 설계 모양이다. 실제 적용은 apps/api/migrations의 0001~0016을 차례로 적용한다.
 -- 대상: PostgreSQL 16 + pgvector 0.8 (compose.yaml의 pgvector/pgvector:pg16). Supabase는 쓰지 않는다(설계서 5.1)
 -- 기관 경계: 기관에 속한 표끼리는 (id, org_id) 짝으로 참조해서 다른 원 행을 섞어 넣으면 DB가 거부한다
 
@@ -45,6 +45,18 @@ CREATE TABLE users (
     is_active      boolean NOT NULL DEFAULT true,
     created_at     timestamptz NOT NULL DEFAULT now(),
     UNIQUE (id, org_id)
+);
+
+-- [제안] 필수 동의: 사람·항목·약관 판별 최초 동의 시각을 보존한다(0016).
+CREATE TABLE user_consents (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    org_id uuid NOT NULL REFERENCES organizations(id),
+    user_id uuid NOT NULL,
+    item text NOT NULL CHECK (item IN ('terms','privacy','ai_processing','child_info','child_health','child_face')),
+    terms_version text NOT NULL,
+    agreed_at timestamptz NOT NULL DEFAULT now(),
+    FOREIGN KEY (user_id,org_id) REFERENCES users(id,org_id),
+    UNIQUE (org_id,user_id,item,terms_version)
 );
 
 -- 담임·부담임·대체 담임 배정. 기간이 비어 있으면 계속 담당
@@ -348,7 +360,7 @@ CREATE TABLE events (
                                    'consultation_delay_reported', 'consultation_reminded',
                                    'feed_post_created', 'feed_post_deleted', 'feed_post_hidden', 'photo_scope_changed',
                                    'message_added', 'out_of_scope_answered', 'cancelled', 'care_updated',
-                                   'daily_note_corrected', 'slot_conflict_reproposed', 'report_acknowledged')),
+                                   'daily_note_corrected', 'slot_conflict_reproposed', 'report_acknowledged', 'consent_agreed')),
     -- 시스템이 한 일(보류 예정일 자동 재개, 상담 시간 잡아 두기 풀림)은 actor_type = 'system', actor_id = NULL
     from_status  text,
     to_status    text,

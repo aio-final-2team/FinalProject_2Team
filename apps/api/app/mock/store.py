@@ -13,6 +13,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from app.core.errors import ApiError
+from app.core.consents import require_complete
 from app.core.constants import CARE_REQUEST_TYPES, OUT_OF_SCOPE_MESSAGES
 from app.mock import seed
 from app.core.schedule import KST, due_at
@@ -187,6 +188,7 @@ class _State:
         self.feed_posts = {}
         self.feed_photos = {}
         self.memories = {}
+        self.consents = {}
         self._seq = 1000
 
     def next_int(self) -> int:
@@ -302,6 +304,7 @@ def create_request(user, *, client_request_id: str, type: str, body: str, child_
     with _lock:
         for r in _state.requests.values():
             if r.requester_id == user.id and r.client_request_id == client_request_id:
+                require_complete(user)
                 return r, False
         child = _state.children.get(child_id)
         if child is None or child.org_id != user.org_id or user.id not in child.guardian_ids:
@@ -316,6 +319,7 @@ def create_request(user, *, client_request_id: str, type: str, body: str, child_
             prev = request_in_scope(user, previous_request_id)
             if prev.status not in ("completed", "rejected"):
                 raise ApiError(409, "INVALID_TRANSITION")
+        require_complete(user)
         req = Request(id=uuid4(), org_id=user.org_id, classroom_id=child.classroom_id, child_id=child.id,
                       requester_id=user.id, client_request_id=client_request_id, type=type, body=body,
                       title=body.split("\n")[0][:40], previous_request_id=previous_request_id, care_detail=detail)

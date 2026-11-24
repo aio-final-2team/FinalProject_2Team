@@ -19,6 +19,7 @@ from app.core import media
 from app.core.constants import MAX_PHOTO_BYTES, MAX_PHOTOS, MAX_POST_BYTES
 from app.core.auth import CurrentUser, current_user
 from app.core.errors import ApiError
+from app.core.consents import require_complete
 
 router = APIRouter(tags=["[제안] 피드·앨범"])
 Sort = Literal["-created_at", "created_at"]
@@ -29,6 +30,7 @@ UPLOAD_DOC = {"requestBody": {"required": True, "content": {
 async def create_post(request, user, lane, target_id):
     # FastAPI의 자동 Form 파싱보다 앞에서 권한을 검사해야 몸통을 읽지 않아요.
     await run_in_threadpool(backend.feed.check_access, user, lane, target_id)
+    await run_in_threadpool(require_complete, user)
     length = request.headers.get("content-length")
     if length is not None:
         try:

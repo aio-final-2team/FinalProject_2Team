@@ -13,6 +13,8 @@ from argon2 import PasswordHasher
 from sqlalchemy import text
 
 from app.core.db import transaction
+from app.core.constants import CONSENT_VERSION
+from app.core.consents import required_items
 from app.core.schedule import KST
 from app.mock import seed
 
@@ -34,6 +36,13 @@ def seed_demo(connection, *, refresh_note_requests=False):
             VALUES (:id, :org_id, :role, :login_id, :display_name, :password_hash)
             ON CONFLICT DO NOTHING
         """), {**user, "org_id": seed.ORG, "password_hash": password_hash})
+    if connection.scalar(text("SELECT to_regclass('public.user_consents') IS NOT NULL")):
+        for user in seed.USERS:
+            for item in required_items(user["role"]):
+                connection.execute(text("""
+                    INSERT INTO user_consents(org_id,user_id,item,terms_version)
+                    VALUES (:org,:user,:item,:version) ON CONFLICT DO NOTHING
+                """), {"org": seed.ORG, "user": user["id"], "item": item, "version": CONSENT_VERSION})
     for assignment in seed.CLASSROOM_STAFF:
         connection.execute(text("""
             INSERT INTO classroom_staff (classroom_id, org_id, user_id, valid_from, valid_to)

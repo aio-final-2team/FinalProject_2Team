@@ -2,6 +2,8 @@
 
 from app.core.schedule import KST
 
+CONSENT_VERSION = "2026-11-24"
+
 NOTIFICATION_TITLES = {
     "needs_info": "정보가 더 필요해요", "new_card": "새 카드가 왔어요",
     "urgent_complaint": "긴급 민원", "uncertain_complaint": "AI 판단 불확실 민원",

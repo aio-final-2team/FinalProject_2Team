@@ -10,6 +10,7 @@ from app.core import scope
 from app.core.config import settings
 from app.core.db import transaction
 from app.core.errors import ApiError
+from app.core.consents import require_complete
 from app.core.care import missed_request_check, note_content
 from app.core.constants import LATE_NOTE_REQUEST_NOTICE, NOTE_REQUEST_TYPES, notification_title
 from app.core.jobs import dispatch
@@ -83,6 +84,7 @@ def draft_view(entry):
 def draft(user, body, background_tasks):
     with transaction() as connection:
         children = classroom_children(user, body.classroom_id, connection=connection)["items"]
+        require_complete(user)
         child_ids = {child["id"] for child in children}
         for memo in body.child_memos:
             if memo.child_id not in child_ids:
@@ -127,6 +129,7 @@ def view(note, *, connection=None, requests=None):
 def regenerate(user, input_id, background_tasks):
     with transaction() as connection:
         input_in_scope(user, input_id, connection=connection)
+        require_complete(user)
         values = {"id": input_id, "org": user.org_id}
         entry = connection.execute(text("SELECT * FROM daily_note_inputs WHERE id=:id AND org_id=:org FOR UPDATE"),
                                    values).mappings().one()
