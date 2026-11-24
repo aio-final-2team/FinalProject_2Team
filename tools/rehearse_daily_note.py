@@ -166,7 +166,13 @@ def main():
     parser.add_argument("--date", default=datetime.now(KST).date().isoformat(), help="기본은 오늘(한국 시각)")
     parser.add_argument("--wait", type=float, default=330, help="초안 작업을 기다릴 최대 초(작성기 제한 300초 + 여유)")
     parser.add_argument("--dry-run", action="store_true", help="서버에 보내지 않고 부를 순서만 보여 준다")
+    parser.add_argument("--remote-ok", action="store_true", help="로컬이 아닌 서버에서 그날 알림장을 실제로 보내도 된다")
     args = parser.parse_args()
+    host = httpx.URL(args.base_url).host
+    if not args.dry_run and host not in ("localhost", "127.0.0.1") and not args.remote_ok:
+        print(f"{host}에서 그날 반 알림장을 실제로 만들고 보내요. 시연 당일이 아닌지 확인하고 --remote-ok를 붙여 주세요.",
+              file=sys.stderr)
+        return 2
     if args.dry_run:
         for step, (name, calls, what) in enumerate(PLAN, start=1):
             print(f"[{step}] {name} — {calls} · {what}")
