@@ -8,7 +8,7 @@ import { useSession } from "@/app/session";
 import { AuthPhoto } from "@/components/AuthPhoto";
 import { BackLink } from "@/components/BackLink";
 import { Button } from "@/components/Button";
-import { Dock, PrimaryButton, SubButton } from "@/components/Dock";
+import { Dock, PrimaryButton } from "@/components/Dock";
 import { QueryState } from "@/components/QueryState";
 import { Sheet } from "@/components/Sheet";
 import { StateView } from "@/components/StateView";
@@ -16,11 +16,10 @@ import { useToast } from "@/components/Toast";
 import type { Role } from "@/domain/types";
 import { ComposeSheet, type Kid } from "./ComposeSheet";
 import { PhotoViewer, PostCard } from "./parts";
-import { ScopeSheet } from "./ScopeSheet";
 
 type TabKey = "class" | "org" | "album";
 const TABS: Record<Role, { key: TabKey; label: string }[]> = {
-  parent: [{ key: "class", label: "우리 반" }, { key: "org", label: "원 전체" }, { key: "album", label: "앨범" }],
+  parent: [{ key: "class", label: "우리 반" }, { key: "org", label: "원 전체" }],
   teacher: [{ key: "org", label: "원 소식" }, { key: "album", label: "앨범" }],
   director: [{ key: "org", label: "원 소식" }, { key: "album", label: "앨범" }],
 };
@@ -42,24 +41,21 @@ export function FeedScreen({ role }: { role: Role }) {
   const myKids = me.data?.children ?? [];
   const kids: Kid[] = role === "parent" ? myKids : (classKids.data ?? []);
 
-  const [albumKind, setAlbumKind] = useState<"class" | "org">(role === "parent" ? "class" : "org");
-  const [albumChild, setAlbumChild] = useState<string | undefined>();
   const classLane: Lane | undefined = role === "parent" && myKids[0] ? { kind: "class", id: myKids[0].classroom_id } : undefined;
   const orgLane: Lane | undefined = user ? { kind: "org", id: user.org_id } : undefined;
-  const lane = tab === "class" ? classLane : tab === "org" ? orgLane : albumKind === "class" ? classLane : orgLane;
+  const lane = tab === "class" ? classLane : orgLane;
 
   const posts = usePosts(tab === "album" ? undefined : lane);
-  const album = useAlbum(tab === "album" ? lane : undefined, albumChild);
+  const album = useAlbum(tab === "album" ? lane : undefined);
   const del = useDeletePost();
   const hide = useHidePost();
 
   const [compose, setCompose] = useState(false);
-  const [scope, setScope] = useState(false);
   const [viewer, setViewer] = useState<{ photos: Photo[]; index: number } | null>(null);
   const [confirm, setConfirm] = useState<{ kind: "delete" | "hide"; post: Post } | null>(null);
 
   const audience = role === "parent" ? "parent" : "staff";
-  const laneLabel = (tab === "album" ? albumKind : tab) === "class" ? "우리 반 소식" : "원 전체 소식";
+  const laneLabel = tab === "class" ? "우리 반 소식" : "원 전체 소식";
   const waiting = role === "parent" ? [me] : [];
 
   const actionOf = (p: Post) => {
@@ -93,18 +89,6 @@ export function FeedScreen({ role }: { role: Role }) {
 
       {tab === "album" ? (
         <>
-          {role === "parent" && (
-            <div className="mb-3 flex flex-wrap items-center gap-2">
-              {(["class", "org"] as const).map((k) => (
-                <button key={k} aria-pressed={albumKind === k} onClick={() => setAlbumKind(k)} className={`h-9 rounded-full border px-3 text-footnote font-semibold ${albumKind === k ? "border-accent bg-tint text-accent-ink" : "border-sep bg-card"}`}>{k === "class" ? "우리 반" : "원 전체"}</button>
-              ))}
-              {myKids.length > 1 &&
-                [{ id: undefined, display_name: "전체" } as { id?: string; display_name: string }, ...myKids].map((k) => (
-                  <button key={k.id ?? "all"} aria-pressed={albumChild === k.id} onClick={() => setAlbumChild(k.id)} className={`h-9 rounded-full border px-3 text-footnote font-semibold ${albumChild === k.id ? "border-accent bg-tint text-accent-ink" : "border-sep bg-card"}`}>{k.display_name}</button>
-                ))}
-              <SubButton small className="ml-auto" onClick={() => setScope(true)}>공개 범위</SubButton>
-            </div>
-          )}
           <QueryState queries={[...waiting, album]} skeleton={3} errorTitle="앨범을 불러오지 못했어요">
             {album.data && album.data.length > 0 ? (
               <ul className="grid grid-cols-3 gap-1 overflow-hidden rounded-lg">
@@ -140,7 +124,6 @@ export function FeedScreen({ role }: { role: Role }) {
       </Dock>
 
       <ComposeSheet open={compose} onClose={() => setCompose(false)} lane={lane} kids={kids} laneLabel={laneLabel} />
-      <ScopeSheet open={scope} onClose={() => setScope(false)} kid={myKids.find((k) => k.id === albumChild) ?? myKids[0]} />
       {viewer && <PhotoViewer photos={viewer.photos} index={viewer.index} onIndex={(i) => setViewer({ ...viewer, index: i })} onClose={() => setViewer(null)} />}
       <Sheet open={!!confirm} onClose={() => setConfirm(null)} title={confirm?.kind === "hide" ? "이 글을 숨길까요?" : "이 글을 지울까요?"}>
         <p className="text-footnote text-ink2">{confirm?.kind === "hide" ? "숨기면 모두에게 보이지 않아요." : "올린 사진도 함께 지워지고 되돌릴 수 없어요."}</p>

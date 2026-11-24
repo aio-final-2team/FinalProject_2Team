@@ -9,6 +9,7 @@ import { SoonPage } from "@/features/teacher/SoonPage";
 import { CarePage } from "@/features/care/CarePage";
 import { ClassPage } from "@/features/teacher/ClassPage";
 import { FeedScreen } from "@/features/feed/FeedScreen";
+import { ChildAlbum } from "@/features/feed/ChildAlbum";
 import { TeacherNotifications } from "@/features/common/NotificationList";
 import { RecordsPage } from "@/features/records/RecordsPage";
 import { ParentHome } from "@/features/parent/ParentHome";
@@ -74,6 +75,7 @@ export const router = createBrowserRouter([
       { path: "home", element: <ParentHome /> },
       { path: "notifications", element: <NotificationsPage /> },
       { path: "feed", element: <FeedScreen role="parent" /> },
+      { path: "album", element: <ChildAlbum /> },
       { path: "requests", element: <RequestsPage /> },
       { path: "requests/new", element: <NewRequestPage /> },
       { path: "requests/:requestId", element: <RequestDetailPage /> },
