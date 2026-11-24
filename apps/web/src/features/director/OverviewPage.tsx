@@ -90,7 +90,7 @@ export function OverviewPage() {
             )}
 
             <section aria-label="반별 알림장 현황" className="mt-6 rounded-lg border-[1.5px] border-dashed border-line bg-card p-4">
-              <StateView kind="empty" audience="staff" title="반별 알림장 현황은 준비 중이에요" sub="반별 발송 현황 API가 생기면 여기에 보여요" />
+              <StateView kind="empty" audience="staff" title="반별 알림장 현황은 준비 중이에요" />
             </section>
           </>
         )}

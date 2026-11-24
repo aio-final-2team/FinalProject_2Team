@@ -102,7 +102,7 @@ export function ParentHome() {
 
       {note && (
         <Dock>
-          <SubButton tone="gray" className="h-[52px] w-full" onClick={() => toast({ kind: "ok", title: "답장은 다음 단계에서 열려요", sub: "답장 API가 아직 없어요" })}>
+          <SubButton tone="gray" className="h-[52px] w-full" onClick={() => toast({ kind: "ok", title: "답장은 준비 중이에요" })}>
             선생님께 답장하기
           </SubButton>
         </Dock>

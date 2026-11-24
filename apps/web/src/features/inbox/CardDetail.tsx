@@ -232,7 +232,7 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
       )}
 
       {c.slots && (
-        <Section title="학부모가 고른 시간 · 하나를 확정해 주세요">
+        <Section title="학부모가 고른 시간, 하나를 확정해 주세요">
           <div className="overflow-hidden rounded-2xl bg-card" role="radiogroup">
             {c.slots
               .filter((s) => s.picked)
@@ -248,7 +248,7 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
       )}
 
       {c.risk === "normal" && c.draft !== undefined && (
-        <Section title={c.status === "awaiting_review" || c.status === "escalated" ? "AI 초안 · 고칠 수 있어요" : "보낸 답"}>
+        <Section title={c.status === "awaiting_review" || c.status === "escalated" ? "AI 초안, 고칠 수 있어요" : "보낸 답"}>
           <div className="grid gap-1.5 rounded-2xl bg-tint px-4 py-3">
             <span className="inline-flex items-center gap-1 text-cap font-bold text-accent-ink">
               <Icon name="ai" className="size-3.5" />
@@ -398,7 +398,7 @@ function DirectorActions({ c, open }: { c: Card; open: (k: SheetKind) => void })
     <>
       <p className="text-center text-sub text-ink2">민원 회신은 담임 승인으로만 나가요</p>
       <div className="grid grid-cols-2 gap-2">
-        <Button variant="tinted" lockedReason="담당 교직원 목록 API 연결 후 사용할 수 있어요">재배정</Button>
+        <Button variant="tinted" lockedReason="준비 중이에요">재배정</Button>
         <Button onClick={() => open("note")}>{c.directorNote ? "지시 고치기" : "지시 남기기"}</Button>
       </div>
     </>

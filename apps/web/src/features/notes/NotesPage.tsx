@@ -143,8 +143,8 @@ function Compose({ onStarted }: { onStarted: (id: string) => void }) {
         </span>
       </Label>
       <div className="flex flex-wrap gap-1.5">
-        <span className="rounded-sm bg-ok-tint px-2 py-1 text-caption font-semibold text-ok">식단표 · 오늘 메뉴</span>
-        <span className="rounded-sm bg-lav-tint px-2 py-1 text-caption font-semibold text-lav">보호자 요청 · 오늘 접수분</span>
+        <span className="rounded-sm bg-ok-tint px-2 py-1 text-caption font-semibold text-ok">오늘 식단표</span>
+        <span className="rounded-sm bg-lav-tint px-2 py-1 text-caption font-semibold text-lav">오늘 접수한 보호자 요청</span>
       </div>
 
       <Dock>

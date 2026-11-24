@@ -11,7 +11,7 @@ export function RequestsPage() {
   const items = q.data?.items ?? [];
   return (
     <div className="px-4 pb-8">
-      <ScreenTop audience="parent" title="요청" sub="보낸 문의·상담·민원이 어디까지 왔는지 볼 수 있어요" />
+      <ScreenTop audience="parent" title="요청" sub="보낸 요청이 어디까지 왔는지 볼 수 있어요" />
       <div className="mb-4" />
       <QueryState queries={[q]} skeleton={3} errorTitle="요청을 불러오지 못했어요">
       {!items.length ? (

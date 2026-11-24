@@ -142,7 +142,7 @@ function Detail({ note, notes, name, names }: { note: DailyNote; notes: DailyNot
         ) : memoLine ? (
           <span>{memoLine}</span>
         ) : (
-          <span className="text-ink2">기록 없음 · 반 활동만 들어갔어요</span>
+          <span className="text-ink2">기록이 없어서 반 활동만 들어갔어요</span>
         )}
       </div>
 
@@ -195,7 +195,7 @@ function Detail({ note, notes, name, names }: { note: DailyNote; notes: DailyNot
 
       <div className="mb-2 px-1 text-footnote font-semibold text-ink2">보호자에게 보낼 내용</div>
       <section className="rounded-lg rounded-tr-xs border-[1.5px] border-accent bg-card p-3">
-        <span className="text-caption font-bold text-accent-ink">AI 초안 · 고칠 수 있음</span>
+        <span className="text-caption font-bold text-accent-ink">AI 초안, 고칠 수 있어요</span>
         {items.map((it, i) => {
           const bad = open.some((c) => c.item_key === it.key && c.sentence && it.value.includes(c.sentence));
           const src = it.source.type === "document" ? it.source.document_title ?? "원 자료" : SOURCE_LABEL[it.source.type];
@@ -256,14 +256,14 @@ function Detail({ note, notes, name, names }: { note: DailyNote; notes: DailyNot
         </div>
       )}
       {!locked && (
-        <Dock reason={open.length ? `확인할 곳 ${open.length}개를 먼저 정리해 주세요` : note.status === "ready" ? "확인했어요 · 반 전체를 보낼 때 함께 나가요" : undefined} reasonIcon={open.length ? "lock" : "check"}>
+        <Dock reason={open.length ? `확인할 곳 ${open.length}개를 먼저 정리해 주세요` : note.status === "ready" ? "확인했어요. 반 전체를 보낼 때 함께 나가요" : undefined} reasonIcon={open.length ? "lock" : "check"}>
           {note.status === "ready" ? (
             <SubButton tone="gray" className="h-[52px] w-full" onClick={() => save({ confirm: false }, "확인을 취소했어요")}>
               확인 취소하기
             </SubButton>
           ) : (
             <PrimaryButton disabled={open.length > 0} loading={patch.isPending} onClick={confirm}>
-              다 읽었어요 · 확인
+              다 읽었어요
             </PrimaryButton>
           )}
         </Dock>

@@ -26,7 +26,7 @@ export function ClassPage() {
 
   return (
     <div className="mx-auto max-w-[680px] px-4 pb-10 pt-2">
-      <ScreenTop back={{ to: "/teacher/home", label: "홈" }} title="오늘 우리 반" sub={`${dateLabel(date)} · 식단표와 가정통신문을 모아 봤어요`} />
+      <ScreenTop back={{ to: "/teacher/home", label: "홈" }} title="오늘 우리 반" sub={`${dateLabel(date)} · 식단표와 가정통신문이에요`} />
 
       <QueryState queries={[docs]} skeleton={2}>
         <Group title="식단표" empty="등록된 식단표가 없어요" count={menus.length + (meal ? 1 : 0)}>

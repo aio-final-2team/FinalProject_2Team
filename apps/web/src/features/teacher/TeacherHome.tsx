@@ -97,7 +97,7 @@ export function TeacherHome() {
           <span className="grid size-10 shrink-0 place-items-center rounded-md bg-tint text-accent-ink"><Icon name="inbox" className="size-5" /></span>
           <span className="min-w-0 flex-1">
             <b className="block text-headline">{inbox.data?.counts.review ?? 0}건을 확인해 주세요</b>
-            <span className="text-footnote text-ink2">답변·상담·민원 요청을 모아 봐요</span>
+            <span className="text-footnote text-ink2">답변, 상담, 민원 요청이에요</span>
           </span>
           <SubButton small onClick={() => nav("/teacher/inbox")}>받은함 보기</SubButton>
         </div>
