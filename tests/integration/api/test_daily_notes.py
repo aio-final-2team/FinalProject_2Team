@@ -39,6 +39,49 @@ def confirm_all(client, teacher, notes):
         assert response.json()["note"]["status"] == "ready"
 
 
+def test_return_limit_check_blocks_confirmation_and_send_until_all_resolved(
+        client, teacher, note_backend, monkeypatch):
+    check = {"id": "return-limit", "item_key": "child", "kind": "return_limit",
+             "problem": "AI가 두 번 고쳐도 남은 문제가 있어요. 직접 확인해 주세요", "sentence": None}
+    if note_backend == "db":
+        from app.modules.daily_notes import stub_writer
+        original = stub_writer.write_child
+
+        def write_child(payload, child, index):
+            row = original(payload, child, index)
+            if child["child_id"] == str(seed.CHILD):
+                row["open_checks"].append(dict(check))
+            return row
+
+        monkeypatch.setattr(stub_writer, "write_child", write_child)
+    else:
+        # 모의 모드는 외부 writer가 없어, 생성 결과에 같은 확인 항목을 붙인다.
+        original = mock_notes._generate
+
+        def generate(entry, children, **kwargs):
+            original(entry, children, **kwargs)
+            target = next(n for n in store.state().notes.values() if n.child_id == seed.CHILD)
+            target.open_checks.append(dict(check))
+
+        monkeypatch.setattr(mock_notes, "_generate", generate)
+    assert draft(client, teacher).status_code == 202
+    listed = note_list(client, teacher).json()["items"]
+    target = next(n for n in listed if n["child_id"] == str(seed.CHILD))
+    assert target["status"] == "needs_check"
+    limit = next(c for c in target["open_checks"] if c["kind"] == "return_limit")
+    assert limit["problem"] == check["problem"] and limit["sentence"] is None
+    path = f"{BASE}/daily-notes/{target['id']}"
+    err(client.patch(path, headers=teacher, json={"confirm": True}), 409, "INVALID_TRANSITION")
+    # 한도 초과만 풀어도 기존 날짜 확인이 남아 있으면 아직 확인할 수 없다.
+    err(client.patch(path, headers=teacher, json={"resolved_checks": [limit["id"]], "confirm": True}),
+        409, "INVALID_TRANSITION")
+    confirm_all(client, teacher, [n for n in listed if n["id"] != target["id"]])
+    err(client.post(BASE + "/daily-notes/send", headers=teacher, json=batch()), 409, "NOTE_BATCH_BLOCKED")
+    confirm_all(client, teacher, [target])
+    sent = client.post(BASE + "/daily-notes/send", headers=teacher, json=batch())
+    assert sent.status_code == 200 and sent.json()["sent_count"] == 20
+
+
 def test_inquiry_and_day_survive_draft_edit_confirm_and_send(client, teacher, parent):
     assert draft(client, teacher).status_code == 202
     listed = note_list(client, teacher).json()["items"]

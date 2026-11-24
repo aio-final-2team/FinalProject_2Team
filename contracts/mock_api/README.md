@@ -48,7 +48,7 @@ PYTHONPATH=apps/api uvicorn app.main:app --port 8000
 
 `POST /api/v1/daily-notes/drafts`에 `child_memos`를 선택으로 더할 수 있어요. 예를 들어 `"child_memos": [{"child_id": "00000000-0000-4000-8000-000000000501", "memo": "블록으로 높은 탑을 쌓음"}]`처럼 보내요. memo는 1~500자이고, 같은 아이를 두 번 넣거나 그 반 아이가 아니면 422 `VALIDATION_FAILED`예요. 다른 반·다른 기관·없는 아이면 `error.details.child_id`에 보낸 ID가 와요.
 
-모의 초안은 메모를 그대로 `content.items[]`의 `key: child`, `source.type: teacher_input` 줄에 넣어요. 메모를 생략하거나 공백만 보내면 그 아이의 child 줄이 없어요. 확인 항목은 `{ id, item_key, kind, problem, sentence, request_id? }` 모양이에요. request_id는 선택 UUID이고 생략·null이 가능해요. kind는 `not_in_memo`·`sensitive`·`other_child`·`date_check`·`absent`·`draft_failed`·`check_failed`·`request_missed`의 8개 중 하나예요. problem은 설명, sentence는 걸린 문장(없으면 null)이에요. 모의 생성은 첫 아이에게 기존 준비물 확인을 `date_check`로 남겨요. 해결할 때는 지금처럼 `resolved_checks`에 id만 보내요.
+모의 초안은 메모를 그대로 `content.items[]`의 `key: child`, `source.type: teacher_input` 줄에 넣어요. 메모를 생략하거나 공백만 보내면 그 아이의 child 줄이 없어요. 확인 항목은 `{ id, item_key, kind, problem, sentence, request_id? }` 모양이에요. request_id는 선택 UUID이고 생략·null이 가능해요. kind는 `not_in_memo`·`sensitive`·`other_child`·`date_check`·`absent`·`draft_failed`·`check_failed`·`request_missed`·`return_limit`의 9개 중 하나예요. problem은 설명, sentence는 걸린 문장(없으면 null)이에요. 모의 생성은 첫 아이에게 기존 준비물 확인을 `date_check`로 남겨요. 해결할 때는 지금처럼 `resolved_checks`에 id만 보내요.
 
 서버는 같은 기관·반·아이의 보호자가 그날 보낸 문의·투약·귀가 요청을 아이 입력의 `requests: [{request_id, type, text}]`로 모아요. 날짜는 요청 생성 시각을 한국 날짜로 바꿔 비교해요. 클라이언트가 초안 본문에 requests를 보낼 필요는 없어요. 모의 초안은 요청 원문을 `source.type: request`, `source.request_id` 줄로 옮겨요. 문의는 `inquiry`(출처 `request`만 허용), 투약·귀가는 `medication`·`pickup` 줄이에요. 반 공통 활동은 `day`에 남아서 문의와 함께 보여요.
 

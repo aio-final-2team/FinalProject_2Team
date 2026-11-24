@@ -249,6 +249,26 @@ def test_bad_writer_configuration_marks_failed_with_safe_queryable_error(db_clie
         assert connection.execute(text("SELECT action, actor_type FROM events")).all() == [("tool_failed", "system")]
 
 
+def test_unknown_writer_check_preserves_draft_and_logs_only_kind(db_client, teacher, monkeypatch, caplog):
+    def writer(payload):
+        rows = stub_writer.write(payload)
+        target = next(row for row in rows if row["child_id"] == str(seed.CHILD))
+        target["open_checks"].append({"id": "future", "item_key": "child", "kind": "future_check",
+                                      "problem": "[TEST] 설명은 그대로", "sentence": "[TEST] 비공개 문장"})
+        return rows
+
+    set_writer(monkeypatch, writer)
+    draft(db_client, teacher, child_memos=[{"child_id": str(seed.CHILD), "memo": "[TEST] 보존할 메모"}])
+    child = next(n for n in notes(db_client, teacher) if n["child_id"] == str(seed.CHILD))
+    assert child["status"] == "needs_check"
+    assert [c["kind"] for c in child["open_checks"]] == ["date_check", "check_failed"]
+    check = child["open_checks"][-1]
+    assert check["problem"] == "[TEST] 설명은 그대로" and check["sentence"] == "[TEST] 비공개 문장"
+    assert any(line["value"] == "[TEST] 보존할 메모" for line in child["content"]["items"])
+    assert "future_check" in caplog.text
+    assert all(value not in caplog.text for value in ("보존할 메모", "설명은 그대로", "비공개 문장"))
+
+
 @pytest.mark.parametrize("memo", ["열이 났음", "넘어져 다침", "약 먹음"])
 def test_sensitive_memo_is_verbatim_with_one_check(db_client, teacher, memo):
     draft(db_client, teacher, child_memos=[{"child_id": str(seed.CHILD), "memo": memo}])

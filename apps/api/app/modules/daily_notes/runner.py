@@ -11,6 +11,7 @@ from datetime import datetime, time, timedelta
 from importlib import import_module
 from threading import Thread
 from time import monotonic
+from typing import get_args
 from uuid import UUID, uuid4
 
 from sqlalchemy import text
@@ -24,6 +25,23 @@ from app.modules.daily_notes.stub_writer import failed_child
 from app.modules.daily_notes.events import edited_child_ids, record
 
 log = logging.getLogger(__name__)
+
+
+class Superseded(Exception):
+    """다시 만들기에 밀린 실행. 그래프의 ModelError 재시도 대상이 아니다."""
+
+
+class _CurrentRunModel:
+    def __init__(self, model, input_id, run_token):
+        self.model, self.input_id, self.run_token = model, input_id, run_token
+
+    def json(self, system, user):
+        with transaction() as connection:
+            current = connection.scalar(text("SELECT xmin::text FROM daily_note_inputs WHERE id=:id"),
+                                        {"id": self.input_id})
+        if current != self.run_token:
+            raise Superseded()
+        return self.model.json(system, user)
 
 
 def _payload(connection, entry):
@@ -85,7 +103,13 @@ def _validated(result, payload):
                 raise ValueError("아이 결과 누락 또는 중복")
             row = candidates[0]
             content = NoteContent.model_validate(row["content"])
-            checks = [OpenCheck.model_validate(c).model_dump(mode="json") for c in row["open_checks"]]
+            checks = []
+            for check in row["open_checks"]:
+                if (isinstance(check, dict) and isinstance(check.get("kind"), str)
+                        and check["kind"] not in get_args(OpenCheck.model_fields["kind"].annotation)):
+                    log.warning("알림장 확인 종류 미지원 kind=%s", check["kind"])
+                    check = {**check, "kind": "check_failed"}
+                checks.append(OpenCheck.model_validate(check).model_dump(mode="json"))
             if len({c["id"] for c in checks}) != len(checks):
                 raise ValueError("확인 ID 중복")
             request_ids = {str(r["request_id"]) for r in child["requests"]}
@@ -150,7 +174,7 @@ def requeue_daily_note_drafts(*, stale_only=False):
         """)).all()
 
 
-def _write(payload):
+def _write(payload, run_token):
     # 시간 초과 뒤 도착한 결과는 버린다. writer에는 DB 저장 책임이 없다.
     future = Future()
 
@@ -159,7 +183,15 @@ def _write(payload):
             path = ("agents.graphs.daily_note:draft_daily_notes" if settings.daily_note_writer == "graph"
                     else settings.daily_note_writer)
             module, name = path.split(":", 1)
-            future.set_result(getattr(import_module(module), name)(payload))
+            write = getattr(import_module(module), name)
+            if settings.daily_note_writer == "graph":
+                from agents.llm import OpenAIModel
+
+                future.set_result(write(payload,
+                                        writer=_CurrentRunModel(OpenAIModel("DOCUMENT"), payload["input_id"], run_token),
+                                        checker=_CurrentRunModel(OpenAIModel("CHECKER"), payload["input_id"], run_token)))
+            else:
+                future.set_result(write(payload))
         except BaseException as error:
             future.set_exception(error)
 
@@ -189,7 +221,7 @@ def run_daily_note_drafts(input_id):
             """), {"id": input_id}))
             protected = confirmed | edited_child_ids(connection, input_id)
             payload["children"] = [c for c in payload["children"] if c["child_id"] not in protected]
-        rows = _validated(_write(payload), payload) if payload["children"] else []
+        rows = _validated(_write(payload, entry["run_token"]), payload) if payload["children"] else []
         with transaction() as connection:
             current = connection.execute(text("SELECT xmin::text FROM daily_note_inputs WHERE id=:id FOR UPDATE"),
                                          {"id": input_id}).scalar_one()
@@ -235,6 +267,8 @@ def run_daily_note_drafts(input_id):
                                               "fallback" if passed else "handed_off")
                 outcome["duration_ms"] = failed_ms if passed else None
             batch_event(connection, input_id, "drafted", "agent", retry_count=retry_count, **counts, **outcome)
+    except Superseded:
+        return
     except Exception as error:
         # 예외 원문에는 입력 메모가 섞일 수 있어 종류만 기록하고 API에는 고정 오류를 준다.
         log.error("알림장 초안 실패 input_id=%s error_type=%s", input_id, type(error).__name__)

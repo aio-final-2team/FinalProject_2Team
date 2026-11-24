@@ -275,7 +275,7 @@ class RegenerateResponse(DraftResponse):
 class OpenCheck(BaseModel):
     id: str
     item_key: str
-    kind: Literal["not_in_memo", "sensitive", "other_child", "date_check", "absent", "draft_failed", "check_failed", "request_missed"]
+    kind: Literal["not_in_memo", "sensitive", "other_child", "date_check", "absent", "draft_failed", "check_failed", "request_missed", "return_limit"]
     problem: str
     sentence: str | None = None
     request_id: UUID | None = None

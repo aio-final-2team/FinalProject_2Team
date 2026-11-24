@@ -667,7 +667,9 @@ T12 화면 지도에 나온 화면들이 조회 응답에서 쓰는 칸을 여�
 | `items[].source.document_id`·`document_title` | — | `document`일 때 |
 | `items[].source.request_id` | — | `request`일 때 |
 | `open_checks[] { id, item_key, kind, problem, sentence, request_id? }` | — | 확인할 항목. `id`·`item_key`·`kind`·`problem`은 필수이고, 그중 `problem`은 선생님이 읽는 설명이다. `sentence`는 문제가 걸린 초안 문장이며 없으면 null이다. `request_id`는 선택 칸(UUID)이라 생략하거나 null로 둘 수 있고, 보호자 요청 누락일 때 해당 요청 ID를 넣는다. `resolved_checks[]`에는 `id`만 보낸다 |
-| `open_checks[].kind` | `not_in_memo`·`sensitive`·`other_child`·`date_check`·`absent`·`draft_failed`·`check_failed`·`request_missed` | 순서대로 메모에 없음·민감 정보·다른 아이·날짜 확인·결석·아이 초안 실패·검사 실패·보호자 요청 누락 |
+| `open_checks[].kind` | `not_in_memo`·`sensitive`·`other_child`·`date_check`·`absent`·`draft_failed`·`check_failed`·`request_missed`·`return_limit` | 순서대로 메모에 없음·민감 정보·다른 아이·날짜 확인·결석·아이 초안 실패·검사 실패·보호자 요청 누락·AI 수정 한도 초과 |
+
+`return_limit`의 `problem` 예시는 "AI가 두 번 고쳐도 남은 문제가 있어요. 직접 확인해 주세요"다. 다른 확인 항목과 함께 해결해야 `ready`로 확인하고 발송할 수 있다. 그래프가 백엔드에서 아직 지원하지 않는 문자열 종류를 주면 백엔드는 초안을 보존하고 그 항목의 `kind`만 `check_failed`로 바꾼다. 원래 종류 이름은 로그에만 남기고 `problem`에 붙이지 않는다. 나머지 형식·출처 검증은 그대로 적용하며 `end`·`handoff_reason`은 저장하지 않는다.
 
 학부모가 받는 알림장(`sent`)의 `open_checks`는 늘 빈 목록이다(DB 제약).
 
@@ -1236,6 +1238,7 @@ HTTP/1.1 200 OK
 | `sort` | 쿼리 | string | 선택 | 불가 | `-created_at`(기본)·`created_at` | 내림차순·오름차순 |
 | `items[].id`·`child_id`·`note_date`·`status` | 응답 | UUID·date·string | 항상 | 불가 | draft·needs_check·ready·sent | 아이별 알림장; 보낸 것만 학부모에게 노출 |
 | `items[].content`·`open_checks[]` | 응답 | object·object[] | 항상 | 빈 목록 가능 | 줄·출처·확인 항목 모양은 3.7 참고 | items는 key·label·value·source를 가짐 |
+| `items[].open_checks[].kind` | 응답 | string | 항목마다 | 불가 | not_in_memo·sensitive·other_child·date_check·absent·draft_failed·check_failed·request_missed·return_limit | `return_limit`은 AI 수정 한도 초과로 담임 확인이 필요함 |
 | `items[].confirmed_at`·`sent_at` | 응답 | datetime | 항상 | null 가능 | 확인·발송 뒤 시각 | 아직 실행하지 않았으면 null |
 | `total`·`page`·`size` | 응답 | integer | 항상 | 불가 | 전체 건수·요청한 쪽·크기 | 목록 공통 칸 |
 
@@ -1272,6 +1275,7 @@ HTTP/1.1 200 OK
 | `content.items[].key` | 본문 | string | 줄마다 필수 | 불가 | day·meal·medication·pickup·supplies·child·inquiry | 줄 종류. child의 출처는 teacher_input, inquiry는 request만 허용 |
 | `content.items[].label`·`value` | 본문 | string | 줄마다 필수 | value만 빈 문자열 가능 | label은 1자 이상, value 길이 제한 없음 | 줄 이름과 내용 |
 | `content.items[].source` | 본문 | object | 줄마다 필수 | 불가 | document면 document_id·document_title, request면 request_id 필수 | 출처 종류는 teacher_input·document·request |
+| `note.open_checks[].kind` | 응답 | string | 항목마다 | 불가 | not_in_memo·sensitive·other_child·date_check·absent·draft_failed·check_failed·request_missed·return_limit | `return_limit`도 남아 있으면 `confirm=true`는 409 |
 | `resolved_checks[]` | 본문 | string[] | 선택 | 빈 목록 가능 | 기본 [], 현재 open_checks의 id만 | 해결한 확인 항목 |
 | `confirm` | 본문 | boolean | 선택 | 불가 | 기본 false | 미해결 항목이 없어야 true 가능 |
 | `note` | 응답 | object | 항상 | 불가 | 3.20 items[]와 같은 모양 | status·open_checks·confirmed_at 포함 |
@@ -1452,6 +1456,8 @@ HTTP/1.1 200 OK
 | ⑧ 이력 | 이력은 아이별 events.daily_note_id에 연결한다. 처음 저장과 재생성 저장은 daily_note_drafted, 내용이 실제로 바뀐 PATCH만 daily_note_edited, 확인은 daily_note_confirmed, 보내기는 daily_note_sent다. 빈 PATCH나 확인 항목 해소만으로는 edited 이력을 남기지 않는다. 확인을 취소하면 기존 returned로 ready→draft를 남기고, 검사가 해소되어 needs_check→draft가 되면 기존 checked로 상태 변화를 남긴다. 재생성을 요청한 사람은 반 묶음 카드의 draft.regenerated_by와 새 drafted 이력의 detail.regenerated_by에 저장하며, 이 저장은 상태 변경과 같은 트랜잭션에서 한다. |
 
 `daily_notes.ai_original`은 선생님이 마지막으로 받은 AI 초안이다. 선생님이 PATCH·확인·발송을 해도 바뀌지 않고, 수정하지 않은 미확인 알림장을 재생성해 저장할 때 새 초안으로 갱신된다. 기존 공개 NoteView에는 이 칸을 추가하지 않는다. 0003 이전 행은 마이그레이션 시점의 content로 채운다. 그 전에 사라진 초안까지 복원했다는 뜻은 아니다. 말투 규칙은 기억 AI가 이 원본과 수정 결과를 이용해 뽑고, 백엔드는 저장·조회·이력만 제공한다.
+
+DB 그래프 실행은 writer·checker를 부르기 직전마다 입력 행의 `xmin`이 실행 토큰과 같은지 확인한다. 다시 만들기로 토큰이 바뀌면 옛 실행은 `Superseded`로 중단하고 작업 실패 이력을 남기지 않는다. 이미 시작한 모델 호출은 끝날 수 있지만 다음 그래프 모델 호출은 막으며, 저장 직전 토큰 검사도 유지한다. 대역 writer의 `write(payload)` 계약은 그대로다.
 
 ### 3.27 [제안] 투약·귀가 요청
 

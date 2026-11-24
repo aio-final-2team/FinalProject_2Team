@@ -82,10 +82,10 @@ def test_omitted_or_empty_memos_add_no_child_line(client, teacher, extra):
                for line in note["content"]["items"])
 
 
-def test_open_check_has_eight_kinds_and_optional_request_id(client, teacher):
+def test_open_check_has_nine_kinds_and_optional_request_id(client, teacher):
     schema = app.openapi()["components"]["schemas"]["OpenCheck"]
     assert set(schema["properties"]["kind"]["enum"]) == {
-        "not_in_memo", "sensitive", "other_child", "date_check", "absent", "draft_failed", "check_failed", "request_missed"}
+        "not_in_memo", "sensitive", "other_child", "date_check", "absent", "draft_failed", "check_failed", "request_missed", "return_limit"}
     assert "kind" in schema["required"]
     assert "request_id" not in schema["required"]
     check = {"id": "c1", "item_key": "child", "problem": "메모를 확인해 주세요"}

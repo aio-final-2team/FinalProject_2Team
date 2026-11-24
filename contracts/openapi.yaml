@@ -4608,6 +4608,7 @@ components:
           - draft_failed
           - check_failed
           - request_missed
+          - return_limit
           title: Kind
         problem:
           type: string
