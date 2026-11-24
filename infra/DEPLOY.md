@@ -167,9 +167,9 @@ DB 모드는 설정 검사 → `alembic upgrade head` → 데모 시드 → API 
 
 | 확인 | 방법 | 통과 기준 |
 |---|---|---|
-| 모델 호출을 잠금 밖에서 하고 3분에 끊는지 | `tools/test_db.sh`(`tests/integration/db/test_request_lock_timeout.py` 3개 포함) | 모두 통과 |
-| 모델을 기다리는 동안 다른 교사가 조회할 수 있는지 | 추가 예정 | 200 |
-| 마감 뒤 교사가 손댄 카드를 늦은 결과가 덮지 않는지 | 추가 예정 | 카드·상태 그대로 |
+| 모델 호출을 잠금 밖에서 하고 3분에 끊는지 | `tools/test_db.sh`(`tests/integration/db/test_request_lock_timeout.py` 포함) | 모두 통과 |
+| 모델을 기다리는 동안 다른 교사가 조회할 수 있는지 | 같은 파일의 `test_teacher_can_read_while_model_waits` | 카드 상세·목록 200, 요청 행이 잠겨 있지 않음 |
+| 마감 뒤 교사가 손댄 카드를 늦은 결과가 덮지 않는지 | 같은 파일의 `test_late_draft_keeps_teacher_decision`(수정 승인·거절) | 카드·상태·근거·이력·알림 그대로 |
 | 모델 키와 모델 이름 | `.env.server`의 `OPENAI_API_KEY`, `LLM_MODEL_DEFAULT`. 역할별 `LLM_MODEL_DOCUMENT`·`LLM_MODEL_CHECKER`는 비워 두면 기본값을 써요. 키가 컨테이너에 들어갔는지는 `exec worker sh -c '[ -n "$OPENAI_API_KEY" ] && echo 있음'`처럼 키 값을 찍지 않는 명령으로 확인해요 | 키가 있고 모델이 팀에서 정한 값 |
 | 켠 직후 대표 문의 1건 | 학부모 계정으로 문의 한 건을 보내고 담임 받은함을 봐요 | 3분 안에 카드가 생기고, 그동안 담임 화면이 느려지지 않음 |
 
