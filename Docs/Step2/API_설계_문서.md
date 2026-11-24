@@ -198,7 +198,7 @@ FastAPI가 기본으로 내는 422 응답은 예외 처리기에서 위 형식�
 | 48 | GET | `/api/v1/children/{child_id}/photo-scope` | 그 아이 보호자 | 현재 사진 공개 범위 | 200 | FR-22·AC-06 | 3.29 | 제안 | — | 팀: 제안 계약 |
 | 49 | PATCH | `/api/v1/children/{child_id}/photo-scope` | 그 아이 보호자 | 사진 공개 범위 바꾸기 | 200 | FR-22·AC-06 | 3.29 | 제안 | — | 팀: 제안 계약 |
 
-알림장 MVP의 ○는 `origin/taewoong-fb020-rehearsal:tools/rehearse_daily_note.py`의 실제 호출이다. `/me`·알림 읽음·다시 만들기는 그 리허설이 부르지 않아 ○를 붙이지 않는다. 팀 확인 남음은 코드 기본값(`LLM_MODEL_SUPERVISOR` 비움, `ANSWER_WRITER=stub`, `DAILY_NOTE_WRITER=app.modules.daily_notes.stub_writer:write`)과 WBS T43(할일), 2.1의 화면 미확인 범위를 뜻한다. 권한 밖 안내를 학부모에게 바로 답하는 경로도 미구현이다(5.7). 이 표시가 API 미구현이나 팀 서버의 현재 스위치 값을 뜻하지는 않는다.
+알림장 MVP의 ○는 `origin/taewoong-fb020-rehearsal:tools/rehearse_daily_note.py`의 실제 호출이다. `/me`·알림 읽음·다시 만들기는 그 리허설이 부르지 않아 ○를 붙이지 않는다. 팀 확인 남음은 코드 기본값(`LLM_MODEL_SUPERVISOR` 비움, `ANSWER_WRITER=stub`, `DAILY_NOTE_WRITER=app.modules.daily_notes.stub_writer:write`)과 WBS T43(할일), 2.1의 화면 미확인 범위를 뜻한다. 권한 밖 문의의 고정 안내는 DB·모의 두 모드에서 학부모 대화에 바로 남긴다(3.1·5.7). 이 표시가 API 미구현이나 팀 서버의 현재 스위치 값을 뜻하지는 않는다.
 
 SSE 두 개(6번·14번)는 실시간 진행 화면(NFR-10)에서 쓴다. 투약·귀가 요청의 SSE는 AI 단계를 거치지 않고 현재 상태 done으로 바로 끝난다(3.27).
 
@@ -275,7 +275,7 @@ API 49개를 가이드의 여덟 칸으로 쓴다. 필드 표의 '빈값'은 그
 | ⑤ 검증·권한 | 형식은 Pydantic이 검사한다(422). 역할이 학부모가 아니면 403, `child_id`가 내 아이(`child_guardians`)가 아니면 404다. `previous_request_id`는 내 요청이면서 끝난 상태(`completed`·`rejected`)여야 한다. 내 요청이 아니면 404, 아직 끝나지 않았으면 409 `INVALID_TRANSITION`이다 |
 | ⑥ 정상 응답 | 202 + 요청 ID·상태·스트림 주소. 같은 `client_request_id`로 다시 보내면 200 + 처음 만든 요청 |
 | ⑦ 오류 응답 | 아래 오류 표 |
-| ⑧ 실행 규칙 | 요청을 저장만 하고 바로 답한다(10초 안). 같은 제출이 두 번 오면 `(requester_id, client_request_id)` DB 유니크 제약이 막는다. AI 처리가 실패해도 요청은 남고, 재시도 뒤에도 실패하면 사람 카드로 넘긴다(6.3). 투약·귀가는 AI를 실행하지 않고 교직원 목록에 남긴다(3.27) |
+| ⑧ 실행 규칙 | 요청을 저장만 하고 바로 답한다(10초 안). 같은 제출이 두 번 오면 `(requester_id, client_request_id)` DB 유니크 제약이 막는다. AI 처리가 실패해도 요청은 남고, 재시도 뒤에도 실패하면 사람 카드로 넘긴다(6.3). 투약·귀가는 AI를 실행하지 않고 교직원 목록에 남긴다(3.27). 위험하지 않은 권한 밖 문의는 고정 안내 메시지를 남기고 카드 없이 `sent_or_booked`로 바뀐다. 아이 안전·갈등·건강 주제나 우리 아이에 관한 글은 담임 흐름을 유지한다(5.7) |
 
 **요청 본문 필드**
 
@@ -390,7 +390,7 @@ X-Request-ID: 6b0f1c2e-9a7d-4c1e-8f3a-2d5b7e9c1a40
 | `request.missing_fields[]` | string[] | 예 | `needs_info`일 때 학부모에게 물어볼 항목이다. 투약은 received 상태에서도 빠진 약 이름·용량·시간을 표시한다(3.27). 없으면 빈 목록이다. |
 | `request.hold_until` | date | 아니오 | 보류 예정일. 보류 이유는 학부모에게 주지 않음 |
 | `request.parent_confirmed_at` | datetime | 아니오 | 민원 '확인했어요' 시각 |
-| `messages[]` | 목록 | 예 | 대화. `sender_type`은 `user`(사람)·`agent`(AI)·`system` |
+| `messages[]` | 목록 | 예 | 대화. `sender_type`은 `user`(사람)·`agent`(AI)·`system`. 권한 밖 고정 안내는 `agent`·`sender_role=null`이며 담임이 승인한 답과 구분한다(5.7) |
 | `messages[].sender_role` | string | 아니오 | 메시지를 쓴 사람의 역할(`parent`·`teacher`·`director`). AI나 시스템이 쓴 글이면 null이다. 학부모 글과 담임이 승인해 보낸 답은 `sender_type`이 둘 다 `user`여서, 화면에서는 이 값으로 말풍선을 나눈다 |
 | `timeline[]` | 목록 | 예 | 학부모용은 상태가 바뀐 단계만 표시 이름으로 보임 |
 | `consultation` | 객체 | 아니오 | 상담 요청일 때만. 후보 최대 3개와 확정 예약 |
@@ -1663,7 +1663,7 @@ def decide(card_id: UUID, body: CardDecision, user: User = Depends(current_staff
 | ① 에이전트 허용 목록 | 5.4의 '부르는 AI' 열에 없는 도구는 부르지 못함. 이 열은 에이전트를 다섯으로 나눈 뒤(T43)부터 적용한다. 그 전 단계의 단일 에이전트(T29)는 에이전트가 하나뿐이라 `book_slot`을 뺀 도구를 모두 부른다(30문항이 `find_consult_slots`·`search_documents` 직접 호출을 채점) | `FORBIDDEN_SCOPE` |
 | ② 요청한 사용자의 권한 | 학부모 요청에서 나온 호출은 그 학부모가 볼 수 있는 범위 안에서만 실행. 교직원용 도구(`book_slot`)는 담임의 확정 API 안에서만 부름 | `FORBIDDEN_SCOPE` |
 | ③ 데이터 소유권 | 기관·반·학부모 ID는 모델이 인자로 넣지 않고, 백엔드가 지금 요청에서 꺼내 채움(계약표 4장의 '(백엔드)' 값). 모델이 다른 ID를 넣더라도 범위 밖이면 거부 | `NOT_FOUND` |
-| ④ 사람 승인 상태 | 학부모에게 나가는 일(회신 발송·예약 확정·알림장 발송)은 도구로 하지 않고, 담임의 결정 API가 승인 기록(`approvals`)을 남긴 뒤에만 일어난다. 담임이 이미 승인해 둔 '원에 남은 답'도 학부모에게 바로 보내지 않고 담임 카드의 답변 초안으로만 쓴다(5.7) | 도구 목록에 없음 |
+| ④ 사람 승인 상태 | 학부모에게 나가는 일(회신 발송·예약 확정·알림장 발송)은 도구로 하지 않고, 담임의 결정 API가 승인 기록(`approvals`)을 남긴 뒤에만 일어난다. 담임이 이미 승인해 둔 '원에 남은 답'도 학부모에게 바로 보내지 않고 담임 카드의 답변 초안으로만 쓴다(5.7). 못 하는 일을 알리는 고정 안내만 승인 없이 대화에 남긴다(5.7) | 도구 목록에 없음 |
 
 ### 5.4 도구 목록과 실패 후 처리
 
@@ -1801,7 +1801,7 @@ def decide(card_id: UUID, body: CardDecision, user: User = Depends(current_staff
 | 순서 | 누가 | 하는 일 | 쓰는 도구·API |
 | --- | --- | --- | --- |
 | 1 | 화면 → API | 인증, 입력 형식 검사, 요청 저장, 202 응답 | `POST /requests` |
-| 2 | 감독 AI | 유형·급한 정도·위험 등급·주제를 분류하고 빠진 정보 확인 | `route_request` |
+| 2 | 감독 AI | 유형·급한 정도·위험 등급·주제·`out_of_scope_kind`를 분류하고 빠진 정보 확인. 아래 5.7의 고정 안내 대상 문의는 여기서 안내를 남기고 끝냄 | `route_request` |
 | 3 | 자료 AI · 코드 · 기억 AI | 문의면 근거를 찾아 초안 작성, 상담이면 후보 계산, 거절 이력은 기억에서 조회 | `search_documents`·`get_law_article`·`find_consult_slots`·`get_memory` |
 | 4 | 검사 AI | 출처·날짜·대상·누락·민감정보를 대조하고, 최대 2번까지 앞 단계로 돌려보냄 | `check_draft`·`return_to_step` |
 | 5 | 감독 AI | 사람 확인 카드를 만들고, 긴급이거나 3번째 반복된 민원이면 원장에게 보고 | `create_card`·`notify_staff` |
@@ -1811,7 +1811,18 @@ def decide(card_id: UUID, body: CardDecision, user: User = Depends(current_staff
 
 ### 5.7 업무 흐름 세 개 — 경로·도구·권한·DB 상태
 
-**사람에게 넘기고 자동 답변하지 않는 기준.** 다음 경우에는 학부모에게 답을 보내지 않고, 초안 없는 사람 카드로 넘긴다. 긴급(`risk_level = urgent`)이거나 판단 필요(`uncertain`)인 문의·민원, 근거 없음(`no_evidence`), 문서 충돌, 검사 AI가 2번 돌려보낸 뒤에도 통과하지 못한 경우(3번째, FR-08), 권한 밖인 경우다. 권한 밖 자료는 읽지 않으며, 카드도 현재 사용자의 범위 안에서만 만든다. 학부모에게 나가는 답은 모두 담임 결정 API가 승인 기록(`approvals`)을 남긴 뒤에만 나간다(5.3 ④). 접수 안내와 정보 되묻기는 여기서 말하는 답변 발송과 구분한다. **원에 남은 답도 예외가 아니다.** 원에 남은 답은 담임이 이미 승인해 저장해 둔 문의 답이다(FR-20). 감독 AI가 `find_saved_answer`로 찾은 답의 `similarity`가 기준 이상이고 `sources_current = true`이며 요청이 긴급·판단 필요가 아니면, 그 답과 출처를 담임 카드의 답변 초안으로 쓴다. 학부모에게는 담임이 승인한 뒤에 나가고, 어느 답을 썼는지는 이력에 `saved_answer_id`로 남긴다. `similarity` 기준값은 평가 뒤에 정한다.
+**사람에게 넘기고 자동 답변하지 않는 기준.** 다음 경우에는 학부모에게 답을 보내지 않고, 초안 없는 사람 카드로 넘긴다. 긴급(`risk_level = urgent`)이거나 판단 필요(`uncertain`)인 문의·민원, 근거 없음(`no_evidence`), 문서 충돌, 검사 AI가 2번 돌려보낸 뒤에도 통과하지 못한 경우(3번째, FR-08)다. 권한 밖 요청은 아래 고정 안내 조건을 먼저 확인하고, 조건에 맞지 않으면 평소 담임 흐름을 따른다. 권한 밖 자료는 읽지 않으며, 카드도 현재 사용자의 범위 안에서만 만든다. 내용에 대한 답은 담임 결정 API가 승인 기록(`approvals`)을 남긴 뒤에만 나간다(5.3 ④). 못 하는 일에 대한 고정 안내는 아래 조건에서 승인 없이 남긴다. 접수 안내와 정보 되묻기는 여기서 말하는 답변 발송과 구분한다. **원에 남은 답도 예외가 아니다.** 원에 남은 답은 담임이 이미 승인해 저장해 둔 문의 답이다(FR-20). 감독 AI가 `find_saved_answer`로 찾은 답의 `similarity`가 기준 이상이고 `sources_current = true`이며 요청이 긴급·판단 필요가 아니면, 그 답과 출처를 담임 카드의 답변 초안으로 쓴다. 학부모에게는 담임이 승인한 뒤에 나가고, 어느 답을 썼는지는 이력에 `saved_answer_id`로 남긴다. `similarity` 기준값은 평가 뒤에 정한다.
+
+**권한 밖 고정 안내(Y-098).** 감독 AI 제안을 검증한 `out_of_scope_kind`는 `payment`·`others_privacy`·`other_family`·`other_teacher` 또는 null이다. 긴급·판단 필요를 먼저 거르고, 주제(`topic_key`)가 `peer_conflict`·`safety`·`health_hygiene`이거나 본문에 “우리 아이”·“우리 애”·“저희 아이”가 있으면 바로 안내하지 않는다. 예를 들어 “다른 아이랑 다퉜다는데 무슨 일인지 알려주세요”는 갈등 주제로 담임에게 간다. 코드 분류도 “다퉜”을 갈등 표현으로 본다. 조건을 통과한 문의만 아래 고정 문구를 `request_messages(sender_type='agent', sender_id=null)`로 남기고 `sent_or_booked`로 둔다. 담임 승인 카드·승인 기록은 만들지 않고 `out_of_scope_answered` 이력의 `detail.kind`에 종류를 남기며, 학부모에게 `sent_or_booked` 알림을 보낸다. DB 기본 입구에서는 자료·검사 AI와 공공 자료 조회를 건너뛴다. 응답 메시지는 `sender_role=null`이다.
+
+| `out_of_scope_kind` | 학부모 대화에 남기는 고정 문구 |
+| --- | --- |
+| `payment` | 유치온에서는 원비 결제를 하지 않아요. 원비는 원에서 안내한 기존 방법으로 문의해 주세요. |
+| `others_privacy` | 다른 가정의 연락처 같은 개인정보는 알려 드릴 수 없어요. |
+| `other_family` | 다른 가정의 요청이나 내용은 볼 수 없어요. 우리 아이 일이라면 다시 적어 주세요. |
+| `other_teacher` | 상담은 담임 선생님과 잡을 수 있어요. |
+
+상담은 같은 보호 조건을 통과한 `other_teacher`일 때만 안내 메시지를 더하고, 담임 `consult_slots`·시간 선택·예약 확정은 그대로 둔다. 그 밖의 상담과 모든 민원은 이 종류를 바로 안내에 쓰지 않는다. 안내 뒤 학부모가 글을 더 남기면 3.10 규칙에 따라 초안 없는 담임 회신 카드가 생긴다(담임이 없으면 미배정·원장 알림). 교직원은 요청 이력·대화를 볼 수 있다. 공용 HTTP 시험은 `test_out_of_scope_*`와 `test_followup_to_cardless_answer_creates_empty_reply`, DB 중복 실행·트랜잭션 시험은 `tests/integration/db/test_requests.py`의 `test_out_of_scope_*`다.
 
 **위험 등급은 문의·상담·민원에 함께 붙는다.** 보호자 글을 받는 이 세 유형에는 같은 규칙으로 위험 등급(일반·긴급·판단 필요)을 매기고, 투약·귀가에는 붙이지 않는다(기획서 FR-03). 규칙이 같으니 문의도 긴급이나 판단 필요로 나오면 민원과 같은 길로 간다. 자료·검사 AI를 부르지 않고, 초안 없는 담임 카드와 원장 보고 카드를 만든 뒤 요청을 `escalated`로 둔다. 상담은 다르다. 시간 고르기(`consult_slots`, 요청 `needs_info`)와 담임 확정은 그대로 두고, 원장 보고 카드와 위험 알림만 더한다. 위험 알림은 민원 때와 마찬가지로 담임과 원장이 받고, 원장 보고 카드는 담임이 예약을 확정하거나 상담을 반려할 때 함께 닫힌다(3.4). 지금은 낱말 대역(`apps/api/app/core/request_rules.py`)으로 위험을 판정하는데, 낱말 하나가 아니라 짧은 구를 본다. '안전'·'신고'·'개인정보'만 보면 '현장체험 안전 수칙'·'결석 신고'·'개인정보 동의서' 같은 평범한 문의까지 걸리기 때문이다. 그래서 '안전을 확인'·'신고하겠'·'경찰에'·'유출' 같은 구를 찾는다. 다만 민원은 예전처럼 '안전'·'신고'·'개인정보' 낱말 하나도 본다. '구청에 신고합니다' 같은 민원을 놓치지 않기 위해서다. 시험은 `test_risk_words_by_phrase_for_every_guardian_request_type`·`test_single_words_count_only_for_complaints`(`tests/unit/test_request_rules.py`), `test_high_risk_handoff_has_two_cards_no_draft_or_automatic_reply`·`test_risky_consultation_keeps_slot_flow_and_adds_director_report`(`tests/integration/api/test_complaints.py`), `test_risky_inquiry_skips_answer_model_and_saves_risk`(`tests/integration/db/test_request_risk_types.py`)다.
 

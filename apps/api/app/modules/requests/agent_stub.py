@@ -8,7 +8,9 @@ from datetime import datetime
 
 from sqlalchemy import text
 
+from app.core.constants import OUT_OF_SCOPE_MESSAGES
 from app.core.db import transaction
+from app.core.request_rules import direct_notice_kind
 from app.modules.requests.supervisor import classify_request, topic_conflict, validate_proposal
 from app.core.schedule import KST, due_at
 from app.modules.requests.complaints import repeat_count
@@ -72,11 +74,12 @@ def run_request(request_id, prepared_answer=None, prepared_fields=None):
     proposal = prepared_fields if prepared_fields is not None else classify_request(initial["type"], initial["body"])
     # 법령·예보 공공 API(법령은 최악 약 20초)는 DB 연결을 잡기 전에 가져와 둔다(T52). 저장만 아래 트랜잭션에서 한다.
     first = prepared_fields if prepared_fields is not None else validate_proposal(initial["type"], initial["body"], proposal)
-    prefetched = prefetch_public(initial["type"], initial["body"], first["topic_key"], datetime.now(KST).date(),
+    notice = direct_notice_kind(initial["type"], initial["body"], first)
+    prefetched = {} if notice else prefetch_public(initial["type"], initial["body"], first["topic_key"], datetime.now(KST).date(),
                                  with_forecast=graph_enabled() and prepared_answer is None and prepared_fields is None,
                                  risk_category=first.get("risk_category"))
-    drafted = (prepared_answer if prepared_answer is not None
-               else draft_outside_lock(initial, first, prefetched))
+    drafted = None if notice else (prepared_answer if prepared_answer is not None
+                                  else draft_outside_lock(initial, first, prefetched))
     with transaction() as connection:
         row = connection.execute(text("SELECT * FROM requests WHERE id=:id FOR UPDATE"),
                                  {"id": request_id}).mappings().one_or_none()
@@ -109,6 +112,16 @@ def run_request(request_id, prepared_answer=None, prepared_fields=None):
         req["assignee_id"] = teacher
         connection.execute(text("UPDATE requests SET assignee_id=:teacher WHERE id=:id"), {"teacher": teacher, "id": request_id})
         set_status(connection, req, "assigned", action="assigned", actor_type="agent", agent_name="supervisor")
+        notice = direct_notice_kind(req["type"], req["body"], fields)
+        if notice:
+            connection.execute(text("""
+                INSERT INTO request_messages (org_id,request_id,sender_type,body)
+                VALUES (:org,:request,'agent',:body)
+            """), {"org": req["org_id"], "request": request_id, "body": OUT_OF_SCOPE_MESSAGES[notice]})
+            if req["type"] == "inquiry":
+                set_status(connection, req, "sent_or_booked", action="out_of_scope_answered", kind=notice,
+                           actor_type="agent", agent_name="supervisor")
+                return
         high_risk = req["risk_level"] in ("urgent", "uncertain")
         director = connection.scalar(text("""
             SELECT id FROM users WHERE org_id=:org AND role='director' AND is_active ORDER BY id LIMIT 1

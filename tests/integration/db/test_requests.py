@@ -73,6 +73,66 @@ def test_concurrent_same_key_creates_one_request_message_and_agent_run(db_client
     assert sum(e["action"] == "classified" for e in rows(seeded_db, "events", rid)) == 1
 
 
+@pytest.mark.parametrize("prepared", [False, True])
+def test_out_of_scope_model_notice_skips_draft_and_duplicate_workers(seeded_db, monkeypatch, prepared):
+    from app.modules.requests.supervisor import validate_proposal
+
+    body = "[TEST] 대신 송금해 줄 수 있나요?"
+    req, _ = requests.create(users.get_user(seed.PARENT), background_tasks=BackgroundTasks(),
+                             client_request_id=str(uuid4()), type="inquiry", body=body, child_id=seed.CHILD,
+                             previous_request_id=None, trace_id="scope-model")
+    proposal = {"out_of_scope_kind": "payment"}
+    fields = validate_proposal("inquiry", body, proposal)
+    assert fields["out_of_scope_kind"] == "payment"
+    monkeypatch.setattr(agent_stub, "classify_request", lambda *args: proposal)
+
+    def no_draft(*args, **kwargs):
+        pytest.fail("[TEST] 고정 안내에 자료·검사 AI나 공공 조회를 호출하면 안 돼요")
+
+    monkeypatch.setattr(agent_stub, "prefetch_public", no_draft)
+    monkeypatch.setattr(agent_stub, "draft_outside_lock", no_draft)
+    args = {"prepared_fields": fields, "prepared_answer": {"text": "[TEST] 내보내면 안 되는 초안"}} if prepared else {}
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        list(pool.map(lambda _: agent_stub.run_request(req["id"], **args), range(2)))
+    agent_stub.run_request(req["id"], **args)
+    assert rows(seeded_db, "requests", req["id"])[0]["status"] == "sent_or_booked"
+    assert rows(seeded_db, "cards", req["id"]) == []
+    messages = rows(seeded_db, "request_messages", req["id"])
+    assert len(messages) == 2 and messages[-1]["sender_type"] == "agent" and messages[-1]["sender_id"] is None
+    assert messages[-1]["body"] == "유치온에서는 원비 결제를 하지 않아요. 원비는 원에서 안내한 기존 방법으로 문의해 주세요."
+    history = rows(seeded_db, "events", req["id"])
+    assert [e["action"] for e in history] == ["created", "classified", "assigned", "out_of_scope_answered"]
+    assert history[-1]["detail"]["kind"] == "payment"
+    notifications = rows(seeded_db, "notifications", req["id"])
+    assert len(notifications) == 1 and notifications[0]["kind"] == "sent_or_booked"
+    assert notifications[0]["recipient_id"] == seed.PARENT and notifications[0]["card_id"] is None
+
+
+def test_out_of_scope_notice_state_failure_rolls_back_message_and_notification(seeded_db, monkeypatch):
+    req, _ = requests.create(users.get_user(seed.PARENT), background_tasks=BackgroundTasks(),
+                             client_request_id=str(uuid4()), type="inquiry", body="[TEST] 원비 결제해 주세요.",
+                             child_id=seed.CHILD, previous_request_id=None, trace_id="scope-rollback")
+    before = {table: rows(seeded_db, table, req["id"])
+              for table in ("requests", "request_messages", "events", "notifications", "cards")}
+    original = agent_stub.set_status
+
+    def fail_notice(connection, req, status, **kwargs):
+        if kwargs["action"] == "out_of_scope_answered":
+            original(connection, req, status, **kwargs)
+            raise RuntimeError("[TEST] 안내 상태·알림 저장 뒤 실패")
+        return original(connection, req, status, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(agent_stub, "set_status", fail_notice)
+        with pytest.raises(RuntimeError, match=r"\[TEST\]"):
+            agent_stub.run_request(req["id"])
+    assert before == {table: rows(seeded_db, table, req["id"]) for table in before}
+    agent_stub.run_request(req["id"])
+    assert rows(seeded_db, "requests", req["id"])[0]["status"] == "sent_or_booked"
+    assert len(rows(seeded_db, "request_messages", req["id"])) == 2
+    assert len(rows(seeded_db, "notifications", req["id"])) == 1
+
+
 def test_concurrent_confirmation_keeps_one_timestamp_event_and_notice(db_client, parent, seeded_db):
     rid = create(db_client, parent, type="complaint").json()["request"]["id"]
     with seeded_db.begin() as connection:

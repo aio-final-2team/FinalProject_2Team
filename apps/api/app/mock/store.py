@@ -13,7 +13,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from app.core.errors import ApiError
-from app.core.constants import CARE_REQUEST_TYPES
+from app.core.constants import CARE_REQUEST_TYPES, OUT_OF_SCOPE_MESSAGES
 from app.mock import seed
 from app.core.schedule import KST, due_at
 from app.mock.records import Approval, Booking, Notification, Document, Chunk, Evidence, Rule, NoteInput, Note
@@ -334,22 +334,33 @@ def create_request(user, *, client_request_id: str, type: str, body: str, child_
 
 
 # 모의 AI 분류 규칙. 실제 분류는 감독 AI(T14)가 한다. 화면 시연용으로 낱말만 본다.
-def _classify(req: Request) -> None:
-    from app.core.request_rules import classify
-    for key, value in classify(req.type, req.body).items():
-        setattr(req, key, value)
+def _classify(req: Request) -> dict:
+    from app.modules.requests.supervisor import validate_proposal
+    fields = validate_proposal(req.type, req.body, {})
+    for key in ("topic_key", "urgency", "risk_level", "risk_category"):
+        setattr(req, key, fields.get(key))
+    return fields
 
 
 def _run_mock_ai(req: Request, trace_id: str | None) -> None:
     if req.type in CARE_REQUEST_TYPES:
         return
-    _classify(req)
+    from app.core.request_rules import direct_notice_kind
+    fields = _classify(req)
     set_request_status(req, "classified", action="classified", actor_type="agent", agent_name="supervisor",
                        trace_id=trace_id)
     teacher = homeroom_teacher(req.classroom_id)
     req.assignee_id = teacher
     set_request_status(req, "assigned", action="assigned", actor_type="agent", agent_name="supervisor",
                        trace_id=trace_id)
+    notice = direct_notice_kind(req.type, req.body, fields)
+    if notice:
+        _state.messages.append(Message(id=_state.next_int(), request_id=req.id, sender_type="agent",
+                                       sender_id=None, body=OUT_OF_SCOPE_MESSAGES[notice]))
+        if req.type == "inquiry":
+            set_request_status(req, "sent_or_booked", action="out_of_scope_answered", kind=notice,
+                               actor_type="agent", agent_name="supervisor", trace_id=trace_id)
+            return
     summary = req.body[:60]
     high_risk = req.risk_level in ("urgent", "uncertain")
     if req.type == "consultation":

@@ -41,6 +41,14 @@ def rejection_body(reason_code, reason_text):
     return f"{label} · {reason_text}" if reason_text else label
 
 
+OUT_OF_SCOPE_MESSAGES = {
+    "payment": "유치온에서는 원비 결제를 하지 않아요. 원비는 원에서 안내한 기존 방법으로 문의해 주세요.",
+    "others_privacy": "다른 가정의 연락처 같은 개인정보는 알려 드릴 수 없어요.",
+    "other_family": "다른 가정의 요청이나 내용은 볼 수 없어요. 우리 아이 일이라면 다시 적어 주세요.",
+    "other_teacher": "상담은 담임 선생님과 잡을 수 있어요.",
+}
+
+
 CARE_REQUEST_TYPES = ("medication", "pickup")
 MEDICATION_FIELDS = ("medication_name", "medication_dose", "medication_time")
 UNREGISTERED_PICKUP_CHECK = "미등록 인계자 확인"

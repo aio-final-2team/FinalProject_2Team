@@ -160,6 +160,8 @@ def test_requeue_action_upgrade_downgrade_preserves_requests_and_old_events(seed
         request_before = dict(connection.execute(text("SELECT * FROM requests WHERE id=:id"),
                                                  {"id": seed.REQUEST_COUGH}).mappings().one())
     command.downgrade(alembic_config, "0005")
+    # 없어진 칸을 포함하는 SELECT * 준비 구문이 풀 연결에 남지 않게 해요.
+    seeded_db.dispose()
     request_before.pop("care_detail")  # 0012보다 이전 판에는 없는 칸이에요.
     with seeded_db.begin() as connection:
         assert connection.scalar(text("SELECT count(*) FROM events WHERE id=:id"), {"id": original}) == 1
