@@ -11,7 +11,8 @@ from sqlalchemy import text
 
 from app.core.config import settings
 from app.core.db import transaction
-from app.modules.requests.agent_stub import new_card
+from app.core.request_rules import classify
+from app.modules.requests.agent_stub import homeroom_teacher, new_card
 from app.modules.requests.events import record, set_status
 
 log = logging.getLogger(__name__)
@@ -19,8 +20,23 @@ AI_TIMEOUT_SECONDS = 180  # API 6.1·T14 6.1 ⑤: 요청 하나의 AI 처리 전
 
 
 def _handoff(connection, req, reason):
-    card = new_card(connection, req, "reply_draft", None)
-    set_status(connection, req, "awaiting_review", action="checked", card=card, handoff_reason=reason)
+    # 모델이 실패해도 코드의 안전 규칙과 현재 유효한 담임 배정은 건너뛰지 않아요.
+    fields = classify(req["type"], req["body"])
+    teacher = homeroom_teacher(connection, req)
+    connection.execute(text("""
+        UPDATE requests SET topic_key=:topic_key,urgency=:urgency,risk_level=:risk_level,
+            risk_category=:risk_category,assignee_id=:teacher WHERE id=:id
+    """), {"id": req["id"], "teacher": teacher, **fields})
+    req.update(fields, assignee_id=teacher)
+    card = new_card(connection, req, "reply_draft", teacher)
+    director = connection.scalar(text("""
+        SELECT id FROM users WHERE org_id=:org AND role='director' AND is_active ORDER BY id LIMIT 1
+    """), {"org": req["org_id"]})
+    if req["risk_level"] in ("urgent", "uncertain") and director:
+        report = new_card(connection, req, "director_report", director, {"summary": req["body"][:60]})
+        set_status(connection, req, "escalated", action="escalated", card=report, handoff_reason=reason)
+    else:
+        set_status(connection, req, "awaiting_review", action="checked", card=card, handoff_reason=reason)
 
 
 def _start_agent(request_id):

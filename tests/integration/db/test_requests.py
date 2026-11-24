@@ -1,6 +1,6 @@
 """T27-a: 저장 경계·동시 접수/확인·실패 인계·카드 누락 점검을 실제 PG로 확인해요."""
 
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import replace
 from datetime import datetime, timedelta
 from uuid import UUID, uuid4
@@ -95,27 +95,122 @@ def test_message_failure_rolls_back_message_event_and_timestamp(db_client, paren
     assert before == {table: rows(seeded_db, table, rid) for table in before}
 
 
-def test_agent_failure_preserves_request_and_hands_off_without_private_error(db_client, parent, seeded_db, monkeypatch):
+@pytest.mark.parametrize("staff", ["active", "missing", "inactive", "expired", "future"])
+def test_agent_failure_preserves_request_and_hands_off_without_private_error(
+    db_client, parent, seeded_db, monkeypatch, staff
+):
+    with seeded_db.begin() as connection:
+        if staff == "missing":
+            connection.execute(text("DELETE FROM classroom_staff WHERE classroom_id=:id"), {"id": seed.CLASS_STAR})
+        elif staff == "inactive":
+            connection.execute(text("UPDATE users SET is_active=false WHERE id=:id"), {"id": seed.TEACHER})
+        elif staff in ("expired", "future"):
+            today = datetime.now(KST).date()
+            connection.execute(text("""
+                UPDATE classroom_staff SET valid_from=:start,valid_to=:end WHERE classroom_id=:id
+            """), {"id": seed.CLASS_STAR, "start": today+timedelta(days=1) if staff == "future" else None,
+                   "end": today-timedelta(days=1) if staff == "expired" else None})
     monkeypatch.setattr(runner, "settings", replace(runner.settings, request_agent="missing_private_module:run"))
     response = create(db_client, parent)
     assert response.status_code == 202
     rid = response.json()["request"]["id"]
     req = rows(seeded_db, "requests", rid)[0]
-    assert req["status"] == "awaiting_review"
+    teacher = seed.TEACHER if staff == "active" else None
+    assert req["status"] == "awaiting_review" and req["assignee_id"] == teacher
+    assert (req["topic_key"], req["urgency"], req["risk_level"], req["risk_category"]) == ("meal", "normal", "normal", None)
     card = rows(seeded_db, "cards", rid)[0]
-    assert card["status"] == "unassigned" and card["assignee_id"] is None and card["draft"] == {}
+    assert card["status"] == ("pending" if teacher else "unassigned")
+    assert card["assignee_id"] == teacher and card["draft"] == {} and card["check_result"] is None
     history = rows(seeded_db, "events", rid)
     assert any(e["detail"].get("handoff_reason") == "ai_failed" for e in history)
     assert "missing_private_module" not in str(history)
     detail = db_client.get(f"/api/v1/requests/{rid}", headers=parent)
     assert detail.status_code == 200 and "ai_failed" not in detail.text
-    assert detail.json()["request"]["status_label"] == "담당 선생님 배정 중"
+    assert detail.json()["request"]["status_label"] == ("선생님 확인 중" if teacher else "담당 선생님 배정 중")
     assert len(rows(seeded_db, "request_messages", rid)) == 1
     notices = rows(seeded_db, "notifications", rid)
-    assert len(notices) == 1 and notices[0]["recipient_id"] == seed.DIRECTOR
+    assert len(notices) == 1 and notices[0]["recipient_id"] == (teacher or seed.DIRECTOR)
     assert notices[0]["kind"] == "new_card" and notices[0]["card_id"] == card["id"]
     runner.run_request(UUID(rid))
     assert rows(seeded_db, "notifications", rid) == notices
+
+
+@pytest.mark.parametrize("reason", ["ai_failed", "ai_timeout", "card_missing"])
+@pytest.mark.parametrize("request_type,body,risk,has_teacher", [
+    ("inquiry", "[TEST] 아이가 다쳤어요", "urgent", True),
+    ("complaint", "[TEST] 아이가 다쳤어요", "urgent", True),
+    ("inquiry", "[TEST] 판단 필요 문의예요", "uncertain", True),
+    ("complaint", "[TEST] 판단 필요 민원이에요", "uncertain", True),
+    ("inquiry", "[TEST] 식단 문의예요", "normal", True),
+    ("complaint", "[TEST] 식단 민원이에요", "normal", True),
+    ("inquiry", "[TEST] 아이가 다쳤어요", "urgent", False),
+])
+def test_handoff_keeps_code_risk_assignment_and_notifications(
+    seeded_db, monkeypatch, reason, request_type, body, risk, has_teacher
+):
+    req, _ = requests.create(users.get_user(seed.PARENT), background_tasks=BackgroundTasks(),
+                             client_request_id=str(uuid4()), type=request_type, body=body, child_id=seed.CHILD,
+                             previous_request_id=None, trace_id="[TEST]-handoff")
+    rid = req["id"]
+    with seeded_db.begin() as connection:
+        # 이미 저장된 분류가 있어도 인계 직전에 원문으로 다시 판단해요.
+        connection.execute(text("""
+            UPDATE requests SET topic_key='other',urgency='normal',risk_level='normal',risk_category=NULL WHERE id=:id
+        """), {"id": rid})
+        if not has_teacher:
+            connection.execute(text("DELETE FROM classroom_staff WHERE classroom_id=:id"), {"id": seed.CLASS_STAR})
+    if reason == "ai_failed":
+        def fail(*args):
+            raise RuntimeError("[TEST] private model failure")
+        monkeypatch.setattr(agent_stub, "classify_request", fail)
+        runner.run_request(rid)
+    elif reason == "ai_timeout":
+        monkeypatch.setattr(runner, "_start_agent", lambda _: Future())
+        monkeypatch.setattr(runner, "AI_TIMEOUT_SECONDS", 0)
+        runner.run_request(rid)
+    else:
+        monkeypatch.setattr(runner, "run_request", lambda _: None)
+        now = datetime.now(KST)
+        with seeded_db.begin() as connection:
+            connection.execute(text("UPDATE requests SET created_at=:at WHERE id=:id"),
+                               {"id": rid, "at": now-timedelta(minutes=6)})
+        runner.sweep_missing_cards(now)
+        runner.sweep_missing_cards(now+timedelta(minutes=5))
+        runner.sweep_missing_cards(now+timedelta(minutes=10))
+    saved = rows(seeded_db, "requests", rid)[0]
+    high_risk = risk in ("urgent", "uncertain")
+    teacher = seed.TEACHER if has_teacher else None
+    assert saved["assignee_id"] == teacher and saved["risk_level"] == risk
+    assert saved["topic_key"] == ("safety" if risk == "urgent" else "meal" if risk == "normal" else "other")
+    assert saved["urgency"] == ("urgent" if risk == "urgent" else "normal")
+    assert saved["risk_category"] == ("child_safety" if risk == "urgent" else None)
+    assert saved["status"] == ("escalated" if high_risk else "awaiting_review")
+    cards = {c["kind"]: c for c in rows(seeded_db, "cards", rid)}
+    assert set(cards) == ({"reply_draft", "director_report"} if high_risk else {"reply_draft"})
+    reply = cards["reply_draft"]
+    assert reply["assignee_id"] == teacher and reply["status"] == ("pending" if teacher else "unassigned")
+    assert reply["draft"] == {} and reply["check_result"] is None
+    if high_risk:
+        report = cards["director_report"]
+        assert report["assignee_id"] == seed.DIRECTOR and report["status"] == "pending"
+        assert not report["draft"].get("text") and report["check_result"] is None
+        assert all(c["due_at"] == saved["created_at"]+timedelta(hours=2) for c in cards.values())
+    history = rows(seeded_db, "events", rid)
+    changes = [e for e in history if e["to_status"] and e["detail"].get("handoff_reason") == reason]
+    assert len(changes) == 1 and changes[0]["action"] == ("escalated" if high_risk else "checked")
+    assert "private model failure" not in str(history)
+    assert len(rows(seeded_db, "request_messages", rid)) == 1
+    notices = rows(seeded_db, "notifications", rid)
+    if high_risk:
+        kind = "urgent_complaint" if risk == "urgent" else "uncertain_complaint"
+        recipients = {seed.DIRECTOR, teacher} - {None}
+        assert len(notices) == len(recipients)
+        assert {(n["recipient_id"], n["kind"], n["card_id"]) for n in notices} == {
+            (recipient, kind, cards["director_report"]["id"]) for recipient in recipients}
+        if risk == "urgent":
+            assert all(n["deliver_after"] == n["created_at"] for n in notices)
+    else:
+        assert len(notices) == 1 and notices[0]["recipient_id"] == teacher and notices[0]["kind"] == "new_card"
 
 
 def test_stub_transaction_rolls_back_then_handoff_once(db_client, parent, seeded_db, monkeypatch):
@@ -187,7 +282,8 @@ def test_sweep_exact_age_states_card_exclusion_and_concurrent_idempotency(seeded
     assert runner.sweep_missing_cards(now+timedelta(minutes=5)) == 0
     for name in ("old", "classified", "assigned"):
         card = rows(seeded_db, "cards", ids[name])
-        assert len(card) == 1 and card[0]["status"] == "unassigned" and card[0]["draft"] == {}
+        assert len(card) == 1 and card[0]["status"] == "pending" and card[0]["draft"] == {}
+        assert card[0]["assignee_id"] == seed.TEACHER
         assert rows(seeded_db, "requests", ids[name])[0]["status"] == "awaiting_review"
         changes = [e for e in rows(seeded_db, "events", ids[name]) if e["to_status"]]
         assert len(changes) == 1 and changes[0]["detail"]["handoff_reason"] == "card_missing"
@@ -260,7 +356,7 @@ def test_sse_waits_for_persisted_completion_and_has_safe_timeout(db_client, pare
     assert '"request_status": "awaiting_review"' in response.text
 
 
-def test_seed_sweep_only_inquiries_and_one_director_notice_per_handoff(seeded_db, monkeypatch):
+def test_seed_sweep_only_inquiries_and_one_assignee_notice_per_handoff(seeded_db, monkeypatch):
     monkeypatch.setattr(runner, "run_request", lambda request_id: None)
     # 날짜와 무관하게 모든 시드가 5분을 넘긴 시점에서 검사해요.
     with seeded_db.connect() as connection:
@@ -278,7 +374,7 @@ def test_seed_sweep_only_inquiries_and_one_director_notice_per_handoff(seeded_db
         assert counts == {"inquiry": 9}
         notices = connection.execute(text("SELECT * FROM notifications")).mappings().all()
         assert len(notices) == 9
-        assert all(n["recipient_id"] == seed.DIRECTOR and n["kind"] == "new_card" for n in notices)
+        assert all(n["recipient_id"] == seed.TEACHER and n["kind"] == "new_card" for n in notices)
         assert len({n["card_id"] for n in notices}) == 9
     assert runner.sweep_missing_cards(now) == 0
     with seeded_db.connect() as connection:

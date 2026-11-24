@@ -166,7 +166,7 @@ def test_queued_request_is_republished_once_then_handed_off_after_five_more_minu
     assert published.count(("request", str(request_id))) == 1
     with eager_worker.connect() as connection:
         card = connection.execute(text("SELECT * FROM cards WHERE request_id=:id"), {"id": request_id}).mappings().one()
-        assert card["status"] == "unassigned" and card["draft"] == {}
+        assert card["status"] == "pending" and card["assignee_id"] == seed.TEACHER and card["draft"] == {}
         assert connection.scalar(text("SELECT count(*) FROM events WHERE request_id=:id AND detail->>'handoff_reason'='card_missing'"),
                                  {"id": request_id}) == 1
 

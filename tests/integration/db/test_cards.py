@@ -182,6 +182,9 @@ def test_unassigned_card_reassign_and_cards_without_request(db_client, seeded_db
     monkeypatch.setattr(runner, "run_request", lambda request_id: None)
 
     with seeded_db.begin() as connection:
+        # 미배정·재배정 경로를 보려면 점검 시점에 유효한 담임이 없어야 해요.
+        connection.execute(text("UPDATE classroom_staff SET valid_from=:start WHERE classroom_id=:id"),
+                           {"id": seed.CLASS_STAR, "start": datetime.now(KST).date()+timedelta(days=1)})
         rid = connection.scalar(
             text("""INSERT INTO requests (org_id,classroom_id,child_id,requester_id,client_request_id,type,body,created_at)
             VALUES (:org,:class,:child,:parent,:key,'inquiry','[TEST] 누락',now()-interval '10 minutes') RETURNING id"""),
@@ -195,6 +198,9 @@ def test_unassigned_card_reassign_and_cards_without_request(db_client, seeded_db
         )
     sweep_missing_cards(datetime.now(KST))
     sweep_missing_cards(datetime.now(KST)+timedelta(minutes=5))
+    with seeded_db.begin() as connection:
+        connection.execute(text("UPDATE classroom_staff SET valid_from=NULL WHERE classroom_id=:id"),
+                           {"id": seed.CLASS_STAR})
     with seeded_db.connect() as connection:
         assert connection.scalar(text("SELECT count(*) FROM cards c JOIN requests r ON r.id=c.request_id WHERE r.type IN ('medication','pickup')")) == 0
     rows = db_client.get(BASE + "/cards?filter=unassigned&size=100", headers=auth(seed.DIRECTOR)).json()["items"]

@@ -24,7 +24,7 @@
 | **접근 차단.** 지금 연결된 아이가 없는 보호자(퇴소 등)는 원 칸 피드에서도 목록·상세·앨범·사진 파일·글 올리기에 모두 403을 받는다. 다른 기관 사용자는 404를, 다른 반 보호자는 반 칸에서 403을 받는다 | [3.29](#329-제안-피드앨범) ⑤, DB 설계서 [4.4](DB_스키마_설계서.md#44-차단-시험) | `api/test_feed.py::test_org_lane_closes_for_guardian_without_linked_child`, `db/test_scope_cases.py::test_unlinked_guardian_loses_child_notes_requests_and_all_feed_photos`, `db/test_scope_cases.py::test_other_class_guardian_is_blocked_on_read_update_and_file`, `db/test_scope_cases.py::test_other_org_user_gets_404_for_document_and_feed_files_with_denial` | [`bf75f8f`](https://github.com/aio-final-2team/FinalProject_2Team/commit/bf75f8f)(코드), [`c80ee67`](https://github.com/aio-final-2team/FinalProject_2Team/commit/c80ee67)(문서) |
 | **사진 정리.** 퇴소한 아이의 사진·태그·기억 정리, 파일 삭제가 실패해 남은 파일 정리, 백업 복원 뒤 지운 자료를 다시 닫는 일은 관리 작업으로 한다. API 계약은 바뀌지 않았다 | DB 설계서 [사진·기억의 보존과 삭제](DB_스키마_설계서.md#사진기억의-보존과-삭제) | `api/test_feed.py::test_disk_delete_failure_leaves_only_orphan_file_after_commit`, `db/test_maintenance.py::test_withdraw_dry_run_changes_nothing_then_apply_follows_four_steps`, `db/test_maintenance.py::test_sweep_lists_only_orphans_and_deletes_them_only_with_apply`, `db/test_backup_restore.py::test_dump_restore_revives_later_deletions_until_after_restore_applies_them` | [`bf75f8f`](https://github.com/aio-final-2team/FinalProject_2Team/commit/bf75f8f), [`1d2c228`](https://github.com/aio-final-2team/FinalProject_2Team/commit/1d2c228) |
 | **초안 실패 뒤 처리 — 알림장.** 작업 전체가 실패하면 `draft_status = failed`와 `error`로 알리고, 아이 한 명만 실패하면 그 아이에게만 확인 항목 `draft_failed`를 단다. 어느 쪽이든 반 발송은 막힌다. 다시 만들기까지의 복구 이력은 DB 설계서 2.6에 있다 | [3.19.1](#3191-접수부터-결과-조회까지-한-번에-따라가기), [3.26](#326-알림장-다시-만들기--post-apiv1daily-notesdraftsinput_idregenerate), DB 설계서 [2.6](DB_스키마_설계서.md#26-알림장알림평가) | `api/test_daily_notes.py::test_failed_writer_job_is_queryable_without_partial_notes`, `db/test_daily_notes_runner.py::test_one_child_failure_keeps_other_children_and_blocks_batch`, `db/test_daily_note_recovery.py::test_timeout_then_regenerate_is_one_recovered_incident_with_times`, `db/test_daily_note_recovery.py::test_failed_retry_is_handed_off_then_partial_template_is_fallback` | [`c80ee67`](https://github.com/aio-final-2team/FinalProject_2Team/commit/c80ee67), [`bf75f8f`](https://github.com/aio-final-2team/FinalProject_2Team/commit/bf75f8f) |
-| **초안 실패 뒤 처리 — 요청 처리 3분 마감.** 3분이 지나면 초안 없는 미배정 카드로 넘기고(`ai_timeout`), 처리 중에 예외가 나면 `ai_failed`로 넘긴다. 모델 응답을 기다리는 동안에는 요청 행 잠금도 DB 연결도 잡지 않는다. 늦게 끝난 결과는 저장 직전에 다시 확인해서 버린다 | [6.1](#61-타임아웃), [6.3](#63-202로-접수하는-작업의-상태-조회) | `db/test_request_lock_timeout.py::test_answer_models_run_outside_request_row_lock`, `db/test_request_lock_timeout.py::test_ai_timeout_hands_off_empty_card_and_drops_late_draft`, `db/test_request_lock_timeout.py::test_timeout_error_raised_by_agent_is_ai_failed` | [`ab58b7c`](https://github.com/aio-final-2team/FinalProject_2Team/commit/ab58b7c) |
+| **초안 실패 뒤 처리 — 요청 처리 3분 마감.** 3분이 지나면 초안 없는 사람 카드로 넘기고(`ai_timeout`), 처리 중에 예외가 나면 `ai_failed`로 넘긴다. 코드 규칙으로 위험·주제를 다시 저장하고 유효한 담임에게 배정한다. 긴급·판단 필요면 원장 보고와 담임·원장 위험 알림도 남긴다. 모델 응답을 기다리는 동안에는 요청 행 잠금도 DB 연결도 잡지 않는다. 늦게 끝난 결과는 저장 직전에 다시 확인해서 버린다 | [6.1](#61-타임아웃), [6.3](#63-202로-접수하는-작업의-상태-조회) | `db/test_request_lock_timeout.py::test_answer_models_run_outside_request_row_lock`, `db/test_request_lock_timeout.py::test_ai_timeout_hands_off_empty_card_and_drops_late_draft`, `db/test_request_lock_timeout.py::test_timeout_error_raised_by_agent_is_ai_failed` | [`ab58b7c`](https://github.com/aio-final-2team/FinalProject_2Team/commit/ab58b7c) |
 | **초안 실패 뒤 처리 — 거절 뒤 재초안.** 담임이 회신 초안을 거절하면 새 회신 카드에는 초안 문장도 검사 결과도 없다. 그래서 그대로 승인하면 409가 나고, 담임이 직접 쓴 글(`edit_approve`)만 나간다 | [3.3](#33-카드-결정--post-apiv1cardscard_iddecisions) '결정마다 바뀌는 것' | `api/test_cards.py::test_reject_redraft_has_no_text_and_needs_teacher_text` | [`ab58b7c`](https://github.com/aio-final-2team/FinalProject_2Team/commit/ab58b7c) |
 | 첫 시연 순서, API 49개 목록의 상태 칸(DB 연결·모의만·제안) | [2](#2-api-목록), [2.1](#21-첫-시연-흐름의-연결표와-실제-연결-범위) | `api/test_openapi.py::test_all_49_documented_endpoints_exist`(목록 49행이 앱 경로와 같은지) | [`c80ee67`](https://github.com/aio-final-2team/FinalProject_2Team/commit/c80ee67) |
 | 요청은 접수됐지만 인계 카드 저장에 실패한 경우 | [5.5.3](#553-사람-인계-카드--create_card), [6.7](#67-대표-사례-대조--화면apidb가-같은-상태로-보이는지) | `db/test_requests.py::test_agent_failure_preserves_request_and_hands_off_without_private_error`, `db/test_requests.py::test_sweep_exact_age_states_card_exclusion_and_concurrent_idempotency` | [`c80ee67`](https://github.com/aio-final-2team/FinalProject_2Team/commit/c80ee67) |
@@ -1654,8 +1654,8 @@ def decide(card_id: UUID, body: CardDecision, user: User = Depends(current_staff
 
 | 도구 | 부르는 AI | 실행 조건 | 성공 `data` | 실패 코드 | 실패 후 처리(기본) |
 | --- | --- | --- | --- | --- | --- |
-| `route_request` | 감독 | 요청이 `received`·`classified` | 분류 결과를 저장 | `UPSTREAM_UNAVAILABLE`·`SAVE_FAILED`(참), `INVALID_TRANSITION`(거짓) | 1번 다시 → 실패면 담당 없는 사람 카드로 넘김(받은함 '미배정') |
-| `create_card` | 감독·자료 | 요청이 끝나지 않음 | `card_id` | `SAVE_FAILED`(참), `VALIDATION_FAILED`·`INVALID_TRANSITION`(거짓) | 1번 다시 → 실패면 학부모에게 '말씀하신 내용은 받았는데 선생님께 넘기는 중에 저장 오류가 났어요. 확인이 늦어질 수 있으니 급하시면 원으로 전화 주세요'라고 솔직히 안내('선생님께 전달했어요'라고 하지 않음, 30문항 YC-F04). 요청은 `POST /requests` 단계에서 이미 저장돼 '내 요청' 화면에 '접수됨'으로 보이므로, '접수가 안 됐어요'라고도 하지 않음. 카드는 서버 점검 작업이 '미배정'으로 다시 올림(6.3) |
+| `route_request` | 감독 | 요청이 `received`·`classified` | 분류 결과를 저장 | `UPSTREAM_UNAVAILABLE`·`SAVE_FAILED`(참), `INVALID_TRANSITION`(거짓) | 1번 다시 → 실패면 코드로 위험·분류를 다시 저장하고 담임에게 초안 없는 사람 카드로 넘김. 긴급·판단 필요면 원장 보고도 만듦(6.3). 유효한 담임이 없을 때만 미배정 |
+| `create_card` | 감독·자료 | 요청이 끝나지 않음 | `card_id` | `SAVE_FAILED`(참), `VALIDATION_FAILED`·`INVALID_TRANSITION`(거짓) | 1번 다시 → 실패면 학부모에게 '말씀하신 내용은 받았는데 선생님께 넘기는 중에 저장 오류가 났어요. 확인이 늦어질 수 있으니 급하시면 원으로 전화 주세요'라고 솔직히 안내('선생님께 전달했어요'라고 하지 않음, 30문항 YC-F04). 요청은 `POST /requests` 단계에서 이미 저장돼 '내 요청' 화면에 '접수됨'으로 보이므로, '접수가 안 됐어요'라고도 하지 않음. 카드는 서버 점검 작업이 코드 위험·담임 배정을 적용해 다시 올림(6.3). 유효한 담임이 없을 때만 미배정 |
 | `notify_staff` | 감독 | 카드가 있음 | `notification_id` | `SAVE_FAILED`(참), `NOT_FOUND`(거짓) | 1번 다시 → 실패해도 카드는 받은함에 그대로 남음. 긴급·판단 필요 카드면 `warnings[]`에 `notify_failed`를 붙여 카드에서 눈에 띄게 하고, 이력에도 남김 |
 | `search_documents` | 자료 | 요청한 기관의 자료만, 학부모면 원 전체 + 아이 반 자료 | `chunks[]` | `TOOL_TIMEOUT`·`UPSTREAM_UNAVAILABLE`(참), `VALIDATION_FAILED`·`NOT_FOUND`(거짓) | 1번 다시 → 실패하거나 근거가 없으면 추측하지 않고 담임 카드로 넘김(`no_evidence`) |
 | `get_law_article` | 자료 | 법령 이름·조문이 있음 | `text`, `source_url`, `fetched_at` | `UPSTREAM_UNAVAILABLE`(참), `NOT_FOUND`(거짓) | 1번 다시 → 실패면 법령 인용 없이 초안을 쓰고, 카드에 '법령 확인 못 함' 표시 |
@@ -1775,7 +1775,7 @@ def decide(card_id: UUID, body: CardDecision, user: User = Depends(current_staff
 
 쓰기 응답이 끊겼다면 카드가 이미 저장됐을 수 있다. 그래서 다시 부르기 전에 그 요청에 카드가 있는지 먼저 확인한다. 지금 실행기와 점검 작업도 요청을 잠근 뒤 카드가 있는지 다시 읽고 나서 카드를 만든다.
 
-**지금 코드.** 요청 처리 입구는 `apps/api/app/modules/requests/agent_stub.py`다. 기본 설정은 낱말 분류·대역 초안이고, `LLM_MODEL_SUPERVISOR`를 채우면 모델 분류 제안을 검증하며 `ANSWER_WRITER=graph`면 자료·검사 AI를 호출한다. 모델이 이 `create_card` 도구 계약을 직접 호출하는 경로와 T43 협업 그래프는 아직 연결하지 않았다. 대역은 이 도구를 부르지 않고 `new_card()`로 카드를 바로 저장한다. 저장 중 예외가 나면 실행기(`runner.py`)는 다시 부르지 않고 곧바로 초안 없는 미배정 카드를 만든다. 이때 이력에는 실패 원인과 상관없이 `tool_failed`·`UPSTREAM_UNAVAILABLE`로 기록된다. 위 학부모 안내 문장도 아직 코드에 없어서, 학부모 화면에는 상태 표시 이름만 보인다(6.7 마지막 사례). 시험은 `test_agent_failure_preserves_request_and_hands_off_without_private_error`, `test_stub_transaction_rolls_back_then_handoff_once`, `test_sweep_exact_age_states_card_exclusion_and_concurrent_idempotency`(`tests/integration/db/test_requests.py`)다.
+**지금 코드.** 요청 처리 입구는 `apps/api/app/modules/requests/agent_stub.py`다. 기본 설정은 낱말 분류·대역 초안이고, `LLM_MODEL_SUPERVISOR`를 채우면 모델 분류 제안을 검증하며 `ANSWER_WRITER=graph`면 자료·검사 AI를 호출한다. 모델이 이 `create_card` 도구 계약을 직접 호출하는 경로와 T43 협업 그래프는 아직 연결하지 않았다. 대역은 이 도구를 부르지 않고 `new_card()`로 카드를 바로 저장한다. 저장 중 예외가 나면 실행기(`runner.py`)는 모델을 다시 부르지 않고 코드 규칙 `request_rules.classify(type, body)`로 주제·긴급도·위험 등급·종류를 다시 저장한다. 정상 경로와 같은 쿼리로 현재 유효한 담임을 골라 초안 없는 회신 카드를 배정한다. 일반은 `awaiting_review`와 담임 `new_card` 알림, 긴급·판단 필요는 원장 보고 카드·`escalated`와 담임·원장 위험 알림으로 넘긴다. 유효한 담임이 없을 때만 회신 카드가 `unassigned`다. 이때 이력에는 실패 원인과 상관없이 `tool_failed`·`UPSTREAM_UNAVAILABLE`로 기록된다. 위 학부모 안내 문장도 아직 코드에 없어서, 학부모 화면에는 상태 표시 이름만 보인다(6.7 마지막 사례). 시험은 `test_agent_failure_preserves_request_and_hands_off_without_private_error`, `test_stub_transaction_rolls_back_then_handoff_once`, `test_sweep_exact_age_states_card_exclusion_and_concurrent_idempotency`(`tests/integration/db/test_requests.py`)다.
 
 ### 5.6 호출 흐름
 
@@ -1841,7 +1841,7 @@ def decide(card_id: UUID, body: CardDecision, user: User = Depends(current_staff
 | 요청 하나의 AI 처리 전체(2~5단계) | 3분 | 처리를 멈추고 초안 없는 카드로 사람에게 넘김. 넘긴 이유(`ai_timeout`)는 이력 `events.detail.handoff_reason`에 남김 |
 | SSE 연결 | 처리 끝(`done`·`error`) 또는 5분 | 서버가 연결을 닫음. 화면은 상세를 다시 불러와 상태를 맞춤 |
 
-요청 하나에 주어진 3분은 그래프 바깥의 실행기가 잰다. 분류, 공공 자료 가져오기, 답변 초안 쓰기와 검사는 모두 요청 행 잠금 밖에서 하고, 모델 응답을 기다리는 동안에는 DB 연결도 잡지 않는다. 잠금은 마지막 저장 때만 건다. 짧은 트랜잭션 안에서 요청 행을 잠근 뒤, 요청이 아직 처리 중인지 다시 확인하고 저장한다. 3분이 지나면 실행기는 더 기다리지 않고 초안 없는 미배정 카드를 만들고 요청을 `awaiting_review`로 바꾼다. 3분이 되기 전에 처리가 예외로 멈췄다면 넘긴 이유를 `ai_failed`로 남긴다. 3분 뒤에 늦게 끝난 결과는 저장 직전 재확인 때 요청이 이미 사람에게 넘어가 있으므로 버려진다. 그래서 늦은 결과가 먼저 만든 카드를 덮지 못한다.
+요청 하나에 주어진 3분은 그래프 바깥의 실행기가 잰다. 분류, 공공 자료 가져오기, 답변 초안 쓰기와 검사는 모두 요청 행 잠금 밖에서 하고, 모델 응답을 기다리는 동안에는 DB 연결도 잡지 않는다. 잠금은 마지막 저장 때만 건다. 짧은 트랜잭션 안에서 요청 행을 잠근 뒤, 요청이 아직 처리 중인지 다시 확인하고 저장한다. 3분이 지나면 실행기는 더 기다리지 않고 코드 규칙으로 주제·긴급도·위험 등급·종류를 다시 저장한 뒤 유효한 담임에게 초안 없는 회신 카드(`pending`)를 배정한다. 일반이면 요청 `awaiting_review`와 담임 `new_card` 알림, 긴급·판단 필요면 원장 보고 카드와 요청 `escalated`, 담임·원장 위험 알림(`urgent_complaint`·`uncertain_complaint`)을 남긴다. 유효한 담임이 없는 반에서만 회신 카드를 `unassigned`로 두며, 일반 건의 `new_card` 알림은 원장에게 보낸다. 위험 카드 기한과 알림 시각은 정상 고위험 경로의 2시간·6.6 규칙을 그대로 따른다. 3분이 되기 전에 처리가 예외로 멈췄다면 넘긴 이유를 `ai_failed`로 남긴다. 3분 뒤에 늦게 끝난 결과는 저장 직전 재확인 때 요청이 이미 사람에게 넘어가 있으므로 버려진다. 그래서 늦은 결과가 먼저 만든 카드를 덮지 못한다.
 
 ### 6.2 재시도
 
@@ -1858,11 +1858,11 @@ def decide(card_id: UUID, body: CardDecision, user: User = Depends(current_staff
 
 | 접수 API | 조회 | 진행 중 | 성공 | 실패 |
 | --- | --- | --- | --- | --- |
-| 요청 만들기 | `GET /requests/{id}` + 스트림 | `received`·`classified`·`assigned` | `needs_info`(학부모 차례) 또는 `awaiting_review`(카드 생김) | 재시도 뒤에도 실패하면 초안 없는 카드로 사람에게 넘기고 `awaiting_review`로 바꿈. 넘긴 이유(`ai_failed`)는 이력 `events.detail.handoff_reason`에 남기고, 교직원 스트림에는 `error` 이벤트를 보냄. 요청은 버리지 않음 |
+| 요청 만들기 | `GET /requests/{id}` + 스트림 | `received`·`classified`·`assigned` | `needs_info`(학부모 차례) 또는 `awaiting_review`(카드 생김) | 재시도 뒤에도 실패하면 코드 위험·분류와 유효한 담임 배정을 저장하고 초안 없는 카드로 사람에게 넘김. 일반은 `awaiting_review`·담임 `new_card`, 긴급·판단 필요는 `escalated`·원장 보고·담임과 원장 위험 알림. 유효한 담임이 없을 때만 미배정. 넘긴 이유(`ai_failed`)는 이력 `events.detail.handoff_reason`에 남기고, 교직원 스트림에는 `error` 이벤트를 보냄. 요청은 버리지 않음 |
 | 알림장 초안 | `GET /daily-notes/drafts/{input_id}` | `draft_status = queued·running` | `succeeded`. 아이별 초안은 `GET /daily-notes?classroom_id=&date=`로 받음 | `failed` + `error { code, message }`(자세한 이유는 `events`의 `tool_failed`) |
 | 자료 올리기 | `GET /documents/{document_id}` | `ingest_status = queued·running` | `succeeded` + `chunk_count`(조각 수). 충돌이 있으면 `status = conflict_pending` + `conflicts[]` | `failed` + `error { code, message }` |
 
-**카드가 끝내 안 생긴 요청.** 요청은 `POST /requests`에서 먼저 저장된다. 그래서 AI가 카드 만들기(`create_card`)까지 실패하거나 처리 중에 멈춰도 요청은 남는다. 서버 점검 작업은 5분마다 돌면서, 진행 중 상태(`received`·`classified`·`assigned`)인데 5분 넘게 카드가 없는 요청을 찾는다. 처음 찾았을 때는 처리를 한 번 다시 넣고 `agent_requeued` 이력만 남긴다. 다시 넣고 5분이 지나도 카드가 없으면, 초안 없는 카드를 담당자 없이 만들고(받은함 '미배정') 요청을 `awaiting_review`로 바꾼다. 이때 넘긴 이유 `card_missing`을 이력 `events.detail.handoff_reason`에 남긴다. 그동안 학부모 화면은 `received`·`classified`면 '접수됨', 담당 배정 뒤 `assigned`면 '선생님께 전달됨'으로 보인다. 미배정 카드가 생긴 뒤에도 담당이 없으면 '담당 선생님 배정 중'이다. 채팅 안내는 '받았지만 선생님 확인이 늦어질 수 있음'으로 맞출 예정이지만, 이 문장은 아직 코드에 없다. 이 점검 작업은 실제 서버의 백그라운드 워커에서 돌고, 모의 API에서는 돌리지 않는다. 두 모드를 나란히 비교한 결과는 6.7 마지막 사례에 있다.
+**카드가 끝내 안 생긴 요청.** 요청은 `POST /requests`에서 먼저 저장된다. 그래서 AI가 카드 만들기(`create_card`)까지 실패하거나 처리 중에 멈춰도 요청은 남는다. 서버 점검 작업은 5분마다 돌면서, 진행 중 상태(`received`·`classified`·`assigned`)인데 5분 넘게 카드가 없는 요청을 찾는다. 처음 찾았을 때는 처리를 한 번 다시 넣고 `agent_requeued` 이력만 남긴다. 다시 넣고 5분이 지나도 카드가 없으면, 코드 규칙으로 위험·분류를 다시 저장하고 정상 경로와 같은 유효한 담임 배정을 적용해 초안 없는 회신 카드를 만든다. 일반은 `awaiting_review`·담임 `new_card` 알림, 긴급·판단 필요는 원장 보고 카드·`escalated`와 담임·원장 위험 알림을 남긴다. 유효한 담임이 없을 때만 회신 카드가 미배정이고, 일반 건의 알림은 원장에게 보낸다. 이때 넘긴 이유 `card_missing`을 이력 `events.detail.handoff_reason`에 남긴다. 그동안 학부모 화면은 `received`·`classified`면 '접수됨', 담당 배정 뒤 `assigned`면 '선생님께 전달됨'으로 보인다. 인계 뒤 일반 건에 담당이 있으면 '선생님 확인 중', 담당이 없으면 '담당 선생님 배정 중'이고, 고위험 건은 '원장님 확인 중'이다. 채팅 안내는 '받았지만 선생님 확인이 늦어질 수 있음'으로 맞출 예정이지만, 이 문장은 아직 코드에 없다. 이 점검 작업은 실제 서버의 백그라운드 워커에서 돌고, 모의 API에서는 돌리지 않는다. 두 모드를 나란히 비교한 결과는 6.7 마지막 사례에 있다.
 
 
 ```json
@@ -1976,9 +1976,11 @@ Beat는 1분마다 시작이 하루 이내인 확정 예약을 읽고, 그중 �
 | 접수 직후, 실행 전 | 접수됨 | `received`, 담당·카드 없음(`test_received_request_label_before_agent_runs`) |
 | 분류 뒤 | 접수됨 | `classified`, 문구 단위 표 |
 | 담임 배정 뒤 | 선생님께 전달됨 | `assigned`, 문구 단위 표 |
-| 담당 없는 반의 카드 생성 / 카드 저장 장애의 인계 | 담당 선생님 배정 중 | 요청 `awaiting_review`, 카드 `unassigned`, 요청 담당 없음. 전자는 공용 HTTP, 후자는 `db/test_requests.py::test_agent_failure_preserves_request_and_hands_off_without_private_error` |
+| 담임 있는 반의 일반 카드 저장 장애 인계 | 선생님 확인 중 | 요청 `awaiting_review`, 담임 회신 카드 `pending`·초안 없음, 담임 `new_card` 알림(`db/test_requests.py::test_agent_failure_preserves_request_and_hands_off_without_private_error`) |
+| 유효한 담임 없는 반의 카드 생성 / 장애 인계 | 담당 선생님 배정 중 | 요청 `awaiting_review`, 회신 카드 `unassigned`, 요청 담당 없음·원장 `new_card` 알림. 일반 건의 정상·장애 경로 모두 같음 |
+| 고위험 카드 저장 장애 인계 | 원장님 확인 중 | 코드 위험·분류 저장, 초안 없는 담임 회신 카드·원장 보고 카드, 요청 `escalated`, 담임·원장 위험 알림(`db/test_requests.py::test_handoff_keeps_code_risk_assignment_and_notifications`) |
 | 카드가 끝내 없고 점검에서 다시 넣음 | 현재 상태에 따른 표시 유지 | `agent_requeued`만으로 담임 전달로 표시하지 않음 |
-| 다시 넣어도 카드가 없어 사람에게 넘김 | 담당 선생님 배정 중 | `card_missing`, 미배정 카드·원장 알림. 자동 복구 성공으로 세지 않음 |
+| 다시 넣어도 카드가 없어 사람에게 넘김 | 일반·담임 있음: 선생님 확인 중 / 없음: 담당 선생님 배정 중 / 고위험: 원장님 확인 중 | `card_missing`에도 같은 코드 위험·담임 배정·원장 보고 규칙 적용. 자동 복구 성공으로 세지 않음 |
 | 원장이 담당 재배정 | 선생님 확인 중 | 담당 있음, 상태는 `awaiting_review` 그대로(`test_unassigned_request_label_changes_after_director_reassign`) |
 
 ### 6.8 장애 결과 구분
@@ -1989,9 +1991,9 @@ Beat는 1분마다 시작이 하루 이내인 확정 예약을 읽고, 그중 �
 | --- | --- | --- | --- |
 | `unit/test_daily_note_graph.py::test_writer_retry_once_then_succeeds` | 재시도 뒤 확인 항목 없는 아이 초안 | — | `open_checks=[]`·메모 줄 있음. 저장·실제 모델 시험은 아님 |
 | `db/test_worker_db.py::test_broker_failure_preserves_rows_and_periodic_sweep_recovers` | 요청 다시 등록 뒤 회신 카드·본문 저장 | — | `card_missing` 없음. 같은 시험의 알림장 `succeeded`만으로 T58 성공은 판정하지 않음 |
-| `db/test_request_lock_timeout.py::test_ai_timeout_hands_off_empty_card_and_drops_late_draft` | — | 초안 없는 미배정 카드 | `ai_timeout`; 늦은 초안이 덮지 못함 |
-| `db/test_requests.py::test_agent_failure_preserves_request_and_hands_off_without_private_error` | — | 초안 없는 미배정 카드 | `ai_failed`; 요청 보존·배정 대기 표시·원장 알림 |
-| `db/test_worker_db.py::test_queued_request_is_republished_once_then_handed_off_after_five_more_minutes` | — | 재등록 뒤에도 카드가 없어 미배정 카드 | `card_missing` |
+| `db/test_request_lock_timeout.py::test_ai_timeout_hands_off_empty_card_and_drops_late_draft` | — | 초안 없는 담임 카드 | `ai_timeout`; 위험·담임 보존, 늦은 초안이 덮지 못함 |
+| `db/test_requests.py::test_agent_failure_preserves_request_and_hands_off_without_private_error` | — | 초안 없는 담임 카드(유효한 담임이 없을 때만 미배정) | `ai_failed`; 요청·코드 분류 보존, 담임 `new_card`(없으면 원장) |
+| `db/test_worker_db.py::test_queued_request_is_republished_once_then_handed_off_after_five_more_minutes` | — | 재등록 뒤에도 카드가 없어 초안 없는 담임 카드 | `card_missing`; 위험·담임 보존 |
 | `db/test_daily_note_recovery.py::test_failed_retry_is_handed_off_then_partial_template_is_fallback` | 검증·저장된 아이별 결과만 후보 | 작업 실패·템플릿 아이는 사람에게 넘김 | 기존 반 단위 집계의 `fallback`을 전체 성공으로 읽지 않음(DB 2.6) |
 
 ## 7. API 필드와 DB 컬럼 대응

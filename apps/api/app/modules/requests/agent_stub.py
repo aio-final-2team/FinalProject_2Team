@@ -18,6 +18,15 @@ from app.modules.documents.answer import answer_for_request, graph_enabled, save
 from app.modules.documents.public_sources import attach_law_evidence, forecast_evidence, prefetch_public
 
 
+def homeroom_teacher(connection, req):
+    return connection.scalar(text("""
+        SELECT s.user_id FROM classroom_staff s JOIN users u ON (u.id,u.org_id)=(s.user_id,s.org_id)
+        WHERE s.org_id=:org AND s.classroom_id=:class AND u.role='teacher' AND u.is_active
+          AND (s.valid_from IS NULL OR s.valid_from<=:today) AND (s.valid_to IS NULL OR s.valid_to>=:today)
+        ORDER BY s.is_homeroom DESC,s.created_at,s.user_id LIMIT 1
+    """), {"org": req["org_id"], "class": req["classroom_id"], "today": datetime.now(KST).date()})
+
+
 def new_card(connection, req, kind, assignee, draft=None):
     card = dict(connection.execute(text("""
         INSERT INTO cards (org_id,request_id,kind,status,assignee_id,due_at,draft)
@@ -96,12 +105,7 @@ def run_request(request_id, prepared_answer=None, prepared_fields=None):
         set_status(connection, req, "classified", action="classified", actor_type="agent", agent_name="supervisor",
                    topic_model_rejected=topic_conflict(req["type"], req["body"], proposal)
                    if req["type"] == initial["type"] and req["body"] == initial["body"] else False)
-        teacher = connection.scalar(text("""
-            SELECT s.user_id FROM classroom_staff s JOIN users u ON (u.id,u.org_id)=(s.user_id,s.org_id)
-            WHERE s.org_id=:org AND s.classroom_id=:class AND u.role='teacher' AND u.is_active
-              AND (s.valid_from IS NULL OR s.valid_from<=:today) AND (s.valid_to IS NULL OR s.valid_to>=:today)
-            ORDER BY s.is_homeroom DESC,s.created_at,s.user_id LIMIT 1
-        """), {"org": req["org_id"], "class": req["classroom_id"], "today": datetime.now(KST).date()})
+        teacher = homeroom_teacher(connection, req)
         req["assignee_id"] = teacher
         connection.execute(text("UPDATE requests SET assignee_id=:teacher WHERE id=:id"), {"teacher": teacher, "id": request_id})
         set_status(connection, req, "assigned", action="assigned", actor_type="agent", agent_name="supervisor")
