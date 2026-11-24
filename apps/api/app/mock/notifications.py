@@ -52,6 +52,19 @@ def notify_event(ev, req, card):
             create(ev, req.requester_id, "care_confirmed" if ev.to_status == "assigned" else "completed",
                    parent_label(ev.to_status, req.type, req.assignee_id))
         return
+    if ev.action == "message_added":
+        if req.type == "consultation" and req.status in ("needs_info", "sent_or_booked"):
+            recipients = {req.assignee_id: None} if req.assignee_id else {}
+        elif req.status in ("awaiting_review", "on_hold", "escalated", "needs_info"):
+            recipients = {c.assignee_id: c.id for c in sorted(store.cards_of(req.id), key=lambda c: (c.created_at, c.id))
+                          if c.status not in ("done", "rejected") and c.assignee_id}
+        else:
+            return
+        if not recipients:
+            recipients = {store.director_of(req.org_id): None}
+        for recipient, card_id in recipients.items():
+            create(replace(ev, card_id=card_id), recipient, "parent_message")
+        return
     parent_kinds = {"needs_info": "needs_info", "on_hold": "on_hold", "sent_or_booked": "sent_or_booked",
                     "rejected": "rejected"}
     if ev.to_status == "completed" and req.type == "complaint":

@@ -250,6 +250,11 @@ def detail(user, card_id):
             "card": {k: card[k] for k in ("id", "kind", "status", "version", "draft", "check_result", "check_attempts")}
             | {"summary": card["draft"].get("summary", "")},
             "request": staff_request(connection, req) if req else None,
+            "messages": [dict(row) for row in connection.execute(text("""
+                SELECT m.id,m.sender_type,CASE WHEN m.sender_type='user' THEN u.role END AS sender_role,m.body,m.created_at
+                FROM request_messages m LEFT JOIN users u ON (u.id,u.org_id)=(m.sender_id,m.org_id)
+                WHERE m.request_id=:id AND m.org_id=:org ORDER BY m.id
+            """), {"id": card["request_id"], "org": user.org_id}).mappings()] if req else [],
             "evidence": evidence,
             "warnings": warnings,
             "parent_choices": [

@@ -180,6 +180,7 @@ class EventView(BaseModel):
 class CardDetail(BaseModel):
     card: CardView
     request: StaffRequest | None
+    messages: list[MessageOut]
     evidence: list[EvidenceView]
     warnings: list[str]
     parent_choices: list[ParentChoice]

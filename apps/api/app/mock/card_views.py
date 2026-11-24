@@ -104,6 +104,9 @@ def detail(user, card_id):
         return {"card": {k: getattr(card, k) for k in ("id", "kind", "status", "version", "draft", "check_result", "check_attempts")}
                         | {"summary": card.draft.get("summary", "")}, "request": staff_request(req) if req else None,
                 "evidence": evidence, "warnings": warnings,
+                "messages": [{"id": m.id, "sender_type": m.sender_type, "sender_role": m.sender_role,
+                              "body": m.body, "created_at": m.created_at}
+                             for m in store.messages_of(req.id)] if req else [],
                 "parent_choices": [{"slot_id": s.id, "period": s.period, "room": store.state().rooms[s.room_id].name,
                                     "chosen_at": s.chosen_at, "hold_expires_at": s.chosen_at + timedelta(hours=24)}
                                    for s in store.state().slots.values() if s.card_id == card.id and s.status == "chosen_by_parent"],

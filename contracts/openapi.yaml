@@ -2979,6 +2979,11 @@ components:
           anyOf:
           - $ref: '#/components/schemas/StaffRequest'
           - type: 'null'
+        messages:
+          items:
+            $ref: '#/components/schemas/MessageOut'
+          type: array
+          title: Messages
         evidence:
           items:
             $ref: '#/components/schemas/EvidenceView'
@@ -3011,6 +3016,7 @@ components:
       required:
       - card
       - request
+      - messages
       - evidence
       - warnings
       - parent_choices

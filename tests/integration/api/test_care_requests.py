@@ -402,6 +402,8 @@ def test_parent_correction_clears_confirmation_and_rejects_seen_old_version(clie
     assert changed["request"]["status"] == "received"
     assert changed["care"]["confirmed_at"] is None and changed["care"]["version"] == 2
     assert len(changed["messages"]) == 2
+    added = [e for e in events(care_backend, rid) if e["action"] == "message_added"]
+    assert len(added) == 1 and added[0]["detail"]["care_message"]
     item = next(r for r in client.get(BASE + "/care-requests?size=100", headers=teacher).json()["items"] if r["id"] == rid)
     assert item["version"] == 2 and item["next_action"] == "confirm"
     updated = notices(care_backend, rid)

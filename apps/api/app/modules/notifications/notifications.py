@@ -53,6 +53,25 @@ def notify_event(connection, event, req, card):
             enqueue(connection, event, req, req["requester_id"],
                     "care_confirmed" if to == "assigned" else "completed", parent_label(to, req["type"], req["assignee_id"]))
         return
+    if action == "message_added":
+        if req["type"] == "consultation" and req["status"] in ("needs_info", "sent_or_booked"):
+            recipients = {req["assignee_id"]: None} if req["assignee_id"] else {}
+        elif req["status"] in ("awaiting_review", "on_hold", "escalated", "needs_info"):
+            recipients = {row["assignee_id"]: row["id"] for row in connection.execute(text("""
+                SELECT id,assignee_id FROM cards WHERE request_id=:id AND org_id=:org
+                  AND status NOT IN ('done','rejected') AND assignee_id IS NOT NULL
+                ORDER BY created_at,id
+            """), {"id": req["id"], "org": req["org_id"]}).mappings()}
+        else:
+            return
+        if not recipients:
+            director = connection.scalar(text(
+                "SELECT id FROM users WHERE org_id=:org AND role='director' AND is_active ORDER BY id LIMIT 1"),
+                {"org": req["org_id"]})
+            recipients = {director: None}
+        for recipient, card_id in recipients.items():
+            enqueue(connection, {**event, "card_id": card_id}, req, recipient, "parent_message")
+        return
     parent_kinds = {"needs_info": "needs_info", "on_hold": "on_hold", "sent_or_booked": "sent_or_booked",
                     "rejected": "rejected"}
     if to == "completed" and req["type"] == "complaint":

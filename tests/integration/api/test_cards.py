@@ -456,5 +456,6 @@ def test_rule_without_classroom_does_not_break_director_inbox(client, parent, te
     rows = {c["id"]: c for c in response.json()["items"]}
     assert rows[str(card_id)]["classroom"] is None
     assert rows[reply]["classroom"]["id"] == str(seed.CLASS_STAR)
+    assert detail(client, director, str(card_id))["messages"] == []
     assert detail(client, director, card_id)["rule"]["id"] == str(rule_id)
     assert str(card_id) not in {c["id"] for c in client.get(BASE + "/cards?size=100", headers=teacher).json()["items"]}

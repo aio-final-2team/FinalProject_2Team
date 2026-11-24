@@ -350,6 +350,8 @@ def test_request_notification_kinds_and_trace_audit(client, parent, teacher):
     assert client.post(f"{BASE}/requests/{rid}/confirm", headers=parent).status_code == 200
     assert decision(client, teacher, cid, "complete", version=4).status_code == 200
     rid, cid = create(client, parent, body="별도 사항")
+    assert client.post(f"{BASE}/requests/{rid}/messages", headers=parent,
+                       json={"body": "[TEST] 확인할 내용을 더 남겨요"}).status_code == 201
     assert decision(client, teacher, cid, "escalate").status_code == 200
     rid, cid = create(client, parent, body="추가 사항")
     assert decision(client, teacher, cid, "dismiss", reason_code="policy").status_code == 200

@@ -56,19 +56,26 @@ def message(user, request_id, body, *, background_tasks=None):
         msg = store.Message(store.state().next_int(), req.id, "user", user.id, body)
         store.state().messages.append(msg)
         if req.type in CARE_REQUEST_TYPES:
-            store.set_request_status(req, "received", action="returned", actor_type="user", actor_id=user.id,
+            store.set_request_status(req, "received", action="message_added", actor_type="user", actor_id=user.id,
                                      care_message=True, message_id=msg.id, version=care.view(req)["version"] + 1)
         else:
-            store.add_event(req, "created", actor_type="user", actor_id=user.id, message_id=msg.id)
+            store.add_event(req, "message_added", actor_type="user", actor_id=user.id, message_id=msg.id)
         req.updated_at = store.now()
-        if req.type == "complaint" and req.status == "sent_or_booked":
+        if req.type in ("inquiry", "complaint") and req.status == "sent_or_booked":
             req.parent_confirmed_at = None
-            card = next(c for c in reversed(store.cards_of(req.id)) if c.kind == "reply_draft")
-            card.status, card.closed_at = "pending", None
-            card.version += 1
+            card = max((c for c in store.cards_of(req.id) if c.kind == "reply_draft"),
+                       key=lambda c: (c.created_at, c.id), default=None)
+            if card is None:
+                req.assignee_id = store.homeroom_teacher(req.classroom_id)
+                card = store._new_card(req, "reply_draft", req.assignee_id)
+            else:
+                card.draft = {**card.draft, "previous_text": card.draft.get("text", ""), "text": ""}
+                card.check_result = None
+                card.status = "pending" if card.assignee_id else "unassigned"
+                card.closed_at = card.hold_until = None
+                card.updated_at = store.now()
+                card.version += 1
             store.set_request_status(req, "awaiting_review", action="returned", card=card, actor_type="user", actor_id=user.id)
-        elif req.status == "needs_info" and req.type not in (*CARE_REQUEST_TYPES, "consultation"):
-            store._run_mock_ai(req, None)
         return {"message": msg.__dict__ | {"sender_role": msg.sender_role}}
 
 

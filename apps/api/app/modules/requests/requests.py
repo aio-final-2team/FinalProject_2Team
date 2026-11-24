@@ -261,7 +261,6 @@ def listing(user, status, page, size, sort):
 
 
 def message(user, request_id, body, *, background_tasks):
-    rerun = False
     with transaction() as connection:
         scope.request_in_scope(user, request_id, connection=connection)
         req = _expire(connection, _lock(connection, request_id))
@@ -275,27 +274,30 @@ def message(user, request_id, body, *, background_tasks):
         connection.execute(text("UPDATE requests SET updated_at=clock_timestamp() WHERE id=:id"), {"id": request_id})
         if req["type"] in CARE_REQUEST_TYPES:
             version = care.view(connection, req)["version"] + 1
-            set_status(connection, req, "received", action="returned", actor_type="user", actor_id=user.id,
+            set_status(connection, req, "received", action="message_added", actor_type="user", actor_id=user.id,
                        care_message=True, message_id=msg["id"], version=version)
         else:
-            record(connection, req, "created", actor_type="user", actor_id=user.id, message_id=msg["id"])
-        if req["type"] == "complaint" and req["status"] == "sent_or_booked":
+            record(connection, req, "message_added", actor_type="user", actor_id=user.id, message_id=msg["id"])
+        if req["type"] in ("inquiry", "complaint") and req["status"] == "sent_or_booked":
             row = connection.execute(text("""
                 SELECT * FROM cards WHERE request_id=:id AND kind='reply_draft' ORDER BY created_at DESC,id DESC LIMIT 1 FOR UPDATE
             """), {"id": request_id}).mappings().one_or_none()
             if row is None:
-                raise ApiError(409, "INVALID_TRANSITION")
-            card = dict(connection.execute(text("""
-                UPDATE cards SET status='pending',closed_at=NULL,version=version+1,updated_at=clock_timestamp()
-                WHERE id=:id RETURNING *
-            """), {"id": row["id"]}).mappings().one())
+                from app.modules.requests.agent_stub import homeroom_teacher, new_card
+                req["assignee_id"] = homeroom_teacher(connection, req)
+                connection.execute(text("UPDATE requests SET assignee_id=:teacher WHERE id=:id"),
+                                   {"id": request_id, "teacher": req["assignee_id"]})
+                card = new_card(connection, req, "reply_draft", req["assignee_id"])
+            else:
+                draft = {**row["draft"], "previous_text": row["draft"].get("text", ""), "text": ""}
+                card = dict(connection.execute(text("""
+                    UPDATE cards SET status=CASE WHEN assignee_id IS NULL THEN 'unassigned' ELSE 'pending' END,
+                        closed_at=NULL,hold_until=NULL,version=version+1,updated_at=clock_timestamp(),
+                        draft=CAST(:draft AS jsonb),check_result=NULL WHERE id=:id RETURNING *
+                """), {"id": row["id"], "draft": json.dumps(draft)}).mappings().one())
             req["parent_confirmed_at"] = None
             connection.execute(text("UPDATE requests SET parent_confirmed_at=NULL WHERE id=:id"), {"id": request_id})
             set_status(connection, req, "awaiting_review", action="returned", card=card, actor_type="user", actor_id=user.id)
-        elif req["status"] == "needs_info" and req["type"] not in (*CARE_REQUEST_TYPES, "consultation"):
-            rerun = True
-    if rerun:
-        dispatch("request", request_id, background_tasks)
     return {"message": msg}
 
 

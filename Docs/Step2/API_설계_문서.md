@@ -629,6 +629,7 @@ T12 화면 지도에 나온 화면들이 조회 응답에서 쓰는 칸을 여�
 
 | 화면용 필드 | 타입 | 언제 | 설명 | DB |
 | --- | --- | --- | --- | --- |
+| `messages[] { id, sender_type, sender_role, body, created_at }` | 목록 | 항상(요청 없으면 빈 목록) | 해당 요청의 전체 대화를 메시지 ID 오름차순으로 준다. 사람의 역할은 `parent`·`teacher`·`director`, AI·시스템 역할은 null이다. 카드의 기관·반·담당 권한을 먼저 검사한다 | `request_messages` → `users.role` |
 | `card.summary` | string | AI가 만든 카드 | AI 요약(`create_card`의 `summary`) | `cards.draft->>'summary'` |
 | `evidence[].is_current` | boolean | 근거가 있을 때 | 근거 문서가 지금 판이면 참. 옛 판(`superseded`)이거나 충돌 확인 대기(`conflict_pending`)이거나 적용 기간이 지난 문서면 거짓 | `documents.status`·`effective_to` |
 | `warnings[]` | string[] | 항상(없으면 빈 목록) | 화면 경고. `stale_evidence`(옛 판 근거가 있음) · `no_evidence`(근거 없음) · `law_unchecked`(법령 확인 못 함) · `check_unavailable`(검사 못 함) · `notify_failed`(교직원 알림을 못 만듦) | `evidence[].is_current`, 자료 AI 결과(`cards.draft`), `cards.check_result` |
@@ -753,7 +754,16 @@ HTTP/1.1 200 OK
 | ⑤ 검증·권한 | 본인 요청에만 쓸 수 있고, `completed`·`rejected`인 요청은 409로 막는다. |
 | ⑥ 정상 응답 | 201 + `message`. 다음 상태는 요청 상세(3.2)에서 확인한다. |
 | ⑦ 오류 응답 | 아래 오류 표. |
-| ⑧ 실행 규칙 | 민원에 회신한 뒤 글이 더해지면 학부모 확인을 지우고, 회신 카드를 pending으로 돌리면서 판을 1 올린다. 이때 요청은 awaiting_review가 된다. 상담이 아닌 요청이 needs_info면 모의 분류를 다시 실행한다. |
+| ⑧ 실행 규칙 | 추가 글은 `message_added` 이력으로 남긴다. 문의·민원 회신 뒤(`sent_or_booked`)의 추가 글은 아래 규칙으로 회신 카드를 다시 열고 `awaiting_review`로 돌린다. 다른 상태에서는 AI를 다시 실행하지 않고 상태별 담당자 알림을 만든다. 투약·귀가는 기존처럼 입력 판을 올리고 확인을 풀어 `received`로 돌리며 `care_requested` 알림을 보낸다. |
+
+| 글을 더한 당시 상태 | 문의·민원·상담의 처리 |
+| --- | --- |
+| `received`·`classified`·`assigned` | 추가 알림 없음. AI가 만든 카드 상세의 `messages[]`에서 대화를 읽는다. |
+| `awaiting_review`·`on_hold`·`escalated`·상담 아닌 `needs_info` | 같은 요청의 열린 카드(`done`·`rejected` 제외) 담당자마다 `parent_message` 알림을 하나씩 보낸다. 담당자가 없으면 원장에게 보낸다. 상태는 그대로다. |
+| 상담 `needs_info`·`sent_or_booked` | 담임(없으면 원장)에게 `parent_message`만 보낸다. 상담 후보·예약과 카드 상태는 그대로다. |
+| 문의·민원 `sent_or_booked` | 최신 `reply_draft`를 다시 열어 판을 1 올리고 닫힌 시각·보류 예정일을 지운다. `draft.text`는 빈 문자열, `check_result`는 null, 직전 발송 글은 `draft.previous_text`로 남긴다. 카드가 없으면 현재 유효한 담임에게 초안 없는 회신 카드를 새로 만들고, 담임이 없으면 `unassigned`다. 학부모 확인을 지우고 요청을 `awaiting_review`로 돌려 `new_card` 알림을 보낸다(담당 없으면 원장). |
+
+`parent_message` 제목은 “학부모가 글을 더 남겼어요”다. 다시 연 카드의 빈 초안을 그대로 `approve`하면 기존 규칙대로 409 `INVALID_TRANSITION`이다. 담임은 `edit_approve`에 직접 쓴 `edited_content.text`를 넣어야 보낼 수 있다. 이전 발송 글은 요청 대화에도 그대로 남는다.
 
 | 필드 | 위치 | 타입 | 필수 | 빈값 | 제약 | 설명 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -796,7 +806,7 @@ HTTP/1.1 201 Created
 | `page`·`size` | 쿼리 | integer | 선택 | 불가 | 기본 1·20, page ≥ 1, size 1~100 | 쪽 나누기 |
 | `sort` | 쿼리 | string | 선택 | 불가 | `-created_at`(기본)·`created_at` | 내림차순·오름차순 |
 | `notification_id` | 읽음 경로 | integer | 필수 | 불가 | 목록에서 받은 ID | 0 이하도 형식상 정수로 보고, 해당 알림이 없으면 404 |
-| `items[].id`·`kind`·`title` | 목록 응답 | integer·string | 항상 | 불가 | kind는 17종(상담 알림 consultation_ending·consultation_delayed, 투약·귀가 알림 care_requested·care_confirmed 포함). 문의·상담 위험에도 urgent_complaint·uncertain_complaint라는 이름을 그대로 쓴다. 제목만 '긴급 문의'·'AI 판단 불확실 상담'처럼 요청 유형에 맞춘다 | 알림 종류와 제목 |
+| `items[].id`·`kind`·`title` | 목록 응답 | integer·string | 항상 | 불가 | kind에 parent_message(“학부모가 글을 더 남겼어요”)를 포함하며, 상담 알림 consultation_ending·consultation_delayed, 투약·귀가 알림 care_requested·care_confirmed도 포함한다. 문의·상담 위험에도 urgent_complaint·uncertain_complaint라는 이름을 그대로 쓴다. 제목만 '긴급 문의'·'AI 판단 불확실 상담'처럼 요청 유형에 맞춘다 | 알림 종류와 제목 |
 | `items[].body`·`request_id`·`subject_type`·`subject_id` | 목록 응답 | string·UUID | 항상 | null 가능 | 알림장 알림은 subject_type=`daily_note` | 내용과 연결 대상 |
 | `items[].read_at`·`deliver_after` | 목록 응답 | datetime | 항상 | read_at만 null 가능 | 한국 시간 포함 | 읽은 시각과 노출 시각; 읽음 응답의 notification도 같은 모양 |
 | `total`·`page`·`size` | 응답 | integer | 항상 | 불가 | 전체 건수·요청한 쪽·크기 | 목록 공통 칸 |
@@ -874,6 +884,7 @@ HTTP/1.1 200 OK
 | `card_id` | 경로 | string(UUID) | 필수 | 불가 | 권한 범위 안 | 상세·스트림 공통 |
 | `card.id`·`kind`·`status`·`version`·`summary`·`draft`·`check_result`·`check_attempts` | 응답 | UUID·string·integer·object | 항상 | check_result만 null 가능 | draft는 객체, check_attempts는 검사 횟수 | summary 등 화면용 칸은 3.7 참고 |
 | `request` | 응답 | object | 항상 | null 가능 | 3.2 요약 + body·risk_level·risk_category·repeat_count·classroom_id | 요청 없는 카드면 null |
+| `messages[]` | 응답 | object[] | 항상 | 빈 목록 가능 | id·sender_type·sender_role·body·created_at(3.2와 같음) | 요청의 전체 대화. 요청 없는 카드면 빈 목록 |
 | `evidence[]`·`warnings[]`·`parent_choices[]`·`rule`·`director_instruction` | 응답 | 목록·object | 항상 | rule·director_instruction은 null 가능 | 3.7 참고 | 근거·경고·선택 시간·규칙·원장 지시 |
 | `timeline[]` | 응답 | object[] | 항상 | 빈 목록 가능 | id·action·request_id·card_id·agent_name·actor_type·actor_id·from_status·to_status·detail·created_at | 같은 요청의 이력 또는 해당 카드의 이력을 저장 순서대로 |
 | `stage`·`token`·`card`·`done` | SSE data | object | 이벤트별 | request_status는 null 가능 | {stage, at}·{text}·{id, status, version}·{request_status} | token·card는 교직원만 받음 |
@@ -881,7 +892,7 @@ HTTP/1.1 200 OK
 ```http
 GET /api/v1/cards/00000000-0000-4000-8000-000000000802
 HTTP/1.1 200 OK
-{"card": {"id": "00000000-0000-4000-8000-000000000802", "kind": "reply_draft", "status": "pending", "version": 1, "summary": "등원 버스가 늦었어요", "draft": {"summary": "등원 버스가 늦었어요", "text": "(모의 초안) 말씀해 주셔서 감사합니다. 확인해서 다시 안내드릴게요.", "no_evidence": false}}, "warnings": [], "parent_choices": [], "rule": null, "director_instruction": null}
+{"card": {"id": "00000000-0000-4000-8000-000000000802", "kind": "reply_draft", "status": "pending", "version": 1, "summary": "등원 버스가 늦었어요", "draft": {"summary": "등원 버스가 늦었어요", "text": "(모의 초안) 말씀해 주셔서 감사합니다. 확인해서 다시 안내드릴게요.", "no_evidence": false}}, "messages": [{"id": 1001, "sender_type": "user", "sender_role": "parent", "body": "등원 버스가 늦었어요", "created_at": "2026-11-18T09:00:00+09:00"}], "warnings": [], "parent_choices": [], "rule": null, "director_instruction": null}
 GET /api/v1/cards/00000000-0000-4000-8000-000000000802/stream
 HTTP/1.1 200 OK
 Content-Type: text/event-stream
@@ -1487,7 +1498,7 @@ CareOut은 version·pickup_guardian_id·pickup_name·pickup_relation·unregister
 
 오류는 기존 공통 형식을 따른다. 인증이 없으면 401, 학부모가 교직원 기능을 부르면 403 FORBIDDEN_ROLE, 범위 밖이면 404 NOT_FOUND, 단계·유형이 맞지 않으면 409 INVALID_TRANSITION, 옛 입력 판으로 보내면 409 CARD_VERSION_CONFLICT다. 명시한 인계자 UUID가 맞지 않거나 형식이 틀리면 422 VALIDATION_FAILED이고, 이때 details.field는 pickup_guardian_id다. 다만 미등록 인계자와 투약 누락 자체는 422 사유가 아니다.
 
-저장에는 requests·request_messages·events·notifications를 쓴다. 투약·귀가 구조화 입력은 requests.care_detail(jsonb)에 저장하며, 접수 이벤트 detail에는 값 대신 fields(구조화 입력의 칸 이름 목록)와 trace_id만 남긴다. 상세 care와 missing_fields는 care_detail에서 읽고, 보호자 원문을 옮기는 알림장 줄은 기존처럼 requests.body를 쓴다. confirm에는 pickup_snapshot·version·care_decision을, 추가 대화의 returned에는 care_message·message_id·version을 남긴다. 시각과 입력 판은 이 순서 있는 이력에서 읽는다. 0012가 care_detail을 추가하고 기존 접수 이력의 입력 값을 이관한다. 알림 종류 care_requested·care_confirmed는 0008에서, 피드·앨범(3.29)의 새 표·칸은 0010에서 더한다.
+저장에는 requests·request_messages·events·notifications를 쓴다. 투약·귀가 구조화 입력은 requests.care_detail(jsonb)에 저장하며, 접수 이벤트 detail에는 값 대신 fields(구조화 입력의 칸 이름 목록)와 trace_id만 남긴다. 상세 care와 missing_fields는 care_detail에서 읽고, 보호자 원문을 옮기는 알림장 줄은 기존처럼 requests.body를 쓴다. confirm에는 pickup_snapshot·version·care_decision을, 추가 대화의 message_added에는 care_message·message_id·version을 남긴다. 시각과 입력 판은 이 순서 있는 이력에서 읽는다. 0012가 care_detail을 추가하고 기존 접수 이력의 입력 값을 이관한다. 알림 종류 care_requested·care_confirmed는 0008에서, 피드·앨범(3.29)의 새 표·칸은 0010에서 더한다.
 
 ### 3.28 [제안] 상담 지연 입력
 
