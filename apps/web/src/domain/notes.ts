@@ -11,7 +11,8 @@ export type CheckKind =
   | "absent"
   | "draft_failed"
   | "check_failed"
-  | "request_missed";
+  | "request_missed"
+  | "return_limit";
 
 export type NoteItem = {
   key: ItemKey;
@@ -38,6 +39,10 @@ export type DailyNote = {
   open_checks: OpenCheck[];
   confirmed_at: string | null;
   sent_at: string | null;
+  /** 서버가 항목마다 주는 초안 작업 ID와 입력 판, 보낸 뒤 정정한 시각 (문서 3.20·3.30) */
+  input_id?: string;
+  version?: number;
+  corrected_at?: string | null;
 };
 
 export type Child = { id: string; display_name: string; classroom_id: string };
@@ -62,6 +67,7 @@ export const CHECK_KIND: Record<CheckKind, { title: string; short: string; fix?:
   draft_failed: { title: "이 아이 초안을 만들지 못했어요", short: "초안 실패", keep: "직접 쓰고 확인할게요" },
   check_failed: { title: "검사를 하지 못했어요", short: "검사 실패", keep: "직접 읽고 확인했어요" },
   request_missed: { title: "보호자 요청이 빠졌어요", short: "보호자 요청 누락", keep: "빼고 보내기" },
+  return_limit: { title: "AI가 고쳐도 남은 문제가 있어요", short: "남은 문제", keep: "직접 확인했어요" },
 };
 
 export const SOURCE_LABEL: Record<SourceType, string> = {

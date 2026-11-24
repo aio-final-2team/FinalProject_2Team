@@ -70,7 +70,10 @@ export function ParentHome() {
             <div className="p-4">
               <div className="flex justify-between text-caption text-ink2">
                 <span>담임 선생님</span>
-                <time className="tabular-nums">{sentAt}</time>
+                <span className="flex items-center gap-2">
+                  {note.corrected_at && <b className="text-lav">정정 {new Date(note.corrected_at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false })}</b>}
+                  <time className="tabular-nums">{sentAt}</time>
+                </span>
               </div>
               <h2 className="mt-1.5 text-headline font-bold">{childLine ?? rest[0]?.value ?? "오늘 알림장"}</h2>
               {rest

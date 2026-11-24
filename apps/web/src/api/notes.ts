@@ -90,14 +90,18 @@ export function useRegenerate() {
   });
 }
 
-/**
- * 입력 ID 복구 (API 문서 3.19): 같은 반·같은 날짜로 POST /daily-notes/drafts를 다시 보내면 새로 실행하지 않고
- * 이미 접수된 작업(200)이 돌아온다. 이 기기에 input_id가 없을 때(다른 기기에서 만든 알림장)만, 알림장이 이미 있는 날짜에 쓴다.
- */
-export async function recoverInputId(classroomId: string, date: string): Promise<string> {
-  const r = await api<DraftJob>("/api/v1/daily-notes/drafts", {
-    method: "POST",
-    body: JSON.stringify({ classroom_id: classroomId, note_date: date, activities: "(기존 작업 조회)", supplies: "" }),
+/** 보낸 알림장 정정 (API 52, 문서 3.30). 내용 전체를 바꾸고 사유(1~500자)와 조회한 판(version)을 보낸다. 학부모에게 정정 알림이 간다 */
+export function useCorrectNote(classroomId?: string, date?: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, version, items, reason_text }: { id: string; version: number; items: NoteItem[]; reason_text: string }) =>
+      api<{ note: DailyNote }>(`/api/v1/daily-notes/${id}/correct`, {
+        method: "POST",
+        body: JSON.stringify({ version, reason_text, content: { items: items.map(({ key, label, value, source }) => ({ key, label, value, source })) } }),
+      }).then((r) => r.note),
+    onSuccess: (note) => {
+      qc.setQueryData<DailyNote[]>(["notes", classroomId, date], (list) => list?.map((n) => (n.id === note.id ? { ...n, ...note } : n)));
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ["notes", classroomId, date] }),
   });
-  return r.input_id;
 }

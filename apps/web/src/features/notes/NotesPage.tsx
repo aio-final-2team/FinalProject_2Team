@@ -4,7 +4,7 @@ import { Link, useNavigate } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "@/api/client";
 import { QueryState } from "@/components/QueryState";
-import { loadInputId, recoverInputId, saveInputId, useChildren, useCreateDraft, useDraftJob, useNotes, usePatchNote, useRegenerate, useSendNotes } from "@/api/notes";
+import { loadInputId, saveInputId, useChildren, useCreateDraft, useDraftJob, useNotes, usePatchNote, useRegenerate, useSendNotes } from "@/api/notes";
 import { useSession } from "@/app/session";
 import { Dock, PrimaryButton, SubButton } from "@/components/Dock";
 import { Icon } from "@/components/Icon";
@@ -255,11 +255,11 @@ function Review({ notes }: { notes: DailyNote[] }) {
   const regen = useRegenerate();
   const [regenSheet, setRegenSheet] = useState(false);
   const [inputId, setInputId] = useState(() => loadInputId(cid, date));
-  /* 다른 기기에서 만든 알림장이라 이 기기에 입력 ID가 없으면 API 3.19의 중복 접수 규칙으로 되찾는다 */
+  /* 알림장 목록이 항목마다 input_id를 주므로, 다른 기기에서 만든 알림장도 이 값으로 이어 받는다 */
+  const serverInputId = notes.find((n) => n.input_id)?.input_id;
   useEffect(() => {
-    if (inputId) return;
-    recoverInputId(cid, date).then((id) => { saveInputId(cid, date, id); setInputId(id); }).catch(() => {});
-  }, [inputId, cid, date]);
+    if (serverInputId && serverInputId !== inputId) { saveInputId(cid, date, serverInputId); setInputId(serverInputId); }
+  }, [serverInputId, inputId, cid, date]);
   /* 보내기가 409 NOTE_BATCH_BLOCKED로 막혔을 때 details.blocked[]를 보여 준다. 빈 목록은 초안 작업이 만드는 중(queued·running)이거나 실패(failed)일 때 온다 (3.19) */
   const draftJob = useDraftJob(inputId ?? undefined);
   const [blocked, setBlocked] = useState<{ note_id: string; child_id: string; open_checks?: { problem?: string }[] }[] | null>(null);

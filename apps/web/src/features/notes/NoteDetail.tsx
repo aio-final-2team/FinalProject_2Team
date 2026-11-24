@@ -5,6 +5,7 @@ import { Link, useNavigate, useParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { ApiError, api } from "@/api/client";
 import { useChildren, useNotes, usePatchNote } from "@/api/notes";
+import { CorrectSheet } from "./CorrectSheet";
 import { useSession } from "@/app/session";
 import { Dock, PrimaryButton, SubButton } from "@/components/Dock";
 import { Icon } from "@/components/Icon";
@@ -57,6 +58,7 @@ function Detail({ note, notes, name, names }: { note: DailyNote; notes: DailyNot
   const [err, setErr] = useState("");
   const open = note.open_checks;
   const locked = note.status === "sent";
+  const [correcting, setCorrecting] = useState(false);
   const next = notes.find((n) => n.status === "needs_check" && n.id !== note.id);
   const { records } = useRecords(cid, date);
   const entries = records[note.child_id] ?? [];
@@ -246,6 +248,13 @@ function Detail({ note, notes, name, names }: { note: DailyNote; notes: DailyNot
         </p>
       )}
 
+      {locked && (
+        <div className="mt-4 grid gap-2">
+          <p className="rounded-md bg-tint p-3 text-footnote text-accent-ink">{note.corrected_at ? `${new Date(note.corrected_at).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false })}에 정정했어요` : "보낸 알림장이에요"}</p>
+          <SubButton tone="gray" className="h-[52px] w-full" onClick={() => setCorrecting(true)}>잘못된 내용 정정하기</SubButton>
+          <CorrectSheet note={note} open={correcting} onClose={() => setCorrecting(false)} cid={cid} date={date} />
+        </div>
+      )}
       {!locked && (
         <Dock reason={open.length ? `확인할 곳 ${open.length}개를 먼저 정리해 주세요` : note.status === "ready" ? "확인했어요 · 반 전체를 보낼 때 함께 나가요" : undefined} reasonIcon={open.length ? "lock" : "check"}>
           {note.status === "ready" ? (
