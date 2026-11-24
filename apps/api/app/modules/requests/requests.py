@@ -190,7 +190,7 @@ def detail(user, request_id):
         for event in connection.execute(text("""
             SELECT to_status,created_at FROM events WHERE request_id=:id AND org_id=:org AND to_status IS NOT NULL ORDER BY id
         """), values).mappings():
-            name = label(event["to_status"], req["type"])
+            name = label(event["to_status"], req["type"], req["assignee_id"])
             if not timeline or timeline[-1]["label"] != name:
                 timeline.append({"label": name, "at": event["created_at"]})
         consultation = None
@@ -231,7 +231,7 @@ def detail(user, request_id):
             req["missing_fields"] = care_state["missing_fields"]
         return {"request": {**{key: req[key] for key in (
                     "id", "type", "title", "status", "missing_fields", "parent_confirmed_at", "created_at", "updated_at")},
-                    "status_label": label(req["status"], req["type"]), "hold_until": _hold_until(connection, req)},
+                    "status_label": label(req["status"], req["type"], req["assignee_id"]), "hold_until": _hold_until(connection, req)},
                 "messages": [dict(row) for row in messages], "sources": [dict(row) for row in sources],
                 "timeline": timeline, "consultation": consultation,
                 "care": care_state, "rejection": dict(rejection) if rejection else None}
@@ -255,7 +255,7 @@ def listing(user, status, page, size, sort):
             if req["type"] == "complaint" and req["status"] == "sent_or_booked" and req["parent_confirmed_at"] is None:
                 action = "답변을 확인해 주세요"
             items.append({**{key: req[key] for key in ("id", "type", "title", "status", "updated_at")},
-                          "status_label": parent_label(req["status"], req["type"]), "next_action": action,
+                          "status_label": parent_label(req["status"], req["type"], req["assignee_id"]), "next_action": action,
                           "hold_until": _hold_until(connection, req)})
         return {"items": items, "total": len(requests), "page": page, "size": size}
 

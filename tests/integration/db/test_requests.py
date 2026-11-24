@@ -109,6 +109,7 @@ def test_agent_failure_preserves_request_and_hands_off_without_private_error(db_
     assert "missing_private_module" not in str(history)
     detail = db_client.get(f"/api/v1/requests/{rid}", headers=parent)
     assert detail.status_code == 200 and "ai_failed" not in detail.text
+    assert detail.json()["request"]["status_label"] == "담당 선생님 배정 중"
     assert len(rows(seeded_db, "request_messages", rid)) == 1
     notices = rows(seeded_db, "notifications", rid)
     assert len(notices) == 1 and notices[0]["recipient_id"] == seed.DIRECTOR

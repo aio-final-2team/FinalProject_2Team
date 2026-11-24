@@ -2,6 +2,7 @@
 
 import json
 import os
+import tarfile
 import subprocess
 from dataclasses import replace
 
@@ -43,7 +44,8 @@ def test_dump_restore_revives_later_deletions_until_after_restore_applies_them(d
     container = os.getenv("TEST_DB_CONTAINER")
     if not container:
         pytest.skip("tools/test_db.sh의 임시 컨테이너에서만 덤프·복원을 시험해요.")
-    monkeypatch.setattr(media, "settings", replace(media.settings, media_dir=str(tmp_path)))
+    media_dir = tmp_path / "media"
+    monkeypatch.setattr(media, "settings", replace(media.settings, media_dir=str(media_dir)))
     monkeypatch.setattr(backend, "feed", db_feed)
     parent = {"Authorization": "Bearer " + issue_token(users.get_user(seed.PARENT))}
     teacher = {"Authorization": "Bearer " + issue_token(users.get_user(seed.TEACHER))}
@@ -59,6 +61,12 @@ def test_dump_restore_revives_later_deletions_until_after_restore_applies_them(d
         """), {"org": seed.ORG, "owner": seed.TEACHER})
         since = connection.scalar(text("SELECT now()"))
     dump = psql(container, "pg_dump", "-U", "yuchion", "-d", "yuchion_test")
+    # DB와 함께 사진도 백업한다. 복원 뒤 파일이 실제로 있어도 API가 다시 막아야 한다.
+    archive = tmp_path / "media.tar.gz"
+    with tarfile.open(archive, "w:gz") as backup:
+        backup.add(media_dir, arcname=".")
+    meta = tmp_path / "meta.json"
+    meta.write_text(json.dumps({"created_at": since.isoformat()}))
     backed_up = state(seeded_db, post["id"], memory)
 
     # 백업 뒤에 글을 지우고, 공개 범위를 좁히고, 기억을 지우고, 노을이를 퇴소 처리한다.
@@ -69,6 +77,7 @@ def test_dump_restore_revives_later_deletions_until_after_restore_applies_them(d
     closed = state(seeded_db, post["id"], memory)
     with seeded_db.connect() as connection:
         # 실제 절차처럼 JSON 파일을 거친 값으로 적용한다.
+        since = after_restore.parse_since(json.loads(meta.read_text())["created_at"])
         exported = json.loads(json.dumps(after_restore.export(connection, since), default=str))
     assert [p["id"] for p in exported["posts_deleted"]] == [post["id"]]
     assert [m["id"] for m in exported["memories_deleted"]] == [memory]
@@ -79,10 +88,12 @@ def test_dump_restore_revives_later_deletions_until_after_restore_applies_them(d
          "-c", "DROP SCHEMA public CASCADE; CREATE SCHEMA public;")
     psql(container, "psql", "-v", "ON_ERROR_STOP=1", "-U", "yuchion", "-d", "yuchion_test", input=dump)
     seeded_db.dispose()
-    # 복원하면 지운 글 본문, 넓은 범위, 지운 기억, 끝낸 보호자 연결이 다시 살아난다. 사진 파일은 없어 열면 404다.
+    with tarfile.open(archive) as backup:
+        backup.extractall(media_dir, filter="data")
+    # 복원하면 글·사진 파일·넓은 범위·기억·보호자 연결이 다시 살아난다.
     assert state(seeded_db, post["id"], memory) == backed_up
     assert db_client.get(f"{BASE}/posts/{post['id']}", headers=parent).json()["post"]["body"] == "[TEST] 지울 글"
-    assert db_client.get(post["photos"][0]["file_url"], headers=parent).status_code == 404
+    assert db_client.get(post["photos"][0]["file_url"], headers=parent).status_code == 200
 
     with seeded_db.begin() as connection:
         first = after_restore.apply(connection, exported)
@@ -93,6 +104,12 @@ def test_dump_restore_revives_later_deletions_until_after_restore_applies_them(d
     assert state(seeded_db, post["id"], memory) == closed
     assert db_client.get(f"{BASE}/posts/{post['id']}", headers=parent).status_code == 404
     assert db_client.get(scope_path, headers=parent).json()["photo_scope"] == "family"
+    assert post["id"] not in {p["id"] for p in db_client.get(
+        f"{BASE}/classrooms/{seed.CLASS_STAR}/posts", headers=parent).json()["items"]}
+    assert post["photos"][0]["id"] not in {p["id"] for p in db_client.get(
+        f"{BASE}/classrooms/{seed.CLASS_STAR}/albums", headers=parent).json()["items"]}
+    assert db_client.get(post["photos"][0]["file_url"], headers=parent).status_code == 404
+    assert memory not in {m["id"] for m in db_client.get(f"{BASE}/memories", headers=teacher).json()["items"]}
     with seeded_db.begin() as connection:
         again = after_restore.apply(connection, exported)
     assert set(again.values()) == {0} and state(seeded_db, post["id"], memory) == closed

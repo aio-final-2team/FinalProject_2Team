@@ -5,17 +5,17 @@
 | 작업 | T13 API 설계 문서(FastAPI·Function Calling 도구 계약)·모의 API (#170) |
 | 작성 · 검토 | 태웅 · 인혜 |
 | 계약을 쓰는 쪽 | 화면 T12·T32(성주), 알림장 그래프 T32(프롬프트 검토 영민), 요청 처리 에이전트·자료·근거 검색 T29·T20·T33(영민) |
-| 판 | v0.10.1 · 2026-11-24 (판마다 바뀐 내용은 맨 끝 변경 이력 참고. 계약을 바꾸면 예시·모의 응답·시험도 함께 고친다) |
+| 판 | v0.11 · 2026-11-24 (판마다 바뀐 내용은 맨 끝 변경 이력 참고. 계약을 바꾸면 예시·모의 응답·시험도 함께 고친다) |
 | 2차 검토 링크 | `develop` 브랜치의 [API 설계 문서](https://github.com/aio-final-2team/FinalProject_2Team/blob/develop/Docs/Step2/API_설계_문서.md). API별 상태(2장)는 develop `24258f2` 코드로 판정했다. 이 커밋은 2장 상태 칸의 기준이고, 시연에 쓰는 커밋은 다음 줄에 따로 적는다 |
 | 시연 코드 기준 커밋 | 레포 [README](../../README.md#2차-검토-문서)의 '시연 코드 기준 커밋' 한 줄을 본다(11/24 기준 develop `97fda0b`, 위험 등급 확대 #326·요청 처리 AI 스위치 #321까지 팀 서버에 배포). 11/27 시연 전까지 팀 서버를 다시 배포하면 README 그 한 줄만 고친다 |
 | 함께 보는 문서 | 아래 기준 판 표의 문서들, T04 흐름·권한 명세 |
 
 | 함께 맞춘 문서 | 기준 판 |
 | --- | --- |
-| [기획서](../Step1/기획서.md) | 11/18 실측 반영본에 11/20 팀 결정 D02(첫 시연 범위)를 더한 develop 판. 3장 기능 요구사항(FR)과 4장 비기능 요구사항(NFR)의 번호를 쓴다 |
-| [입출력 계약표](입출력_계약표_초안.md) | v0.18 · 2026-11-21 |
-| [DB 스키마 설계서](DB_스키마_설계서.md) | v0.20 · 2026-11-24, 마이그레이션 0001~0010 |
-| OpenAPI 생성물 `contracts/openapi.yaml` | 마지막 생성 커밋 `04c4691`. 앱이 내는 `/openapi.json`과 같은지는 `test_contract_matches_application`으로 확인한다 |
+| [기획서](../Step1/기획서.md) | 11/23 develop 판(`8f45d51`, #319). 3장 기능 요구사항(FR)과 4장 비기능 요구사항(NFR)의 번호를 쓴다 |
+| [입출력 계약표](입출력_계약표_초안.md) | v0.20 · 2026-11-24 |
+| [DB 스키마 설계서](DB_스키마_설계서.md) | v0.22 · 2026-11-24, 마이그레이션 0001~0011 |
+| OpenAPI 생성물 `contracts/openapi.yaml` | 마지막 변경 커밋 `ec00155`(#324, `sender_role`). 앱이 내는 `/openapi.json`과 같은지는 `test_contract_matches_application`으로 확인한다 |
 
 **1차 검토 뒤 보완.** 1차 검토 뒤에 바뀐 내용과 그 내용을 지키는 시험을 표 하나에 모았다. 시험은 모두 시연 코드 기준 커밋에서 다시 돌려 통과했다. DB 시험과 공유 HTTP 시험은 `tools/test_db.sh`로, 계약 시험은 `tests/integration/api/test_openapi.py`로 돌렸다. 표의 시험 파일은 모두 `tests/integration/`(DB는 `db/`, HTTP는 `api/`) 아래에 있고, `api/` 시험 가운데 `test_openapi.py`를 뺀 나머지는 모의·시험 PG 두 모드에서 모두 돈다. 반영 커밋 칸에는 develop에 합쳐진 커밋을 적었다.
 
@@ -29,6 +29,17 @@
 | 첫 시연 순서, API 49개 목록의 상태 칸(DB 연결·모의만·제안) | [2](#2-api-목록), [2.1](#21-첫-시연-흐름의-연결표와-실제-연결-범위) | `api/test_openapi.py::test_all_49_documented_endpoints_exist`(목록 49행이 앱 경로와 같은지) | [`c80ee67`](https://github.com/aio-final-2team/FinalProject_2Team/commit/c80ee67) |
 | 요청은 접수됐지만 인계 카드 저장에 실패한 경우 | [5.5.3](#553-사람-인계-카드--create_card), [6.7](#67-대표-사례-대조--화면apidb가-같은-상태로-보이는지) | `db/test_requests.py::test_agent_failure_preserves_request_and_hands_off_without_private_error`, `db/test_requests.py::test_sweep_exact_age_states_card_exclusion_and_concurrent_idempotency` | [`c80ee67`](https://github.com/aio-final-2team/FinalProject_2Team/commit/c80ee67) |
 | 기획서·계약표·DB 설계서와 맞춘 기준 판, 생성물이 앱 계약과 같은지 | 위 기준 판 표 | `api/test_openapi.py::test_contract_matches_application` | [`c80ee67`](https://github.com/aio-final-2team/FinalProject_2Team/commit/c80ee67) |
+
+**2차 검토 뒤 보완.** 기준은 `taewoong-fb020-2nd`의 이 PR 최종 HEAD다. 커밋 값은 `git rev-parse HEAD`로 확인하고, 병합 뒤 develop의 시연 커밋으로 맞춘다. 시험 수치의 날짜·범위·명령은 2.2와 DB 설계서 9.2에 적는다.
+
+| 강사 의견 번호 | 바뀐 내용 | 고친 절 | 지키는 시험(또는 확인 기록) | 반영 커밋 |
+| --- | --- | --- | --- | --- |
+| API 1 | 실제 모델로 알림장 한 반을 담임 입력부터 학부모 수신까지 돌리고 커밋·모델·아이 수·시간·실패 수를 남긴다 | API 3.19.1 ④ 실제 모델 실측 | 팀 서버 2026-11-24 14:45 KST, `tools/rehearse_daily_note.py --remote-ok`(#320). 20명·초안 17초·실패 0 | 이 PR |
+| API 2 | 접수·담당 배정 대기·담임 전달 표시를 나누고, 장애 결과는 자동 복구와 사람에게 넘김으로 나눈다 | API 3.2·6.3·6.7·6.8 | `api/test_requests.py::test_unassigned_request_label_changes_after_director_reassign`, `::test_received_request_label_before_agent_runs`, API 6.8의 기존 장애 시험 | 이 PR |
+| API 3 | 실제 OpenAPI·목록·계약표·모의 응답을 같은 코드에서 대조하고 MVP·팀 확인 남음을 표시한다 | API 2장·2.2 | `api/test_openapi.py`와 API 2.2 대조표 | 이 PR |
+| DB 1 | 백업 뒤 삭제·공개 제한을 재적용하고 공개 전에 목록·앨범·파일을 확인한다 | DB '복원 뒤 서비스 열기 전 확인' | `db/test_backup_restore.py::test_dump_restore_revives_later_deletions_until_after_restore_applies_them` | 이 PR |
+| DB 2 | 검사를 통과한 아이별 초안만 복구 성공으로 세고, 사람에게 넘김·재시도 진입 실패를 따로 센다 | DB 2.6 'T58 복구 집계 기준' | `db/test_daily_note_recovery.py`의 현재 집계와 T58 기준 차이 기록, `daily_note_drafted` 저장 코드·0001/0003 DDL 확인 | 이 PR |
+| DB 3 | 시험 수치마다 커밋·날짜·alembic 판·범위·명령을 붙이고 권한·마이그레이션을 다시 확인한다 | API 2.2, DB 4.4·6.2·9.2 | `db/test_scope.py`, `db/test_scope_cases.py`, `db/test_migrations.py`, `db/test_feed_migration.py`, `db/test_request_risk_types.py` | 이 PR |
 
 이 문서는 유치온 API 49개(목록은 v0.8 때 develop `24258f2` 코드로 확인)와 에이전트 도구 15개의 계약을 담는다. 1~6장은 강사님 'API 설계 문서 작성법'에 나온 '문서에 들어가는 여섯 가지'의 순서를 따르고, 7장에는 API 필드와 DB 컬럼의 대응을, 8장에는 설정값을 적었다. 필드·권한·오류는 입출력 계약표와 같아야 한다. 두 문서가 어긋나면 계약표를 먼저 고친 뒤 두 문서의 판을 함께 올린다. 구현(FastAPI의 `/docs`)과 달라졌을 때도 둘을 대조해 판을 올린다. 모의 API와 생성물 `contracts/openapi.yaml`도 이 문서와 함께 둔다. 모의 API를 쓰는 법과 데모 계정은 [모의 API 안내](../../contracts/mock_api/README.md)에 있다. 제목에 [제안]이 붙은 절은 팀이 아직 계약을 확인하지 않은 내용으로, 투약·귀가(3.27), 상담 지연 입력(3.28), 피드·앨범(3.29)이 여기에 해당한다. API별로 지금 어디까지 동작하는지는 2장 표의 상태 칸에 적었다.
 
@@ -135,57 +146,59 @@ FastAPI가 기본으로 내는 422 응답은 예외 처리기에서 위 형식�
 | 3.28 상담 지연 입력(API 37) | FR-17, 최종·중요 | 들어 있지 않음 | 위와 같음 | 모의·DB 모두 구현. 예약 변경과 실제 종료 입력은 후속 |
 | 3.29 피드·앨범(API 38~49) | FR-22·AC-06, 최종·중요 | 들어 있지 않음 | 위와 같음 | 모의·DB 모두 구현. DB는 마이그레이션 0010이 필요하다 |
 
-| # | 메서드 | 경로 | 인증·역할 | 설명 | 성공 | 요구사항 | 상세 | 상태 |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | POST | `/api/v1/auth/login` | 없음 | 로그인, 토큰 발급 | 200 | FR-01 | 3.8 | DB 연결 |
-| 2 | GET | `/api/v1/me` | JWT | 내 정보·내 아이(학부모)·담당 반(교직원) | 200 | FR-01 | 3.8 | DB 연결 |
-| 3 | POST | `/api/v1/requests` | 학부모 | 요청 만들기(AI 처리 접수) | 202 | FR-02, FR-03 | 3.1 | DB 연결 |
-| 4 | GET | `/api/v1/requests` | 학부모(자기 것) | 내 요청 목록 | 200 | FR-02 | 3.9 | DB 연결 |
-| 5 | GET | `/api/v1/requests/{request_id}` | 학부모(자기 것) · 교직원(우리 반) | 요청 상세·대화·진행 기록 | 200 | FR-02, FR-11 | 3.2, 3.7 | DB 연결 |
-| 6 | GET | `/api/v1/requests/{request_id}/stream` | 학부모(자기 것) | AI 진행 스트림(SSE) | 200 | NFR-10 | 3.2 | DB 연결 |
-| 7 | POST | `/api/v1/requests/{request_id}/messages` | 학부모(자기 것) | 대화 이어 쓰기 | 201 | FR-02 | 3.10 | DB 연결 |
-| 8 | POST | `/api/v1/requests/{request_id}/slot-choices` | 학부모(자기 것) | 상담 가능 시간 체크 | 200 | FR-05 | 3.4 | DB 연결 |
-| 9 | POST | `/api/v1/requests/{request_id}/confirm` | 학부모(자기 민원) | 민원 회신 '확인했어요' | 200 | FR-07 | 3.5 | DB 연결 |
-| 10 | GET | `/api/v1/notifications` | JWT(자기 것) | 알림 목록 | 200 | FR-12 | 3.11 | DB 연결 |
-| 11 | POST | `/api/v1/notifications/{notification_id}/read` | JWT(자기 것) | 알림 읽음 | 200 | FR-12 | 3.11 | DB 연결 |
-| 12 | GET | `/api/v1/cards` | 담임·원장 | 받은함(필터 6개·종류 필터·필터별 건수) | 200 | FR-09 | 3.12, 3.7 | DB 연결 |
-| 13 | GET | `/api/v1/cards/{card_id}` | 담임(우리 반)·원장 | 카드 상세(초안·근거·반복 수·이력) | 200 | FR-04, FR-07, FR-09, FR-11 | 3.13, 3.7 | DB 연결 |
-| 14 | GET | `/api/v1/cards/{card_id}/stream` | 담임(우리 반)·원장 | 카드 AI 진행 스트림(초안 글자 포함) | 200 | NFR-10 | 3.13 | DB 연결 |
-| 15 | POST | `/api/v1/cards/{card_id}/decisions` | 담임(우리 반)·원장 | 카드 결정(승인·거절·보류·재개·반려·처리 완료·원장님께 올리기) | 200 | FR-05~FR-09 | 3.3 | DB 연결 |
-| 16 | POST | `/api/v1/cards/{card_id}/reclassify` | 담임(우리 반)·원장 | 문의·민원 위험 등급 다시 분류 | 200 | FR-03, FR-07 | 3.14 | DB 연결 |
-| 17 | POST | `/api/v1/cards/{card_id}/bookings` | 담임(우리 반) | 상담 확정 | 200 | FR-05 | 3.4 | DB 연결 |
-| 18 | POST | `/api/v1/cards/{card_id}/instructions` | 원장·원감 | 원장 보고 지시 | 200 | FR-07 | 3.15 | DB 연결 |
-| 19 | POST | `/api/v1/cards/{card_id}/reassign` | 원장·원감 | 담당 재배정 | 200 | FR-09, FR-19 | 3.16 | DB 연결 |
-| 20 | POST | `/api/v1/memory-rules/{rule_id}/decision` | 규칙 주인 | 개인 규칙 제안 켜기·거절 | 200 | FR-06 | 3.17 | DB 연결 |
-| 21 | GET | `/api/v1/overview` | 원장·원감 | 원장 현황(미배정·대기·지연·완료·학부모 미확인 완료) | 200 | FR-09, FR-19 | 3.18 | DB 연결 |
-| 22 | POST | `/api/v1/daily-notes/drafts` | 담임 | 알림장 초안 만들기(AI 처리 접수) | 202 | FR-10 | 3.19 | DB 연결 |
-| 23 | GET | `/api/v1/daily-notes/drafts/{input_id}` | 담임(우리 반) | 알림장 초안 진행 상태 | 200 | FR-10 | 3.19 | DB 연결 |
-| 24 | GET | `/api/v1/daily-notes` | 학부모(내 아이, 보낸 것) · 담임(우리 반) · 원장(같은 기관) | 알림장 보기 | 200 | FR-10 | 3.20, 3.7 | DB 연결 |
-| 25 | PATCH | `/api/v1/daily-notes/{note_id}` | 담임(우리 반) | 알림장 고치기·확인 | 200 | FR-10 | 3.21 | DB 연결 |
-| 26 | POST | `/api/v1/daily-notes/send` | 담임(우리 반) | 반 알림장 한 번에 보내기 | 200 | FR-10 | 3.6 | DB 연결 |
-| 27 | POST | `/api/v1/documents` | 원장·담임 | 자료 올리기(적재 접수) | 202 | FR-13 | 3.22 | DB 연결 |
-| 28 | GET | `/api/v1/documents` | 교직원 | 자료 목록 | 200 | FR-13 | 3.23 | DB 연결 |
-| 29 | GET | `/api/v1/documents/{document_id}` | 교직원 | 자료 상세·적재 상태 | 200 | FR-13 | 3.23 | DB 연결 |
-| 30 | GET | `/api/v1/classrooms/{classroom_id}/children` | 담임(우리 반)·원장(같은 기관) | 반 아이 목록(이름순) | 200 | FR-10 | 3.24 | DB 연결 |
-| 31 | GET | `/api/v1/memories` | 담임(본인) | 내 AI 기억 보기 | 200 | FR-06 | 3.25 | DB 연결 |
-| 32 | DELETE | `/api/v1/memories/{memory_id}` | 담임(본인) | 내 AI 기억 지우기 | 204 | FR-06 | 3.25 | DB 연결 |
-| 33 | POST | `/api/v1/daily-notes/drafts/{input_id}/regenerate` | 담임(우리 반) | 미확인 알림장 다시 만들기 | 202 | FR-10 | 3.26 | DB 연결 |
-| 34 | GET | `/api/v1/children/{child_id}/pickup-guardians` | 자기 아이 보호자·담임·원장 | 등록된 인계자 목록 | 200 | FR-16 | 3.27 | 제안 |
-| 35 | GET | `/api/v1/care-requests` | 담임·원장 | 교직원용 투약·귀가 요청 목록 | 200 | FR-16 | 3.27 | 제안 |
-| 36 | POST | `/api/v1/requests/{request_id}/care-decisions` | 담임·원장 | 투약·인계를 실제로 확인·완료 | 200 | FR-16 | 3.27 | 제안 |
-| 37 | POST | `/api/v1/consultations/{booking_id}/delay` | 그 반 예약 담임 | 상담 예상 종료 기록 | 200 | FR-17 | 3.28 | 제안 |
-| 38 | GET | `/api/v1/classrooms/{classroom_id}/posts` | 그 반 아이 보호자 | 반 칸 글 목록 | 200 | FR-22·AC-06 | 3.29 | 제안 |
-| 39 | POST | `/api/v1/classrooms/{classroom_id}/posts` | 그 반 아이 보호자 | 반 칸 글·사진 올리기 | 201 | FR-22·AC-06 | 3.29 | 제안 |
-| 40 | GET | `/api/v1/organizations/{org_id}/posts` | 그 기관 교직원·연결된 아이가 있는 보호자 | 원 칸 글 목록 | 200 | FR-22·AC-06 | 3.29 | 제안 |
-| 41 | POST | `/api/v1/organizations/{org_id}/posts` | 그 기관 교직원·연결된 아이가 있는 보호자 | 원 칸 글·사진 올리기 | 201 | FR-22·AC-06 | 3.29 | 제안 |
-| 42 | GET | `/api/v1/posts/{post_id}` | 칸 권한 | 글 상세와 볼 수 있는 사진 | 200 | FR-22·AC-06 | 3.29 | 제안 |
-| 43 | DELETE | `/api/v1/posts/{post_id}` | 같은 기관 작성자(반 이동·퇴소 뒤에도) | 글·사진 파일 지우기 | 204 | FR-22·AC-06 | 3.29 | 제안 |
-| 44 | PATCH | `/api/v1/posts/{post_id}` | 그 기관 원장·원 칸 | 원 칸 글 숨기기 | 200 | FR-22·AC-06 | 3.29 | 제안 |
-| 45 | GET | `/api/v1/classrooms/{classroom_id}/albums` | 그 반 아이 보호자 | 반 칸 앨범 | 200 | FR-22·AC-06 | 3.29 | 제안 |
-| 46 | GET | `/api/v1/organizations/{org_id}/albums` | 그 기관 교직원·연결된 아이가 있는 보호자 | 원 칸 앨범 | 200 | FR-22·AC-06 | 3.29 | 제안 |
-| 47 | GET | `/api/v1/photos/{photo_id}/file` | 칸·사진 권한 | 사진 파일 받기(인증 필요) | 200 | FR-22·AC-06 | 3.29 | 제안 |
-| 48 | GET | `/api/v1/children/{child_id}/photo-scope` | 그 아이 보호자 | 현재 사진 공개 범위 | 200 | FR-22·AC-06 | 3.29 | 제안 |
-| 49 | PATCH | `/api/v1/children/{child_id}/photo-scope` | 그 아이 보호자 | 사진 공개 범위 바꾸기 | 200 | FR-22·AC-06 | 3.29 | 제안 |
+| # | 메서드 | 경로 | 인증·역할 | 설명 | 성공 | 요구사항 | 상세 | 상태 | 알림장 MVP | 팀 확인 남음 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | POST | `/api/v1/auth/login` | 없음 | 로그인, 토큰 발급 | 200 | FR-01 | 3.8 | DB 연결 | ○ | — |
+| 2 | GET | `/api/v1/me` | JWT | 내 정보·내 아이(학부모)·담당 반(교직원) | 200 | FR-01 | 3.8 | DB 연결 | — | — |
+| 3 | POST | `/api/v1/requests` | 학부모 | 요청 만들기(AI 처리 접수) | 202 | FR-02, FR-03 | 3.1 | DB 연결 | — | 영민·성주: 요청 AI·T43 |
+| 4 | GET | `/api/v1/requests` | 학부모(자기 것) | 내 요청 목록 | 200 | FR-02 | 3.9 | DB 연결 | — | — |
+| 5 | GET | `/api/v1/requests/{request_id}` | 학부모(자기 것) · 교직원(우리 반) | 요청 상세·대화·진행 기록 | 200 | FR-02, FR-11 | 3.2, 3.7 | DB 연결 | — | 영민·성주: 요청 AI·T43 |
+| 6 | GET | `/api/v1/requests/{request_id}/stream` | 학부모(자기 것) | AI 진행 스트림(SSE) | 200 | NFR-10 | 3.2 | DB 연결 | — | 영민·성주: 요청 AI·T43 |
+| 7 | POST | `/api/v1/requests/{request_id}/messages` | 학부모(자기 것) | 대화 이어 쓰기 | 201 | FR-02 | 3.10 | DB 연결 | — | — |
+| 8 | POST | `/api/v1/requests/{request_id}/slot-choices` | 학부모(자기 것) | 상담 가능 시간 체크 | 200 | FR-05 | 3.4 | DB 연결 | — | — |
+| 9 | POST | `/api/v1/requests/{request_id}/confirm` | 학부모(자기 민원) | 민원 회신 '확인했어요' | 200 | FR-07 | 3.5 | DB 연결 | — | — |
+| 10 | GET | `/api/v1/notifications` | JWT(자기 것) | 알림 목록 | 200 | FR-12 | 3.11 | DB 연결 | ○ | 성주: 화면 연결 |
+| 11 | POST | `/api/v1/notifications/{notification_id}/read` | JWT(자기 것) | 알림 읽음 | 200 | FR-12 | 3.11 | DB 연결 | — | — |
+| 12 | GET | `/api/v1/cards` | 담임·원장 | 받은함(필터 6개·종류 필터·필터별 건수) | 200 | FR-09 | 3.12, 3.7 | DB 연결 | ○ | 영민·성주: 요청 AI·T43 |
+| 13 | GET | `/api/v1/cards/{card_id}` | 담임(우리 반)·원장 | 카드 상세(초안·근거·반복 수·이력) | 200 | FR-04, FR-07, FR-09, FR-11 | 3.13, 3.7 | DB 연결 | — | 영민·성주: 요청 AI·T43 |
+| 14 | GET | `/api/v1/cards/{card_id}/stream` | 담임(우리 반)·원장 | 카드 AI 진행 스트림(초안 글자 포함) | 200 | NFR-10 | 3.13 | DB 연결 | — | 영민·성주: 요청 AI·T43 |
+| 15 | POST | `/api/v1/cards/{card_id}/decisions` | 담임(우리 반)·원장 | 카드 결정(승인·거절·보류·재개·반려·처리 완료·원장님께 올리기) | 200 | FR-05~FR-09 | 3.3 | DB 연결 | — | — |
+| 16 | POST | `/api/v1/cards/{card_id}/reclassify` | 담임(우리 반)·원장 | 문의·민원 위험 등급 다시 분류 | 200 | FR-03, FR-07 | 3.14 | DB 연결 | — | — |
+| 17 | POST | `/api/v1/cards/{card_id}/bookings` | 담임(우리 반) | 상담 확정 | 200 | FR-05 | 3.4 | DB 연결 | — | — |
+| 18 | POST | `/api/v1/cards/{card_id}/instructions` | 원장·원감 | 원장 보고 지시 | 200 | FR-07 | 3.15 | DB 연결 | — | — |
+| 19 | POST | `/api/v1/cards/{card_id}/reassign` | 원장·원감 | 담당 재배정 | 200 | FR-09, FR-19 | 3.16 | DB 연결 | — | — |
+| 20 | POST | `/api/v1/memory-rules/{rule_id}/decision` | 규칙 주인 | 개인 규칙 제안 켜기·거절 | 200 | FR-06 | 3.17 | DB 연결 | — | — |
+| 21 | GET | `/api/v1/overview` | 원장·원감 | 원장 현황(미배정·대기·지연·완료·학부모 미확인 완료) | 200 | FR-09, FR-19 | 3.18 | DB 연결 | — | — |
+| 22 | POST | `/api/v1/daily-notes/drafts` | 담임 | 알림장 초안 만들기(AI 처리 접수) | 202 | FR-10 | 3.19 | DB 연결 | ○ | 성주: 화면 연결 |
+| 23 | GET | `/api/v1/daily-notes/drafts/{input_id}` | 담임(우리 반) | 알림장 초안 진행 상태 | 200 | FR-10 | 3.19 | DB 연결 | ○ | 성주: 화면 연결 |
+| 24 | GET | `/api/v1/daily-notes` | 학부모(내 아이, 보낸 것) · 담임(우리 반) · 원장(같은 기관) | 알림장 보기 | 200 | FR-10 | 3.20, 3.7 | DB 연결 | ○ | 성주: 화면 연결 |
+| 25 | PATCH | `/api/v1/daily-notes/{note_id}` | 담임(우리 반) | 알림장 고치기·확인 | 200 | FR-10 | 3.21 | DB 연결 | ○ | 성주: 화면 연결 |
+| 26 | POST | `/api/v1/daily-notes/send` | 담임(우리 반) | 반 알림장 한 번에 보내기 | 200 | FR-10 | 3.6 | DB 연결 | ○ | 성주: 화면 연결 |
+| 27 | POST | `/api/v1/documents` | 원장·담임 | 자료 올리기(적재 접수) | 202 | FR-13 | 3.22 | DB 연결 | — | — |
+| 28 | GET | `/api/v1/documents` | 교직원 | 자료 목록 | 200 | FR-13 | 3.23 | DB 연결 | — | — |
+| 29 | GET | `/api/v1/documents/{document_id}` | 교직원 | 자료 상세·적재 상태 | 200 | FR-13 | 3.23 | DB 연결 | — | — |
+| 30 | GET | `/api/v1/classrooms/{classroom_id}/children` | 담임(우리 반)·원장(같은 기관) | 반 아이 목록(이름순) | 200 | FR-10 | 3.24 | DB 연결 | ○ | 성주: 화면 연결 |
+| 31 | GET | `/api/v1/memories` | 담임(본인) | 내 AI 기억 보기 | 200 | FR-06 | 3.25 | DB 연결 | — | — |
+| 32 | DELETE | `/api/v1/memories/{memory_id}` | 담임(본인) | 내 AI 기억 지우기 | 204 | FR-06 | 3.25 | DB 연결 | — | — |
+| 33 | POST | `/api/v1/daily-notes/drafts/{input_id}/regenerate` | 담임(우리 반) | 미확인 알림장 다시 만들기 | 202 | FR-10 | 3.26 | DB 연결 | — | 성주: 화면 연결 |
+| 34 | GET | `/api/v1/children/{child_id}/pickup-guardians` | 자기 아이 보호자·담임·원장 | 등록된 인계자 목록 | 200 | FR-16 | 3.27 | 제안 | — | 팀: 제안 계약 |
+| 35 | GET | `/api/v1/care-requests` | 담임·원장 | 교직원용 투약·귀가 요청 목록 | 200 | FR-16 | 3.27 | 제안 | — | 팀: 제안 계약 |
+| 36 | POST | `/api/v1/requests/{request_id}/care-decisions` | 담임·원장 | 투약·인계를 실제로 확인·완료 | 200 | FR-16 | 3.27 | 제안 | — | 팀: 제안 계약 |
+| 37 | POST | `/api/v1/consultations/{booking_id}/delay` | 그 반 예약 담임 | 상담 예상 종료 기록 | 200 | FR-17 | 3.28 | 제안 | — | 팀: 제안 계약 |
+| 38 | GET | `/api/v1/classrooms/{classroom_id}/posts` | 그 반 아이 보호자 | 반 칸 글 목록 | 200 | FR-22·AC-06 | 3.29 | 제안 | — | 팀: 제안 계약 |
+| 39 | POST | `/api/v1/classrooms/{classroom_id}/posts` | 그 반 아이 보호자 | 반 칸 글·사진 올리기 | 201 | FR-22·AC-06 | 3.29 | 제안 | — | 팀: 제안 계약 |
+| 40 | GET | `/api/v1/organizations/{org_id}/posts` | 그 기관 교직원·연결된 아이가 있는 보호자 | 원 칸 글 목록 | 200 | FR-22·AC-06 | 3.29 | 제안 | — | 팀: 제안 계약 |
+| 41 | POST | `/api/v1/organizations/{org_id}/posts` | 그 기관 교직원·연결된 아이가 있는 보호자 | 원 칸 글·사진 올리기 | 201 | FR-22·AC-06 | 3.29 | 제안 | — | 팀: 제안 계약 |
+| 42 | GET | `/api/v1/posts/{post_id}` | 칸 권한 | 글 상세와 볼 수 있는 사진 | 200 | FR-22·AC-06 | 3.29 | 제안 | — | 팀: 제안 계약 |
+| 43 | DELETE | `/api/v1/posts/{post_id}` | 같은 기관 작성자(반 이동·퇴소 뒤에도) | 글·사진 파일 지우기 | 204 | FR-22·AC-06 | 3.29 | 제안 | — | 팀: 제안 계약 |
+| 44 | PATCH | `/api/v1/posts/{post_id}` | 그 기관 원장·원 칸 | 원 칸 글 숨기기 | 200 | FR-22·AC-06 | 3.29 | 제안 | — | 팀: 제안 계약 |
+| 45 | GET | `/api/v1/classrooms/{classroom_id}/albums` | 그 반 아이 보호자 | 반 칸 앨범 | 200 | FR-22·AC-06 | 3.29 | 제안 | — | 팀: 제안 계약 |
+| 46 | GET | `/api/v1/organizations/{org_id}/albums` | 그 기관 교직원·연결된 아이가 있는 보호자 | 원 칸 앨범 | 200 | FR-22·AC-06 | 3.29 | 제안 | — | 팀: 제안 계약 |
+| 47 | GET | `/api/v1/photos/{photo_id}/file` | 칸·사진 권한 | 사진 파일 받기(인증 필요) | 200 | FR-22·AC-06 | 3.29 | 제안 | — | 팀: 제안 계약 |
+| 48 | GET | `/api/v1/children/{child_id}/photo-scope` | 그 아이 보호자 | 현재 사진 공개 범위 | 200 | FR-22·AC-06 | 3.29 | 제안 | — | 팀: 제안 계약 |
+| 49 | PATCH | `/api/v1/children/{child_id}/photo-scope` | 그 아이 보호자 | 사진 공개 범위 바꾸기 | 200 | FR-22·AC-06 | 3.29 | 제안 | — | 팀: 제안 계약 |
+
+알림장 MVP의 ○는 `origin/taewoong-fb020-rehearsal:tools/rehearse_daily_note.py`의 실제 호출이다. `/me`·알림 읽음·다시 만들기는 그 리허설이 부르지 않아 ○를 붙이지 않는다. 팀 확인 남음은 코드 기본값(`LLM_MODEL_SUPERVISOR` 비움, `ANSWER_WRITER=stub`, `DAILY_NOTE_WRITER=app.modules.daily_notes.stub_writer:write`)과 WBS T43(할일), 2.1의 화면 미확인 범위를 뜻한다. 권한 밖 안내를 학부모에게 바로 답하는 경로도 미구현이다(5.7). 이 표시가 API 미구현이나 팀 서버의 현재 스위치 값을 뜻하지는 않는다.
 
 SSE 두 개(6번·14번)는 실시간 진행 화면(NFR-10)에서 쓴다. 투약·귀가 요청의 SSE는 AI 단계를 거치지 않고 현재 상태 done으로 바로 끝난다(3.27).
 
@@ -206,9 +219,9 @@ SSE 두 개(6번·14번)는 실시간 진행 화면(NFR-10)에서 쓴다. 투약
 | 단계 | 연결할 것 | 지금 상태 | 근거 |
 | --- | --- | --- | --- |
 | A 화면 계약 | 웹 화면 ↔ API | 확인 안 됨. 웹 코드(`apps/web/src/api/notes.ts`)는 3.19·3.20·3.21·3.24·3.6을 부르지만, 화면 표시는 첫 시연에서 점검한다 | 화면 점검 전 |
-| B 저장 | API ↔ 시험 DB | 실제로 확인함 | 49개를 DB 모드로 불러 501이 없음, `tools/test_db.sh`의 DB 시험 290개 통과 |
+| B 저장 | API ↔ 시험 DB | 실제로 확인함 | 49개를 DB 모드로 불러 501이 없음, `tools/test_db.sh`의 DB 시험 290개 통과(과거 기준: 2026-11-23, `24258f2`, 0010, `tools/test_db.sh`; 이번 결과는 2.2) |
 | C 외부 연동 | 외부 API | 해당 없음. 알림장 흐름은 외부 API를 부르지 않는다 | — |
-| D 모델 | 그래프 ↔ 모델 ↔ 저장 | 모의 연동 성공 / 실제 연동 대기. 기본 작성기는 모델을 부르지 않는 대역이고, 그래프는 가짜 모델로 단위 시험을 통과했다. 실제 모델로 앱을 거친 실행은 이 판에서 확인하지 않았다 | `tests/unit/test_daily_note_graph.py` 27개 통과 |
+| D 모델 | 그래프 ↔ 모델 ↔ 저장 | 모의 연동 성공 / 실제 연동 대기. 기본 작성기는 모델을 부르지 않는 대역이고, 그래프는 가짜 모델로 단위 시험을 통과했다. 실제 모델로 앱을 거친 실행은 이 판에서 확인하지 않았다 | `tests/unit/test_daily_note_graph.py` 27개 통과(과거 기준: 2026-11-23, `24258f2`, 0010 호환·DB 미사용, `python -m pytest tests/unit/test_daily_note_graph.py`; 이번 결과는 2.2) |
 
 **재현과 증빙.** 검토자는 아래 조건으로 같은 결과를 다시 볼 수 있다.
 
@@ -217,7 +230,7 @@ SSE 두 개(6번·14번)는 실시간 진행 화면(NFR-10)에서 쓴다. 투약
 | 기준 커밋 | develop `24258f2` |
 | 환경 | 시험용 PostgreSQL 16 + pgvector(`pgvector/pgvector:pg16`)에 마이그레이션 0001~0010과 데모 시드를 넣고 `DATA_BACKEND=db`로 띄운다. 작성기는 기본값(대역)이다. 모의 모드는 `DATA_BACKEND=mock`이다 |
 | 실행 명령 | `tools/test_db.sh`(시험용 DB를 띄워 DB 시험과 모의 HTTP 시험을 돌린 뒤 컨테이너를 지운다), `python -m pytest tests/unit/test_daily_note_graph.py tests/integration/api/test_openapi.py` |
-| 결과 | DB 시험 290개, 모의 HTTP 시험 670개, 그래프 단위 시험 27개, OpenAPI 대조 2개 통과 |
+| 결과 | 과거 기록(2026-11-23, `24258f2`, 0010; 위 명령·범위): DB 290개, 모의 HTTP 670개, 그래프 단위 27개, OpenAPI 2개 통과. 이번 판의 결과는 2.2 |
 | 화면 링크 | 아직 없다. 첫 시연 점검 때 붙인다 |
 
 | 남은 일 | 담당 | 다음 확인 |
@@ -226,6 +239,26 @@ SSE 두 개(6번·14번)는 실시간 진행 화면(NFR-10)에서 쓴다. 투약
 | 실제 모델로 알림장 초안 만들기(D) | T32 성주, 프롬프트 검토 영민 | T32 일정 |
 | 모의 API가 진행 중(`queued`·`running`) 응답을 내게 하기. 지금은 접수하면서 바로 끝나서 진행 중 화면은 DB 모드에서만 볼 수 있다 | T13 태웅 | 화면 점검 전 |
 | 웹의 다시 만들기 버튼과 학부모 알림 목록 화면 | T32 성주 | T32 일정 |
+
+### 2.2 2차 계약 대조와 시험 기준
+
+이번 검증은 2026-11-24, 이 PR 최종 HEAD(`taewoong-fb020-2nd`), alembic head `0011` 기준이다. 팀 서버의 배포 커밋은 README를 따르며, 이 로컬 검증과 섞지 않는다. 모의 시험에서 DB 사례가 건너뛰어지는 것은 전용 PG 주소가 없기 때문이다. 두 모드의 공유 HTTP 시험은 `tools/test_db.sh`에서 모두 실행한다. 아래 명령은 레포 루트에서 실행한다. 로컬 기록이며 CI 실행 URL은 없다.
+
+| 대조 대상·범위 | 명령·시험 | 결과 |
+| --- | --- | --- |
+| 실제 `/openapi.json` ↔ `app.openapi()` ↔ `contracts/openapi.yaml`, 2장 목록 | `DATA_BACKEND=mock .venv/bin/python -m pytest -q tests/integration/api/test_openapi.py -p no:cacheprovider` | 2개 통과 |
+| 계약표 v0.20 ↔ API v0.11 ↔ 모의·DB 공유 HTTP | `tools/test_db.sh -p no:cacheprovider` | 343개 통과; 공유 HTTP 726개 통과(mock·시험 PG 두 모드) |
+| 모의 전체(단위·HTTP·계약, 실제 모델·외부 API 미사용) | `DATA_BACKEND=mock .venv/bin/python -m pytest -q tests -p no:cacheprovider` | 810개 통과·702개 건너뜀(전용 PG 미지정) |
+| 가짜 모델 알림장 그래프 단위 시험 | `DATA_BACKEND=mock .venv/bin/python -m pytest -q tests/unit/test_daily_note_graph.py -p no:cacheprovider` | 27개 통과 |
+| 코드 정적 검사 | `.venv/bin/python -m ruff check apps agents tests tools` | 오류 없음 |
+
+| 1차 표 뒤 대표 응답 변경 | 문서·계약표 | 지키는 시험 |
+| --- | --- | --- |
+| #324: 메시지 `sender_role`(학부모 글·교사 답 구분) | API 3.2·3.10·7장, 계약표 2.1(v0.19.1부터) | `api/test_requests.py::test_additional_message_is_stored_with_trace_without_leaking_draft`, `api/test_cards.py::test_reply_approval_confirmation_completion_and_event_order` |
+| #326: 문의·상담 `risk_level`·`risk_category`(학부모 응답에서는 숨김) | API 3.14·5.7·6.5·6.6, DB 0011, 계약표 4.1(v0.19부터) | `db/test_request_risk_types.py::test_risky_inquiry_skips_answer_model_and_saves_risk`; 공유 HTTP는 `api/test_complaints.py` |
+| 이 PR: 요청 표시가 담당 유무를 반영함. JSON 키·타입은 같음 | API 3.2·6.7, 계약표 2.1(v0.20) | `api/test_requests.py::test_unassigned_request_label_changes_after_director_reassign`, `::test_received_request_label_before_agent_runs`, `::test_parent_labels_follow_assignment_and_keep_type_branches` |
+
+자동 대조 범위는 OpenAPI와 API 목록, HTTP 응답 스키마다. 계약표는 2.1·2.2·4.1을 코드와 직접 대조했다. `sender_role`과 위험 등급 확대는 이미 현재 브랜치에 들어 있어 대표 응답을 다시 고칠 필요가 없고, 이번 표시 규칙만 v0.20에 더한다. 실제 모델·웹 화면·팀 서버 복원은 이 시험의 증명 범위에 들지 않는다.
 
 ## 3. 엔드포인트 상세 명세
 
@@ -353,7 +386,7 @@ X-Request-ID: 6b0f1c2e-9a7d-4c1e-8f3a-2d5b7e9c1a40
 | 필드 | 타입 | 항상 | 설명 |
 | --- | --- | --- | --- |
 | `request.status` | string | 예 | 기획서 6장 공통 상태 11개 중 하나 |
-| `request.status_label` | string | 예 | T04 2장 표시 이름(학부모용·교직원용이 다름) |
+| `request.status_label` | string | 예 | 서버가 역할·상태·담당 유무를 반영한 표시 이름을 준다. 화면은 이 값을 쓴다 |
 | `request.missing_fields[]` | string[] | 예 | `needs_info`일 때 학부모에게 물어볼 항목이다. 투약은 received 상태에서도 빠진 약 이름·용량·시간을 표시한다(3.27). 없으면 빈 목록이다. |
 | `request.hold_until` | date | 아니오 | 보류 예정일. 보류 이유는 학부모에게 주지 않음 |
 | `request.parent_confirmed_at` | datetime | 아니오 | 민원 '확인했어요' 시각 |
@@ -361,6 +394,19 @@ X-Request-ID: 6b0f1c2e-9a7d-4c1e-8f3a-2d5b7e9c1a40
 | `messages[].sender_role` | string | 아니오 | 메시지를 쓴 사람의 역할(`parent`·`teacher`·`director`). AI나 시스템이 쓴 글이면 null이다. 학부모 글과 담임이 승인해 보낸 답은 `sender_type`이 둘 다 `user`여서, 화면에서는 이 값으로 말풍선을 나눈다 |
 | `timeline[]` | 목록 | 예 | 학부모용은 상태가 바뀐 단계만 표시 이름으로 보임 |
 | `consultation` | 객체 | 아니오 | 상담 요청일 때만. 후보 최대 3개와 확정 예약 |
+
+**학부모 표시와 담당 배정.** 화면은 서버 `status_label`을 쓰며 상태 이름만으로 문구를 만들지 않는다. 요청 목록·상세·타임라인은 현재 요청의 `assignee_id`를 같은 기준으로 읽는다. 담당자 ID는 학부모 응답에 더하지 않는다. 타임라인 문구도 현재 담당에 맞춰 계산하므로 과거 담당자 배정의 감사 기록으로 쓰지 않는다.
+
+| 요청 상태·조건 | 학부모 표시 |
+| --- | --- |
+| `received` | 접수됨 |
+| `classified` | 접수됨 |
+| `assigned`(담임 배정 뒤) | 선생님께 전달됨 |
+| `assigned`·`awaiting_review`·`on_hold`, `assignee_id`가 비어 있음 | 담당 선생님 배정 중 |
+| `awaiting_review`, 담당 있음 | 선생님 확인 중 |
+| `on_hold`, 담당 있음 | 확인이 늦어지고 있어요 |
+
+투약·귀가의 '선생님 확인 대기/완료'와 '투약/인계 완료', 상담의 '시간을 골라 주세요/예약 확정' 분기는 그대로다. 원장 재배정 뒤 요청에 담당자가 생기면 원래 상태의 표시로 돌아간다. 공용 HTTP 시험 `test_unassigned_request_label_changes_after_director_reassign`은 담임 없는 반→카드 `unassigned`→목록·상세의 배정 대기→원장 재배정→선생님 확인 중을 두 모드에서 확인한다. 접수 직후는 `test_received_request_label_before_agent_runs`, 유형별 문구는 `test_parent_labels_follow_assignment_and_keep_type_branches`로 확인한다(실행 기준 2.2).
 
 **스트림 이벤트**: `stage`(`classifying`·`searching`·`drafting`·`checking`) · `done`(`request_status`) · `error`(1.4 형식). 학부모 스트림에는 답변 글자(`token`)와 카드(`card`)를 보내지 않는다. 담임이 승인하기 전의 초안이 학부모에게 나가면 안 되기 때문이다.
 
@@ -1154,6 +1200,21 @@ HTTP/1.1 200 OK
                           {"note_id": "…", "child_id": "00000000-0000-4000-8000-000000005401", "open_checks": []}, …]}}}
 ```
 
+
+**④ 실제 모델 실측 (강사 2차 의견 API 1).** 팀 서버에서 실제 모델로 한 반을 처음부터 끝까지 돌렸다. 순서는 [알림장 시연 리허설](알림장_시연_리허설.md)과 같고, `tools/rehearse_daily_note.py`가 담임 입력 → 진행 조회 → 아이별 초안 → 담임 수정·확인 → 반 발송 → 학부모 조회를 차례로 부른다. 실행 전에 `python -m db.seeds.demo --refresh-note-requests`로 보호자 요청을 그날로 옮겼다.
+
+| 항목 | 값 |
+| --- | --- |
+| 실행 | 2026-11-24 14:45:56~14:46:17 KST, 팀 서버 접속 주소, `--remote-ok` |
+| 시연 커밋 | develop `97fda0b`(alembic `0011`). 시연 전에 다시 배포하면 같은 명령으로 다시 돌려 이 줄을 고친다 |
+| 모델 | `DAILY_NOTE_WRITER=graph`, 자료 AI·검사 AI 모두 `LLM_MODEL_DEFAULT=gpt-6-luna`(역할별 값 비움), 작성기 제한 300초 |
+| 아이 수 | 별빛반 20명(메모 있는 아이 17명) |
+| 소요 시간 | 초안 작업 17초(작업자 `daily_note_drafts` 16.8초), 담임 입력부터 학부모 수신까지 21초 |
+| 실패 | 작업 실패 0, 사람에게 넘김(`draft_failed`·`check_failed`) 0 |
+| 확인 항목 | 5명 `needs_check`: 하늘 `date_check`·`sensitive`, 아라 `sensitive`, 윤슬 `sensitive`, 지아 `sensitive` 2개(1개는 투약 요청 코드 검사), 지안 `other_child`. 15명 `draft` |
+| 발송 막힘 | 지아를 확인하기 전 반 발송은 409 `NOTE_BATCH_BLOCKED`(`blocked`에 지아만). 지아의 항목을 모두 풀어도 확인 전이면 409. 확인 뒤 200 `sent_count=20`, 확인 카드 `done` |
+| 학부모 쪽 | `parent01`이 하늘 알림장(`sent`)을 받았고, 담임이 고친 줄이 그대로 보였다. 알림 1건 |
+
 ### 3.20 알림장 보기 — `GET /api/v1/daily-notes`
 
 | 칸 | 내용 |
@@ -1712,7 +1773,7 @@ def decide(card_id: UUID, body: CardDecision, user: User = Depends(current_staff
 
 쓰기 응답이 끊겼다면 카드가 이미 저장됐을 수 있다. 그래서 다시 부르기 전에 그 요청에 카드가 있는지 먼저 확인한다. 지금 실행기와 점검 작업도 요청을 잠근 뒤 카드가 있는지 다시 읽고 나서 카드를 만든다.
 
-**지금 코드.** 요청 처리는 아직 모델이 아니라 낱말 대역(`apps/api/app/modules/requests/agent_stub.py`)이 맡는다. 모델이 이 도구를 부르는 일은 요청 처리 에이전트(T29)가 붙으면 시작된다. 대역은 이 도구를 부르지 않고 `new_card()`로 카드를 바로 저장한다. 저장 중 예외가 나면 실행기(`runner.py`)는 다시 부르지 않고 곧바로 초안 없는 미배정 카드를 만든다. 이때 이력에는 실패 원인과 상관없이 `tool_failed`·`UPSTREAM_UNAVAILABLE`로 기록된다. 위 학부모 안내 문장도 아직 코드에 없어서, 학부모 화면에는 상태 표시 이름만 보인다(6.7 마지막 사례). 시험은 `test_agent_failure_preserves_request_and_hands_off_without_private_error`, `test_stub_transaction_rolls_back_then_handoff_once`, `test_sweep_exact_age_states_card_exclusion_and_concurrent_idempotency`(`tests/integration/db/test_requests.py`)다.
+**지금 코드.** 요청 처리 입구는 `apps/api/app/modules/requests/agent_stub.py`다. 기본 설정은 낱말 분류·대역 초안이고, `LLM_MODEL_SUPERVISOR`를 채우면 모델 분류 제안을 검증하며 `ANSWER_WRITER=graph`면 자료·검사 AI를 호출한다. 모델이 이 `create_card` 도구 계약을 직접 호출하는 경로와 T43 협업 그래프는 아직 연결하지 않았다. 대역은 이 도구를 부르지 않고 `new_card()`로 카드를 바로 저장한다. 저장 중 예외가 나면 실행기(`runner.py`)는 다시 부르지 않고 곧바로 초안 없는 미배정 카드를 만든다. 이때 이력에는 실패 원인과 상관없이 `tool_failed`·`UPSTREAM_UNAVAILABLE`로 기록된다. 위 학부모 안내 문장도 아직 코드에 없어서, 학부모 화면에는 상태 표시 이름만 보인다(6.7 마지막 사례). 시험은 `test_agent_failure_preserves_request_and_hands_off_without_private_error`, `test_stub_transaction_rolls_back_then_handoff_once`, `test_sweep_exact_age_states_card_exclusion_and_concurrent_idempotency`(`tests/integration/db/test_requests.py`)다.
 
 ### 5.6 호출 흐름
 
@@ -1799,7 +1860,7 @@ def decide(card_id: UUID, body: CardDecision, user: User = Depends(current_staff
 | 알림장 초안 | `GET /daily-notes/drafts/{input_id}` | `draft_status = queued·running` | `succeeded`. 아이별 초안은 `GET /daily-notes?classroom_id=&date=`로 받음 | `failed` + `error { code, message }`(자세한 이유는 `events`의 `tool_failed`) |
 | 자료 올리기 | `GET /documents/{document_id}` | `ingest_status = queued·running` | `succeeded` + `chunk_count`(조각 수). 충돌이 있으면 `status = conflict_pending` + `conflicts[]` | `failed` + `error { code, message }` |
 
-**카드가 끝내 안 생긴 요청.** 요청은 `POST /requests`에서 먼저 저장된다. 그래서 AI가 카드 만들기(`create_card`)까지 실패하거나 처리 중에 멈춰도 요청은 남는다. 서버 점검 작업은 5분마다 돌면서, 진행 중 상태(`received`·`classified`·`assigned`)인데 5분 넘게 카드가 없는 요청을 찾는다. 처음 찾았을 때는 처리를 한 번 다시 넣고 `agent_requeued` 이력만 남긴다. 다시 넣고 5분이 지나도 카드가 없으면, 초안 없는 카드를 담당자 없이 만들고(받은함 '미배정') 요청을 `awaiting_review`로 바꾼다. 이때 넘긴 이유 `card_missing`을 이력 `events.detail.handoff_reason`에 남긴다. 그동안 학부모 화면에는 '접수됨'이 보인다. 채팅 안내는 '받았지만 선생님 확인이 늦어질 수 있음'으로 맞출 예정이지만, 이 문장은 아직 코드에 없다. 이 점검 작업은 실제 서버의 백그라운드 워커에서 돌고, 모의 API에서는 돌리지 않는다. 두 모드를 나란히 비교한 결과는 6.7 마지막 사례에 있다.
+**카드가 끝내 안 생긴 요청.** 요청은 `POST /requests`에서 먼저 저장된다. 그래서 AI가 카드 만들기(`create_card`)까지 실패하거나 처리 중에 멈춰도 요청은 남는다. 서버 점검 작업은 5분마다 돌면서, 진행 중 상태(`received`·`classified`·`assigned`)인데 5분 넘게 카드가 없는 요청을 찾는다. 처음 찾았을 때는 처리를 한 번 다시 넣고 `agent_requeued` 이력만 남긴다. 다시 넣고 5분이 지나도 카드가 없으면, 초안 없는 카드를 담당자 없이 만들고(받은함 '미배정') 요청을 `awaiting_review`로 바꾼다. 이때 넘긴 이유 `card_missing`을 이력 `events.detail.handoff_reason`에 남긴다. 그동안 학부모 화면은 `received`·`classified`면 '접수됨', 담당 배정 뒤 `assigned`면 '선생님께 전달됨'으로 보인다. 미배정 카드가 생긴 뒤에도 담당이 없으면 '담당 선생님 배정 중'이다. 채팅 안내는 '받았지만 선생님 확인이 늦어질 수 있음'으로 맞출 예정이지만, 이 문장은 아직 코드에 없다. 이 점검 작업은 실제 서버의 백그라운드 워커에서 돌고, 모의 API에서는 돌리지 않는다. 두 모드를 나란히 비교한 결과는 6.7 마지막 사례에 있다.
 
 
 ```json
@@ -1906,17 +1967,30 @@ Beat는 1분마다 시작이 하루 이내인 확정 예약을 읽고, 그중 �
 
 **요청은 접수됐지만 인계 카드 저장에 실패**
 
-학부모 화면에는 요청이 접수된 것으로 보이는데, 선생님 받은함에는 카드가 없을 수 있다. 사용자에게 보이는 안내와 실제 상태가 어긋나기 쉬운 경우라서 2026-11-23 develop `24258f2`에서 두 모드를 직접 돌려 비교했다. DB 모드에서는 시험용 DB를 쓰고, 카드를 저장하는 함수를 일부러 실패시켰다. 화면 열의 값은 학부모 요청 상세의 `status_label`이다.
+학부모에게 접수와 담당 배정을 구분해 보인다. 실행 기준은 2.2다. 모의 모드의 정상 카드 생성과 담당 없는 반은 공용 HTTP 시험으로 확인하고, 카드 저장 장애 주입은 시험 PG에서만 확인한다.
 
-| 시점 | 학부모 화면 | 모의 응답 | DB 모드 결과 | 점검 작업 |
-| --- | --- | --- | --- | --- |
-| 접수 | 접수됨 | 202 `received` | 202 `received` | — |
-| 카드 저장이 실패함 | 선생님 확인 중 | 재현할 수 없다. 모의는 접수하면서 카드를 함께 만들어, 바로 담당 담임 카드 `pending`과 요청 `awaiting_review`가 된다 | 실행기가 이력 `tool_failed`(`UPSTREAM_UNAVAILABLE`, `handoff_reason = ai_failed`)를 남기고 초안 없는 미배정 카드를 바로 만든다. 요청은 `awaiting_review`가 되고, 원장에게 `new_card` 알림이 1건 간다 | 할 일이 없다 |
-| 실행기의 처리까지 실패해 카드가 아예 없음 | 접수됨 | 재현할 수 없다 | 요청은 `received`로 남고 카드는 0장, 이력은 `created` 하나뿐이다 | — |
-| 접수하고 5분이 지난 첫 점검 | 접수됨 | 점검 작업이 없다 | 그대로 | 처리를 한 번 다시 넣고 `agent_requeued` 이력만 남긴다 |
-| 다시 넣고 5분이 지난 점검 | 선생님 확인 중 | 점검 작업이 없다 | 미배정 카드가 생긴다 | 초안 없는 미배정 카드를 만들고 요청을 `awaiting_review`로 바꾼다. 이력 `checked`에 `handoff_reason = card_missing`을 남긴다. 원장 받은함의 '미배정' 필터에 보인다 |
+| 시점 | 학부모 `status_label` | 모의·시험 PG에서 확인하는 것 |
+| --- | --- | --- |
+| 접수 직후, 실행 전 | 접수됨 | `received`, 담당·카드 없음(`test_received_request_label_before_agent_runs`) |
+| 분류 뒤 | 접수됨 | `classified`, 문구 단위 표 |
+| 담임 배정 뒤 | 선생님께 전달됨 | `assigned`, 문구 단위 표 |
+| 담당 없는 반의 카드 생성 / 카드 저장 장애의 인계 | 담당 선생님 배정 중 | 요청 `awaiting_review`, 카드 `unassigned`, 요청 담당 없음. 전자는 공용 HTTP, 후자는 `db/test_requests.py::test_agent_failure_preserves_request_and_hands_off_without_private_error` |
+| 카드가 끝내 없고 점검에서 다시 넣음 | 현재 상태에 따른 표시 유지 | `agent_requeued`만으로 담임 전달로 표시하지 않음 |
+| 다시 넣어도 카드가 없어 사람에게 넘김 | 담당 선생님 배정 중 | `card_missing`, 미배정 카드·원장 알림. 자동 복구 성공으로 세지 않음 |
+| 원장이 담당 재배정 | 선생님 확인 중 | 담당 있음, 상태는 `awaiting_review` 그대로(`test_unassigned_request_label_changes_after_director_reassign`) |
 
-어긋나는 곳은 두 군데다. 첫째, 모의 API로는 이 실패를 볼 수 없으므로 화면은 DB 모드에서 따로 확인해야 한다. 둘째, 카드가 미배정으로 만들어져도 학부모 화면은 '선생님 확인 중'으로 바뀐다. 하지만 실제로는 원장이 담당을 정하기 전까지 어떤 담임도 이 카드를 받지 않는다. 5.4에 적은 안내 문장("말씀하신 내용은 받았는데 선생님께 넘기는 중에 저장 오류가 났어요…")은 아직 코드에 없다. 시험은 `test_agent_failure_preserves_request_and_hands_off_without_private_error`, `test_unassigned_card_reassign_and_cards_without_request`, `test_broker_failure_preserves_rows_and_periodic_sweep_recovers`다.
+### 6.8 장애 결과 구분
+
+아래는 기존 장애 시험을 결과로 나눈 표다(2026-11-24, 이 PR HEAD, 0011; `tools/test_db.sh -p no:cacheprovider`, 단위 시험은 2.2 모의 전체 명령). 자동 복구는 재시도 뒤 검증한 결과가 준비된 경우에만 적는다. 카드만 생기거나 작업 상태만 `succeeded`가 된 것은 그 근거가 아니다. 알림장 아이별 집계 기준은 DB 2.6의 T58 규칙을 따른다.
+
+| 기존 장애 시험 | 자동 복구 | 사람에게 넘김 | 이유·검증 |
+| --- | --- | --- | --- |
+| `unit/test_daily_note_graph.py::test_writer_retry_once_then_succeeds` | 재시도 뒤 확인 항목 없는 아이 초안 | — | `open_checks=[]`·메모 줄 있음. 저장·실제 모델 시험은 아님 |
+| `db/test_worker_db.py::test_broker_failure_preserves_rows_and_periodic_sweep_recovers` | 요청 다시 등록 뒤 회신 카드·본문 저장 | — | `card_missing` 없음. 같은 시험의 알림장 `succeeded`만으로 T58 성공은 판정하지 않음 |
+| `db/test_request_lock_timeout.py::test_ai_timeout_hands_off_empty_card_and_drops_late_draft` | — | 초안 없는 미배정 카드 | `ai_timeout`; 늦은 초안이 덮지 못함 |
+| `db/test_requests.py::test_agent_failure_preserves_request_and_hands_off_without_private_error` | — | 초안 없는 미배정 카드 | `ai_failed`; 요청 보존·배정 대기 표시·원장 알림 |
+| `db/test_worker_db.py::test_queued_request_is_republished_once_then_handed_off_after_five_more_minutes` | — | 재등록 뒤에도 카드가 없어 미배정 카드 | `card_missing` |
+| `db/test_daily_note_recovery.py::test_failed_retry_is_handed_off_then_partial_template_is_fallback` | 검증·저장된 아이별 결과만 후보 | 작업 실패·템플릿 아이는 사람에게 넘김 | 기존 반 단위 집계의 `fallback`을 전체 성공으로 읽지 않음(DB 2.6) |
 
 ## 7. API 필드와 DB 컬럼 대응
 
@@ -1928,7 +2002,7 @@ Beat는 1분마다 시작이 하루 이내인 확정 예약을 읽고, 그중 �
 | `client_request_id` | `requests.client_request_id` | 같음 |
 | `type` · `body` · `child_id` · `previous_request_id` | `requests.type` · `body` · `child_id` · `previous_request_id` | 같음 |
 | `request.status` | `requests.status` | 같음 |
-| `request.status_label` | — | 저장하지 않음. 역할에 맞는 T04 2장 표시 이름을 붙임 |
+| `request.status_label` | `requests.status`·`assignee_id` | 저장하지 않음. 역할·상태·담당 유무로 계산(3.2) |
 | `request.missing_fields[]` | `requests.missing_fields` | `jsonb` 목록 |
 | `request.parent_confirmed_at` | `requests.parent_confirmed_at` | 같음 |
 | `request.hold_until` | `cards.hold_until` | 요청의 보류 카드에서 가져옴 |
@@ -2055,3 +2129,4 @@ MVP 설정값은 서버 설정(`.env`)으로 관리한다. `.env.example`에는 
 | v0.9 | 2026-11-24 | 문서 머리에 2차 검토 링크, 시연 코드 기준 커밋(`ab58b7c`), 1차 검토 뒤 보완 표(바뀐 내용·고친 절·지키는 시험·반영 커밋)를 더함. 코드에 맞춰 6.1에는 요청 처리 3분 마감 때 모델을 잠금 밖에서 부르고 늦은 결과를 버리는 규칙을, 3.3에는 거절 뒤 새 회신 카드를 초안 없이 만들어 직접 쓴 글로만 보내는 규칙을 적음 | 태웅 |
 | v0.10 | 2026-11-24 | 위험 등급을 문의·상담에도 붙임(5.7). 문의·상담은 위험 낱말을 짧은 구로 보고(민원은 낱말 하나도 봄), 문의도 다시 분류할 수 있게 하고(3.14), 위험 기한(6.5)·알림 시각(6.6)·알림 제목(3.11)을 세 유형에 맞춤. 위험 상담의 원장 보고 카드는 예약 확정·반려 때 닫고, 판단 필요 상담도 담임이 확정·반려할 수 있음(3.4) | 태웅 |
 | v0.10.1 | 2026-11-24 | 요청 대화의 메시지마다 쓴 사람의 역할(`sender_role`)을 더해, 화면에서 학부모 글과 담임 답을 나눠 그릴 수 있게 함(3.2·3.10·7장) | 태웅 |
+| v0.11 | 2026-11-24 | 2차 의견 API 2·3, DB 3 반영. 배정 대기 표시·장애 결과 구분·MVP와 팀 확인 남음·동일 HEAD 계약 대조·시험 기준을 적고 참조 판을 맞춤 | 태웅 |
