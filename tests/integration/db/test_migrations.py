@@ -179,7 +179,7 @@ def test_requeue_action_upgrade_downgrade_preserves_requests_and_old_events(seed
         assert dict(catalog(connection)) == HEAD_CATALOG
 
 
-def test_0012_care_backfill_and_round_trip_preserve_events_and_notifications(seeded_db, alembic_config):
+def test_0012_care_backfill_and_downgrade_remove_only_new_events_and_notifications(seeded_db, alembic_config):
     command.downgrade(alembic_config, "0011")
     inputs = [
         ("medication", {"medication_name": "[TEST] 시럽", "medication_dose": "2.5mL", "medication_time": "점심 뒤"}),
@@ -213,6 +213,10 @@ def test_0012_care_backfill_and_round_trip_preserve_events_and_notifications(see
         no_receipt = connection.scalar(text("""
             INSERT INTO requests (org_id,requester_id,client_request_id,type,body)
             VALUES (:org,:parent,'[TEST] no-receipt','pickup','[TEST] 접수 이력 없는 기존 요청') RETURNING id
+        """), {"org": seed.ORG, "parent": seed.PARENT})
+        connection.execute(text("""
+            INSERT INTO notifications (org_id,recipient_id,kind,title,dedupe_key)
+            VALUES (:org,:parent,'care_confirmed','[TEST] 이전 알림','[TEST] 0011-notification')
         """), {"org": seed.ORG, "parent": seed.PARENT})
     old_dump = schema_dump()
 
@@ -250,6 +254,8 @@ def test_0012_care_backfill_and_round_trip_preserve_events_and_notifications(see
             assert error.value.orig.diag.constraint_name == f"{table}_{column}_check"
         events_before = connection.execute(text("SELECT * FROM events ORDER BY id")).mappings().all()
         notifications_before = connection.execute(text("SELECT * FROM notifications ORDER BY id")).mappings().all()
+    old_events = [e for e in events_before if e["action"] not in new_actions]
+    old_notifications = [n for n in notifications_before if n["kind"] not in new_kinds]
 
     command.downgrade(alembic_config, "0011")
     with seeded_db.begin() as connection:
@@ -257,21 +263,26 @@ def test_0012_care_backfill_and_round_trip_preserve_events_and_notifications(see
         assert connection.scalar(text("""
             SELECT count(*) FROM information_schema.columns WHERE table_name='requests' AND column_name='care_detail'
         """)) == 0
-        for before in events_before:
+        for before in old_events:
             expected = receipts.get(before["id"], before)
             assert dict(connection.execute(text("SELECT * FROM events WHERE id=:id"),
                                            {"id": before["id"]}).mappings().one()) == expected
-        assert connection.scalar(text("SELECT count(*) FROM events")) == len(events_before)
-        assert connection.execute(text("SELECT * FROM notifications ORDER BY id")).mappings().all() == notifications_before
+        assert connection.scalar(text("SELECT count(*) FROM events")) == len(old_events)
+        assert connection.scalar(text("SELECT count(*) FROM events WHERE action=ANY(:values)"),
+                                 {"values": list(new_actions)}) == 0
+        assert connection.scalar(text("SELECT count(*) FROM notifications WHERE kind=ANY(:values)"),
+                                 {"values": list(new_kinds)}) == 0
+        assert connection.execute(text("SELECT * FROM notifications ORDER BY id")).mappings().all() == old_notifications
         for table, column, value in (("events", "action", new_actions[0]), ("notifications", "kind", new_kinds[0])):
             with pytest.raises(IntegrityError) as error, connection.begin_nested():
                 connection.execute(text(f"UPDATE {table} SET {column}=:value"), {"value": value})
             assert error.value.orig.diag.constraint_name == f"{table}_{column}_check"
+    assert schema_dump() == old_dump
 
     command.upgrade(alembic_config, "head")
     with seeded_db.begin() as connection:
-        assert connection.execute(text("SELECT * FROM events ORDER BY id")).mappings().all() == events_before
-        assert connection.execute(text("SELECT * FROM notifications ORDER BY id")).mappings().all() == notifications_before
+        assert connection.execute(text("SELECT * FROM events ORDER BY id")).mappings().all() == old_events
+        assert connection.execute(text("SELECT * FROM notifications ORDER BY id")).mappings().all() == old_notifications
         assert connection.scalar(text("SELECT bool_and(convalidated) FROM pg_constraint "
                                       "WHERE conname IN ('events_action_check','notifications_kind_check')")) is True
         # 새 값이 없는 DB의 downgrade는 제약 검증 상태까지 원래 스키마와 같아요.
@@ -282,7 +293,7 @@ def test_0012_care_backfill_and_round_trip_preserve_events_and_notifications(see
     command.upgrade(alembic_config, "head")
 
 
-def test_consultation_report_acknowledge_revision_preserves_decisions_on_downgrade(seeded_db, alembic_config):
+def test_consultation_report_acknowledge_downgrade_removes_only_new_decisions(seeded_db, alembic_config):
     command.downgrade(alembic_config, "0013")
     old_dump = schema_dump()
     command.upgrade(alembic_config, "head")
@@ -299,18 +310,25 @@ def test_consultation_report_acknowledge_revision_preserves_decisions_on_downgra
             INSERT INTO approvals (org_id,card_id,card_version,decided_by,decision)
             VALUES (:org,:card,1,:director,'acknowledge') RETURNING *
         """), {"org": seed.ORG, "card": cid, "director": seed.DIRECTOR}).mappings().one())
+        old = dict(connection.execute(text("""
+            INSERT INTO approvals (org_id,card_id,card_version,decided_by,decision,reason_text)
+            VALUES (:org,:card,2,:director,'hold','[TEST] 이전 보류 결정') RETURNING *
+        """), {"org": seed.ORG, "card": cid, "director": seed.DIRECTOR}).mappings().one())
     command.downgrade(alembic_config, "0013")
     with seeded_db.begin() as connection:
+        assert connection.scalar(text("SELECT count(*) FROM approvals WHERE decision='acknowledge'")) == 0
         assert dict(connection.execute(text("SELECT * FROM approvals WHERE id=:id"),
-                                       {"id": row["id"]}).mappings().one()) == row
-        assert connection.scalar(text("SELECT convalidated FROM pg_constraint WHERE conname='approvals_decision_check'")) is False
+                                       {"id": old["id"]}).mappings().one()) == old
+        assert connection.scalar(text("SELECT convalidated FROM pg_constraint WHERE conname='approvals_decision_check'")) is True
         with pytest.raises(IntegrityError) as error, connection.begin_nested():
-            connection.execute(text("UPDATE approvals SET decision='acknowledge' WHERE id=:id"), {"id": row["id"]})
+            connection.execute(text("UPDATE approvals SET decision='acknowledge' WHERE id=:id"), {"id": old["id"]})
         assert error.value.orig.diag.constraint_name == "approvals_decision_check"
+    assert schema_dump() == old_dump
     command.upgrade(alembic_config, "head")
     with seeded_db.begin() as connection:
+        assert connection.scalar(text("SELECT count(*) FROM approvals WHERE id=:id"), {"id": row["id"]}) == 0
         assert dict(connection.execute(text("SELECT * FROM approvals WHERE id=:id"),
-                                       {"id": row["id"]}).mappings().one()) == row
+                                       {"id": old["id"]}).mappings().one()) == old
         assert connection.scalar(text("SELECT convalidated FROM pg_constraint WHERE conname='approvals_decision_check'")) is True
         connection.execute(text("DELETE FROM approvals WHERE id=:id"), {"id": row["id"]})
     command.downgrade(alembic_config, "0013")

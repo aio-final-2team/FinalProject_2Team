@@ -136,14 +136,87 @@ def test_reassign_consultation_reproposes_only_when_no_live_candidates(
     assert {s["id"] for s in slots}.isdisjoint(s["id"] for s in candidates) == needs_candidates
     parent_notices = [n for n in new if str(n["recipient_id"]) == str(seed.PARENT)]
     assert [n["kind"] for n in parent_notices] == (["needs_info"] if needs_candidates else [])
-    if needs_candidates:
-        if consultation_backend == "mock":
-            teachers = {store.state().slots[s["id"]].teacher_id for s in candidates}
+    if consultation_backend == "mock":
+        teachers = {store.state().slots[s["id"]].teacher_id for s in candidates}
+    else:
+        with transaction() as connection:
+            teachers = set(connection.scalars(text("SELECT teacher_id FROM consultation_slots WHERE id=ANY(:ids)"),
+                                               {"ids": [s["id"] for s in candidates]}))
+    assert teachers == {seed.TEACHER_OTHER}
+    if not needs_candidates:
+        assert candidates == slots if candidate_status == "proposed" else all(
+            s["status"] == "chosen_by_parent" for s in candidates)
+
+
+@pytest.mark.parametrize("chosen", [False, True])
+@pytest.mark.parametrize("conflict", ["busy", "booking", "delayed", "adjacent", "unavailable"])
+def test_reassign_rechecks_conflicts_refills_only_missing_and_resets_lost_choices(
+    client, parent, teacher, teacher_other, director, consultation_backend, chosen, conflict
+):
+    from types import SimpleNamespace
+    from app.core.db import get_engine
+    from tests.integration.api.test_consultation_reminders import booking
+
+    rid, cid, slots = prepare(client, parent, teacher)
+    if chosen:
+        assert choose(client, parent, rid, slots[:2]).status_code == 200
+    start, end = (datetime.fromisoformat(slots[0]["period"][key]) for key in ("start", "end"))
+    engine = get_engine() if consultation_backend == "db" else None
+    if conflict in ("booking", "delayed"):
+        bid, _ = booking(SimpleNamespace(engine=engine), start if conflict == "booking" else start-timedelta(minutes=30),
+                         teacher=seed.TEACHER_OTHER)
+        if conflict == "delayed":
+            if engine:
+                with engine.begin() as connection:
+                    connection.execute(text("UPDATE consultation_bookings SET expected_end_at=:end WHERE id=:id"),
+                                       {"id": bid, "end": end})
+            else:
+                store.state().bookings[bid].expected_end_at = end
+    else:
+        if conflict == "adjacent":
+            start, end = start-timedelta(minutes=30), start
+        elif conflict == "unavailable":
+            end = start+timedelta(days=15)
+        if engine:
+            with engine.begin() as connection:
+                connection.execute(text("""
+                    INSERT INTO staff_busy_blocks (org_id,user_id,period,kind)
+                    VALUES (:org,:teacher,tstzrange(:start,:end,'[)'),'meeting')
+                """), {"org": seed.ORG, "teacher": seed.TEACHER_OTHER, "start": start, "end": end})
         else:
-            with transaction() as connection:
-                teachers = set(connection.scalars(text("SELECT teacher_id FROM consultation_slots WHERE id=ANY(:ids)"),
-                                                   {"ids": [s["id"] for s in candidates]}))
-        assert teachers == {seed.TEACHER_OTHER}
+            store.state().staff_busy_blocks.append({"org_id": seed.ORG, "user_id": seed.TEACHER_OTHER,
+                                                   "period": {"start": start, "end": end}})
+    before = {n["id"] for n in notices(consultation_backend, rid)}
+    response = client.post(f"{BASE}/cards/{cid}/reassign", headers=director,
+                           json={"assignee_id": str(seed.TEACHER_OTHER), "reason": "[TEST] 일정 재검사"})
+    assert response.status_code == 200, response.text
+    assert response.json()["card"]["version"] == 2
+    saved = client.get(f"{BASE}/requests/{rid}", headers=parent).json()
+    candidates = saved["consultation"]["slots"]
+    discarded = slots if conflict == "unavailable" else slots[:1] if conflict != "adjacent" else []
+    kept = [s for s in slots if s not in discarded]
+    assert len(candidates) == (0 if conflict == "unavailable" else 3)
+    assert {s["id"] for s in kept} <= {s["id"] for s in candidates}
+    assert {s["id"] for s in discarded}.isdisjoint(s["id"] for s in candidates)
+    if engine:
+        with engine.connect() as connection:
+            rows = connection.execute(text("SELECT id,status,teacher_id,round,chosen_at FROM consultation_slots WHERE card_id=:id"),
+                                      {"id": cid}).mappings().all()
+    else:
+        rows = [s.__dict__ for s in store.slots_of_request(UUID(rid))]
+    assert {r["id"] for r in rows if r["status"] == "discarded"} == {s["id"] for s in discarded}
+    assert all(r["teacher_id"] == seed.TEACHER_OTHER for r in rows if r["status"] != "discarded")
+    assert len([r for r in rows if r["round"] == 2]) == (1 if conflict not in ("adjacent", "unavailable") else 0)
+    reset = chosen and bool(discarded)
+    assert saved["request"]["status"] == ("awaiting_review" if chosen and not reset else "needs_info")
+    parent_notices = [n["kind"] for n in notices(consultation_backend, rid)
+                      if n["id"] not in before and str(n["recipient_id"]) == str(seed.PARENT)]
+    assert parent_notices == (["needs_info"] if reset else [])
+    if reset:
+        assert all(r["status"] == "proposed" and r["chosen_at"] is None for r in rows if r["status"] != "discarded")
+        if candidates:
+            assert choose(client, parent, rid, candidates[-1:]).status_code == 200
+            assert book(client, teacher_other, cid, candidates[-1], version=2).status_code == 200
 
 
 def test_other_request_and_discarded_round_candidates_are_not_selectable(client, parent, teacher):
@@ -163,7 +236,10 @@ def test_other_request_and_discarded_round_candidates_are_not_selectable(client,
     assert book(client, teacher, cid, after[0]).status_code == 200
 
 
-def test_colliding_booking_discards_only_conflict_and_reproposes_for_parent(client, parent, teacher, consultation_backend):
+@pytest.mark.parametrize("reassign", [False, True])
+def test_colliding_booking_discards_only_conflict_and_reproposes_for_parent(
+    client, parent, teacher, teacher_other, director, consultation_backend, reassign
+):
     pairs = [prepare(client, parent, teacher) for _ in range(2)]
     for index, (rid, _, slots) in enumerate(pairs):
         assert choose(client, parent, rid, slots[index:] if index else slots[:1]).status_code == 200
@@ -191,6 +267,28 @@ def test_colliding_booking_discards_only_conflict_and_reproposes_for_parent(clie
     assert not any(e["action"] in ("approved", "booked") for e in timeline)
     new = [n for n in notices(consultation_backend, rid) if n["id"] not in {n["id"] for n in before}]
     assert [(n["kind"], str(n["recipient_id"])) for n in new] == [("needs_info", str(seed.PARENT))]
+    if reassign:
+        start = min(datetime.fromisoformat(s["period"]["start"]) for s in after)
+        end = max(datetime.fromisoformat(s["period"]["end"]) for s in after)
+        if consultation_backend == "mock":
+            store.state().staff_busy_blocks.append({"org_id": seed.ORG, "user_id": seed.TEACHER_OTHER,
+                                                   "period": {"start": start, "end": end}})
+        else:
+            with transaction() as connection:
+                connection.execute(text("""
+                    INSERT INTO staff_busy_blocks (org_id,user_id,period,kind)
+                    VALUES (:org,:teacher,tstzrange(:start,:end,'[)'),'meeting')
+                """), {"org": seed.ORG, "teacher": seed.TEACHER_OTHER, "start": start, "end": end})
+        response = client.post(f"{BASE}/cards/{cid}/reassign", headers=director,
+                               json={"assignee_id": str(seed.TEACHER_OTHER), "reason": "[TEST] 여러 회차 재검사"})
+        assert response.status_code == 200, response.text
+        replacements = client.get(f"{BASE}/requests/{rid}", headers=parent).json()["consultation"]["slots"]
+        assert len(replacements) == len(after) == 5
+        assert {s["id"] for s in after}.isdisjoint(s["id"] for s in replacements)
+        assert all(datetime.fromisoformat(s["period"]["start"]) >= end for s in replacements)
+        assert choose(client, parent, rid, replacements[:1]).status_code == 200
+        assert book(client, teacher_other, cid, replacements[0], version=3).status_code == 200
+        return
     assert choose(client, parent, rid, [slots[2]]).status_code == 200
     assert book(client, teacher, cid, slots[2], version=2).status_code == 200
 
@@ -394,6 +492,9 @@ def test_choice_rejects_other_live_hold_or_confirmed_booking_atomically(
     client, parent, teacher, consultation_backend, confirmed
 ):
     first, second = [prepare(client, parent, teacher) for _ in range(2)]
+    # 두 번 생성하는 사이 날짜가 바뀌어도 충돌 상황은 같게 맞춰요.
+    for candidate, original in zip(second[2], first[2], strict=True):
+        set_period(candidate, original["period"], consultation_backend)
     assert choose(client, parent, first[0], first[2][:1]).status_code == 200
     if confirmed:
         assert book(client, teacher, first[1], first[2][0]).status_code == 200

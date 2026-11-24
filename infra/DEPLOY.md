@@ -214,7 +214,7 @@ curl -s -o /dev/null -w '%{http_code} %{time_total}s\n' -H "Authorization: Beare
 
 ### 5-5. 팀 서버에서 켜 두는 값
 
-기본값은 모두 대역이라, 값을 안 넣으면 실제 모델·그래프 없이 돌아요. 팀 서버는 아래를 켜 두고 확인해요. 하나라도 꺼져 있으면 그 부분은 실제와 다르게 돌아요.
+기본값은 모두 대역이라, 값을 안 넣으면 실제 모델·그래프 없이 돌아요. 팀 서버는 아래를 켜 두고 확인해요(협업 그래프만 표에 적은 이유로 꺼 둬요). 하나라도 꺼져 있으면 그 부분은 실제와 다르게 돌아요.
 
 | 값 | 켠 상태 | 꺼져 있으면 |
 |---|---|---|
@@ -223,7 +223,7 @@ curl -s -o /dev/null -w '%{http_code} %{time_total}s\n' -H "Authorization: Beare
 | `LLM_MODEL_SUPERVISOR` | 모델 이름(지금 `gpt-6-luna`) | 위험·주제를 낱말 규칙만으로 나눠요. 돌려 말한 위험 글을 놓칠 수 있어요 |
 | `REQUEST_AGENT` | `app.modules.requests.graph_agent:run_request` | 그래프·체크포인트·승인 대기(`interrupt`) 없이 대역 입구로 처리 |
 | `LAW_GO_KR_OC` | 신청 ID | 법령 조문 근거 없음 |
-| `REQUEST_COLLAB_GRAPH` | `1` | 기존 요청 그래프(감독 → 자료 → 검사 한 줄) |
+| `REQUEST_COLLAB_GRAPH` | (비움, 11/24 기준) | 기존 요청 그래프(감독 → 자료 → 검사 한 줄). 켜면 협업 그래프인데, 자료가 충돌할 때 카드에 근거·충돌 표시가 남지 않아 #349가 풀릴 때까지 꺼 둬요 |
 | `EMBEDDING_MODEL` | `BAAI/bge-m3` | 자료를 낱말 점수로만 찾아요 |
 
 값을 바꾼 뒤에는 5-4처럼 api·worker만 다시 만들고 `printenv`로 들어갔는지 봐요. 그다음 학부모 계정으로 문의·권한 밖 요청·위험 민원·상담을 한 건씩 넣어 카드와 원장 보고가 생기는지 확인하고, 확인용 요청은 지워요.
