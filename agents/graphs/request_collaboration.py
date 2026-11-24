@@ -25,6 +25,8 @@ class CollaborationState(TypedDict, total=False):
     issues: list
     passed: bool
     handoff: bool
+    draft: dict
+    answer: dict
 
 
 def build_graph(checkpointer, route_request, prepare_card, card_status,
@@ -46,14 +48,15 @@ def build_graph(checkpointer, route_request, prepare_card, card_status,
 
     def docs_search(state):
         try:
-            return {"parallel": {"chunks": search(state["request_id"]) if search else [], "search_failed": False}}
+            chunks = search(state["request_id"]) if search else []
+            return {"parallel": {"chunks": chunks, "search_failed": search is not None and not chunks}}
         except Exception:
             return {"parallel": {"chunks": [], "search_failed": True}}
 
     def memory_load(state):
         try:
-            return {"parallel": {"memories": load_memory(state["request_id"]) if load_memory else [],
-                                 "memory_failed": False}}
+            memories = load_memory(state["request_id"]) if load_memory else []
+            return {"parallel": {"memories": memories, "memory_failed": False}}
         except Exception:
             return {"parallel": {"memories": [], "memory_failed": True}}
 
@@ -61,21 +64,32 @@ def build_graph(checkpointer, route_request, prepare_card, card_status,
         return memory_load(state)
 
     def after_join(state):
-        return "handoff" if state["parallel"].get("search_failed") else "checker"
+        return "handoff" if (state["parallel"].get("search_failed")
+                             or state["parallel"].get("memory_failed")
+                             or state.get("draft", {}).get("no_evidence")
+                             or state.get("draft", {}).get("conflict")) else "checker"
 
     def document_write(state):
         if write is None:
             return {"passed": True}
-        return write(state)
+        try:
+            return write(state)
+        except Exception:
+            return {"draft": {"text": "", "evidence": [], "no_evidence": True, "conflict": False},
+                    "handoff": True}
 
     def checker(state):
         if check is None:
             return {"passed": True, "issues": []}
-        return check(state)
+        try:
+            return check(state)
+        except Exception:
+            return {"passed": False, "issues": [{"field": "출처", "problem": "검사하지 못했어요."}],
+                    "attempt": MAX_REWRITES, "handoff": True}
 
     def after_check(state):
         if state.get("passed"):
-            return "prepare_card"
+            return "finish_answer"
         if state.get("attempt", 0) >= MAX_REWRITES:
             return "handoff"
         return "return_to_document"
@@ -83,11 +97,19 @@ def build_graph(checkpointer, route_request, prepare_card, card_status,
     def return_to_document(state):
         return {"attempt": state.get("attempt", 0) + 1}
 
+    def finish_answer(state):
+        draft = state.get("draft", {})
+        return {"answer": {**draft, "check_result": {"passed": True, "issues": [],
+                                                       "attempt": state.get("attempt", 0) + 1}}}
+
     def handoff(state):
-        return {"handoff": True}
+        return {"handoff": True, "answer": {"text": "", "evidence": [], "no_evidence": True, "handoff": True,
+                                             "conflict": False, "check_result":
+                                             {"passed": False, "issues": state.get("issues", []),
+                                              "attempt": state.get("attempt", 0) + 1}}}
 
     def prepare(state):
-        return {"card_id": prepare_card(state["request_id"], state["route"]) or ""}
+        return {"card_id": prepare_card(state["request_id"], state["route"], state.get("answer")) or ""}
 
     def wait_for_approval(state):
         if not state.get("card_id"):
@@ -103,6 +125,7 @@ def build_graph(checkpointer, route_request, prepare_card, card_status,
     builder.add_node("checker", checker)
     builder.add_node("return_to_document", return_to_document)
     builder.add_node("handoff", handoff)
+    builder.add_node("finish_answer", finish_answer)
     builder.add_node("prepare_card", prepare)
     builder.add_node("wait_for_approval", wait_for_approval)
     builder.add_edge(START, "supervisor")
@@ -114,6 +137,7 @@ def build_graph(checkpointer, route_request, prepare_card, card_status,
     builder.add_conditional_edges("checker", after_check)
     builder.add_edge("return_to_document", "document_write")
     builder.add_edge("handoff", "prepare_card")
+    builder.add_edge("finish_answer", "prepare_card")
     builder.add_edge("prepare_card", "wait_for_approval")
     builder.add_conditional_edges("wait_for_approval", lambda state: "wait_for_approval" if state["outcome"] == "pending" else END)
     return builder.compile(checkpointer=checkpointer)

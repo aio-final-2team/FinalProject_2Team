@@ -45,7 +45,7 @@ def draft_outside_lock(initial, first, prefetched):
     return answer_for_request(initial, forecast=forecast)
 
 
-def run_request(request_id):
+def run_request(request_id, prepared_answer=None):
     # LLM 호출은 요청 행 잠금 밖에서 한다. 요청 본문·유형은 접수 후 고정이다.
     with transaction() as connection:
         initial = connection.execute(text("""
@@ -65,7 +65,8 @@ def run_request(request_id):
     first = validate_proposal(initial["type"], initial["body"], proposal)
     prefetched = prefetch_public(initial["type"], initial["body"], first["topic_key"], datetime.now(KST).date(),
                                  with_forecast=graph_enabled(), risk_category=first.get("risk_category"))
-    drafted = draft_outside_lock(initial, first, prefetched)
+    drafted = (prepared_answer if prepared_answer is not None
+               else draft_outside_lock(initial, first, prefetched))
     with transaction() as connection:
         row = connection.execute(text("SELECT * FROM requests WHERE id=:id FOR UPDATE"),
                                  {"id": request_id}).mappings().one_or_none()
@@ -110,7 +111,10 @@ def run_request(request_id):
         draft = {"summary": req["body"][:60], "no_evidence": True}
         answer, check = None, None
         if not high_risk:
-            if req["type"] == "inquiry" and graph_enabled():
+            if prepared_answer and prepared_answer.get("handoff"):
+                draft["text"] = ""
+                check = prepared_answer.get("check_result")
+            elif req["type"] == "inquiry" and graph_enabled():
                 # 잠금 밖에서 만든 초안은 같은 본문일 때만 쓴다. 없으면 모델을 잠금 안에서 다시 부르지 않고 초안 없는 카드로 둔다.
                 answer = drafted if drafted and req["body"] == initial["body"] else None
                 if answer:

@@ -9,7 +9,7 @@ from agents.graphs.request_collaboration import build_graph
 def run_graph(route="inquiry", **steps):
     calls = []
 
-    def prepare(request_id, selected):
+    def prepare(request_id, selected, answer=None):
         calls.append((request_id, selected))
         return "card-1"
 
@@ -61,7 +61,7 @@ def test_search_failure_hands_off_and_memory_failure_continues():
     _, _, search_result, _ = run_graph(search=fail)
     assert search_result["handoff"] and search_result["__interrupt__"]
     _, _, memory_result, _ = run_graph(load_memory=fail)
-    assert memory_result["parallel"]["memory_failed"] and not memory_result.get("handoff")
+    assert memory_result["parallel"]["memory_failed"] and memory_result["handoff"]
 
 
 def test_same_fake_card_and_outcome_as_original_graph():
