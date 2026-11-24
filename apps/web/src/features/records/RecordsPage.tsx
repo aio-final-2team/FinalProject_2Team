@@ -3,7 +3,6 @@ import { useMemo, useState } from "react";
 import { useChildren } from "@/api/notes";
 import { useSession } from "@/app/session";
 import { SymbolMark } from "@/components/Brand";
-import { BellLink } from "@/components/BellLink";
 import { Icon } from "@/components/Icon";
 import { dateLabel, todayKST } from "@/domain/notes";
 import { QueryState } from "@/components/QueryState";
@@ -20,14 +19,13 @@ export function RecordsPage() {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState<string | null>(null);
   const recordedKids = useMemo(() => (kids.data ?? []).filter((k) => records[k.id]?.length), [kids.data, records]);
-  const results = query.trim() ? (kids.data ?? []).filter((k) => k.display_name.includes(query.trim())).slice(0, 6) : [];
+  const list = query.trim() ? (kids.data ?? []).filter((k) => k.display_name.includes(query.trim())) : (kids.data ?? []);
   const openKid = kids.data?.find((k) => k.id === open);
 
   return (
     <div className="mx-auto max-w-[680px] px-4 pb-32 lg:pb-10">
       <header className="flex min-h-[52px] items-center justify-between pt-2">
         <SymbolMark className="size-8" />
-        <BellLink to="/teacher/notifications" />
       </header>
       <h1 className="mt-1 text-large-title font-bold tracking-[-0.025em]">아이 관찰 기록</h1>
       <p className="mt-0.5 text-footnote font-medium text-ink2">{dateLabel(date)} · 수업 중 기억해 둘 내용을 짧게 남겨 주세요</p>
@@ -38,7 +36,7 @@ export function RecordsPage() {
       </div>
 
       <label className="mt-5 grid gap-2">
-        <span className="px-1 text-footnote font-semibold text-ink2">기록할 아이 찾기</span>
+        <span className="px-1 text-footnote font-semibold text-ink2">아이 이름으로 찾기</span>
         <span className="relative">
           <Icon name="search" className="pointer-events-none absolute left-3 top-3.5 size-5 text-ink2" />
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="아이 이름을 입력하세요" className="h-12 w-full rounded-md border-[1.5px] border-line bg-card pl-10 pr-3 text-body outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--tint)]" />
@@ -46,32 +44,36 @@ export function RecordsPage() {
       </label>
 
       {(kids.isLoading || (kids.isError && kids.data === undefined)) && <QueryState queries={[kids]} skeleton={2} errorTitle="아이 목록을 불러오지 못했어요">{null}</QueryState>}
-      {query.trim() && (
-        <ul className="mt-2 overflow-hidden rounded-lg bg-card shadow-card">
-          {results.map((k) => {
-            const count = records[k.id]?.length ?? 0;
-            return (
-              <li key={k.id} className="flex min-h-14 items-center gap-3 px-3 [&+&]:border-t [&+&]:border-sep">
-                <span className="grid size-8 place-items-center rounded-sm bg-fill text-footnote font-bold">{k.display_name.slice(-1)}</span>
-                <span className="min-w-0 flex-1"><b className="block text-callout">{k.display_name}</b><small className="text-caption text-ink2">{count ? `오늘 기록 ${count}개` : "아직 기록 없음"}</small></span>
-                <button onClick={() => { setOpen(k.id); setQuery(""); }} className="inline-flex h-9 items-center rounded-md bg-tint px-3 text-footnote font-semibold text-accent-ink">+ 기록</button>
-              </li>
-            );
-          })}
-          {!results.length && <li className="p-4 text-center text-callout text-ink2">이름과 일치하는 아이가 없어요</li>}
-        </ul>
-      )}
-
-      {recordedKids.length > 0 && (
-        <section className="mt-5">
-          <div className="mb-2 px-1 text-footnote font-semibold text-ink2">최근 기록한 아이</div>
-          <div className="flex flex-wrap gap-2">
-            {recordedKids.slice(-5).reverse().map((k) => (
-              <button key={k.id} onClick={() => setOpen(k.id)} className="inline-flex min-h-10 items-center gap-2 rounded-full bg-card px-3 text-footnote font-semibold shadow-card">
-                {k.display_name}<span className="text-ok">{records[k.id].length}</span>
-              </button>
-            ))}
+      {kids.data && (
+        <section className="mt-4" aria-label="우리 반 아이들">
+          <div className="mb-2 flex items-baseline justify-between px-1">
+            <h2 className="text-footnote font-semibold text-ink2">{query.trim() ? `검색 결과 ${list.length}명` : `우리 반 ${list.length}명`}</h2>
+            <span className="text-caption text-ink2">아이를 누르면 기록해요</span>
           </div>
+          {list.length ? (
+            <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {list.map((k) => {
+                const r = records[k.id] ?? [];
+                return (
+                  <li key={k.id}>
+                    <button
+                      type="button"
+                      onClick={() => { setOpen(k.id); setQuery(""); }}
+                      className={`flex w-full items-center gap-3 rounded-lg p-3 text-left transition-transform duration-100 active:scale-[.97] ${r.length ? "bg-card shadow-card" : "bg-g shadow-[inset_0_0_0_1.5px_var(--sep)]"}`}
+                    >
+                      <span className={`grid size-10 shrink-0 place-items-center rounded-full text-callout font-bold ${r.length ? "bg-tint text-accent-ink" : "bg-fill"}`}>{k.display_name.slice(-1)}</span>
+                      <span className="min-w-0">
+                        <b className="block truncate text-callout">{k.display_name}</b>
+                        <small className={`text-caption font-semibold tabular-nums ${r.length ? "text-ok" : "text-ink2"}`}>{r.length ? `기록 ${r.length} · ${r[r.length - 1].at}` : "기록 없음"}</small>
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <p className="rounded-lg bg-card p-4 text-center text-callout text-ink2 shadow-card">이름과 일치하는 아이가 없어요</p>
+          )}
         </section>
       )}
 

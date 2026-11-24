@@ -2,6 +2,7 @@ import { Link, useNavigate } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useCards } from "@/api/cards";
 import { api } from "@/api/client";
+import { useCareRequests } from "@/api/care";
 import { useChildren, useNotes } from "@/api/notes";
 import { useSession } from "@/app/session";
 import { SymbolMark } from "@/components/Brand";
@@ -25,6 +26,8 @@ export function TeacherHome() {
   const notes = useNotes(cid, date);
   const inbox = useCards("review");
   const { records } = useRecords(cid, date);
+  const care = useCareRequests(cid);
+  const careOpen = (care.data ?? []).filter((c) => c.status !== "completed").length;
   const docs = useQuery({ queryKey: ["documents"], queryFn: () => api<{ items: Doc[] }>("/api/v1/documents?size=50").then((r) => r.items) });
 
   const urgent = (inbox.data?.items ?? []).filter((c) => c.risk === "urgent");
@@ -73,6 +76,18 @@ export function TeacherHome() {
           </section>
         </>
       )}
+      <Label>오늘 우리 반</Label>
+      <Link to="/teacher/class" className="block rounded-lg bg-card p-3 shadow-card active:scale-[.99]">
+        <div className="flex items-center gap-3">
+          <span className="grid size-10 shrink-0 place-items-center rounded-md bg-tint text-accent-ink"><Icon name="class" className="size-5" /></span>
+          <span className="min-w-0 flex-1">
+            <b className="block truncate text-callout">{meal?.value ?? (menuDoc ? "오늘 식단은 알림장에 자동으로 들어가요" : "등록된 오늘 식단이 없어요")}</b>
+            <span className="block truncate text-caption text-ink2">{notice ? `가정통신문 · ${notice.title}` : "식단표와 가정통신문 보기"}</span>
+          </span>
+          <Icon name="chevR" className="size-4 shrink-0 text-ink2" />
+        </div>
+      </Link>
+
       <Label>다음 할 일</Label>
       <Card accent={!allSent}>
         <span className={`text-caption font-bold ${allSent ? "text-ok" : "text-accent-ink"}`}>오늘 알림장</span>
@@ -90,6 +105,18 @@ export function TeacherHome() {
             <span className="text-footnote text-ink2">답변·상담·민원 요청을 모아 봐요</span>
           </span>
           <SubButton small onClick={() => nav("/teacher/inbox")}>받은함 보기</SubButton>
+        </div>
+      </Card>
+
+      <Label>귀가·투약</Label>
+      <Card>
+        <div className="flex items-center gap-3">
+          <span className="grid size-10 shrink-0 place-items-center rounded-md bg-tint text-accent-ink"><Icon name="medication" className="size-5" /></span>
+          <span className="min-w-0 flex-1">
+            <b className="block text-headline">{careOpen ? `${careOpen}건을 확인해 주세요` : "확인할 요청이 없어요"}</b>
+            <span className="text-footnote text-ink2">보호자가 보낸 귀가·투약 요청이에요</span>
+          </span>
+          <SubButton small onClick={() => nav("/teacher/care")}>확인하기</SubButton>
         </div>
       </Card>
 
@@ -118,14 +145,6 @@ export function TeacherHome() {
         ))}
       </ul>
 
-      <Label>오늘 우리 반</Label>
-      <div className="grid gap-2">
-        <Card>
-          <b className="block text-callout">{meal?.value ?? (menuDoc ? "오늘 식단은 알림장에 자동으로 들어가요" : "등록된 오늘 식단이 없어요")}</b>
-          <span className="text-caption text-ink2">{meal?.source.document_title ?? menuDoc?.title ?? "식단표"}</span>
-        </Card>
-        {notice && <Card><b className="block text-callout">{notice.title}</b><span className="text-caption text-ink2">가정통신문 · {notice.effective_from}부터</span></Card>}
-      </div>
       </QueryState>
     </div>
   );

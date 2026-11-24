@@ -1,7 +1,7 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { InboxFilter, RequestType, Status } from "@/domain/status";
 import type { Card, CardAction, HistoryItem, Role, Slot, Source } from "@/domain/types";
-import { api } from "./client";
+import { api, uuid } from "./client";
 
 type ApiRequestType = "inquiry" | "consultation" | "complaint";
 type ApiInboxFilter = "unassigned" | "needs_review" | "uncertain" | "on_hold" | "in_progress" | "done";
@@ -90,6 +90,18 @@ export const useCards = (filter: InboxFilter, type: TypeFilter = "all") => useQu
   },
 });
 
+/** 모든 상태의 카드를 한 줄로 합친다 (알림의 요청 ID로 카드를 찾을 때 쓴다). 상태별 목록 캐시를 그대로 같이 쓴다. */
+const ALL_FILTERS: InboxFilter[] = ["review", "judge", "unassigned", "hold", "progress", "done"];
+export const useAllCards = () => {
+  const results = useQueries({
+    queries: ALL_FILTERS.map((filter) => ({
+      queryKey: ["cards", "list", filter, "all"],
+      queryFn: async () => (await api<CardList>(`/api/v1/cards?filter=${UI_TO_API_FILTER[filter]}&size=100`)).items.map((item) => cardFromItem(item, filter)),
+    })),
+  });
+  return results.flatMap((r) => r.data ?? []);
+};
+
 export const useCard = (id: string | undefined) => useQuery({ queryKey: ["cards", "detail", id], queryFn: () => api<CardDetail>(`/api/v1/cards/${id}`).then(cardFromDetail), enabled: !!id });
 type ActionResponse = { card?: { id?: string; status?: string; version?: number } };
 
@@ -116,4 +128,4 @@ export function useCardAction(id: string, _role: Role) {
   });
 }
 
-export const newKey = () => crypto.randomUUID();
+export const newKey = () => uuid();

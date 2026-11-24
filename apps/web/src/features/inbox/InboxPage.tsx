@@ -1,7 +1,7 @@
 import { Link, useParams, useSearchParams } from "react-router";
 import { useCards, type TypeFilter } from "@/api/cards";
 import { dateLabel, todayKST } from "@/domain/notes";
-import { Icon } from "@/components/Icon";
+import { BackLink as SharedBackLink } from "@/components/BackLink";
 import { SkeletonRows, StateView } from "@/components/StateView";
 import { Pill, WeightIcon } from "@/components/Tags";
 import { INBOX_FILTERS, TYPE_LABEL, type InboxFilter } from "@/domain/status";
@@ -157,10 +157,5 @@ export function InboxPage({ role }: { role: Exclude<Role, "parent"> }) {
 }
 
 export function BackLink({ to }: { to: string }) {
-  return (
-    <Link to={to} className="inline-flex items-center gap-0.5 text-body text-accent lg:hidden">
-      <Icon name="chevL" className="size-5" />
-      받은함
-    </Link>
-  );
+  return <SharedBackLink to={to} label="받은함" className="lg:hidden" />;
 }

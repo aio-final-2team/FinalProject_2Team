@@ -1,3 +1,4 @@
+import { BackLink } from "@/components/BackLink";
 import { useMemo, useState } from "react";
 import { QueryState } from "@/components/QueryState";
 import { Link, useNavigate, useParams } from "react-router";
@@ -121,11 +122,8 @@ function Detail({ note, notes, name, names }: { note: DailyNote; notes: DailyNot
 
   const st = NOTE_STATUS[note.status];
   return (
-    <div className="mx-auto max-w-[680px] px-4 pb-48 pt-3 lg:pb-10 lg:pt-6">
-      <Link to="/teacher/notes" className="inline-flex min-h-11 items-center gap-0.5 text-body font-medium text-accent">
-        <Icon name="chevL" className="size-4" />
-        오늘 알림장
-      </Link>
+    <div className="mx-auto max-w-[680px] px-4 pb-48 pt-2 lg:pb-10 lg:pt-6">
+      <BackLink to="/teacher/notes" label="오늘 알림장" />
       <h1 className="text-large-title font-bold tracking-[-0.025em]">{nameI(name)} 알림장</h1>
       <p className="mb-4 mt-0.5 text-footnote font-medium text-ink2">
         {user?.display_name} · {dateLabel(note.note_date)} · <span className={`font-bold ${st.cls}`}>{st.label}</span>

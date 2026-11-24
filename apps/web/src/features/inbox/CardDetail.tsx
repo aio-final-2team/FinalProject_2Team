@@ -131,7 +131,7 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
   });
 
   return (
-    <article className="mx-auto grid max-w-[720px] gap-5 px-4 pb-40 pt-[max(16px,env(safe-area-inset-top))] lg:px-8 lg:pt-8">
+    <article className="mx-auto grid max-w-[720px] gap-5 px-4 pb-40 pt-[max(8px,env(safe-area-inset-top))] lg:px-8 lg:pt-8">
       <BackLink to={backTo} />
       <header className="grid gap-2">
         <div className="flex flex-wrap items-center gap-1.5">

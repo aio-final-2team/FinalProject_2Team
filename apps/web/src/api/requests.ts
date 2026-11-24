@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "./client";
+import { api, uuid } from "./client";
 
 /** 학부모 요청 (API 3·4·5·7, 3.1·3.2·3.9·3.10) */
 export type RequestType = "inquiry" | "consultation" | "complaint";
@@ -36,7 +36,7 @@ export function useCreateRequest() {
       api<{ request: { id: string; status: string } }>("/api/v1/requests", {
         method: "POST",
         /* 같은 제출을 두 번 받지 않는 키(client_request_id) */
-        body: JSON.stringify({ client_request_id: crypto.randomUUID(), previous_request_id: null, ...b }),
+        body: JSON.stringify({ client_request_id: uuid(), previous_request_id: null, ...b }),
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["my-requests"] }),
   });
