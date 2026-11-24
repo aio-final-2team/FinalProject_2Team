@@ -32,6 +32,7 @@ export function StaffLayout({ role }: { role: Exclude<Role, "parent"> }) {
           { to: `${base}/inbox`, icon: "inbox", label: "받은함", count: review },
         ]
       : [
+          { to: `${base}/overview`, icon: "home", label: "현황", count: 0 },
           { to: `${base}/inbox`, icon: "inbox", label: "받은함", count: review },
           { to: `${base}/feed`, icon: "class", label: "원 소식", count: 0 },
         ];

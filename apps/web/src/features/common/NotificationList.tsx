@@ -16,7 +16,7 @@ export function TeacherNotifications({ role = "teacher" }: { role?: "teacher" | 
   /* 알림에는 내용이 없어(title만) 요청 ID로 카드를 찾아 무슨 일인지 한 줄로 보여 준다 */
   const cardOf = (n: Notification) => (n.request_id ? allCards.find((c) => c.requestId === n.request_id) : undefined);
   const items = list.data?.items ?? [];
-  const back = role === "teacher" ? "/teacher/home" : "/director/inbox";
+  const back = role === "teacher" ? "/teacher/home" : "/director/overview";
 
   const open = (n: Notification) => {
     if (!n.read_at) read.mutate(n.id);
@@ -31,7 +31,7 @@ export function TeacherNotifications({ role = "teacher" }: { role?: "teacher" | 
 
   return (
     <div className="mx-auto max-w-[680px] px-4 pb-10">
-      <ScreenTop back={{ to: back, label: role === "teacher" ? "홈" : "받은함" }} title="알림" sub={list.data ? `${items.filter((n) => !n.read_at).length}개 안 읽음` : " "} />
+      <ScreenTop back={{ to: back, label: role === "teacher" ? "홈" : "현황" }} title="알림" sub={list.data ? `${items.filter((n) => !n.read_at).length}개 안 읽음` : " "} />
       <StaleBanner queries={[list]} />
       <div className="mb-4" />
       {list.isLoading || (list.isError && list.data === undefined) ? (

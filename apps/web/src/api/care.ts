@@ -25,11 +25,12 @@ export type CareItem = {
 
 export const MISSING_LABEL: Record<string, string> = { medication_name: "약 이름", medication_dose: "용량", medication_time: "먹일 시간" };
 
-export function useCareRequests(classroomId?: string) {
+/** all: 원장처럼 반을 정하지 않고 원 전체를 볼 때 */
+export function useCareRequests(classroomId?: string, all = false) {
   return useQuery({
     queryKey: ["care-requests", classroomId],
     queryFn: () => api<{ items: CareItem[]; total: number }>(`/api/v1/care-requests?size=100&sort=-created_at${classroomId ? `&classroom_id=${classroomId}` : ""}`).then((r) => r.items),
-    enabled: !!classroomId,
+    enabled: all || !!classroomId,
   });
 }
 

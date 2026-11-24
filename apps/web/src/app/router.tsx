@@ -10,6 +10,7 @@ import { CarePage } from "@/features/care/CarePage";
 import { ClassPage } from "@/features/teacher/ClassPage";
 import { FeedScreen } from "@/features/feed/FeedScreen";
 import { ChildAlbum } from "@/features/feed/ChildAlbum";
+import { OverviewPage } from "@/features/director/OverviewPage";
 import { TeacherNotifications } from "@/features/common/NotificationList";
 import { RecordsPage } from "@/features/records/RecordsPage";
 import { ParentHome } from "@/features/parent/ParentHome";
@@ -56,7 +57,8 @@ export const router = createBrowserRouter([
       </Guard>
     ),
     children: [
-      { index: true, element: <Navigate to="inbox" replace /> },
+      { index: true, element: <Navigate to="overview" replace /> },
+      { path: "overview", element: <OverviewPage /> },
       { path: "notifications", element: <TeacherNotifications role="director" /> },
       { path: "feed", element: <FeedScreen role="director" /> },
       { path: "inbox", element: <InboxPage role="director" /> },

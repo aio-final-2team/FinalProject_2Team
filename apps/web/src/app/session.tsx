@@ -50,7 +50,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 }
 
 export const useSession = () => useContext(Ctx);
-export const HOME: Record<Role, string> = { parent: "/parent/home", teacher: "/teacher/home", director: "/director/inbox" };
+export const HOME: Record<Role, string> = { parent: "/parent/home", teacher: "/teacher/home", director: "/director/overview" };
 /** 모의 API 데모 계정 (contracts/mock_api/README.md). 비밀번호는 모의 API 전용 값 */
 export const DEMO_ACCOUNTS: Record<Role, string> = { parent: "parent01", teacher: "teacher01", director: "director01" };
 export const DEMO_PASSWORD = "demo1234";
