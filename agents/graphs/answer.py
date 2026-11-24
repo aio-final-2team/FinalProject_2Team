@@ -45,6 +45,13 @@ def _ask_writer(model, prompt, payload, trace):
     raise AssertionError("도달할 수 없음")
 
 
+def _quoted(quote, content):
+    """인용문이 조각에 글자 그대로 있는지 본다. 떨어진 줄 여러 개를 이어 붙인 인용은 줄마다 본다."""
+    body = re.sub(r"\s+", "", content)
+    parts = [part for part in (re.sub(r"\s+", "", line) for line in quote.splitlines()) if part]
+    return re.sub(r"\s+", "", quote) in body or (len(parts) > 1 and all(part in body for part in parts))
+
+
 def _verify(answer, candidates, trace):
     by_id = {str(chunk["chunk_id"]): chunk for chunk in candidates}
     evidence = []
@@ -56,15 +63,16 @@ def _verify(answer, candidates, trace):
         if chunk and chunk["chunk_id"] in seen:
             continue  # card_evidence PK가 (card_id, chunk_id)라 같은 조각은 한 번만 남긴다
         quote = item.get("quote")
-        if (chunk and isinstance(quote, str) and quote.strip()
-                and re.sub(r"\s+", "", quote) in re.sub(r"\s+", "", chunk["content"])):
+        if chunk and isinstance(quote, str) and quote.strip() and _quoted(quote, chunk["content"]):
             seen.add(chunk["chunk_id"])
             evidence.append({"chunk_id": chunk["chunk_id"], "quote": quote, "score": chunk["score"]})
     no_evidence = bool(answer.get("no_evidence")) or not evidence
     conflict = bool(answer.get("conflict"))
     trace.append("verify")
+    # 모델은 근거가 있다고 했는데 인용문이 하나도 글자 그대로가 아니면, 근거 없음으로 끝내지 않고 다시 쓰게 한다.
+    misquoted = bool(answer["evidence"]) and not evidence and not answer.get("no_evidence") and not conflict
     return {"text": NO_ANSWER if no_evidence or conflict else answer["text"], "evidence": evidence,
-            "no_evidence": no_evidence, "conflict": conflict}
+            "no_evidence": no_evidence, "conflict": conflict, "misquoted": misquoted}
 
 
 def _review(model, question, draft, candidates, attempt, trace):
@@ -128,6 +136,12 @@ def draft_answer(question: str, search, writer=None, checker=None) -> dict:
         if answer is None:
             return fallback(trace)
         draft = _verify(answer, candidates, trace)
+        misquoted = draft.pop("misquoted")
+        if misquoted and attempt < MAX_REWRITES:
+            issues = [{"field": "출처", "problem": "인용문이 자료 조각과 글자 그대로 일치하지 않아요. "
+                       "조각의 한 줄(또는 이어진 구절)을 고치지 말고 그대로 복사해 quote에 넣어 주세요."}]
+            last_check = _check_result(False, issues, attempt + 1)
+            continue
         if draft["no_evidence"] or draft["conflict"]:
             problem = "자료끼리 내용이 달라요." if draft["conflict"] else "자료에서 근거를 찾지 못했어요."
             return {**draft, "check_result": _check_result(False, [{"field": "출처", "problem": problem}], attempt + 1),
