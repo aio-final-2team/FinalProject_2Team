@@ -11,6 +11,8 @@ _URGENT_WORDS = {
     "privacy_leak": ("유출",),
     "staff_attack": ("가만두지", "협박"),
 }
+# 민원은 예전처럼 낱말 하나로도 봐요. '구청에 신고합니다'·'안전벨트를 안 채워 줬어요' 같은 민원을 놓치지 않게요.
+_COMPLAINT_WORDS = {"child_safety": ("안전",), "legal_external": ("신고",), "privacy_leak": ("개인정보",)}
 _TOPIC_WORDS = {
     "pickup_bus": ("버스", "등원", "하원"), "meal": ("급식", "밥", "식단", "간식"),
     "safety": ("안전", "다쳤", "다침"), "fee": ("원비", "비용", "환불"),
@@ -24,7 +26,9 @@ def classify(request_type, body):
     result = {"topic_key": next((k for k, words in _TOPIC_WORDS.items()
                                  if any(w in body for w in words)), "other"), "urgency": "normal"}
     if request_type in RISK_TYPES:
-        category = next((k for k, words in _URGENT_WORDS.items() if any(w in body for w in words)), None)
+        extra = _COMPLAINT_WORDS if request_type == "complaint" else {}
+        category = next((k for k, words in _URGENT_WORDS.items()
+                         if any(w in body for w in (*words, *extra.get(k, ())))), None)
         result.update(risk_level="uncertain" if "판단 필요" in body else "urgent" if category else "normal",
                       risk_category=category)
         if category:

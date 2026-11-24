@@ -1,4 +1,4 @@
-"""위험 낱말 표: 평범한 문의는 일반, 위험한 글은 문의·상담·민원 모두 같은 등급이에요."""
+"""위험 낱말 표: 평범한 문의는 일반, 위험한 글은 문의·상담·민원 모두 같은 등급이에요. 민원은 낱말 하나도 봐요."""
 
 import pytest
 
@@ -8,11 +8,24 @@ from app.core.request_rules import classify
 RISK_TYPES = ("inquiry", "consultation", "complaint")
 
 
+@pytest.mark.parametrize("body,category", [
+    # 낱말 하나로 보면 긴급으로 잘못 걸리던 평범한 문의 — 문의·상담은 일반, 민원은 예전 그대로 긴급
+    ("현장체험 안전 수칙 알려 주세요", "child_safety"),
+    ("결석 신고는 어떻게 해요?", "legal_external"),
+    ("개인정보 동의서는 어디에 내요?", "privacy_leak"),
+    # 민원에서 예전처럼 잡아야 하는 글
+    ("구청에 신고합니다", "legal_external"),
+    ("우리 아이 개인정보를 단톡방에 올리셨어요", "privacy_leak"),
+    ("버스에서 안전벨트를 안 채워 줬어요", "child_safety"),
+])
+@pytest.mark.parametrize("request_type", RISK_TYPES)
+def test_single_words_count_only_for_complaints(request_type, body, category):
+    got = classify(request_type, body)
+    expected = ("urgent", category) if request_type == "complaint" else ("normal", None)
+    assert (got["risk_level"], got["risk_category"]) == expected
+
+
 @pytest.mark.parametrize("body,risk,category", [
-    # 낱말 하나로 보던 때 긴급으로 잘못 걸리던 평범한 문의
-    ("현장체험 안전 수칙 알려 주세요", "normal", None),
-    ("결석 신고는 어떻게 해요?", "normal", None),
-    ("개인정보 동의서는 어디에 내요?", "normal", None),
     # 낱말 하나로 보던 때 놓치던 법적 조치
     ("경찰에 알릴 거예요", "urgent", "legal_external"),
     ("소송 걸겠습니다", "urgent", "legal_external"),
