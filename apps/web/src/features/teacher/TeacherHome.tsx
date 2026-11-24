@@ -131,6 +131,18 @@ export function TeacherHome() {
         </div>
       </Card>
 
+      <Label>원 소식</Label>
+      <Card>
+        <div className="flex items-center gap-3">
+          <span className="grid size-10 shrink-0 place-items-center rounded-md bg-tint text-accent-ink"><Icon name="class" className="size-5" /></span>
+          <span className="min-w-0 flex-1">
+            <b className="block text-headline">원 소식과 앨범</b>
+            <span className="text-footnote text-ink2">원에 올라온 이야기와 사진을 볼 수 있어요</span>
+          </span>
+          <SubButton small onClick={() => nav("/teacher/feed")}>보기</SubButton>
+        </div>
+      </Card>
+
       <Label>곧 만나요</Label>
       <ul className="overflow-hidden rounded-lg bg-card shadow-card">
         {Object.entries(SOON).map(([k, v]) => (
