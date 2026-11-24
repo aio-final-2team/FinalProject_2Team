@@ -125,8 +125,12 @@ def test_graph_keeps_request_missed_reference_after_returns(db_client, teacher, 
     listed = notes(db_client, teacher, draft(db_client, teacher))
     checks = [c for n in listed for c in n["open_checks"]]
     expected_requests = todays_requests()
-    assert len(checks) == len(expected_requests) and all(c["kind"] == "request_missed" for c in checks)
-    assert {c["request_id"] for c in checks} == {str(r["id"]) for r in expected_requests}
+    missed = [c for c in checks if c["kind"] == "request_missed"]
+    # 두 번 돌려보내도 요청이 빠져 있으면 아이마다 return_limit 확인이 하나씩 더 붙는다.
+    limit_children = [n["child_id"] for n in listed for c in n["open_checks"] if c["kind"] == "return_limit"]
+    assert len(missed) == len(expected_requests) and len(missed) + len(limit_children) == len(checks)
+    assert sorted(limit_children) == sorted({str(r["child_id"]) for r in expected_requests})
+    assert {c["request_id"] for c in missed} == {str(r["id"]) for r in expected_requests}
     assert all(UUID(c["id"]).version == 4 and c["sentence"] is None for c in checks)
     assert len(models["DOCUMENT"].inputs) == len(models["CHECKER"].inputs) == 3 * len({r["child_id"] for r in expected_requests})
     assert all(line["key"] != "child" for n in listed for line in n["content"]["items"])
