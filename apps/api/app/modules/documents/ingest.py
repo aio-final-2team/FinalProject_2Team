@@ -22,6 +22,7 @@ from app.core import scope
 from app.core.db import transaction
 from app.core.errors import ApiError
 from app.core.schedule import KST
+from agents.guardrails.injection import suspicious_chunk
 
 from .conflicts import find_conflicts
 from .parsing import Chunk, DocumentFormatError, DocumentMeta, ParsedDocument, parse_document, split_chunks
@@ -179,6 +180,7 @@ def run_ingest(document_id, data: bytes, replaces):
                                      {"id": document_id}).mappings().one()
             parsed = _parsed_from_upload(row, data)
             conflicts = [c.to_dict() for c in find_conflicts(parsed, _others(connection, row, replaces))]
+            suspicious_indexes = [chunk.index for chunk in parsed.chunks if suspicious_chunk(chunk.content)]
             for chunk in parsed.chunks:
                 connection.execute(text("""
                     INSERT INTO document_chunks (document_id, org_id, chunk_index, location, content)
@@ -197,7 +199,8 @@ def run_ingest(document_id, data: bytes, replaces):
                 INSERT INTO events (org_id, actor_type, action, detail)
                 VALUES (:org, 'system', 'checked', CAST(:detail AS jsonb))
             """), {"org": row["org_id"], "detail": json.dumps(
-                {"document_id": str(document_id), "chunk_count": len(parsed.chunks), "conflicts": conflicts},
+                {"document_id": str(document_id), "chunk_count": len(parsed.chunks), "conflicts": conflicts,
+                 "suspicious_chunk_indexes": suspicious_indexes},
                 ensure_ascii=False)})
     except Exception as error:  # noqa: BLE001 - 어떤 실패든 화면에 failed로 보이게 한다
         message = str(error) if isinstance(error, DocumentFormatError) else "자료를 읽지 못했어요."

@@ -5,6 +5,8 @@ import re
 from pathlib import Path
 
 from agents.llm import ModelError, OpenAIModel
+from agents.guardrails.injection import suspicious_chunk
+from agents.guardrails.sensitive import SENSITIVE, mask_sensitive
 
 NO_ANSWER = "자료에서 확인되지 않아 선생님 확인이 필요해요."
 PROMPTS = Path(__file__).resolve().parents[1] / "prompts"
@@ -66,9 +68,10 @@ def _verify(answer, candidates, trace):
 
 
 def _review(model, question, draft, candidates, attempt, trace):
-    prompt = _prompt("checker.md", "## 입력", "## 알림장: 메모와 대조한다") + CHECK_FORMAT
+    prompt = _prompt("common.md", "# 공통 규칙") + _prompt("checker.md", "## 입력", "## 알림장: 메모와 대조한다") + CHECK_FORMAT
     payload = {"question": question, "draft": draft["text"], "evidence": draft["evidence"],
-               "chunks": candidates, "attempt": attempt}
+               "chunks": candidates, "attempt": attempt,
+               "untrusted_data_fields": ["question", "chunks", "draft"]}
     for _ in range(2):
         try:
             result = model.json(prompt, json.dumps(payload, ensure_ascii=False, default=str))
@@ -86,6 +89,8 @@ def _review(model, question, draft, candidates, attempt, trace):
             continue
         if not result["passed"] and not issues:
             continue
+        if SENSITIVE.search(draft["text"]) and not any(i["field"] == "민감정보" for i in issues):
+            issues = [*issues, {"field": "민감정보", "problem": "초안에 민감정보 형식이 있어 담임 확인이 필요해요."}]
         return issues
     return None
 
@@ -107,16 +112,19 @@ def draft_answer(question: str, search, writer=None, checker=None) -> dict:
                 if attempt:
                     return fallback([*trace, "search"])
     trace.append("search")
-    candidates = sorted(candidates, key=lambda item: item["score"], reverse=True)[:8]
+    candidates = sorted((item for item in candidates if not suspicious_chunk(item["content"])),
+                        key=lambda item: item["score"], reverse=True)[:8]
     if not candidates:
         return fallback(trace)
-    write_prompt = _prompt("documents.md", "## 입력", "## 알림장 초안 쓰기") + WRITE_FORMAT
+    common = _prompt("common.md", "# 공통 규칙")
+    write_prompt = common + _prompt("documents.md", "## 입력", "## 알림장 초안 쓰기") + WRITE_FORMAT
     writer = writer if writer is not None else OpenAIModel("DOCUMENT")
     checker = checker if checker is not None else OpenAIModel("CHECKER")
     issues = []
     for attempt in range(MAX_REWRITES + 1):
-        answer = _ask_writer(writer, write_prompt, {"question": question, "chunks": candidates,
-                                                    "review_issues": issues}, trace)
+        answer = _ask_writer(writer, write_prompt, {"question": mask_sensitive(question), "chunks": candidates,
+                                                    "review_issues": issues,
+                                                    "untrusted_data_fields": ["question", "chunks"]}, trace)
         if answer is None:
             return fallback(trace)
         draft = _verify(answer, candidates, trace)
@@ -124,7 +132,7 @@ def draft_answer(question: str, search, writer=None, checker=None) -> dict:
             problem = "자료끼리 내용이 달라요." if draft["conflict"] else "자료에서 근거를 찾지 못했어요."
             return {**draft, "check_result": _check_result(False, [{"field": "출처", "problem": problem}], attempt + 1),
                     "trace": [*trace, "end"]}
-        issues = _review(checker, question, draft, candidates, attempt + 1, trace)
+        issues = _review(checker, mask_sensitive(question), draft, candidates, attempt + 1, trace)
         if issues is None:
             return fallback(trace)
         if not issues:
