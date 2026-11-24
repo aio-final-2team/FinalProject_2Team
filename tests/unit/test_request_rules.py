@@ -17,6 +17,7 @@ RISK_TYPES = ("inquiry", "consultation", "complaint")
     ("구청에 신고합니다", "legal_external"),
     ("우리 아이 개인정보를 단톡방에 올리셨어요", "privacy_leak"),
     ("버스에서 안전벨트를 안 채워 줬어요", "child_safety"),
+    ("경찰에서 오는 교통안전 교육은 언제예요?", "child_safety"),  # '경찰에서'는 법적 조치가 아니에요
 ])
 @pytest.mark.parametrize("request_type", RISK_TYPES)
 def test_single_words_count_only_for_complaints(request_type, body, category):

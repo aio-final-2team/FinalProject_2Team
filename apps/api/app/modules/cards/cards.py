@@ -139,6 +139,14 @@ def report(connection, req):
     return new_card(connection, req, "director_report", director, {"summary": req["body"][:60]})
 
 
+def close_reports(connection, req):
+    """위험 상담의 원장 보고 카드는 원장 지시(escalated만 받음)로 닫을 수 없어서, 요청이 끝날 때(예약 확정·반려) 같이 닫아요."""
+    for report_card in connection.execute(text("""
+        SELECT * FROM cards WHERE request_id=:id AND kind='director_report' AND status NOT IN ('done','rejected')
+    """), {"id": req["id"]}).mappings().all():
+        touch(connection, dict(report_card), "done")
+
+
 def decide(user, card_id, body):
     with locked(user, card_id, decision=body.decision) as (connection, card, req):
         version(connection, card, body.version)
@@ -160,7 +168,9 @@ def decide(user, card_id, body):
             valid = False
         if choice in ("approve", "edit_approve") and card["kind"] != "reply_draft":
             valid = False
-        if req and req["risk_level"] == "uncertain" and choice not in ("hold", "resume", "escalate"):
+        # 판단 필요는 재분류로 풀 수 있는 문의·민원만 막아요. 상담은 시간 확정 흐름 그대로예요.
+        if (req and req["risk_level"] == "uncertain" and req["type"] in RECLASSIFY_TYPES
+                and choice not in ("hold", "resume", "escalate")):
             valid = False
         if not valid:
             raise ApiError(409, "INVALID_TRANSITION")
@@ -210,6 +220,7 @@ def decide(user, card_id, body):
                 **actor,
             )
             touch(connection, card, "rejected")
+            close_reports(connection, req)
         elif choice == "escalate":
             next_card = report(connection, req)
             set_status(connection, req, "escalated", action="escalated", **actor)
@@ -314,11 +325,7 @@ def book(user, card_id, body):
         set_status(connection, req, "approved", action="approved", **actor)
         set_status(connection, req, "sent_or_booked", action="booked", **actor)
         touch(connection, card, "done")
-        # 위험 상담의 원장 보고 카드는 원장 지시(escalated만 받음)로 닫을 수 없어서 예약 확정 때 같이 닫아요.
-        for report_card in connection.execute(text("""
-            SELECT * FROM cards WHERE request_id=:id AND kind='director_report' AND status NOT IN ('done','rejected')
-        """), {"id": req["id"]}).mappings().all():
-            touch(connection, dict(report_card), "done")
+        close_reports(connection, req)
         response = {"booking": {"id": booking_id, "room": slot["room"],
                                 "period": {"start": slot["period"].lower, "end": slot["period"].upper}},
                     "request": result(card, req)["request"]}

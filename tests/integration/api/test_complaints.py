@@ -204,3 +204,22 @@ def test_risky_consultation_keeps_slot_flow_and_adds_director_report(
     assert detail(client, director, saved["director_report"]["id"])["card"]["status"] == "done"
     assert client.get(f"{BASE}/notifications?size=100", headers=director).json()["total"] == director_notices
     assert detail(client, director, cards(client, director, other)["director_report"]["id"])["card"]["status"] == "pending"
+
+
+@pytest.mark.parametrize("body,risk", [
+    ("[TEST] 아이가 다쳤어요. 상담하고 싶어요", "urgent"),
+    ("[TEST] 판단 필요 상담이에요", "uncertain"),
+])
+def test_risky_consultation_can_be_declined_and_closes_director_report(client, parent, teacher, director, body, risk):
+    rid = create(client, parent, body=body, kind="consultation")
+    saved = cards(client, director, rid)
+    assert saved["consult_slots"]["risk_level"] == risk
+    slots = client.get(f"{BASE}/requests/{rid}", headers=parent).json()["consultation"]["slots"]
+    assert choose(client, parent, rid, slots[:1]).status_code == 200
+    consult = detail(client, teacher, saved["consult_slots"]["id"])["card"]
+    # 판단 필요 상담도 재분류 없이 담임이 반려할 수 있고, 요청이 끝나면 원장 보고 카드도 닫혀요.
+    declined = decision(client, teacher, consult["id"], "dismiss", version=consult["version"],
+                        reason_code="slot_unavailable", reason_text="[TEST] 이번 주는 상담이 어려워요")
+    assert declined.status_code == 200, declined.text
+    assert client.get(f"{BASE}/requests/{rid}", headers=parent).json()["request"]["status"] == "rejected"
+    assert detail(client, director, saved["director_report"]["id"])["card"]["status"] == "done"
