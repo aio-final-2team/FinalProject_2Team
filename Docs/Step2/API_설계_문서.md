@@ -34,7 +34,7 @@
 
 | 강사 의견 번호 | 바뀐 내용 | 고친 절 | 지키는 시험(또는 확인 기록) | 반영 커밋 |
 | --- | --- | --- | --- | --- |
-| API 1 | (팀 서버 실측 기록 — CC가 채움) | API 3.19.1 | 팀 서버 실제 모델 실행 기록 대기 | 이 PR |
+| API 1 | 실제 모델로 알림장 한 반을 담임 입력부터 학부모 수신까지 돌리고 커밋·모델·아이 수·시간·실패 수를 남긴다 | API 3.19.1 ④ 실제 모델 실측 | 팀 서버 2026-11-24 14:45 KST, `tools/rehearse_daily_note.py --remote-ok`(#320). 20명·초안 17초·실패 0 | 이 PR |
 | API 2 | 접수·담당 배정 대기·담임 전달 표시를 나누고, 장애 결과는 자동 복구와 사람에게 넘김으로 나눈다 | API 3.2·6.3·6.7·6.8 | `api/test_requests.py::test_unassigned_request_label_changes_after_director_reassign`, `::test_received_request_label_before_agent_runs`, API 6.8의 기존 장애 시험 | 이 PR |
 | API 3 | 실제 OpenAPI·목록·계약표·모의 응답을 같은 코드에서 대조하고 MVP·팀 확인 남음을 표시한다 | API 2장·2.2 | `api/test_openapi.py`와 API 2.2 대조표 | 이 PR |
 | DB 1 | 백업 뒤 삭제·공개 제한을 재적용하고 공개 전에 목록·앨범·파일을 확인한다 | DB '복원 뒤 서비스 열기 전 확인' | `db/test_backup_restore.py::test_dump_restore_revives_later_deletions_until_after_restore_applies_them` | 이 PR |
@@ -1199,6 +1199,21 @@ HTTP/1.1 200 OK
                           {"note_id": "…", "child_id": "00000000-0000-4000-8000-000000000503", "open_checks": [{"id": "request-00000000-0000-4000-8000-00000000070a", "item_key": "pickup", "kind": "request_missed", "problem": "보호자 요청을 초안에 반영해 주세요", "sentence": null, "request_id": "00000000-0000-4000-8000-00000000070a"}]},
                           {"note_id": "…", "child_id": "00000000-0000-4000-8000-000000005401", "open_checks": []}, …]}}}
 ```
+
+
+**④ 실제 모델 실측 (강사 2차 의견 API 1).** 팀 서버에서 실제 모델로 한 반을 처음부터 끝까지 돌렸다. 순서는 [알림장 시연 리허설](알림장_시연_리허설.md)과 같고, `tools/rehearse_daily_note.py`가 담임 입력 → 진행 조회 → 아이별 초안 → 담임 수정·확인 → 반 발송 → 학부모 조회를 차례로 부른다. 실행 전에 `python -m db.seeds.demo --refresh-note-requests`로 보호자 요청을 그날로 옮겼다.
+
+| 항목 | 값 |
+| --- | --- |
+| 실행 | 2026-11-24 14:45:56~14:46:17 KST, 팀 서버 접속 주소, `--remote-ok` |
+| 시연 커밋 | develop `97fda0b`(alembic `0011`). 시연 전에 다시 배포하면 같은 명령으로 다시 돌려 이 줄을 고친다 |
+| 모델 | `DAILY_NOTE_WRITER=graph`, 자료 AI·검사 AI 모두 `LLM_MODEL_DEFAULT=gpt-6-luna`(역할별 값 비움), 작성기 제한 300초 |
+| 아이 수 | 별빛반 20명(메모 있는 아이 17명) |
+| 소요 시간 | 초안 작업 17초(작업자 `daily_note_drafts` 16.8초), 담임 입력부터 학부모 수신까지 21초 |
+| 실패 | 작업 실패 0, 사람에게 넘김(`draft_failed`·`check_failed`) 0 |
+| 확인 항목 | 5명 `needs_check`: 하늘 `date_check`·`sensitive`, 아라 `sensitive`, 윤슬 `sensitive`, 지아 `sensitive` 2개(1개는 투약 요청 코드 검사), 지안 `other_child`. 15명 `draft` |
+| 발송 막힘 | 지아를 확인하기 전 반 발송은 409 `NOTE_BATCH_BLOCKED`(`blocked`에 지아만). 지아의 항목을 모두 풀어도 확인 전이면 409. 확인 뒤 200 `sent_count=20`, 확인 카드 `done` |
+| 학부모 쪽 | `parent01`이 하늘 알림장(`sent`)을 받았고, 담임이 고친 줄이 그대로 보였다. 알림 1건 |
 
 ### 3.20 알림장 보기 — `GET /api/v1/daily-notes`
 
