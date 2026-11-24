@@ -4666,7 +4666,7 @@ components:
           title: Size
         items:
           items:
-            $ref: '#/components/schemas/NoteView'
+            $ref: '#/components/schemas/NoteListItem'
           type: array
           title: Items
       type: object
@@ -4676,6 +4676,63 @@ components:
       - size
       - items
       title: NoteList
+    NoteListItem:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        child_id:
+          type: string
+          format: uuid
+          title: Child Id
+        note_date:
+          type: string
+          format: date
+          title: Note Date
+        status:
+          type: string
+          enum:
+          - draft
+          - needs_check
+          - ready
+          - sent
+          title: Status
+        content:
+          $ref: '#/components/schemas/NoteContentOut'
+        open_checks:
+          items:
+            $ref: '#/components/schemas/OpenCheck'
+          type: array
+          title: Open Checks
+        confirmed_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Confirmed At
+        sent_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Sent At
+        input_id:
+          type: string
+          format: uuid
+          title: Input Id
+      type: object
+      required:
+      - id
+      - child_id
+      - note_date
+      - status
+      - content
+      - open_checks
+      - confirmed_at
+      - sent_at
+      - input_id
+      title: NoteListItem
     NotePatchIn:
       properties:
         content:

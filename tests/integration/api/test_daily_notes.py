@@ -40,8 +40,11 @@ def confirm_all(client, teacher, notes):
 
 
 def test_inquiry_and_day_survive_draft_edit_confirm_and_send(client, teacher, parent):
-    assert draft(client, teacher).status_code == 202
+    drafted = draft(client, teacher)
+    assert drafted.status_code == 202
+    input_id = drafted.json()["input_id"]
     listed = note_list(client, teacher).json()["items"]
+    assert {n["input_id"] for n in listed} == {input_id}
     note = next(n for n in listed if n["child_id"] == str(seed.CHILD))
     lines = {line["key"]: line for line in note["content"]["items"]}
     assert lines["day"]["source"]["type"] == "teacher_input"
@@ -52,12 +55,14 @@ def test_inquiry_and_day_survive_draft_edit_confirm_and_send(client, teacher, pa
     response = client.patch(f"{BASE}/daily-notes/{note['id']}", headers=teacher,
                             json={"content": note["content"]})
     assert response.status_code == 200, response.text
+    assert "input_id" not in response.json()["note"]  # 목록에만 더한 칸이에요.
     assert response.json()["note"]["content"] == note["content"]
     confirm_all(client, teacher, listed)
     response = client.post(BASE + "/daily-notes/send", headers=teacher, json=batch())
     assert response.status_code == 200 and response.json()["sent_count"] == 20
     visible = client.get(BASE + "/daily-notes", headers=parent, params={"date": batch()["note_date"]})
     [sent] = visible.json()["items"]
+    assert sent["input_id"] == input_id
     assert sent["content"] == note["content"] and sent["status"] == "sent"
     assert all(sent[key].endswith("+09:00") for key in ("confirmed_at", "sent_at"))
 
@@ -87,6 +92,7 @@ def test_draft_preserves_inputs_requests_sources_and_duplicate(client, teacher, 
     notes = note_list(client, teacher).json()["items"]
     assert len(notes) == 20
     for note in notes:
+        assert note["input_id"] == input_id
         lines = note["content"]["items"]
         assert next(l["value"] for l in lines if l["key"] == "day") == "블록 놀이와 산책"
         meal = next(l for l in lines if l["key"] == "meal")
@@ -191,12 +197,31 @@ def test_classroom_list_permissions_and_pagination(client, teacher, teacher_othe
     for headers, status, code in (({}, 401, "UNAUTHENTICATED"), (parent, 403, "FORBIDDEN_ROLE"),
                                   (teacher_other, 404, "NOT_FOUND")):
         err(client.get(path, headers=headers), status, code)
-    assert draft(client, teacher).status_code == 202
+    drafted = draft(client, teacher)
+    assert drafted.status_code == 202
     pages = [client.get(BASE + "/daily-notes", headers=teacher, params={
         "date": batch()["note_date"], "classroom_id": str(seed.CLASS_STAR), "size": 10, "page": page,
         "sort": "created_at"}).json() for page in (1, 2)]
     assert all(p["total"] == 20 and len(p["items"]) == 10 for p in pages)
     assert len({n["id"] for p in pages for n in p["items"]}) == 20
+    assert {n["input_id"] for p in pages for n in p["items"]} == {drafted.json()["input_id"]}
+
+
+def test_note_list_input_id_selects_its_own_date_for_regeneration(client, teacher):
+    ids = {}
+    for offset in (0, 1):
+        day = (store.now().date() - timedelta(days=offset)).isoformat()
+        created = draft(client, teacher, note_date=day, activities="[TEST] 날짜별 활동")
+        assert created.status_code == 202, created.text
+        listed = client.get(BASE + "/daily-notes", headers=teacher, params={
+            "date": day, "classroom_id": str(seed.CLASS_STAR)}).json()["items"]
+        [input_id] = {n["input_id"] for n in listed}
+        assert input_id == created.json()["input_id"]
+        ids[day] = input_id
+        regenerated = client.post(f"{BASE}/daily-notes/drafts/{input_id}/regenerate", headers=teacher)
+        assert regenerated.status_code == 202, regenerated.text
+        assert regenerated.json()["input_id"] == input_id
+    assert len(set(ids.values())) == 2
 
 
 def test_note_list_huge_page_is_empty(client, teacher):

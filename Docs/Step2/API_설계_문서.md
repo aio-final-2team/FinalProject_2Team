@@ -643,7 +643,9 @@ T12 화면 지도에 나온 화면들이 조회 응답에서 쓰는 칸을 여�
 | --- | --- | --- | --- | --- |
 | `messages[] { id, sender_type, sender_role, body, created_at }` | 목록 | 항상(요청 없으면 빈 목록) | 해당 요청의 전체 대화를 메시지 ID 오름차순으로 준다. 사람의 역할은 `parent`·`teacher`·`director`, AI·시스템 역할은 null이다. 카드의 기관·반·담당 권한을 먼저 검사한다 | `request_messages` → `users.role` |
 | `card.summary` | string | AI가 만든 카드 | AI 요약(`create_card`의 `summary`) | `cards.draft->>'summary'` |
-| `evidence[].is_current` | boolean | 근거가 있을 때 | 근거 문서가 지금 판이면 참. 옛 판(`superseded`)이거나 충돌 확인 대기(`conflict_pending`)이거나 적용 기간이 지난 문서면 거짓 | `documents.status`·`effective_to` |
+| `card.check_result { passed, issues, attempt }` | 객체 또는 null | 검사 결과가 있을 때 | passed는 boolean, attempt는 검사 횟수(integer), issues는 아래 모양의 목록이며 없으면 []. 요청 백엔드는 그래프가 준 검사 결과와 부가 칸(memory_unavailable 등)을 그대로 저장한다 | `cards.check_result` |
+| `card.check_result.issues[] { field, problem }` | object[] | 검사 지적이 있을 때 | field는 검사 항목(string: 출처·날짜·대상·누락·민감정보), problem은 사람이 읽는 설명(string). 예: `[{"field":"출처","problem":"자료 답변을 확인하지 못했어요."}]` | `cards.check_result->'issues'` |
+| `evidence[].is_current` | boolean | 근거가 있을 때 | 근거 문서가 지금 판이면 참. 옛 판(`superseded`)이거나 충돌 확인 대기(`conflict_pending`)이거나 적용 기간이 지난 문서면 거짓. 초안 근거의 같은 chunk_id는 저장 전에 첫 인용·점수만 남기고 순서대로 rank를 매긴다 | `documents.status`·`effective_to` |
 | `warnings[]` | string[] | 항상(없으면 빈 목록) | 화면 경고. `stale_evidence`(옛 판 근거가 있음) · `no_evidence`(근거 없음) · `law_unchecked`(법령 확인 못 함) · `check_unavailable`(검사 못 함) · `notify_failed`(교직원 알림을 못 만듦) | `evidence[].is_current`, 자료 AI 결과(`cards.draft`), `cards.check_result` |
 | `parent_choices[] { slot_id, period, room, chosen_at, hold_expires_at }` | 목록 | 상담 후보 카드 | 학부모가 체크한 시간. `hold_expires_at` = `chosen_at` + 24시간 | `consultation_slots`(`chosen_by_parent`) |
 | `rule { id, reason_code, rule_text, status }` | 객체 | `kind = rule_proposal` | 개인 규칙 제안 내용. 켜기·거절은 20번 API | `cards.subject_id` → `memory_rules` |
@@ -659,6 +661,8 @@ T12 화면 지도에 나온 화면들이 조회 응답에서 쓰는 칸을 여�
 | `sources[] { document_title, location, effective_from }` | 목록 | 회신이 나간 문의·민원 | 답변 출처. 학부모에게 공개된 문서(`visibility`가 `parents`·`all`)만. 법령(`doc_type = law`) 근거는 담임이 승인한 답변 글에 그 법령 이름이 실제로 들어 있을 때만 나간다(담임 카드에는 항상 보임) | 승인된 카드의 `card_evidence` → `document_chunks` → `documents` |
 
 **알림장** (`GET /api/v1/daily-notes`의 `content`, `open_checks[]`)
+
+목록의 각 알림장은 `input_id`(UUID, 필수)를 함께 준다. 원래 담임 입력 묶음(`daily_note_inputs.id`)이므로 화면은 별도 POST 없이 작업 상태 조회·재생성 주소에 쓸 수 있다. 같은 묶음의 아이들은 같은 input_id를 가지며 날짜·반이 다른 묶음과는 구분된다. 이 칸은 목록에만 추가하며 알림장 PATCH 응답은 기존 모양을 유지한다.
 
 `daily_notes.content`(`jsonb`)의 모양을 정한다. 줄마다 값과 출처가 따로 들어 있어서 화면은 둘을 함께 보여 줄 수 있다.
 
@@ -1260,6 +1264,7 @@ HTTP/1.1 200 OK
 | `page`·`size` | 쿼리 | integer | 선택 | 불가 | 기본 1·20, page ≥ 1, size 1~100 | 쪽 나누기 |
 | `sort` | 쿼리 | string | 선택 | 불가 | `-created_at`(기본)·`created_at` | 내림차순·오름차순 |
 | `items[].id`·`child_id`·`note_date`·`status` | 응답 | UUID·date·string | 항상 | 불가 | draft·needs_check·ready·sent | 아이별 알림장; 보낸 것만 학부모에게 노출 |
+| `items[].input_id` | 응답 | UUID | 항상 | 불가 | 해당 알림장의 daily_note_inputs.id | 담임 입력 묶음 ID. 별도 제출 없이 작업 상태 조회·재생성에 사용 |
 | `items[].content`·`open_checks[]` | 응답 | object·object[] | 항상 | 빈 목록 가능 | 줄·출처·확인 항목 모양은 3.7 참고 | items는 key·label·value·source를 가짐 |
 | `items[].confirmed_at`·`sent_at` | 응답 | datetime | 항상 | null 가능 | 확인·발송 뒤 시각 | 아직 실행하지 않았으면 null |
 | `total`·`page`·`size` | 응답 | integer | 항상 | 불가 | 전체 건수·요청한 쪽·크기 | 목록 공통 칸 |
@@ -1267,7 +1272,7 @@ HTTP/1.1 200 OK
 ```http
 GET /api/v1/daily-notes?classroom_id=00000000-0000-4000-8000-000000000101&date=2026-11-18
 HTTP/1.1 200 OK
-{"items": [{"child_id": "00000000-0000-4000-8000-000000000503", "note_date": "2026-11-18", "status": "draft", "content": {"items": [{"key": "day", "label": "오늘 하루", "value": "블록 놀이와 산책을 했어요.", "source": {"type": "teacher_input", "document_id": null, "document_title": null, "request_id": null}}, {"key": "supplies", "label": "준비물", "value": "내일 실내화", "source": {"type": "teacher_input", "document_id": null, "document_title": null, "request_id": null}}, {"key": "meal", "label": "식사", "value": "점심: 카레라이스, 채소와 과일", "source": {"type": "document", "document_id": "00000000-0000-4000-8000-000000000b01", "document_title": "가상 식단표", "request_id": null}}]}, "open_checks": [], "confirmed_at": null, "sent_at": null}], "total": 20, "page": 1, "size": 20}
+{"items": [{"input_id": "00000000-0000-4000-8000-000000000a01", "child_id": "00000000-0000-4000-8000-000000000503", "note_date": "2026-11-18", "status": "draft", "content": {"items": [{"key": "day", "label": "오늘 하루", "value": "블록 놀이와 산책을 했어요.", "source": {"type": "teacher_input", "document_id": null, "document_title": null, "request_id": null}}, {"key": "supplies", "label": "준비물", "value": "내일 실내화", "source": {"type": "teacher_input", "document_id": null, "document_title": null, "request_id": null}}, {"key": "meal", "label": "식사", "value": "점심: 카레라이스, 채소와 과일", "source": {"type": "document", "document_id": "00000000-0000-4000-8000-000000000b01", "document_title": "가상 식단표", "request_id": null}}]}, "open_checks": [], "confirmed_at": null, "sent_at": null}], "total": 20, "page": 1, "size": 20}
 ```
 
 | HTTP | `code` | 조건 |
@@ -1339,7 +1344,7 @@ HTTP/1.1 200 OK
 | `replaces_document_id` | 폼 | string(UUID) | 선택 | 생략 가능 | 범위 안의 active 문서 | 이전 판 |
 | `document` | 응답 | object | 항상 | 불가 | 전체 칸은 3.23 참고 | ID·적재 상태·조각 수·error |
 
-아래 예시는 200을 돌려준다. 올린 파일이 시드 식단표와 바이트가 같기 때문이다. 중복 여부는 같은 기관 안에서 파일 바이트의 SHA-256만 비교해 판단하므로, 이름·유형·공개 범위가 달라도 기존 자료를 돌려준다. 모의 모드는 이 중복 검사를 마친 뒤에 이전 판 상태를 검사하고, DB 모드는 이전 판 상태를 먼저 검사한다. 예시의 multipart 각 부분은 이름·값을 줄여 적었다.
+아래 예시는 200을 돌려준다. 올린 파일이 시드 식단표와 바이트가 같기 때문이다. 중복 여부는 같은 기관 안에서 파일 바이트의 SHA-256만 비교해 판단하므로, 이름·유형·공개 범위가 달라도 기존 자료를 돌려준다. 두 모드 모두 대상 반·이전 자료·기존 자료의 접근 범위를 먼저 확인한 뒤, 같은 바이트인 기존 자료를 200으로 돌려주는 검사를 이전 판의 active 상태 검사보다 먼저 한다. 따라서 이미 superseded·conflict_pending인 이전 판을 지정해도 같은 바이트면 200이며, 다른 바이트로 새 판을 만들 때는 409 INVALID_TRANSITION이다. DB에서 failed 자료를 다시 적재하는 경우는 앞의 202 예외이며 이때는 이전 판이 active여야 한다. 예시의 multipart 각 부분은 이름·값을 줄여 적었다.
 
 ```http
 POST /api/v1/documents
@@ -1369,7 +1374,7 @@ HTTP/1.1 200 OK
 | 맨 앞이 `---`로 시작함 | 머리말로 읽어 본문과 떼어 낸다 | 필수 키 6개(title·doc_type·kindergarten_id·effective_from·visibility·source)가 빠지거나 값이 허용 범위 밖이면 failed가 된다("머리말에 필수 값이 없습니다: …", "머리말이 닫히지 않았습니다" 등). 통과해도 자료 이름·유형·공개 범위·적용일은 폼 값을 쓴다 | `test_upload_conflicting_notice_is_pending_with_conflicts`, `test_bad_front_matter_is_rejected`(단위 시험) |
 | 사용 중인 다른 자료와 같은 항목의 날짜·숫자가 다름 | 202 · succeeded · conflict_pending | conflicts[]에 충돌 항목을 담는다. 새 판으로 올렸어도 옛 판은 active로 두고 supersedes_id를 비운다. 사람이 확인하기 전에는 근거 검색에 나오지 않는다 | `test_upload_conflicting_notice_is_pending_with_conflicts` |
 | 충돌 없는 새 판(replaces_document_id) | 202 · succeeded · active | supersedes_id에 옛 판 ID가 들어가고, 옛 판은 superseded가 된다 | `test_upload_plain_text_new_version_supersedes_old` |
-| 같은 기관에 바이트가 같은 자료가 있음 | 200 · 기존 자료 | 새 행을 만들지 않는다. 기존 자료가 superseded여도 그대로 돌려준다 | `test_upload_conflicting_notice_is_pending_with_conflicts`, superseded인 경우는 직접 호출로 확인 |
+| 같은 기관에 바이트가 같은 자료가 있음 | 200 · 기존 자료 | 접근 범위 확인 뒤 이전 판 상태 검사보다 먼저 돌려준다. 새 행·조각·메타데이터를 만들거나 바꾸지 않으며 기존 자료나 지정 이전 판이 superseded·conflict_pending이어도 같다 | `test_upload_conflicting_notice_is_pending_with_conflicts`, `test_document_duplicate_precedes_replacement_state_check` |
 | 적재에 실패했던 자료와 바이트가 같음 | 202 · 같은 ID로 다시 적재 | title을 새 파일명으로 바꾼다. 두 요청이 겹치면 한쪽만 적재하고, 늦은 쪽은 200을 받는다 | `test_upload_unreadable_file_fails_with_message`, `test_failed_reupload_runs_once_when_two_requests_race` |
 | 2MiB를 넘음 | 413 · `VALIDATION_FAILED` | "자료 파일은 2MiB 이하여야 해요." 자료 행을 만들지 않는다 | `test_upload_duplicate_class_and_size_limit` |
 
@@ -1391,7 +1396,7 @@ HTTP/1.1 200 OK
 | ⑤ 검증·권한 | teacher·director만 볼 수 있다. 같은 기관 안에서 원 전체 자료와 현재 담당 반이 대상인 자료를 보며, 원장은 반 제한 없이 본다. visibility 값은 교직원 조회를 막지 않는다. |
 | ⑥ 정상 응답 | 목록은 200 + items[]·total·page·size, 상세는 200 + document. 적재에 실패한 자료도 조회는 200이다. |
 | ⑦ 오류 응답 | 아래 오류 표. |
-| ⑧ 실행 규칙 | 목록은 생성 시각으로 정렬한 뒤 쪽을 나눈다. 두 모드 모두 superseded 자료도 목록에 남긴다. status와 ingest_status는 서로 따로 바뀌므로, 적재에 실패한 파일도 status=active일 수 있다. 모의 구현에서 conflicts는 늘 []다. DB 모드는 충돌 항목(3.22)을 상세에만 담고, 목록 items[]의 conflicts는 []로 둔다. DB 모드 목록의 error에는 현재 적재 상태가 반영되지 않는다. 그래서 실패한 뒤 다시 적재해 성공한 자료에도 지난 실패 내용이 남는다. 화면에서는 ingest_status가 failed일 때만 error를 보여 준다. |
+| ⑧ 실행 규칙 | 목록은 생성 시각으로 정렬한 뒤 쪽을 나눈다. 두 모드 모두 superseded 자료도 목록에 남긴다. status와 ingest_status는 서로 따로 바뀌므로, 적재에 실패한 파일도 status=active일 수 있다. 모의 구현에서 conflicts는 늘 []다. DB 모드는 충돌 항목(3.22)을 상세에만 담고, 목록 items[]의 conflicts는 []로 둔다. 두 모드 모두 목록·상세의 error는 현재 ingest_status가 failed일 때만 가장 최근 실패의 {code, message}를 주고 queued·running·succeeded일 때는 null이다. 실패 뒤 다시 적재해 성공하면 과거 실패 이력은 보존하되 현재 error는 null이다. |
 
 | 필드 | 위치 | 타입 | 필수 | 빈값 | 제약 | 설명 |
 | --- | --- | --- | --- | --- | --- | --- |

@@ -77,7 +77,8 @@ def view(doc, *, include_chunks=False):
             "classroom_ids": store.state().document_classrooms.get(doc.id, []), "status": doc.status,
             "effective_from": doc.effective_from, "effective_to": doc.effective_to,
             "ingest_status": doc.ingest_status, "supersedes_id": doc.supersedes_id, "conflicts": [],
-            "chunk_count": len(chunks(doc)), "error": {k: error[k] for k in ("code", "message")} if error else None}
+            "chunk_count": len(chunks(doc)),
+            "error": {k: error[k] for k in ("code", "message")} if error and doc.ingest_status == "failed" else None}
     if include_chunks:
         from agents.guardrails.injection import suspicious_chunk
 

@@ -214,7 +214,7 @@ def list_notes(user, note_date, classroom_id, page, size, sort):
     with store._lock:
         items = sorted(visible(user, note_date, classroom_id), key=lambda n: n.created_at,
                        reverse=sort.startswith("-"))
-        return {"items": [view(n) for n in items[(page-1)*size:page*size]],
+        return {"items": [{**view(n), "input_id": n.input_id} for n in items[(page-1)*size:page*size]],
                 "total": len(items), "page": page, "size": size}
 
 

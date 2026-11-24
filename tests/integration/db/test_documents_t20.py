@@ -164,11 +164,15 @@ def test_upload_unreadable_file_fails_with_message(db_client, teacher, docs):
     doc = response.json()["document"]
     assert response.status_code == 202 and doc["ingest_status"] == "failed" and doc["chunk_count"] == 0
     assert doc["error"] == {"code": "UPSTREAM_UNAVAILABLE", "message": "지금은 .md·.txt 글 파일만 읽을 수 있어요"}
+    listed = db_client.get("/api/v1/documents", headers=teacher).json()["items"]
+    assert next(d for d in listed if d["id"] == doc["id"])["error"] == doc["error"]
     retried = upload(db_client, teacher, "식단표.txt", "binary")
     assert retried.status_code == 202
     assert retried.json()["document"]["id"] == doc["id"]
     assert retried.json()["document"]["ingest_status"] == "succeeded"
     assert retried.json()["document"]["error"] is None
+    listed = db_client.get("/api/v1/documents", headers=teacher).json()["items"]
+    assert next(d for d in listed if d["id"] == doc["id"])["error"] is None
 
 
 def test_failed_reupload_runs_once_when_two_requests_race(db_client, teacher, seeded_db, docs, monkeypatch):

@@ -141,7 +141,8 @@ def list_notes(user, note_date, classroom_id, page, size, sort):
         requests = {str(r["id"]): r for r in connection.execute(text("""
             SELECT id,type,status,child_id FROM requests WHERE org_id=:org AND id=ANY(CAST(:ids AS uuid[]))
         """), {"org": user.org_id, "ids": request_ids}).mappings()} if request_ids else {}
-        return {"items": [view(row, requests=requests) for row in items], "total": total, "page": page, "size": size}
+        return {"items": [{**view(row, requests=requests), "input_id": row["input_id"]} for row in items],
+                "total": total, "page": page, "size": size}
 
 
 def _check_sources(user, content, child_id, connection):

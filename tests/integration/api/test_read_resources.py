@@ -210,6 +210,59 @@ def test_document_list_seed_pagination_sort_and_roles(client, teacher, director,
     err(client.get(BASE + "/documents"), 401, "UNAUTHENTICATED")
 
 
+@pytest.mark.parametrize("ingest_status", ["queued", "running", "succeeded", "failed"])
+def test_document_list_and_detail_show_error_only_for_current_failure(
+        client, teacher, director, read_backend, ingest_status):
+    error = {"code": "UPSTREAM_UNAVAILABLE", "message": "[TEST] 지난 적재 실패"}
+    if read_backend == "mock":
+        store.state().documents[seed.MENU].ingest_status = ingest_status
+        store.add_event(None, "tool_failed", org_id=seed.ORG, document_id=seed.MENU, **error)
+    else:
+        import json
+        with transaction() as connection:
+            connection.execute(text("UPDATE documents SET ingest_status=:status WHERE id=:id"),
+                               {"status": ingest_status, "id": seed.MENU})
+            connection.execute(text("""
+                INSERT INTO events(org_id,actor_type,action,detail)
+                VALUES (:org,'system','tool_failed',CAST(:detail AS jsonb))
+            """), {"org": seed.ORG, "detail": json.dumps({"document_id": str(seed.MENU), **error})})
+    for actor in (teacher, director):
+        listed = client.get(BASE + "/documents", headers=actor)
+        assert listed.status_code == 200, listed.text
+        item = next(d for d in listed.json()["items"] if d["id"] == str(seed.MENU))
+        detail = client.get(f"{BASE}/documents/{seed.MENU}", headers=actor).json()["document"]
+        assert item["ingest_status"] == detail["ingest_status"] == ingest_status
+        assert item["error"] == detail["error"] == (error if ingest_status == "failed" else None)
+
+
+@pytest.mark.parametrize("old_status", ["superseded", "conflict_pending"])
+def test_document_duplicate_precedes_replacement_state_check(client, teacher, read_backend, old_status):
+    def upload(content, **extra):
+        return client.post(BASE + "/documents", headers=teacher, data={
+            "doc_type": "notice", "visibility": "all", "effective_from": "2026-11-23", **extra},
+            files={"file": ("[TEST] 자료.txt", content.encode(), "text/plain")})
+
+    original = upload("[TEST] 기존 안내")
+    assert original.status_code == 202, original.text
+    doc = original.json()["document"]
+    if read_backend == "mock":
+        store.state().documents[next(d.id for d in store.state().documents.values()
+                                     if str(d.id) == doc["id"])].status = old_status
+    else:
+        with transaction() as connection:
+            connection.execute(text("UPDATE documents SET status=:status WHERE id=:id"),
+                               {"status": old_status, "id": doc["id"]})
+    before = client.get(BASE + "/documents", headers=teacher).json()
+    duplicate = upload("[TEST] 기존 안내", replaces_document_id=doc["id"])
+    assert duplicate.status_code == 200, duplicate.text
+    assert duplicate.json()["document"] == {**doc, "status": old_status}
+    assert client.get(BASE + "/documents", headers=teacher).json() == before
+    err(upload("[TEST] 다른 내용", replaces_document_id=doc["id"]), 409, "INVALID_TRANSITION")
+    assert client.get(BASE + "/documents", headers=teacher).json() == before
+    err(upload("[TEST] 기존 안내", replaces_document_id=str(uuid4())), 404, "NOT_FOUND")
+    err(upload("[TEST] 기존 안내", **{"classroom_ids[]": str(seed.CLASS_SUN)}), 404, "NOT_FOUND")
+
+
 def test_document_detail_chunks_mark_suspicious_content_and_keep_staff_scope(
         client, teacher, teacher_other, director, parent, read_backend):
     safe = "## [TEST] 정상\n[TEST] 준비물 안내".ljust(499, "가") + "\n"

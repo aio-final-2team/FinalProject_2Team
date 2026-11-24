@@ -304,8 +304,12 @@ class NoteView(BaseModel):
     sent_at: datetime | None
 
 
+class NoteListItem(NoteView):
+    input_id: UUID
+
+
 class NoteList(Page):
-    items: list[NoteView]
+    items: list[NoteListItem]
 
 
 class NoteResponse(BaseModel):

@@ -27,12 +27,17 @@ def answer_for_request(req, writer=None, checker=None, forecast=None):
 
 
 def save_evidence(connection, card, answer):
-    for rank, item in enumerate(answer["evidence"], 1):
+    seen = set()
+    for item in answer["evidence"]:
+        chunk_id = int(item["chunk_id"])
+        if chunk_id in seen:
+            continue
+        seen.add(chunk_id)
         connection.execute(text("""
             INSERT INTO card_evidence(card_id, org_id, chunk_id, rank, score, quote)
             VALUES (:card, :org, :chunk, :rank, :score, :quote)
-        """), {"card": card["id"], "org": card["org_id"], "chunk": item["chunk_id"],
-               "rank": rank, "score": item["score"], "quote": item["quote"]})
+        """), {"card": card["id"], "org": card["org_id"], "chunk": chunk_id,
+               "rank": len(seen), "score": item["score"], "quote": item["quote"]})
 
 
 def graph_enabled():
