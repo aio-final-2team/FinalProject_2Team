@@ -2,7 +2,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, uuid } from "./client";
 
 /** 학부모 요청 (API 3·4·5·7, 3.1·3.2·3.9·3.10) */
-export type RequestType = "inquiry" | "consultation" | "complaint";
+export type RequestType = "inquiry" | "consultation" | "complaint" | "medication" | "pickup";
+/** 투약·귀가 구조화 입력 (문서 3.27). 빠진 칸은 막지 않고 선생님이 다시 물어본다 */
+export type CareInput = { medication_name?: string; medication_dose?: string; medication_time?: string; pickup_name?: string; pickup_relation?: string };
+export type CareView = CareInput & { version: number; unregistered_pickup: boolean; missing_fields: string[]; confirmed_at: string | null; completed_at: string | null };
 export type RequestSummary = {
   id: string;
   type: string;
@@ -20,6 +23,8 @@ export type RequestDetail = {
   consultation?: { slots: { id: number; period: { start: string; end: string }; room: string; status: string }[]; booking: unknown };
   sources?: { document_title: string; location: string | null; effective_from: string | null }[];
   rejection?: { reason_code: string; reason_text: string } | null;
+  /** 투약·귀가 요청일 때만 있다 */
+  care?: CareView | null;
 };
 
 export const TYPE_LABEL: Record<string, string> = { inquiry: "문의", consultation: "상담", complaint: "민원", medication: "투약", pickup: "귀가" };
@@ -32,7 +37,7 @@ export const useRequest = (id?: string) =>
 export function useCreateRequest() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (b: { type: RequestType; body: string; child_id: string }) =>
+    mutationFn: (b: { type: RequestType; body: string; child_id: string } & CareInput) =>
       api<{ request: { id: string; status: string } }>("/api/v1/requests", {
         method: "POST",
         /* 같은 제출을 두 번 받지 않는 키(client_request_id) */
@@ -55,6 +60,31 @@ export function useConfirmRequest(id: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => api(`/api/v1/requests/${id}/confirm`, { method: "POST" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["request", id] });
+      qc.invalidateQueries({ queryKey: ["my-requests"] });
+    },
+  });
+}
+
+/** 투약·귀가 요청 취소 (API 50). 끝났거나 반려된 요청은 409 */
+export function useCancelRequest(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api(`/api/v1/requests/${id}/cancel`, { method: "POST" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["request", id] });
+      qc.invalidateQueries({ queryKey: ["my-requests"] });
+    },
+  });
+}
+
+/** 투약·귀가 입력 수정 (API 51). 고치면 선생님이 다시 확인한다 */
+export function usePatchCare(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    /* version은 상세 care.version(입력 판). 생략한 칸은 그대로 두고 null을 보내면 비운다 */
+    mutationFn: (b: { version: number } & { [K in keyof CareInput]?: string | null }) => api(`/api/v1/requests/${id}/care`, { method: "PATCH", body: JSON.stringify(b) }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["request", id] });
       qc.invalidateQueries({ queryKey: ["my-requests"] });

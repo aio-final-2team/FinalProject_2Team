@@ -6,7 +6,7 @@ import { api } from "./client";
  * 목록에는 아이 이름이 없어 요청 문장(title)으로 보여 준다. 이름이 내려오면 이 타입에 칸만 더하면 된다.
  */
 export type CareType = "medication" | "pickup";
-export type CareStatus = "received" | "assigned" | "completed";
+export type CareStatus = "received" | "assigned" | "completed" | "rejected";
 export type CareItem = {
   id: string;
   type: CareType;
@@ -38,8 +38,9 @@ export function useCareRequests(classroomId?: string, all = false) {
 export function useCareDecision() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (v: { id: string; decision: "confirm" | "complete"; version: number }) =>
-      api(`/api/v1/requests/${v.id}/care-decisions`, { method: "POST", body: JSON.stringify({ decision: v.decision, version: v.version }) }),
+    /* reject는 사유(reason_text 1~1000자)가 필요하고, 사유는 보호자에게 전달된다 */
+    mutationFn: (v: { id: string; decision: "confirm" | "complete" | "reject"; version: number; reason_text?: string }) =>
+      api(`/api/v1/requests/${v.id}/care-decisions`, { method: "POST", body: JSON.stringify({ decision: v.decision, version: v.version, ...(v.reason_text ? { reason_text: v.reason_text } : {}) }) }),
     onSettled: () => qc.invalidateQueries({ queryKey: ["care-requests"] }),
   });
 }
