@@ -77,3 +77,37 @@ def test_default_keeps_code_behavior(monkeypatch):
     monkeypatch.delenv("LLM_MODEL_SUPERVISOR", raising=False)
     assert validate_proposal("complaint", "버스 민원", classify_request("complaint", "버스 민원")) == {
         **classify("complaint", "버스 민원"), "out_of_scope_kind": None}
+
+
+@pytest.mark.parametrize("category", ["health", None, "건강"])
+def test_inquiry_model_uncertain_without_known_category_stays_normal(category):
+    # 팀 서버(11/25): 열·알레르기·투약 문의를 모델이 '판단 필요 / health'로 올려 원장 보고가 생겼어요
+    body = "아이가 열이 나면 등원해도 되나요?"
+    got = validate_proposal("inquiry", body, {"topic_key": "health_hygiene", "urgency": "normal",
+                                               "risk_level": "uncertain", "risk_category": category})
+    assert got["risk_level"] == "normal" and got["risk_category"] is None
+
+
+def test_inquiry_model_uncertain_with_known_category_is_kept():
+    got = validate_proposal("inquiry", "아이 몸에 못 보던 상처가 있는데 원에서 무슨 일 있었나요?", {
+        "topic_key": "safety", "urgency": "normal", "risk_level": "uncertain", "risk_category": "child_safety"})
+    assert got["risk_level"] == "uncertain" and got["risk_category"] == "child_safety"
+
+
+def test_inquiry_model_urgent_without_known_category_still_goes_to_people():
+    got = validate_proposal("inquiry", "원에서 무슨 일이 있었던 것 같아요", {
+        "topic_key": "other", "urgency": "urgent", "risk_level": "urgent", "risk_category": "safety"})
+    assert got["risk_level"] == "uncertain"
+
+
+@pytest.mark.parametrize("request_type", ["complaint", "consultation"])
+def test_other_types_keep_model_uncertain_without_category(request_type):
+    got = validate_proposal(request_type, "요즘 원에 보내기가 걱정돼요", {
+        "topic_key": "other", "urgency": "normal", "risk_level": "uncertain", "risk_category": None})
+    assert got["risk_level"] == "uncertain"
+
+
+def test_inquiry_with_judgement_phrase_in_body_is_kept():
+    got = validate_proposal("inquiry", "판단 필요한 문의예요", {
+        "topic_key": "other", "urgency": "normal", "risk_level": "uncertain", "risk_category": None})
+    assert got["risk_level"] == "uncertain"
