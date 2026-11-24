@@ -16,7 +16,7 @@
 | 항목 | 내용 |
 |---|---|
 | 2차 검토 링크 | `develop` 브랜치의 [기획서](https://github.com/aio-final-2team/FinalProject_2Team/blob/develop/Docs/Step1/기획서.md) · [WBS](https://github.com/aio-final-2team/FinalProject_2Team/blob/develop/Docs/Step1/WBS.md) · [T17 숫자·출처 검증표](https://github.com/aio-final-2team/FinalProject_2Team/blob/develop/Docs/Step3/T17_숫자_출처_검증표.md). 설계서별 링크는 [레포 README](../../README.md#2차-검토-문서)에 모았습니다 |
-| 시연 코드 기준 커밋 | develop `ab58b7c`. 11/27 알림장 시연(예정)에 쓰는 팀 서버에 지금 배포된 커밋이며, API·DB 설계서 머리와 같은 값입니다. 시연 날 아침에 다시 배포하면 이 칸을 새로 배포한 커밋으로 고칩니다 |
+| 시연 코드 기준 커밋 | [레포 README '2차 검토 문서'](../../README.md#2차-검토-문서)의 '시연 코드 기준 커밋' 한 줄을 봅니다. 11/27 알림장 시연에 쓰는 팀 서버 커밋이고, 값은 그 한 줄에만 둡니다 |
 
 ## 핵심 반영 내용
 
@@ -47,7 +47,7 @@
 
 ### 2026-11-24 추가 반영 (강사님 11/24 피드백 FB-020)
 
-- 11/16·11/17 날짜 판 기획서·WBS 8개 파일을 [이전판/](이전판/)으로 옮기고, 기획서·WBS Markdown 머리의 원본 표시를 `기획서.docx`·`WBS.xlsx`로 고쳤습니다. 2차 검토 링크와 시연 기준 커밋을 위 표에 적었습니다. [메모](../Feedback/jihye/FB-020-9.md)
+- 11/16·11/17 날짜 판 기획서·WBS 8개 파일을 [이전판/](이전판/)으로 옮기고, 기획서·WBS Markdown 머리의 원본 표시를 `기획서.docx`·`WBS.xlsx`로 고쳤습니다. 2차 검토 링크와 시연 기준 커밋을 보는 곳을 위 표에 적었습니다. [메모](../Feedback/jihye/FB-020-9.md)
 - 기획서 1.3의 사진 전송 수치를 원문 문장에 맞춰 "모바일 사진 전송 강제·정량 압박 40.5%"로 다듬고, 문항 원문·조사 대상 확인 결과를 [T17 검증표 4.1](../Step3/T17_숫자_출처_검증표.md#41-사진-전송-수치의-원문-문장과-조사-대상-1124-fb-020-10)에 남겼습니다. [메모](../Feedback/jihye/FB-020-10.md)
 - WBS T40 완료 기준에 시장 규모 슬라이드의 집계 범위(유치원+어린이집) 표기를 넣었습니다. 기획서 1.3에는 범위가 이미 적혀 있습니다. [메모](../Feedback/jihye/FB-020-11.md)
 
