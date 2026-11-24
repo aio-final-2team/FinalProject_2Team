@@ -1117,7 +1117,7 @@ HTTP/1.1 200 OK
 | `child_memos[].memo` | 생성 본문 | string | 항목마다 필수 | 빈 문자열 불가 | 1~500자 | 모의 생성은 원문을 그대로 child 줄에 넣고, 공백뿐이면 줄을 만들지 않는다 |
 | `draft_status`·`error` | 응답 | string·object | 항상 | error는 null 가능 | queued·running·succeeded·failed; 오류는 {code, message} | 실패 조회도 200, 모의 오류 코드는 UPSTREAM_UNAVAILABLE |
 
-초안을 만드는 입구 함수의 전체 입력은 `{ input_id, note_date, classroom, activities, supplies, children, menu }`이고, 이 중 `menu`는 `{ document_id, title, text }` 또는 null이다. 아이별 입력은 `{ child_id, display_name, memo, requests: [{ request_id, type, text }] }`다. `requests`는 클라이언트가 보내지 않고 서버가 모은다. 같은 기관·반·아이의 보호자가 보낸 `medication`·`pickup`·`inquiry` 요청 가운데 `created_at`의 한국 날짜가 `note_date`인 것을 모으며, 해당 요청이 없으면 빈 목록이다. 각 항목의 `text`에는 보호자 요청 본문이 들어간다. DB 모드의 실행기(runner)도 이 입구를 같은 모양으로 부른다.
+초안을 만드는 입구 함수의 전체 입력은 `{ input_id, note_date, classroom, activities, supplies, children, roster_names, menu }`이고, 이 중 `menu`는 `{ document_id, title, text }` 또는 null이다. `roster_names`는 반 전체 아이 이름이며, 부분 재생성으로 `children`을 걸러도 유지한다(3.26). 아이별 입력은 `{ child_id, display_name, memo, requests: [{ request_id, type, text }] }`다. `requests`는 클라이언트가 보내지 않고 서버가 모은다. 같은 기관·반·아이의 보호자가 보낸 `medication`·`pickup`·`inquiry` 요청 가운데 `created_at`의 한국 날짜가 `note_date`인 것을 모으며, 해당 요청이 없으면 빈 목록이다. 각 항목의 `text`에는 보호자 요청 본문이 들어간다. DB 모드의 실행기(runner)도 이 입구를 같은 모양으로 부른다.
 
 모의 초안은 요청 원문을 `source: { type: request, request_id }` 줄에 넣는다. 하늘의 "기침해요"와 다른 귀가 요청은 반영하지만, 노을의 고정 귀가 요청(…70a) 하나만은 일부러 빼서 `request_missed`를 보여 준다. 이 항목은 `item_key: pickup`, `sentence: null`, `request_id: …70a`다. 교사는 요청을 확인한 뒤 기존 PATCH의 `resolved_checks`로 해결한다. 미해결 항목이 남아 있으면 확인·발송을 막는 규칙도 기존과 같다.
 
@@ -1176,7 +1176,7 @@ HTTP/1.1 200 OK
   "confirmed_at": null, "sent_at": null}, …]}
 ```
 
-**작업 전체가 실패한 경우.** 모델이 응답하지 않으면 작업이 `failed`로 끝나고, 아이별 알림장은 하나도 만들어지지 않는다. 이때 화면은 "초안을 만들지 못했어요"와 다시 만들기 버튼을 보여 준다. 모의 모드에서는 `activities`에 `[실패]`를 넣어 이 경우를 재현한다.
+**작업 전체가 실패한 경우.** 큐 등록·작성기 입구 함수 실행·결과 저장에서 작업 전체가 실패하면 `draft_status=failed`로 끝난다. 첫 생성에서는 아이별 알림장이 없고, 다시 만들기에서는 기존 알림장을 보존한다. 이때 화면은 `error.message`와 다시 만들기 버튼을 보여 준다. 그래프 안의 아이별 모델 호출 실패는 아래의 `draft_failed` 확인 항목으로 남긴다. 모의 모드에서는 `activities`에 `[실패]`를 넣어 작업 전체 실패를 재현한다.
 
 ```http
 GET /api/v1/daily-notes/drafts/{input_id}
@@ -1737,7 +1737,7 @@ def decide(card_id: UUID, body: CardDecision, user: User = Depends(current_staff
 
 #### 5.5.1 알림장 아이 줄 쓰기 — 자료 AI(`write()`)
 
-프롬프트는 `agents/prompts/documents.md`의 '알림장 초안 쓰기' 절이다. 아이 메모나 그날 보호자 요청이 있는 아이마다 부른다. 둘 다 없는 아이는 모델을 부르지 않고 반 공통 줄만 둔다. 아이들은 `NOTE_DRAFT_CONCURRENCY`(기본 5)명씩 묶어 동시에 처리한다.
+프롬프트는 `agents/prompts/documents.md`의 '알림장 초안 쓰기' 절이다. 아이 메모나 그날 보호자 요청이 있는 아이마다 부른다. 둘 다 없는 아이는 모델을 부르지 않고 반 공통 줄만 둔다. 그래프의 `draft_daily_notes()`는 `ThreadPoolExecutor`로 아이별 쓰기·검사를 동시에 처리하고, `NOTE_DRAFT_CONCURRENCY`로 최대 동시 아이 수를 정한다(기본값 5, 최솟값 1). 한 아이 안에서는 쓰기→코드 검사→검사 AI→필요하면 다시 쓰기 순서로 진행하며, 결과 목록은 입력 아이 순서를 유지한다.
 
 | 입력 | 타입 | 필수 | 허용값·설명 |
 | --- | --- | --- | --- |
@@ -1773,6 +1773,8 @@ def decide(card_id: UUID, body: CardDecision, user: User = Depends(current_staff
 | `draft[]` | object[] | 필수 | 5.5.1이 쓴 줄 `{ key, label, value, source }` |
 
 모델의 결과는 `{"checks": [{"item_key", "kind", "problem", "sentence"}]}`이고, `kind`는 `not_in_memo`·`sensitive`·`other_child`·`date_check`·`absent` 다섯 값만 받는다. 여기에 코드가 다른 아이 이름(`other_child`), 보호자 요청 누락(`request_missed`), 투약 요청·옮기지 않은 메모·답하지 못한 문의(`sensitive`)를 더한다. 이렇게 합친 항목을 `open_checks[] { id, item_key, kind, problem, sentence, request_id? }`로 저장한다. 결과 ID는 확인 항목 ID(`open_checks[].id`, 저장할 때 UUID로 바꾼다)이고, 항목이 하나라도 있으면 알림장 상태는 `needs_check`다. 업무상으로는 담임이 보내기 전에 꼭 봐야 할 곳이라는 뜻이다. 항목이 남아 있으면 발송이 잠긴다(3.19.1).
+
+`not_in_memo`는 검사 AI가 아이 메모 줄을 메모·반 공통·식단과 대조해 근거 없는 사실·이유·평가나 반 활동을 그 아이가 했다는 서술을 찾은 결과다. 병명·"괜찮아요" 같은 낱말을 고정 금지어 목록과 대조하는 코드는 없다. `code_checks()`는 메모·아이별 초안에 있는 다른 아이 이름과 요청별 출처 누락을 검사하고, 초안에 옮긴 투약 요청에는 `sensitive`를 남긴다. 메모 줄 누락과 답하지 못한 문의는 각각 `memo_left_out()`·`unanswered()`가 `sensitive`로 넘긴다. 쓰기·검사 실패는 `draft_failed`·`check_failed`이며, 백엔드는 작성기가 준 `return_limit`도 확인 항목으로 보존한다(3.7·3.20·3.21).
 
 | 실패 구분 | 언제 | 다시 하나 | 최대 횟수 | 그 뒤 | 담임 화면 문구 |
 | --- | --- | --- | --- | --- | --- |
@@ -2112,7 +2114,7 @@ MVP 설정값은 서버 설정(`.env`)으로 관리한다. `.env.example`에는 
 | `LLM_MODEL_CHECKER` | (비움) | 검사 AI 모델 |
 | `LLM_MODEL_CODE` | (비움) | 코드 AI 모델 |
 | `DAILY_NOTE_WRITER_TIMEOUT` | `300` | 초안 입구 함수가 기다리는 제한 시간(초). 넘기면 failed가 되고, 늦게 온 결과는 저장하지 않음 |
-| `NOTE_DRAFT_CONCURRENCY` | `5` | 아이별 초안을 몇 개 동시에 실행할지 그래프에 넘기는 값. 이를 지원하는 그래프에서 적용됨 |
+| `NOTE_DRAFT_CONCURRENCY` | `5` | 알림장 그래프의 `ThreadPoolExecutor`가 동시에 처리할 최대 아이 수. 최솟값 1이며, 1이면 순서대로 처리함(5.5.1) |
 | `OPENAI_API_KEY` | (비움) | 모델 호출에 쓰는 키. 값은 팀이 키를 보관하는 곳에서 받음 |
 
 역할별 모델 칸을 비워 두면 `LLM_MODEL_DEFAULT`를 쓴다. 역할별로 모델을 바꾸는 일은 다섯 에이전트 분리(T43) 뒤에 하며, 앱을 거친 평가에서 이득이 확인된 역할만 팀 결정으로 바꾼다.

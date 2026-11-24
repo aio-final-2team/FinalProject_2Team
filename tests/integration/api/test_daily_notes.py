@@ -11,7 +11,7 @@ from sqlalchemy import text
 from app import backend
 from app.core.constants import LATE_NOTE_REQUEST_NOTICE
 from app.mock import notes as mock_notes, seed, store
-from tests.integration.api.helpers import BASE, err
+from tests.integration.api.helpers import BASE, err, make_notifications_due
 from tests.integration.api.test_resources import draft, note_list
 
 
@@ -247,6 +247,7 @@ def test_late_request_reopens_unsent_note_and_notifies_batch_owner_once(
     stable = note_list(client, teacher).json()
     assert client.post(BASE + "/requests", headers=parent, json=payload).status_code == 200
     assert note_list(client, teacher).json() == stable
+    make_notifications_due(note_flow_backend, rid)
     notices = client.get(BASE + "/notifications", headers=teacher, params={"size": 100}).json()["items"]
     notices = [n for n in notices if n["body"] == LATE_NOTE_REQUEST_NOTICE and n["request_id"] == rid]
     assert len(notices) == 1 and notices[0]["kind"] == "new_card"

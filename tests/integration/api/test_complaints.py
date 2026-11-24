@@ -10,7 +10,7 @@ from app import backend
 from app.core.db import transaction
 from app.core.schedule import KST
 from app.mock import seed, store
-from tests.integration.api.helpers import BASE, decision, err
+from tests.integration.api.helpers import BASE, decision, err, make_notifications_due
 from tests.integration.api.test_consultations import book, choose
 
 
@@ -154,10 +154,11 @@ def risk_titles(client, actor, rid):
             if n["request_id"] == rid and n["kind"] in ("urgent_complaint", "uncertain_complaint")}
 
 
-def test_urgent_inquiry_can_be_lowered_by_teacher_and_director(client, parent, teacher, director):
+def test_urgent_inquiry_can_be_lowered_by_teacher_and_director(client, parent, teacher, director, complaint_backend):
     rid = create(client, parent, body="[TEST] 경찰에 알릴 거예요", kind="inquiry")
     saved = cards(client, director, rid)
     assert saved["reply_draft"]["risk_category"] == "legal_external"
+    make_notifications_due(complaint_backend, rid)
     assert risk_titles(client, director, rid) == risk_titles(client, teacher, rid) == {"urgent_complaint": "긴급 문의"}
     cid, report = saved["reply_draft"]["id"], saved["director_report"]["id"]
     lowered = client.post(f"{BASE}/cards/{cid}/reclassify", headers=teacher, json={
@@ -177,7 +178,7 @@ def test_urgent_inquiry_can_be_lowered_by_teacher_and_director(client, parent, t
     ("[TEST] 판단 필요 상담이에요", "uncertain", "AI 판단 불확실 상담"),
 ])
 def test_risky_consultation_keeps_slot_flow_and_adds_director_report(
-    client, parent, teacher, director, body, risk, title
+    client, parent, teacher, director, body, risk, title, complaint_backend
 ):
     other = create(client, parent, body="[TEST] 아이가 다쳤어요", kind="inquiry")  # 다른 요청의 보고 카드는 그대로
     rid = create(client, parent, body=body, kind="consultation")
@@ -189,6 +190,7 @@ def test_risky_consultation_keeps_slot_flow_and_adds_director_report(
     start = datetime.fromisoformat(detail(client, director, saved["director_report"]["id"])["request"]["created_at"])
     assert all(datetime.fromisoformat(c["due_at"]) == start + timedelta(hours=2) for c in saved.values())
     kind = "urgent_complaint" if risk == "urgent" else "uncertain_complaint"
+    make_notifications_due(complaint_backend, rid)
     assert risk_titles(client, director, rid) == {kind: title}
     view = client.get(f"{BASE}/requests/{rid}", headers=parent).json()
     assert view["request"]["status"] == "needs_info"
