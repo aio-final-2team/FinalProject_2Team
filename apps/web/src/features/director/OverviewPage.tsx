@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { Link } from "react-router";
+import { UploadSheet } from "@/features/teacher/UploadSheet";
 import { useCareRequests } from "@/api/care";
 import { useOverview } from "@/api/overview";
 import { Icon } from "@/components/Icon";
@@ -12,6 +14,7 @@ const when = (iso: string) => new Date(iso).toLocaleString("ko-KR", { month: "nu
 /** 원장 현황 (API 21). 숫자를 누르면 받은함의 해당 목록으로 간다. 반별 알림장 현황은 API가 없어 준비 중 칸으로 둔다 */
 export function OverviewPage() {
   const q = useOverview();
+  const [up, setUp] = useState(false);
   const care = useCareRequests(undefined, true);
   const o = q.data;
   const careOpen = (care.data ?? []).filter((c) => c.status !== "completed").length;
@@ -51,6 +54,16 @@ export function OverviewPage() {
                 </span>
               </div>
             </section>
+
+            <button type="button" onClick={() => setUp(true)} className="mt-3 flex w-full items-center gap-3 rounded-lg bg-card p-3 text-left shadow-card active:scale-[.99]">
+              <span className="grid size-10 shrink-0 place-items-center rounded-md bg-tint text-accent-ink"><Icon name="document" className="size-5" /></span>
+              <span className="min-w-0 flex-1">
+                <b className="block text-headline">자료 올리기</b>
+                <span className="text-footnote text-ink2">통신문, 식단표, 일정, 운영 규정을 원 전체에 올려요</span>
+              </span>
+              <Icon name="chevR" className="size-4 shrink-0 text-ink2" />
+            </button>
+            <UploadSheet open={up} onClose={() => setUp(false)} />
 
             <Link to="/director/care" className="mt-3 flex items-center gap-3 rounded-lg bg-card p-3 shadow-card active:scale-[.99]">
               <span className="grid size-10 shrink-0 place-items-center rounded-md bg-tint text-accent-ink"><Icon name="medication" className="size-5" /></span>

@@ -6,6 +6,7 @@ import { useNotes } from "@/api/notes";
 import { useSession } from "@/app/session";
 import { Icon } from "@/components/Icon";
 import { QueryState } from "@/components/QueryState";
+import { UploadSheet } from "./UploadSheet";
 import { dateLabel, todayKST } from "@/domain/notes";
 
 
@@ -19,6 +20,7 @@ export function ClassPage() {
   const active = (type: string) => (docs.data ?? []).filter((d) => d.doc_type === type && d.status === "active").sort((a, b) => b.effective_from.localeCompare(a.effective_from));
   const menus = active("menu");
   const notices = active("notice");
+  const [up, setUp] = useState(false);
   const [moreMenu, setMoreMenu] = useState(false);
   const [moreNotice, setMoreNotice] = useState(false);
   const FOLD = 4;
@@ -27,6 +29,8 @@ export function ClassPage() {
   return (
     <div className="mx-auto max-w-[680px] px-4 pb-10 pt-2">
       <ScreenTop back={{ to: "/teacher/home", label: "홈" }} title="오늘 우리 반" sub={`${dateLabel(date)} · 식단표와 가정통신문이에요`} />
+      <button type="button" onClick={() => setUp(true)} className="mt-3 inline-flex h-10 items-center rounded-md bg-tint px-4 text-callout font-semibold text-accent-ink active:scale-[.97]">자료 올리기</button>
+      <UploadSheet open={up} onClose={() => setUp(false)} classroomId={cid} />
 
       <QueryState queries={[docs]} skeleton={2}>
         <Group title="식단표" empty="등록된 식단표가 없어요" count={menus.length + (meal ? 1 : 0)}>
