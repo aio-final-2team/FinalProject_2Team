@@ -7,10 +7,10 @@ import { useToast } from "@/components/Toast";
 import { consentsFor, saveConsent } from "@/domain/consent";
 import type { Role } from "@/domain/types";
 
-const ROLES: { role: Role; title: string; sub: string }[] = [
-  { role: "parent", title: "보호자", sub: "아이의 알림장을 받고 요청을 보내요" },
-  { role: "teacher", title: "교사", sub: "알림장과 요청을 확인해요" },
-  { role: "director", title: "원장", sub: "원 전체 현황을 봐요" },
+const ROLES: { role: Role; title: string; can: string[] }[] = [
+  { role: "parent", title: "보호자", can: ["오늘 알림장과 우리 아이 사진 보기", "문의, 상담, 민원, 투약, 귀가 요청 보내기", "상담 가능한 시간 고르기"] },
+  { role: "teacher", title: "교사", can: ["알림장 초안을 확인하고 보호자에게 보내기", "보호자 요청에 답하고 상담 확정하기", "귀가·투약 요청 확인하기"] },
+  { role: "director", title: "원장", can: ["원 전체 현황 보기", "원장 보고 요청에 지시하기", "원 소식 관리와 통신문·식단표 올리기"] },
 ];
 
 /**
@@ -33,14 +33,24 @@ export function SignupPage() {
       {!role ? (
         <>
           <p className="mt-0.5 text-footnote font-medium text-ink2">어떤 역할로 가입하나요?</p>
-          <div role="radiogroup" aria-label="역할" className="mt-4 grid gap-2">
+          <ul aria-label="역할" className="mt-4 grid gap-2">
             {ROLES.map((r) => (
-              <button key={r.role} type="button" role="radio" aria-checked={false} onClick={() => setRole(r.role)} className="flex min-h-14 items-center justify-between gap-3 rounded-lg bg-card px-3 py-2.5 text-left shadow-card active:scale-[.99]">
-                <span><b className="block text-headline">{r.title}</b><span className="text-footnote text-ink2">{r.sub}</span></span>
-                <Icon name="chevR" className="size-4 text-ink2" />
-              </button>
+              <li key={r.role}>
+                <button type="button" onClick={() => setRole(r.role)} className="w-full rounded-lg bg-card p-3 text-left shadow-card active:scale-[.99]">
+                  <span className="flex items-center justify-between">
+                    <b className="text-headline">{r.title}</b>
+                    <Icon name="chevR" className="size-4 text-ink2" />
+                  </span>
+                  <span className="mt-1.5 block text-caption font-semibold text-ink2">이런 일을 할 수 있어요</span>
+                  <ul className="mt-1 grid gap-1 text-footnote">
+                    {r.can.map((c) => (
+                      <li key={c} className="flex items-start gap-2"><span aria-hidden className="mt-[7px] size-1 shrink-0 rounded-full bg-accent" /><span className="break-keep">{c}</span></li>
+                    ))}
+                  </ul>
+                </button>
+              </li>
             ))}
-          </div>
+          </ul>
         </>
       ) : (
         <>
