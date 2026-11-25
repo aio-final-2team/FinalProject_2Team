@@ -6,7 +6,7 @@ import { useCareRequests } from "@/api/care";
 import { useChildren, useNotes } from "@/api/notes";
 import { useSession } from "@/app/session";
 import { ScreenTop } from "@/components/ScreenTop";
-import { PrimaryButton, SubButton } from "@/components/Dock";
+import { PrimaryButton } from "@/components/Dock";
 import { BellLink } from "@/components/BellLink";
 import { Icon } from "@/components/Icon";
 import { dateLabel, todayKST } from "@/domain/notes";
@@ -71,18 +71,6 @@ export function TeacherHome() {
           </section>
         </>
       )}
-      <Label>오늘 우리 반</Label>
-      <Link to="/teacher/class" className="block rounded-lg bg-card p-3 shadow-card active:scale-[.99]">
-        <div className="flex items-center gap-3">
-          <span className="grid size-10 shrink-0 place-items-center rounded-md bg-tint text-accent-ink"><Icon name="class" className="size-5" /></span>
-          <span className="min-w-0 flex-1">
-            <b className="block truncate text-callout">{meal?.value ?? (menuDoc ? "오늘 식단은 알림장에 자동으로 들어가요" : "등록된 오늘 식단이 없어요")}</b>
-            <span className="block truncate text-caption text-ink2">{notice ? `가정통신문 · ${notice.title}` : "식단표와 가정통신문 보기"}</span>
-          </span>
-          <Icon name="chevR" className="size-4 shrink-0 text-ink2" />
-        </div>
-      </Link>
-
       <Label>다음 할 일</Label>
       <Card accent={!allSent}>
         <span className={`text-caption font-bold ${allSent ? "text-ok" : "text-accent-ink"}`}>오늘 알림장</span>
@@ -91,78 +79,22 @@ export function TeacherHome() {
         <PrimaryButton className="mt-3 w-full" onClick={() => nav("/teacher/notes")}>{noteState.action}</PrimaryButton>
       </Card>
 
-      <Label>확인할 요청</Label>
-      <Card>
-        <div className="flex items-center gap-3">
-          <span className="grid size-10 shrink-0 place-items-center rounded-md bg-tint text-accent-ink"><Icon name="inbox" className="size-5" /></span>
-          <span className="min-w-0 flex-1">
-            <b className="block text-headline">{inbox.data?.counts.review ?? 0}건을 확인해 주세요</b>
-            <span className="text-footnote text-ink2">답변, 상담, 민원 요청이에요</span>
-          </span>
-          <SubButton small onClick={() => nav("/teacher/inbox")}>받은함 보기</SubButton>
-        </div>
-      </Card>
+      <Label>오늘 할 일</Label>
+      <NavList>
+        <NavRow to="/teacher/inbox" icon="inbox" title={`확인할 요청 ${inbox.data?.counts.review ?? 0}건`} sub="답변, 상담, 민원 요청이에요" count={inbox.data?.counts.review ?? 0} />
+        <NavRow to="/teacher/care" icon="medication" title={careOpen ? `귀가·투약 ${careOpen}건` : "귀가·투약"} sub={careOpen ? "보호자가 보낸 요청을 확인해 주세요" : "확인할 요청이 없어요"} count={careOpen} />
+        <NavRow to="/teacher/notes?tab=records" icon="class" title={`오늘 ${recorded}명 기록`} sub="필요한 아이만 짧게 남겨도 돼요" />
+        <NavRow to="/teacher/class" icon="document" title="오늘 우리 반" sub={meal?.value ?? (notice ? `가정통신문 · ${notice.title}` : menuDoc ? "오늘 식단은 알림장에 자동으로 들어가요" : "식단표와 가정통신문 보기")} />
+      </NavList>
 
-      <Label>귀가·투약</Label>
-      <Card>
-        <div className="flex items-center gap-3">
-          <span className="grid size-10 shrink-0 place-items-center rounded-md bg-tint text-accent-ink"><Icon name="medication" className="size-5" /></span>
-          <span className="min-w-0 flex-1">
-            <b className="block text-headline">{careOpen ? `${careOpen}건을 확인해 주세요` : "확인할 요청이 없어요"}</b>
-            <span className="text-footnote text-ink2">보호자가 보낸 귀가·투약 요청이에요</span>
-          </span>
-          <SubButton small onClick={() => nav("/teacher/care")}>확인하기</SubButton>
-        </div>
-      </Card>
-
-      <Label>관찰 기록</Label>
-      <Card>
-        <div className="flex items-center justify-between gap-3">
-          <span>
-            <b className="block text-headline">오늘 {recorded}명 기록</b>
-            <span className="text-footnote text-ink2">필요한 아이만 짧게 남겨도 돼요</span>
-          </span>
-          <Link to="/teacher/notes?tab=records" className="inline-flex h-9 items-center rounded-md bg-fill px-3 text-footnote font-semibold">기록 추가</Link>
-        </div>
-      </Card>
-
-      <Label>원 소식</Label>
-      <Card>
-        <div className="flex items-center gap-3">
-          <span className="grid size-10 shrink-0 place-items-center rounded-md bg-tint text-accent-ink"><Icon name="class" className="size-5" /></span>
-          <span className="min-w-0 flex-1">
-            <b className="block text-headline">원 소식과 앨범</b>
-            <span className="text-footnote text-ink2">원에 올라온 이야기와 사진을 볼 수 있어요</span>
-          </span>
-          <SubButton small onClick={() => nav("/teacher/feed")}>보기</SubButton>
-        </div>
-      </Card>
-
-      <Label>내 AI 기억</Label>
-      <Card>
-        <div className="flex items-center gap-3">
-          <span className="grid size-10 shrink-0 place-items-center rounded-md bg-tint text-accent-ink"><Icon name="memory" className="size-5" /></span>
-          <span className="min-w-0 flex-1">
-            <b className="block text-headline">AI가 배운 것</b>
-            <span className="text-footnote text-ink2">내가 반려한 이유를 보고 지울 수 있어요</span>
-          </span>
-          <SubButton small onClick={() => nav("/teacher/memory")}>보기</SubButton>
-        </div>
-      </Card>
-
-      <Label>곧 만나요</Label>
-      <ul className="overflow-hidden rounded-lg bg-card shadow-card">
+      <Label>더 보기</Label>
+      <NavList>
+        <NavRow to="/teacher/feed" icon="class" title="원 소식과 앨범" sub="원에 올라온 이야기와 사진을 볼 수 있어요" />
+        <NavRow to="/teacher/memory" icon="memory" title="AI가 배운 것" sub="내가 반려한 이유를 보고 지울 수 있어요" />
         {Object.entries(SOON).map(([k, v]) => (
-          <li key={k} className="border-b border-sep last:border-0">
-            <Link to={`/teacher/soon/${k}`} className="flex min-h-12 items-center gap-3 px-3 py-2.5">
-              <span className="grid size-9 shrink-0 place-items-center rounded-md bg-fill text-ink"><Icon name={v.icon} className="size-5" /></span>
-              <span className="min-w-0 flex-1 text-callout font-semibold">{v.title}</span>
-              <span className="text-caption font-semibold text-ink2">준비 중</span>
-              <Icon name="chevR" className="size-4 text-ink2" />
-            </Link>
-          </li>
+          <NavRow key={k} to={`/teacher/soon/${k}`} icon={v.icon} title={v.title} sub={v.sub} soon />
         ))}
-      </ul>
+      </NavList>
 
       </QueryState>
     </div>
@@ -175,4 +107,26 @@ function Label({ children }: { children: React.ReactNode }) {
 
 function Card({ children, accent }: { children: React.ReactNode; accent?: boolean }) {
   return <section className={`rounded-lg bg-card p-3 ${accent ? "border-[1.5px] border-accent" : "shadow-card"}`}>{children}</section>;
+}
+
+/** 이동 행 묶음. 행 전체가 눌리고 높이 60 이상이라 손가락으로 누르기 쉽다 */
+function NavList({ children }: { children: React.ReactNode }) {
+  return <ul className="overflow-hidden rounded-lg bg-card shadow-card">{children}</ul>;
+}
+
+function NavRow({ to, icon, title, sub, count = 0, soon = false }: { to: string; icon: string; title: string; sub: string; count?: number; soon?: boolean }) {
+  return (
+    <li className="[&+&]:border-t [&+&]:border-sep">
+      <Link to={to} className="flex min-h-[60px] items-center gap-3 px-3 py-2.5 transition-colors active:bg-fill">
+        <span className="grid size-10 shrink-0 place-items-center rounded-md bg-tint text-accent-ink"><Icon name={icon} className="size-5" /></span>
+        <span className="min-w-0 flex-1">
+          <b className="block truncate text-callout">{title}</b>
+          <span className="block truncate text-footnote text-ink2">{sub}</span>
+        </span>
+        {count > 0 && <span className="grid h-6 min-w-6 place-items-center rounded-full bg-accent px-1.5 text-caption font-bold text-on-accent">{count}</span>}
+        {soon && <span className="text-caption font-semibold text-ink2">준비 중</span>}
+        <Icon name="chevR" className="size-4 shrink-0 text-ink2" />
+      </Link>
+    </li>
+  );
 }

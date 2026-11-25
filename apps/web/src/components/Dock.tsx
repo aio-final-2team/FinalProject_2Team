@@ -41,7 +41,7 @@ export function SubButton({ tone = "tint", small, children, ...rest }: React.But
   return (
     <button
       {...rest}
-      className={`inline-flex items-center justify-center gap-1.5 rounded-md font-semibold transition-transform duration-100 active:scale-[.97] disabled:opacity-50 ${small ? "h-8 px-2.5 text-footnote" : "h-11 px-4 text-callout"} ${tone === "tint" ? "bg-tint text-accent-ink" : "bg-fill text-ink"} ${rest.className ?? ""}`}
+      className={`inline-flex items-center justify-center gap-1.5 rounded-md font-semibold transition-transform duration-100 active:scale-[.97] disabled:opacity-50 ${small ? "relative h-8 px-2.5 text-footnote after:absolute after:inset-x-0 after:-inset-y-1.5 after:content-['']" : "h-11 px-4 text-callout"} ${tone === "tint" ? "bg-tint text-accent-ink" : "bg-fill text-ink"} ${rest.className ?? ""}`}
     >
       {children}
     </button>

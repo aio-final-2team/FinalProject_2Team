@@ -1,5 +1,6 @@
 import { ScreenTop } from "@/components/ScreenTop";
 import { useNotebook } from "./notebookCtx";
+import { clearCompose, loadCompose, saveCompose } from "./composeDraft";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
@@ -81,8 +82,11 @@ function Compose({ onStarted }: { onStarted: (id: string) => void }) {
   const kids = useChildren(cid);
   const { records, memoOf } = useRecords(cid, date);
   const create = useCreateDraft();
-  const [activities, setActivities] = useState("");
-  const [supplies, setSupplies] = useState("");
+  const saved = useMemo(() => loadCompose(cid, date), [cid, date]);
+  const [activities, setActivities] = useState(saved.activities);
+  const [supplies, setSupplies] = useState(saved.supplies);
+  /* 적는 대로 이 기기에 임시 저장해서, 다른 화면에 다녀와도 내용이 남는다 */
+  useEffect(() => { saveCompose(cid, date, { activities, supplies }); }, [cid, date, activities, supplies]);
   const [err, setErr] = useState("");
   const recorded = (kids.data ?? []).filter((k) => records[k.id]?.length);
 
@@ -101,7 +105,7 @@ function Compose({ onStarted }: { onStarted: (id: string) => void }) {
         supplies: supplies.trim(),
         child_memos: recorded.map((k) => ({ child_id: k.id, memo: memoOf(k.id) })).filter((m) => m.memo),
       },
-      { onSuccess: (job) => { saveInputId(cid, date, job.input_id); onStarted(job.input_id); }, onError: (e) => setErr(e instanceof ApiError ? e.message : "초안 만들기를 시작하지 못했어요. 잠시 뒤 다시 눌러 주세요.") },
+      { onSuccess: (job) => { saveInputId(cid, date, job.input_id); clearCompose(cid, date); onStarted(job.input_id); }, onError: (e) => setErr(e instanceof ApiError ? e.message : "초안 만들기를 시작하지 못했어요. 잠시 뒤 다시 눌러 주세요.") },
     );
   };
   const field = "w-full rounded-md border-[1.5px] bg-card px-3 text-body outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--tint)]";
@@ -138,6 +142,7 @@ function Compose({ onStarted }: { onStarted: (id: string) => void }) {
       )}
       <Label>가정에서 준비할 것</Label>
       <input value={supplies} maxLength={2000} onChange={(e) => setSupplies(e.target.value)} placeholder="예: 11/27(금) 김장 체험: 앞치마, 팔토시" className={`${field} h-12 border-line`} />
+      {(activities || supplies) && <p className="mt-1.5 px-1 text-caption text-ink2">적은 내용은 이 기기에 임시 저장돼요</p>}
 
       <Label>
         <span className="inline-flex items-center gap-1">
