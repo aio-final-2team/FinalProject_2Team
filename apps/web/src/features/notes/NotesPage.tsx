@@ -479,7 +479,7 @@ function Review({ notes }: { notes: DailyNote[] }) {
                   {busy ? "확인하는 중…" : `${clean.length}명 모두 확인`}
                 </SubButton>
               ) : (
-                <span className="text-caption font-bold text-lav">확인할 통과 아이가 없어요</span>
+                <span className="text-caption font-bold text-lav">확인할 아이가 없어요</span>
               )}
             </div>
           </section>

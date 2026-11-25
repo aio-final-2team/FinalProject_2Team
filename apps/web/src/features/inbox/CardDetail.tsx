@@ -418,7 +418,7 @@ function TeacherActions({ c, open, draft, slot, pending, run }: { c: Card; open:
       <div className="grid grid-cols-3 gap-2">
         <Button variant="gray" size="sm" onClick={() => open("hold")}>보류</Button>
         <Button variant="gray" size="sm" onClick={() => open("reject")}>반려</Button>
-        <Button variant="gray" size="sm" loading={pending} disabled={c.escalated} onClick={() => run({ action: "escalate" }, { title: "원장님께 올렸어요" })}>{c.escalated ? "원장 보고됨" : "원장님께"}</Button>
+        <Button variant="gray" size="sm" loading={pending} disabled={c.escalated} onClick={() => run({ action: "escalate" }, { title: "원장님께 올렸어요" })}>{c.escalated ? "원장 보고됨" : "원장님께 보고"}</Button>
       </div>
       <Button loading={pending} onClick={() => open("send")} lockedReason={draft.trim().length < 2 ? "보낼 답을 써 주세요" : undefined}>
         {c.groupedCount ? `승인하고 ${c.groupedCount}명에게 보내기` : "승인하고 보내기"}
