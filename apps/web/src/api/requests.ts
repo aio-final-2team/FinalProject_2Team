@@ -16,11 +16,13 @@ export type RequestSummary = {
   next_action: string | null;
   hold_until: string | null;
 };
+/** 상담 후보 시간. status: proposed(제안) · chosen_by_parent(학부모가 고름) · booked(확정) · discarded(충돌로 버림) */
+export type Slot = { id: number; period: { start: string; end: string }; room: string; status: string };
 export type RequestDetail = {
   request: RequestSummary & { body?: string; missing_fields: string[]; parent_confirmed_at: string | null; created_at: string };
   messages: { id: number; sender_type: "user" | "agent" | "system"; sender_role?: "parent" | "teacher" | "director" | null; body: string; created_at: string }[];
   timeline: { label: string; at: string }[];
-  consultation?: { slots: { id: number; period: { start: string; end: string }; room: string; status: string }[]; booking: unknown };
+  consultation?: { slots: Slot[]; booking: { id: string; room: string; period: { start: string; end: string } } | null } | null;
   sources?: { document_title: string; location: string | null; effective_from: string | null }[];
   rejection?: { reason_code: string; reason_text: string } | null;
   /** 투약·귀가 요청일 때만 있다 */
@@ -90,4 +92,25 @@ export function usePatchCare(id: string) {
       qc.invalidateQueries({ queryKey: ["my-requests"] });
     },
   });
+}
+
+/** 상담 가능한 시간 체크 (API 8, 문서 3.4). 후보 1~3개를 고르거나, 맞는 시간이 없으면 원하는 시간을 적어 후보를 다시 받는다 */
+export function useChooseSlots(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (b: { slot_ids: number[] } | { none_fit: true; preferred_times: string }) => api(`/api/v1/requests/${id}/slot-choices`, { method: "POST", body: JSON.stringify(b) }),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["request", id] });
+      qc.invalidateQueries({ queryKey: ["my-requests"] });
+    },
+  });
+}
+
+/** 2026-11-26 09:00 → 11월 26일(목) 오전 9:00 ~ 9:30 */
+export function slotLabel(p: { start: string; end: string }) {
+  const a = new Date(p.start);
+  const b = new Date(p.end);
+  const day = a.toLocaleDateString("ko-KR", { month: "long", day: "numeric", weekday: "short" });
+  const t = (d: Date) => d.toLocaleTimeString("ko-KR", { hour: "numeric", minute: "2-digit", hour12: true });
+  return `${day} ${t(a)} ~ ${t(b)}`;
 }

@@ -3,6 +3,7 @@ import { useParams } from "react-router";
 import { TYPE_LABEL, useCancelRequest, useConfirmRequest, usePatchCare, usePostMessage, useRequest, type CareInput } from "@/api/requests";
 import { ApiError } from "@/api/client";
 import { Button } from "@/components/Button";
+import { ConsultSlots } from "./ConsultSlots";
 import { Sheet } from "@/components/Sheet";
 import { Dock, PrimaryButton } from "@/components/Dock";
 import { ScreenTop } from "@/components/ScreenTop";
@@ -93,6 +94,8 @@ export function RequestDetailPage() {
               )}
             </section>
           )}
+
+          {r!.type === "consultation" && d!.consultation && <ConsultSlots requestId={requestId ?? ""} status={r!.status} consultation={d!.consultation} />}
 
           <div className="mb-2 mt-5 px-1 text-footnote font-semibold text-ink2">진행 기록</div>
           <ol className="grid gap-1.5 rounded-lg bg-card p-3 shadow-card">
