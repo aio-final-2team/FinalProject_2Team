@@ -25,6 +25,7 @@ type CardDetail = {
   evidence: Array<{ document_title: string; location: string | null; effective_from: string | null; quote: string; is_current: boolean }>;
   warnings: string[];
   messages?: Array<{ id: number; sender_type: string; sender_role?: string | null; body: string; created_at: string }>;
+  rule?: null | { id: string; reason_code: string; rule_text: string; status: string };
   parent_choices: Array<{ slot_id: number; period: Period; room: string; chosen_at: string; hold_expires_at: string }>;
   director_instruction: null | { text: string; by: Person; at: string };
   timeline: Array<{ action: string; actor_type: string; agent_name: string | null; created_at: string }>;
@@ -78,6 +79,7 @@ const cardFromDetail = (data: CardDetail): Card => {
     className: "담당 반", createdAt: req?.created_at ?? new Date().toISOString(), original: req?.body ?? data.card.summary,
     summary: data.card.summary || undefined, draft: draft || undefined, sources,
     messages: data.messages?.map((m) => ({ id: m.id, fromParent: m.sender_role === "parent", body: m.body, at: m.created_at })),
+    rule: data.rule ? { id: data.rule.id, reasonCode: data.rule.reason_code, text: data.rule.rule_text, status: data.rule.status } : undefined,
     previousText: typeof data.card.draft.previous_text === "string" && data.card.draft.previous_text ? data.card.draft.previous_text : undefined,
     check: data.card.check_result ? { passed: !!data.card.check_result.passed, note: data.card.check_result.note, issues: (data.card.check_result.issues ?? []).map(issueText).filter(Boolean), attempt: data.card.check_result.attempt } : undefined,
     warnings: data.warnings ?? [], noEvidence: !!data.card.draft?.no_evidence,

@@ -35,6 +35,8 @@ export type Card = {
   messages?: { id: number; fromParent: boolean; body: string; at: string }[];
   /** 학부모가 글을 더 남겨 카드가 다시 열렸을 때 지난 답 (draft.previous_text). 이때 초안은 비어 있다 */
   previousText?: string;
+  /** 개인 규칙 제안 카드(kind rule_proposal)의 규칙. 켜기(activate)·거절(decline)한다 */
+  rule?: { id: string; reasonCode: string; text: string; status: string };
   escalated: boolean;
   assigned: boolean;
   parentConfirmedAt?: string;

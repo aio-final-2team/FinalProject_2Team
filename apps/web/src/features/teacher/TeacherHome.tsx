@@ -138,6 +138,18 @@ export function TeacherHome() {
         </div>
       </Card>
 
+      <Label>내 AI 기억</Label>
+      <Card>
+        <div className="flex items-center gap-3">
+          <span className="grid size-10 shrink-0 place-items-center rounded-md bg-tint text-accent-ink"><Icon name="memory" className="size-5" /></span>
+          <span className="min-w-0 flex-1">
+            <b className="block text-headline">AI가 배운 것</b>
+            <span className="text-footnote text-ink2">내가 반려한 이유를 보고 지울 수 있어요</span>
+          </span>
+          <SubButton small onClick={() => nav("/teacher/memory")}>보기</SubButton>
+        </div>
+      </Card>
+
       <Label>곧 만나요</Label>
       <ul className="overflow-hidden rounded-lg bg-card shadow-card">
         {Object.entries(SOON).map(([k, v]) => (

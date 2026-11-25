@@ -8,6 +8,7 @@ import { Sheet } from "@/components/Sheet";
 import { SkeletonRows, StateView } from "@/components/StateView";
 import { Pill, StatusPill, TypeTag } from "@/components/Tags";
 import { useToast } from "@/components/Toast";
+import { REASON_LABEL, useRuleDecision } from "@/api/memory";
 import { TYPE_LABEL } from "@/domain/status";
 import type { Card, CardAction, Role } from "@/domain/types";
 import { BackLink } from "./InboxPage";
@@ -154,7 +155,7 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
         </p>
       </header>
 
-      {(c.warnings?.length || (c.check && !c.check.passed && c.check.issues?.length)) ? (
+      {c.kind !== "rule_proposal" && (c.warnings?.length || (c.check && !c.check.passed && c.check.issues?.length)) ? (
         <ul className="grid gap-1.5 rounded-2xl bg-card px-4 py-3 text-[14px]" aria-label="확인해 주세요">
           {c.warnings?.map((w) => (
             <li key={w} className="flex gap-2">
@@ -192,7 +193,16 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
         </div>
       )}
 
-      {c.messages && c.messages.length > 1 ? (
+      {c.kind === "rule_proposal" && c.rule && (
+        <Section title="AI가 제안하는 규칙">
+          <div className="rounded-2xl bg-lav-tint px-4 py-3.5">
+            <b className="block text-caption font-bold text-lav">{REASON_LABEL[c.rule.reasonCode] ?? c.rule.reasonCode}</b>
+            <p className="mt-1 text-[15px] leading-relaxed">{c.rule.text}</p>
+          </div>
+          <p className="px-1 text-sub text-ink2">같은 이유로 여러 번 반려해서 AI가 제안해요. 켜면 비슷한 카드를 만들 때 참고해요.</p>
+        </Section>
+      )}
+      {c.kind === "rule_proposal" ? null : c.messages && c.messages.length > 1 ? (
         <Section title="주고받은 글">
           <ul className="grid gap-2" aria-label="주고받은 글">
             {c.messages.map((m) => (
@@ -353,6 +363,7 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
 }
 
 function TeacherActions({ c, open, draft, slot, pending, run }: { c: Card; open: (k: SheetKind) => void; draft: string; slot: string; pending: boolean; run: (b: CardAction, ok: { title: string; sub?: string }) => void }) {
+  if (c.kind === "rule_proposal" && c.rule) return <RuleActions c={c} />;
   if (c.status === "on_hold")
     return (
       <>
@@ -402,5 +413,25 @@ function DirectorActions({ c, open }: { c: Card; open: (k: SheetKind) => void })
         <Button onClick={() => open("note")}>{c.directorNote ? "지시 고치기" : "지시 남기기"}</Button>
       </div>
     </>
+  );
+}
+
+/** 개인 규칙 제안 카드의 켜기·거절 (API 20) */
+function RuleActions({ c }: { c: Card }) {
+  const decide = useRuleDecision();
+  const toast = useToast();
+  const go = (decision: "activate" | "decline") =>
+    decide.mutate(
+      { ruleId: c.rule!.id, decision },
+      {
+        onSuccess: () => toast({ kind: "ok", title: decision === "activate" ? "규칙을 켰어요" : "제안을 거절했어요", sub: decision === "activate" ? "AI가 이 규칙을 참고해요" : "같은 이유로 세 번 더 반려하면 다시 제안해요" }),
+        onError: (e) => toast({ kind: "error", title: e instanceof ApiError && e.status === 409 ? "이미 처리한 제안이에요" : "처리하지 못했어요", sub: e instanceof ApiError && e.status === 409 ? undefined : "연결을 확인하고 다시 눌러 주세요" }),
+      },
+    );
+  return (
+    <div className="grid grid-cols-[1fr_2fr] gap-2">
+      <Button variant="gray" loading={decide.isPending} onClick={() => go("decline")}>거절</Button>
+      <Button loading={decide.isPending} onClick={() => go("activate")}>규칙 켜기</Button>
+    </div>
   );
 }

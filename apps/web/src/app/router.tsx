@@ -13,6 +13,7 @@ import { ChildAlbum } from "@/features/feed/ChildAlbum";
 import { RouteError } from "@/components/RouteError";
 import { OverviewPage } from "@/features/director/OverviewPage";
 import { DocumentPage } from "@/features/teacher/DocumentPage";
+import { MemoryPage } from "@/features/teacher/MemoryPage";
 import { TeacherNotifications } from "@/features/common/NotificationList";
 import { RecordsPage } from "@/features/records/RecordsPage";
 import { ParentHome } from "@/features/parent/ParentHome";
@@ -48,6 +49,7 @@ export const router = createBrowserRouter([
       { path: "class/:id", element: <DocumentPage /> },
       { path: "care", element: <CarePage /> },
       { path: "feed", element: <FeedScreen role="teacher" /> },
+      { path: "memory", element: <MemoryPage /> },
       /* 문의·민원 받은함은 11/27 범위 밖(알림장과 따로). 주소만 남겨 둔다 */
       { path: "inbox", element: <InboxPage role="teacher" /> },
       { path: "inbox/:cardId", element: <InboxPage role="teacher" /> },
