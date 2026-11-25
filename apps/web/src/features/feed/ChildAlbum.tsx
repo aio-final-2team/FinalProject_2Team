@@ -24,7 +24,7 @@ const title = (body: string) => body.split("\n")[0].slice(0, 22);
  * 우리 애 (학부모 앨범). 반 소식 글 중에서 내 아이가 표시된 사진만 행사(글)별로 모아 보여 준다.
  * 아이 표시는 올린 사람이 직접 한다. 사진 AI가 붙기 전이라 '이 아이가 맞나요?'와 성장 앨범은 준비 중 칸으로만 둔다.
  */
-export function ChildAlbum() {
+export function ChildAlbum({ embedded = false }: { embedded?: boolean }) {
   const { user } = useSession();
   const toast = useToast();
   const me = useQuery({ queryKey: ["me"], queryFn: () => api<Me>("/api/v1/me") });
@@ -51,21 +51,29 @@ export function ChildAlbum() {
   const name = kid?.display_name ?? "아이";
   const soon = (what: string) => toast({ kind: "ok", title: `${what} 준비 중이에요`, sub: "사진 AI가 연결되면 열려요" });
 
-  return (
-    <div className="pb-24">
-      <div className="px-4">
-        <ScreenTop audience="parent" title="우리 애" sub={`반 사진에서 모은 ${name} 기록`} right={<>
+  const actions = (<>
           <button type="button" aria-label="공유" onClick={() => soon("공유는")} className="grid size-11 place-items-center rounded-full text-ink active:scale-95">
             <svg viewBox="0 0 24 24" className="size-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12 15V4M8 8l4-4 4 4M5 12v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6" /></svg>
           </button>
           <button type="button" aria-label={`${name} 사진 공개 범위 설정`} onClick={() => setScope(true)} className="grid size-11 place-items-center rounded-full text-ink active:scale-95">
             <svg viewBox="0 0 24 24" className="size-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></svg>
           </button>
-        </>} />
+        </>);
+  return (
+    <div className={embedded ? "" : "pb-24"}>
+      {embedded ? (
+        <div className="flex items-center justify-between">
+          <p className="min-w-0 text-footnote font-medium text-ink2">반 사진에서 모은 {name} 기록</p>
+          <div className="flex shrink-0 items-center">{actions}</div>
+        </div>
+      ) : (
+      <div className="px-4">
+        <ScreenTop audience="parent" title="우리 애" sub={`반 사진에서 모은 ${name} 기록`} right={actions} />
       </div>
+      )}
 
       <QueryState queries={[me, album, posts]} skeleton={3} errorTitle="앨범을 불러오지 못했어요">
-        <div className="px-4">
+        <div className={embedded ? "" : "px-4"}>
           {kids.length > 1 && (
             <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="아이 고르기">
               {kids.map((k) => (

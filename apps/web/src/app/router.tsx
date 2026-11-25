@@ -3,13 +3,11 @@ import { Guard } from "@/features/common/Guard";
 import { InboxPage } from "@/features/inbox/InboxPage";
 import { LoginPage } from "@/features/login/LoginPage";
 import { NoteDetail } from "@/features/notes/NoteDetail";
-import { NotesPage } from "@/features/notes/NotesPage";
 import { TeacherHome } from "@/features/teacher/TeacherHome";
 import { SoonPage } from "@/features/teacher/SoonPage";
 import { CarePage } from "@/features/care/CarePage";
 import { ClassPage } from "@/features/teacher/ClassPage";
 import { FeedScreen } from "@/features/feed/FeedScreen";
-import { ChildAlbum } from "@/features/feed/ChildAlbum";
 import { SignupPage } from "@/features/consent/SignupPage";
 import { ConsentsPage } from "@/features/consent/ConsentsPage";
 import { RouteError } from "@/components/RouteError";
@@ -17,7 +15,7 @@ import { OverviewPage } from "@/features/director/OverviewPage";
 import { DocumentPage } from "@/features/teacher/DocumentPage";
 import { MemoryPage } from "@/features/teacher/MemoryPage";
 import { TeacherNotifications } from "@/features/common/NotificationList";
-import { RecordsPage } from "@/features/records/RecordsPage";
+import { NotebookPage } from "@/features/notes/notebook";
 import { ParentHome } from "@/features/parent/ParentHome";
 import { NewRequestPage } from "@/features/parent/NewRequestPage";
 import { NotificationsPage } from "@/features/parent/NotificationsPage";
@@ -44,9 +42,9 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <Navigate to="home" replace /> },
       { path: "home", element: <TeacherHome /> },
-      { path: "records", element: <RecordsPage /> },
+      { path: "records", element: <Navigate to="/teacher/notes?tab=records" replace /> },
       { path: "notifications", element: <TeacherNotifications /> },
-      { path: "notes", element: <NotesPage /> },
+      { path: "notes", element: <NotebookPage /> },
       { path: "notes/:noteId", element: <NoteDetail /> },
       { path: "soon/:key", element: <SoonPage /> },
       { path: "class", element: <ClassPage /> },
@@ -90,7 +88,7 @@ export const router = createBrowserRouter([
       { path: "home", element: <ParentHome /> },
       { path: "notifications", element: <NotificationsPage /> },
       { path: "feed", element: <FeedScreen role="parent" /> },
-      { path: "album", element: <ChildAlbum /> },
+      { path: "album", element: <Navigate to="/parent/feed?tab=mine" replace /> },
       { path: "requests", element: <RequestsPage /> },
       { path: "requests/new", element: <NewRequestPage /> },
       { path: "requests/:requestId", element: <RequestDetailPage /> },

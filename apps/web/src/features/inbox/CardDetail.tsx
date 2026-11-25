@@ -9,7 +9,6 @@ import { SkeletonRows, StateView } from "@/components/StateView";
 import { Pill, StatusPill, TypeTag } from "@/components/Tags";
 import { useToast } from "@/components/Toast";
 import { REASON_LABEL, useRuleDecision } from "@/api/memory";
-import { TYPE_LABEL } from "@/domain/status";
 import type { Card, CardAction, Role } from "@/domain/types";
 import { fmtDateTime } from "@/domain/datetime";
 import { BackLink } from "./InboxPage";
@@ -59,6 +58,10 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
   const [text, setText] = useState("");
   const [draft, setDraft] = useState("");
   const reopened = !!c?.previousText && !c?.draft;
+  /* 같은 문장을 제목, 원문, 요약에서 되풀이하지 않는다 */
+  const same = (x?: string | null, y?: string | null) => { const n = (t?: string | null) => (t ?? "").replace(/[\s"'“”.…]/g, ""); return !!x && !!y && (n(x).startsWith(n(y)) || n(y).startsWith(n(x))); };
+  const showOriginal = !!c?.original && !same(c.original, c.title);
+  const showSummary = !!c?.summary && !same(c.summary, c.original) && !same(c.summary, c.title);
   const [slot, setSlot] = useState("");
   const [pendingSend, setPendingSend] = useState(false);
   const key = useRef(newKey());
@@ -146,10 +149,10 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
           {c.escalated && c.status !== "escalated" && <Pill>원장 보고</Pill>}
           {c.check?.passed && <Pill tone="done">검사 통과</Pill>}
           {c.check && !c.check.passed && <Pill tone="action">검사 확인 필요</Pill>}
-          {c.noEvidence && <Pill tone="action">근거 없음</Pill>}
+          {c.noEvidence && !c.warnings?.length && <Pill tone="action">근거 없음</Pill>}
         </div>
         <h2 className="text-[22px] font-bold tracking-[-0.02em]">
-          {TYPE_LABEL[c.type]} · {c.title}
+          {c.title}
         </h2>
         <p className="text-sub text-ink2">
           {c.className} · {c.guardianName}
@@ -213,13 +216,17 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
               </li>
             ))}
           </ul>
-          {c.summary && <p className="px-1 text-sub text-ink2">AI 요약: {c.summary}</p>}
+          {showSummary && <p className="px-1 text-sub text-ink2">AI 요약: {c.summary}</p>}
         </Section>
       ) : (
-        <Section title="학부모 원문">
-          <blockquote className="rounded-2xl bg-card px-4 py-3.5 text-[15px] leading-relaxed">{c.original}</blockquote>
-          {c.summary && <p className="px-1 text-sub text-ink2">AI 요약: {c.summary}</p>}
-        </Section>
+        <>
+          {showOriginal && (
+            <Section title="학부모 원문">
+              <blockquote className="rounded-2xl bg-card px-4 py-3.5 text-[15px] leading-relaxed">{c.original}</blockquote>
+            </Section>
+          )}
+          {showSummary && <p className="px-1 text-sub text-ink2">AI 요약: {c.summary}</p>}
+        </>
       )}
       {reopened && (
         <Section title="지난 답">

@@ -7,6 +7,7 @@ import { Icon } from "@/components/Icon";
 import { dateLabel, todayKST } from "@/domain/notes";
 import { QueryState } from "@/components/QueryState";
 import { RecordSheet } from "./RecordSheet";
+import { useNotebook } from "@/features/notes/notebookCtx";
 import { useRecords } from "./store";
 
 /** 아이를 전부 펼치지 않고 검색·선택한 뒤 짧게 기록한다. 서버 API 전까지 이 기기에 임시 저장한다. */
@@ -21,10 +22,12 @@ export function RecordsPage() {
   const recordedKids = useMemo(() => (kids.data ?? []).filter((k) => records[k.id]?.length), [kids.data, records]);
   const list = query.trim() ? (kids.data ?? []).filter((k) => k.display_name.includes(query.trim())) : (kids.data ?? []);
   const openKid = kids.data?.find((k) => k.id === open);
+  const nb = useNotebook();
 
   return (
     <div className="mx-auto max-w-[680px] px-4 pb-32 lg:pb-10">
-      <ScreenTop title="아이 관찰 기록" sub={`${dateLabel(date)} · 수업 중 기억해 둘 내용을 짧게 남겨 주세요`} />
+      <ScreenTop title={nb?.title ?? "아이 관찰 기록"} sub={`${dateLabel(date)} · 수업 중 기억해 둘 내용을 짧게 남겨 주세요`} />
+      {nb?.top}
 
       <div className="mt-4 rounded-lg bg-tint p-3">
         <b className="text-headline">오늘 {recordedKids.length}명 기록</b>

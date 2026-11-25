@@ -27,7 +27,6 @@ export function StaffLayout({ role }: { role: Exclude<Role, "parent"> }) {
     role === "teacher"
       ? [
           { to: `${base}/home`, icon: "home", label: "홈", count: 0 },
-          { to: `${base}/records`, icon: "class", label: "관찰 기록", count: 0 },
           { to: `${base}/notes`, icon: "document", label: "알림장", count: noteLeft },
           { to: `${base}/inbox`, icon: "inbox", label: "받은함", count: review },
         ]

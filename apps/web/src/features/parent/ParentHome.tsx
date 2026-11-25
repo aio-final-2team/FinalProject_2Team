@@ -1,12 +1,11 @@
-import { useState } from "react";
 import { Link } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/api/client";
+import { TYPE_LABEL, useMyRequests } from "@/api/requests";
 import { Buddy } from "@/components/Brand";
 import { QueryState } from "@/components/QueryState";
 import { Dock, SubButton } from "@/components/Dock";
 import { Icon } from "@/components/Icon";
-import { MeSheet } from "@/components/MeSheet";
 import { useToast } from "@/components/Toast";
 import wordWhite from "@/assets/brand/wordmark-white.svg";
 import { dateLabel, nameI, todayKST, type DailyNote } from "@/domain/notes";
@@ -21,12 +20,14 @@ type Me = { user: { display_name: string }; children: { id: string; display_name
 export function ParentHome() {
   const date = todayKST();
   const toast = useToast();
-  const [meOpen, setMeOpen] = useState(false);
   const me = useQuery({ queryKey: ["me"], queryFn: () => api<Me>("/api/v1/me") });
   const notes = useQuery({
     queryKey: ["parent-notes", date],
     queryFn: () => api<{ items: DailyNote[] }>(`/api/v1/daily-notes?date=${date}&size=20`).then((r) => r.items),
   });
+  const reqs = useMyRequests();
+  /* 내가 답해야 멈춘 요청만 홈에 올린다 (상담 시간 고르기, 빠진 내용 채우기) */
+  const todo = (reqs.data?.items ?? []).filter((r) => r.status === "needs_info");
   const child = me.data?.children[0];
   const note = notes.data?.find((n) => n.child_id === child?.id) ?? notes.data?.[0];
   const sentAt = note?.sent_at ? new Date(note.sent_at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false }) : "";
@@ -36,7 +37,6 @@ export function ParentHome() {
 
   return (
     <div className="min-h-full pb-48">
-      <MeSheet open={meOpen} onClose={() => setMeOpen(false)} />
       {/* 블루 머리: 학부모 홈에만 브랜드 블루를 넓게 쓴다 */}
       <header className="bg-brand-fill px-4 pb-6 pt-[max(12px,env(safe-area-inset-top))] text-on-brand">
         <div className="mx-auto flex max-w-[680px] items-center justify-between">
@@ -45,9 +45,6 @@ export function ParentHome() {
             <Link to="/parent/notifications" className="grid size-11 place-items-center rounded-md" aria-label="알림">
               <Icon name="bell" className="size-6" />
             </Link>
-            <button type="button" aria-label="내 정보" onClick={() => setMeOpen(true)} className="grid size-11 place-items-center rounded-md active:scale-95">
-              <Icon name="profile" className="size-6" />
-            </button>
           </div>
         </div>
         <div className="mx-auto max-w-[680px]">
@@ -57,6 +54,25 @@ export function ParentHome() {
       </header>
 
       <div className="mx-auto max-w-[680px] px-4 pt-4">
+        {todo.length > 0 && (
+          <section aria-label="확인할 일" className="mb-4 overflow-hidden rounded-lg bg-card shadow-card">
+            <h2 className="px-3 pt-3 text-footnote font-semibold text-ink2">확인할 일 {todo.length}건</h2>
+            <ul>
+              {todo.slice(0, 3).map((r) => (
+                <li key={r.id} className="[&+&]:border-t [&+&]:border-sep">
+                  <Link to={`/parent/requests/${r.id}`} className="flex min-h-14 items-center gap-3 px-3 py-2.5">
+                    <span aria-hidden className="grid size-8 shrink-0 place-items-center rounded-sm bg-fill text-caption font-bold">{(TYPE_LABEL[r.type] ?? r.type).slice(0, 2)}</span>
+                    <span className="min-w-0 flex-1">
+                      <b className="block truncate text-headline font-semibold">{r.title ?? "제목 없음"}</b>
+                      <span className="text-footnote font-bold text-lav">{r.status_label}</span>
+                    </span>
+                    <Icon name="chevR" className="size-4 text-ink2" />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
         <QueryState queries={[me, notes]} skeleton={3} errorTitle="오늘 알림장을 불러오지 못했어요">
         {!note ? (
           <div className="grid justify-items-center gap-2 py-12 text-center">

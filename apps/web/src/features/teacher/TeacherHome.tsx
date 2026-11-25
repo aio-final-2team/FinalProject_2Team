@@ -122,7 +122,7 @@ export function TeacherHome() {
             <b className="block text-headline">오늘 {recorded}명 기록</b>
             <span className="text-footnote text-ink2">필요한 아이만 짧게 남겨도 돼요</span>
           </span>
-          <Link to="/teacher/records" className="inline-flex h-9 items-center rounded-md bg-fill px-3 text-footnote font-semibold">기록 추가</Link>
+          <Link to="/teacher/notes?tab=records" className="inline-flex h-9 items-center rounded-md bg-fill px-3 text-footnote font-semibold">기록 추가</Link>
         </div>
       </Card>
 

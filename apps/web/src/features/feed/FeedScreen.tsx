@@ -16,10 +16,11 @@ import { useToast } from "@/components/Toast";
 import type { Role } from "@/domain/types";
 import { ComposeSheet, type Kid } from "./ComposeSheet";
 import { PhotoViewer, PostCard } from "./parts";
+import { ChildAlbum } from "./ChildAlbum";
 
-type TabKey = "class" | "org" | "album";
+type TabKey = "class" | "org" | "album" | "mine";
 const TABS: Record<Role, { key: TabKey; label: string }[]> = {
-  parent: [{ key: "class", label: "우리 반" }, { key: "org", label: "원 전체" }],
+  parent: [{ key: "class", label: "우리 반" }, { key: "org", label: "원 전체" }, { key: "mine", label: "우리 애" }],
   teacher: [{ key: "org", label: "원 소식" }, { key: "album", label: "앨범" }],
   director: [{ key: "org", label: "원 소식" }, { key: "album", label: "앨범" }],
 };
@@ -78,10 +79,10 @@ export function FeedScreen({ role }: { role: Role }) {
       <ScreenTop
         audience={role === "parent" ? "parent" : "staff"}
         back={role === "teacher" ? { to: "/teacher/home", label: "홈" } : undefined}
-        title={role === "parent" ? "소식" : "원 소식"}
-        sub={role === "parent" ? "우리 반과 원의 이야기, 사진을 볼 수 있어요" : "원 전체에 올라온 이야기와 사진이에요"}
+        title={role === "parent" ? "사진" : "원 소식"}
+        sub={role === "parent" ? "우리 반과 원의 소식, 우리 아이 사진을 볼 수 있어요" : "원 전체에 올라온 이야기와 사진이에요"}
         right={
-          <button type="button" disabled={!lane} onClick={() => setCompose(true)} className="mr-1 inline-flex h-10 items-center gap-1.5 rounded-full bg-brand-fill px-4 text-callout font-semibold text-on-brand active:scale-95 disabled:opacity-50">
+          tab === "mine" ? undefined : <button type="button" disabled={!lane} onClick={() => setCompose(true)} className="mr-1 inline-flex h-10 items-center gap-1.5 rounded-full bg-brand-fill px-4 text-callout font-semibold text-on-brand active:scale-95 disabled:opacity-50">
             <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M4 8a2 2 0 0 1 2-2h1.5l1.2-1.6A1 1 0 0 1 9.5 4h5a1 1 0 0 1 .8.4L16.5 6H18a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" /><circle cx="12" cy="12.5" r="3.2" /></svg>
             올리기
           </button>
@@ -89,7 +90,7 @@ export function FeedScreen({ role }: { role: Role }) {
       />
       <div className="mb-4" />
 
-      <div role="tablist" aria-label="소식 종류" className="mb-4 grid grid-flow-col gap-1 rounded-md bg-fill p-1">
+      <div role="tablist" aria-label="사진 구성" className="mb-4 grid grid-flow-col gap-1 rounded-md bg-fill p-1">
         {tabs.map((t) => (
           <button key={t.key} role="tab" aria-selected={tab === t.key} onClick={() => setParams({ tab: t.key }, { replace: true })} className={`h-9 rounded-sm text-footnote font-semibold ${tab === t.key ? "bg-card shadow-card" : "text-ink2"}`}>
             {t.label}
@@ -97,7 +98,9 @@ export function FeedScreen({ role }: { role: Role }) {
         ))}
       </div>
 
-      {tab === "album" ? (
+      {tab === "mine" ? (
+        <ChildAlbum embedded />
+      ) : tab === "album" ? (
         <>
           <QueryState queries={[...waiting, album]} skeleton={3} errorTitle="앨범을 불러오지 못했어요">
             {album.data && album.data.length > 0 ? (

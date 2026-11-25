@@ -1,4 +1,5 @@
 import { ScreenTop } from "@/components/ScreenTop";
+import { useNotebook } from "./notebookCtx";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
@@ -45,9 +46,11 @@ export function NotesPage() {
 /* 공통 틀: ‹ 홈, 큰 제목, 보조 줄 */
 function Frame({ title = "오늘 알림장", sub, children }: { title?: string; sub?: React.ReactNode; children: React.ReactNode }) {
   const { user } = useSession();
+  const nb = useNotebook();
   return (
     <div className="mx-auto max-w-[680px] px-4 pb-48 lg:pb-10">
-      <ScreenTop title={title} sub={sub ?? `${user?.display_name} · ${dateLabel(todayKST())} · 17:00까지`} />
+      <ScreenTop title={nb?.title ?? title} sub={sub ?? `${user?.display_name} · ${dateLabel(todayKST())} · 17:00까지`} />
+      {nb?.top}
       {children}
     </div>
   );
@@ -112,7 +115,7 @@ function Compose({ onStarted }: { onStarted: (id: string) => void }) {
           <span className="text-callout font-semibold text-ink2">명 기록 반영</span>
         </div>
         <p className="text-footnote text-ink2">기록이 있는 아이의 개별 내용만 선택해서 반영돼요</p>
-        <Link to="/teacher/records" className="mt-2 inline-flex h-8 items-center rounded-md bg-fill px-2.5 text-footnote font-semibold">
+        <Link to="/teacher/notes?tab=records" className="mt-2 inline-flex h-8 items-center rounded-md bg-fill px-2.5 text-footnote font-semibold">
           관찰 기록 보기
         </Link>
       </section>
@@ -342,7 +345,7 @@ function Review({ notes }: { notes: DailyNote[] }) {
         <Link to={`/teacher/notes/${n.id}`} className="min-w-0 flex-1">
           <span className="flex items-baseline gap-2">
             <b className="text-headline font-semibold">{names[n.child_id] ?? "아이"}</b>
-            <span className={`text-caption font-bold ${st.cls}`}>{st.label}</span>
+            {!(allSent && n.status === "sent") && <span className={`text-caption font-bold ${st.cls}`}>{st.label}</span>}
           </span>
           <span className="block truncate text-footnote text-ink2">{sub}</span>
         </Link>
@@ -353,8 +356,8 @@ function Review({ notes }: { notes: DailyNote[] }) {
 
   const preview = notes.find((n) => hasChild(n)) ?? notes[0];
   return (
-    <Frame title="알림장 확인" sub={`${user?.display_name} · ${notes.length}명 · ${allSent ? "보냈어요" : "17:00까지"}`}>
-      <section className="mt-4 rounded-lg bg-card p-3 shadow-card">
+    <Frame title="알림장 확인" sub={`${user?.display_name} · ${notes.length}명${allSent ? "" : " · 17:00까지"}`}>
+      {!allSent && <section className="mt-4 rounded-lg bg-card p-3 shadow-card">
         <Meter parts={[[c.sent, "bg-ok"], [c.ready, "bg-lav"], [c.needs_check, "bg-accent"], [c.draft, "bg-ink3"]]} total={notes.length} />
         <div className="flex flex-wrap gap-x-3 text-footnote text-ink2">
           {allSent ? (
@@ -369,7 +372,7 @@ function Review({ notes }: { notes: DailyNote[] }) {
             </>
           )}
         </div>
-      </section>
+      </section>}
 
       {blocked && !allSent && (
         <section role="alert" className="mt-4 rounded-lg bg-danger-tint p-3 text-callout">

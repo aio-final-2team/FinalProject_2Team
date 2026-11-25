@@ -35,13 +35,15 @@ function weightOf(c: Card) {
 
 function Row({ c, active, to, role }: { c: Card; active: boolean; to: string; role: Exclude<Role, "parent"> }) {
   const w = weightOf(c);
-  const head = c.risk === "urgent" ? `긴급 · ${c.urgentReason}` : c.risk === "judge" ? `판단 필요 · ${TYPE_LABEL[c.type]}` : `${TYPE_LABEL[c.type]} · ${c.title}`;
+  /* 제목은 한 번만 보여 준다. 접수 원문은 제목에 이미 담겨 있으면 다시 쓰지 않는다 */
+  const norm = (t: string) => t.replace(/[\s"'“”.…]/g, "");
+  const head = c.risk === "urgent" ? (c.urgentReason ?? c.title) : c.title;
+  const showOriginal = !!c.original && !norm(c.original).startsWith(norm(c.title)) && !norm(c.title).startsWith(norm(c.original));
   const flags: { t: string; tone: "action" | "answered" | "done" | "wait" | "urgent" }[] = [];
   if (c.risk === "urgent") flags.push({ t: "초안 없음", tone: "urgent" });
   if (c.risk === "judge") flags.push({ t: "AI 판단 불확실", tone: "action" });
   if (c.repeatCount && c.repeatCount >= 3) flags.push({ t: `반복 ${c.repeatCount}번째`, tone: "action" });
   if (c.escalated) flags.push({ t: "원장 보고", tone: "wait" });
-  if (c.check?.passed) flags.push({ t: "검사 통과", tone: "done" });
   if (c.parentConfirmedAt && c.status === "sent_or_booked") flags.push({ t: "처리 완료 대기", tone: "answered" });
   if (c.slots) flags.push({ t: `학부모가 ${c.slots.filter((s) => s.picked).length}개 고름`, tone: "wait" });
   if (c.groupedCount) flags.push({ t: `같은 질문 ${c.groupedCount}건`, tone: "wait" });
@@ -58,7 +60,9 @@ function Row({ c, active, to, role }: { c: Card; active: boolean; to: string; ro
           <span className="shrink-0 text-[12px] text-ink2 tabular-nums">{ago(c.createdAt)}</span>
         </span>
         <span className="text-[13px] text-ink2">
-          {role === "director" && <span className="mr-1 font-semibold text-ink">{c.className}</span>}"{c.original}"
+          {role === "director" && <span className="mr-1 font-semibold text-ink">{c.className} ·</span>}
+          {c.risk === "judge" ? "판단 필요 · " : ""}{TYPE_LABEL[c.type]}
+          {showOriginal && <> · "{c.original}"</>}
         </span>
         {flags.length > 0 && (
           <span className="mt-1 flex flex-wrap gap-1">
@@ -87,7 +91,6 @@ export function InboxPage({ role }: { role: Exclude<Role, "parent"> }) {
   const list = (data?.items ?? [])
     .sort((a, b) => (filter === "review" ? reviewRank(a) - reviewRank(b) : 0) || +new Date(a.createdAt) - +new Date(b.createdAt));
   const q = `?filter=${filter}${type === "all" ? "" : `&type=${type}`}`;
-  const TYPES: { key: TypeFilter; label: string }[] = [{ key: "all", label: "전체" }, { key: "complaint", label: "민원" }, { key: "consultation", label: "상담" }, { key: "inquiry", label: "문의" }];
   const base = `/${role}/inbox`;
 
   const listPane = (
@@ -117,20 +120,6 @@ export function InboxPage({ role }: { role: Exclude<Role, "parent"> }) {
             >
               {f.label}
               <span className="ml-1 tabular-nums opacity-60">{counts[f.key]}</span>
-            </button>
-          ))}
-        </div>
-        <div className="mt-2 flex gap-4 border-b border-sep" role="tablist" aria-label="요청 종류">
-          {TYPES.map((t) => (
-            <button
-              key={t.key}
-              role="tab"
-              aria-selected={type === t.key}
-              onClick={() => setParams({ filter, ...(t.key === "all" ? {} : { type: t.key }) })}
-              className={`-mb-px h-10 border-b-2 text-footnote font-semibold ${type === t.key ? "border-accent text-accent-ink" : "border-transparent text-ink2"}`}
-            >
-              {t.label}
-              <span className="ml-1 tabular-nums">{data?.typeCounts[t.key] ?? 0}</span>
             </button>
           ))}
         </div>
