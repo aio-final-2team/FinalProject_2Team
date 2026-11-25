@@ -11,6 +11,7 @@ import { Dock, PrimaryButton, SubButton } from "@/components/Dock";
 import { Icon } from "@/components/Icon";
 import { useToast } from "@/components/Toast";
 import { useRecords } from "@/features/records/store";
+import { fmtDateTime } from "@/domain/datetime";
 import { CHECK_KIND, NOTE_STATUS, SOURCE_LABEL, dateLabel, nameI, todayKST, type DailyNote, type NoteItem, type OpenCheck } from "@/domain/notes";
 
 /**
@@ -250,7 +251,7 @@ function Detail({ note, notes, name, names }: { note: DailyNote; notes: DailyNot
 
       {locked && (
         <div className="mt-4 grid gap-2">
-          <p className="rounded-md bg-tint p-3 text-footnote text-accent-ink">{note.corrected_at ? `${new Date(note.corrected_at).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false })}에 정정했어요` : "보낸 알림장이에요"}</p>
+          <p className="rounded-md bg-tint p-3 text-footnote text-accent-ink">{note.corrected_at ? `${fmtDateTime(note.corrected_at)}에 정정했어요` : "보낸 알림장이에요"}</p>
           <SubButton tone="gray" className="h-[52px] w-full" onClick={() => setCorrecting(true)}>잘못된 내용 정정하기</SubButton>
           <CorrectSheet note={note} open={correcting} onClose={() => setCorrecting(false)} cid={cid} date={date} />
         </div>

@@ -98,7 +98,7 @@ export function CareSection({ classroomId, all }: { classroomId?: string; all?: 
                     <div className="grid grid-cols-[1fr_2fr] gap-2">
                       <button type="button" disabled={busyId === c.id} onClick={() => { setReason(""); setRejecting(c); }} className="h-10 rounded-md bg-fill text-footnote font-semibold text-ink active:scale-[.97] disabled:opacity-50">반려</button>
                       <button type="button" disabled={busyId === c.id} onClick={() => run(c)} className="h-10 rounded-md bg-tint text-footnote font-semibold text-accent-ink active:scale-[.97] disabled:opacity-50">
-                        {c.next_action === "confirm" ? "확인했어요" : c.type === "medication" ? "먹였어요 (완료)" : "인계했어요 (완료)"}
+                        {c.next_action === "confirm" ? "확인했어요" : c.type === "medication" ? "먹였어요" : "인계했어요"}
                       </button>
                     </div>
                   )}

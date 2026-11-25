@@ -11,6 +11,7 @@ import { useToast } from "@/components/Toast";
 import { REASON_LABEL, useRuleDecision } from "@/api/memory";
 import { TYPE_LABEL } from "@/domain/status";
 import type { Card, CardAction, Role } from "@/domain/types";
+import { fmtDateTime } from "@/domain/datetime";
 import { BackLink } from "./InboxPage";
 
 /** API 3.7 warnings[] 코드를 교사가 읽는 말로 */
@@ -199,7 +200,7 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
             <b className="block text-caption font-bold text-lav">{REASON_LABEL[c.rule.reasonCode] ?? c.rule.reasonCode}</b>
             <p className="mt-1 text-[15px] leading-relaxed">{c.rule.text}</p>
           </div>
-          <p className="px-1 text-sub text-ink2">같은 이유로 여러 번 반려해서 AI가 제안해요. 켜면 비슷한 카드를 만들 때 참고해요.</p>
+          <p className="px-1 text-sub text-ink2">같은 이유로 세 번 이상 반려해서 AI가 제안해요. 켜면 AI가 비슷한 카드를 만들 때 참고할 수 있어요.</p>
         </Section>
       )}
       {c.kind === "rule_proposal" ? null : c.messages && c.messages.length > 1 ? (
@@ -289,7 +290,7 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
           <ol className="grid gap-1.5 px-1 text-sub text-ink2">
             {c.history.map((h, i) => (
               <li key={i}>
-                <b className="text-ink">{h.who}</b> · {h.what} · {new Date(h.at).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                <b className="text-ink">{h.who}</b> · {h.what} · {fmtDateTime(h.at)}
               </li>
             ))}
           </ol>
@@ -424,7 +425,7 @@ function RuleActions({ c }: { c: Card }) {
     decide.mutate(
       { ruleId: c.rule!.id, decision },
       {
-        onSuccess: () => toast({ kind: "ok", title: decision === "activate" ? "규칙을 켰어요" : "제안을 거절했어요", sub: decision === "activate" ? "AI가 이 규칙을 참고해요" : "같은 이유로 세 번 더 반려하면 다시 제안해요" }),
+        onSuccess: () => toast({ kind: "ok", title: decision === "activate" ? "규칙을 켰어요" : "제안을 거절했어요", sub: decision === "activate" ? "AI가 참고할 수 있어요" : "같은 이유로 세 번 더 반려하면 다시 제안해요" }),
         onError: (e) => toast({ kind: "error", title: e instanceof ApiError && e.status === 409 ? "이미 처리한 제안이에요" : "처리하지 못했어요", sub: e instanceof ApiError && e.status === 409 ? undefined : "연결을 확인하고 다시 눌러 주세요" }),
       },
     );

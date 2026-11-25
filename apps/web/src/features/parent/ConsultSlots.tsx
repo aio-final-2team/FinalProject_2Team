@@ -22,14 +22,14 @@ export function ConsultSlots({ requestId, status, consultation }: { requestId: s
     const code = e instanceof ApiError ? e.code : undefined;
     toast({
       kind: "error",
-      title: code === "SLOT_TAKEN" ? "방금 다른 분이 그 시간을 잡았어요" : code === "SLOT_PAST" ? "이미 시작한 시간이에요" : "시간을 보내지 못했어요",
+      title: code === "SLOT_TAKEN" ? "그 시간은 이미 찼어요" : code === "SLOT_PAST" ? "이미 시작한 시간이에요" : "시간을 보내지 못했어요",
       sub: code === "SLOT_TAKEN" || code === "SLOT_PAST" ? "새 후보를 불러왔어요.\n다시 골라 주세요" : "연결을 확인하고 다시 눌러 주세요",
     });
     setPicked([]);
   };
   const submit = () =>
     choose.mutate(noFit ? { none_fit: true, preferred_times: wish.trim() } : { slot_ids: picked }, {
-      onSuccess: () => { toast({ kind: "ok", title: noFit ? "원하는 시간을 알렸어요" : "시간을 보냈어요", sub: noFit ? "선생님이 새 후보를 보내 드려요" : "선생님이 확인하고 확정해요" }); setPicked([]); setNoFit(false); setWish(""); },
+      onSuccess: () => { toast({ kind: "ok", title: noFit ? "원하는 시간을 알렸어요" : "시간을 보냈어요", sub: noFit ? "새 후보를 불러왔어요. 다시 골라 주세요" : "선생님이 확인하고 확정해요" }); setPicked([]); setNoFit(false); setWish(""); },
       onError: fail,
     });
 

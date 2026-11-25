@@ -36,7 +36,7 @@ function ChunkCard({ c }: { c: Chunk }) {
     <section className={`rounded-lg bg-card p-3 shadow-card ${c.suspicious ? "border-[1.5px] border-danger" : ""}`}>
       {c.suspicious && (
         <div className="mb-2">
-          <b className="text-footnote text-danger">확인이 필요한 조각이에요</b>
+          <b className="text-footnote text-danger">확인이 필요한 부분이에요</b>
           <p className="text-caption text-ink2">AI 보안 검사에서 걸러져서 검색과 답변에는 쓰지 않아요.</p>
           <button type="button" aria-expanded={open} onClick={() => setOpen((v) => !v)} className="mt-1 h-8 rounded-md bg-fill px-2.5 text-footnote font-semibold">{open ? "내용 접기" : "내용 보기"}</button>
         </div>

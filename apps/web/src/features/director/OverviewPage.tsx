@@ -7,9 +7,10 @@ import { Icon } from "@/components/Icon";
 import { QueryState } from "@/components/QueryState";
 import { ScreenTop } from "@/components/ScreenTop";
 import { StateView } from "@/components/StateView";
+import { fmtDateTime } from "@/domain/datetime";
 import { dateLabel, todayKST } from "@/domain/notes";
 
-const when = (iso: string) => new Date(iso).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false });
+const when = fmtDateTime;
 
 /** 원장 현황 (API 21). 숫자를 누르면 받은함의 해당 목록으로 간다. 반별 알림장 현황은 API가 없어 준비 중 칸으로 둔다 */
 export function OverviewPage() {

@@ -8,6 +8,7 @@ import { Sheet } from "@/components/Sheet";
 import { Dock, PrimaryButton } from "@/components/Dock";
 import { ScreenTop } from "@/components/ScreenTop";
 import { QueryState } from "@/components/QueryState";
+import { fmtDateTime } from "@/domain/datetime";
 import { useToast } from "@/components/Toast";
 
 const STEPS = ["접수", "선생님 확인", "답변", "완료"];
@@ -102,7 +103,7 @@ export function RequestDetailPage() {
             {d!.timeline.map((t, i) => (
               <li key={i} className="flex items-center justify-between text-footnote">
                 <span className={i === d!.timeline.length - 1 ? "font-semibold" : "text-ink2"}>{t.label}</span>
-                <time className="text-ink2 tabular-nums">{new Date(t.at).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false })}</time>
+                <time className="text-ink2 tabular-nums">{fmtDateTime(t.at)}</time>
               </li>
             ))}
           </ol>

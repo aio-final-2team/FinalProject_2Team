@@ -35,7 +35,7 @@ export function UploadSheet({ open, onClose, classroomId }: { open: boolean; onC
       {
         onSuccess: (d) => {
           if (d.ingest_status === "failed") toast({ kind: "error", title: "자료를 읽지 못했어요", sub: "글 파일(.md, .txt)이 맞는지 확인해 주세요" });
-          else toast({ kind: "ok", title: "자료를 올렸어요", sub: `${DOC_TYPE_LABEL[d.doc_type] ?? "자료"} · 조각 ${d.chunk_count}개로 읽었어요` });
+          else toast({ kind: "ok", title: "자료를 올렸어요", sub: `${DOC_TYPE_LABEL[d.doc_type] ?? "자료"}로 올렸어요` });
           if (d.ingest_status !== "failed") close();
         },
         onError: (e) => toast({ kind: "error", title: e instanceof ApiError && (e.status === 413 || e.status === 422) ? "자료를 올리지 못했어요" : "올리지 못했어요", sub: e instanceof ApiError && (e.status === 413 || e.status === 422) ? "파일 크기와 날짜를 확인해 주세요" : "연결을 확인하고 다시 눌러 주세요" }),
@@ -44,7 +44,7 @@ export function UploadSheet({ open, onClose, classroomId }: { open: boolean; onC
 
   return (
     <Sheet open={open} onClose={close} title="자료 올리기">
-      <p className="text-footnote text-ink2">{classroomId ? "우리 반 자료로 올라가요" : "원 전체 자료로 올라가요"}. 올리면 서버가 내용을 읽어 두어요.</p>
+      <p className="text-footnote text-ink2">{classroomId ? "우리 반 자료로 올라가요" : "원 전체 자료로 올라가요"}. 올리면 내용을 읽어 두어요.</p>
       <label className="inline-flex h-12 cursor-pointer items-center justify-center rounded-md bg-tint px-4 text-callout font-semibold text-accent-ink active:scale-[.97]">
         {file ? file.name : "글 파일 고르기"}
         <input type="file" accept={DOC_FILE_TYPES} className="sr-only" onChange={(e) => { pick(e.target.files?.[0]); e.target.value = ""; }} />

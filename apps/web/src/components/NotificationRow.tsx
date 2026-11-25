@@ -1,4 +1,5 @@
 import { Icon } from "./Icon";
+import { fmtDate } from "@/domain/datetime";
 import type { Notification } from "@/api/notifications";
 
 /** 알림 종류별 아이콘 (서버 kind). 모르는 종류는 받은함 아이콘 */
@@ -21,7 +22,7 @@ export function NotificationRow({ n, line, onOpen }: { n: Notification; line?: s
           <b className={`block text-callout ${unread ? "font-semibold" : "font-medium text-ink2"}`}>{n.title}</b>
           {(n.body ?? line) && <span className="block truncate text-footnote text-ink2">{n.body ?? line}</span>}
         </span>
-        <time className="shrink-0 text-caption text-ink2 tabular-nums">{new Date(n.deliver_after).toLocaleDateString("ko-KR", { month: "numeric", day: "numeric" })}</time>
+        <time className="shrink-0 text-caption text-ink2 tabular-nums">{fmtDate(n.deliver_after)}</time>
       </button>
     </li>
   );
