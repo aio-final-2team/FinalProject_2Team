@@ -38,7 +38,7 @@ export function NoteDetail() {
     return (
       <div className="mx-auto max-w-[680px] px-4 pt-10">
         <p className="text-callout text-ink2">이 알림장을 찾지 못했어요.</p>
-        <Link to="/teacher/notes" className="mt-3 inline-block font-semibold text-accent">
+        <Link to="/teacher/notes?tab=notes" className="mt-3 inline-block font-semibold text-accent">
           오늘 알림장으로
         </Link>
       </div>
@@ -117,7 +117,7 @@ function Detail({ note, notes, name, names }: { note: DailyNote; notes: DailyNot
             action: { label: "되돌리기", run: () => patch.mutate({ id: note.id, body: { confirm: false } }) },
           });
           if (next) nav(`/teacher/notes/${next.id}`);
-          else nav("/teacher/notes");
+          else nav("/teacher/notes?tab=notes");
         },
         onError: (e) => setErr(e instanceof ApiError ? e.message : "확인하지 못했어요. 다시 눌러 주세요."),
       },
@@ -126,7 +126,7 @@ function Detail({ note, notes, name, names }: { note: DailyNote; notes: DailyNot
   const st = NOTE_STATUS[note.status];
   return (
     <div className="mx-auto max-w-[680px] px-4 pb-48 pt-2 lg:pb-10 lg:pt-6">
-      <ScreenTop back={{ to: "/teacher/notes", label: "오늘 알림장" }} title={`${nameI(name)} 알림장`} sub={<>{user?.display_name} · {dateLabel(note.note_date)} · <span className={`font-bold ${st.cls}`}>{st.label}</span></>} />
+      <ScreenTop back={{ to: "/teacher/notes?tab=notes", label: "오늘 알림장" }} title={`${nameI(name)} 알림장`} sub={<>{user?.display_name} · {dateLabel(note.note_date)} · <span className={`font-bold ${st.cls}`}>{st.label}</span></>} />
       <div className="mb-4" />
 
       <div className="mb-2 px-1 text-footnote font-semibold text-ink2">오늘 기록</div>

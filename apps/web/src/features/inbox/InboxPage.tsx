@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Link, useParams, useSearchParams } from "react-router";
 import { useCards, type TypeFilter } from "@/api/cards";
 import { ScreenTop } from "@/components/ScreenTop";
@@ -8,6 +9,9 @@ import { Pill, WeightIcon } from "@/components/Tags";
 import { INBOX_FILTERS, TYPE_LABEL, type InboxFilter } from "@/domain/status";
 import { reviewRank, type Card, type Role } from "@/domain/types";
 import { CardDetail } from "./CardDetail";
+
+/** 카드를 열기 전 목록 스크롤 위치. 휴대폰에서 목록 → 상세 → 뒤로 갈 때 보던 자리로 돌아오게 한다 */
+let listScroll = 0;
 
 const EMPTY: Record<InboxFilter, string> = {
   review: "지금 확인할 카드가 없어요",
@@ -50,6 +54,7 @@ function Row({ c, active, to, role }: { c: Card; active: boolean; to: string; ro
   return (
     <Link
       to={to}
+      onClick={() => { listScroll = window.scrollY; }}
       aria-current={active ? "page" : undefined}
       className={`flex gap-3 rounded-2xl px-3.5 py-3 transition-colors ${active ? "bg-tint" : "bg-card hover:bg-fill"}`}
     >
@@ -93,6 +98,11 @@ export function InboxPage({ role }: { role: Exclude<Role, "parent"> }) {
   const q = `?filter=${filter}${type === "all" ? "" : `&type=${type}`}`;
   const TYPES: { key: TypeFilter; label: string }[] = [{ key: "all", label: "전체" }, { key: "complaint", label: "민원" }, { key: "consultation", label: "상담" }, { key: "inquiry", label: "문의" }];
   const base = `/${role}/inbox`;
+  /* 상세에서 목록으로 돌아오면(휴대폰) 보던 위치로 되돌린다. 받은함을 완전히 떠나면 위치를 지운다 */
+  useEffect(() => {
+    if (!cardId && !isLoading && listScroll > 0) window.scrollTo(0, listScroll);
+  }, [cardId, isLoading]);
+  useEffect(() => () => { if (!window.location.pathname.startsWith(base)) listScroll = 0; }, [base]);
 
   const listPane = (
     <section className={`min-w-0 ${cardId ? "hidden lg:block" : ""}`} aria-label="받은함 목록">
@@ -116,7 +126,7 @@ export function InboxPage({ role }: { role: Exclude<Role, "parent"> }) {
               key={f.key}
               role="tab"
               aria-selected={filter === f.key}
-              onClick={() => setParams({ filter: f.key })}
+              onClick={() => { listScroll = 0; setParams({ filter: f.key, ...(type === "all" ? {} : { type }) }); }}
               className={`shrink-0 rounded-full px-3 py-1.5 text-[13px] font-medium transition-[transform,background] duration-200 active:scale-95 ${filter === f.key ? "bg-ink text-card" : "bg-card text-ink hover:bg-fill2"}`}
             >
               {f.label}
@@ -131,7 +141,7 @@ export function InboxPage({ role }: { role: Exclude<Role, "parent"> }) {
               key={t.key}
               type="button"
               aria-pressed={type === t.key}
-              onClick={() => setParams({ filter, ...(t.key === "all" ? {} : { type: t.key }) })}
+              onClick={() => { listScroll = 0; setParams({ filter, ...(t.key === "all" ? {} : { type: t.key }) }); }}
               className={`inline-flex h-9 items-center rounded-md px-2.5 text-footnote transition-colors active:scale-95 ${type === t.key ? "bg-fill font-bold text-ink" : "font-medium text-ink2"}`}
             >
               {t.label}

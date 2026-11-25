@@ -1,5 +1,5 @@
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useChildren } from "@/api/notes";
 import { useSession } from "@/app/session";
 import { ScreenTop } from "@/components/ScreenTop";
@@ -22,6 +22,10 @@ export function RecordsPage() {
   const recordedKids = useMemo(() => (kids.data ?? []).filter((k) => records[k.id]?.length), [kids.data, records]);
   const list = query.trim() ? (kids.data ?? []).filter((k) => k.display_name.includes(query.trim())) : (kids.data ?? []);
   const openKid = kids.data?.find((k) => k.id === open);
+  /* 닫는 동안에도 시트를 그대로 두어야 닫힘 애니메이션이 돌고, 그동안 뒤 화면이 눌리지 않는다 */
+  const lastKid = useRef(openKid);
+  if (openKid) lastKid.current = openKid;
+  const shownKid = openKid ?? lastKid.current;
   const nb = useNotebook();
 
   return (
@@ -77,7 +81,7 @@ export function RecordsPage() {
       <p className="mt-6 px-1 text-footnote text-ink2">관찰 기록은 알림장 초안을 만들 때 아이별 내용으로 반영돼요.</p>
       <p className="mt-1 px-1 text-caption text-ink2">임시 저장이에요. 이 기기에만 보관돼요.</p>
 
-      {openKid && <RecordSheet open name={openKid.display_name} entries={records[openKid.id] ?? []} onClose={() => setOpen(null)} onSave={(t) => add(openKid.id, t)} onRemove={(i) => remove(openKid.id, i)} />}
+      {shownKid && <RecordSheet key={shownKid.id} open={!!openKid} name={shownKid.display_name} entries={records[shownKid.id] ?? []} onClose={() => setOpen(null)} onSave={(t) => add(shownKid.id, t)} onRemove={(i) => remove(shownKid.id, i)} />}
     </div>
   );
 }

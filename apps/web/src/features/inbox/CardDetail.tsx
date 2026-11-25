@@ -66,10 +66,15 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
   const [pendingSend, setPendingSend] = useState(false);
   const key = useRef(newKey());
   const sendTimer = useRef<number>(0);
+  const busy = useRef(false); /* 같은 순간 두 번 눌려도 요청은 한 번만 보낸다 */
+  const draftKey = `yuchion.cardDraft.${id}`;
 
   useEffect(() => {
     if (c) {
-      setDraft(c.draft ?? "");
+      /* 고치다 나간 초안이 있으면(서버 초안이 그대로일 때만) 되살린다 */
+      let saved = c.draft ?? "";
+      try { const v = JSON.parse(localStorage.getItem(draftKey) ?? "null"); if (v && v.base === (c.draft ?? "") && typeof v.text === "string") saved = v.text; } catch { /* 저장이 막혀도 서버 초안으로 시작 */ }
+      setDraft(saved);
       setSlot(c.slots?.find((s) => s.picked)?.id ?? "");
     }
   }, [c?.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -94,24 +99,34 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
     }
     toast({ kind: "error", title: "처리하지 못했어요", sub: error instanceof ApiError ? "서버에서 처리하지 못했어요.\n잠시 뒤 다시 눌러 주세요" : "연결을 확인하고 다시 눌러 주세요", action: { label: "다시 시도", run: retry } });
   };
-  const run = (body: CardAction, ok: { title: string; sub?: string }) =>
+  const editDraft = (v: string) => {
+    setDraft(v);
+    try { if (v === (c.draft ?? "")) localStorage.removeItem(draftKey); else localStorage.setItem(draftKey, JSON.stringify({ base: c.draft ?? "", text: v })); } catch { /* 이번 화면에서만 유지 */ }
+  };
+  const run = (body: CardAction, ok: { title: string; sub?: string }) => {
+    if (busy.current) return;
+    busy.current = true;
     act.mutate(
       { body, card: c, key: key.current },
       {
+        onSettled: () => { busy.current = false; },
         onSuccess: () => {
+          try { localStorage.removeItem(draftKey); } catch { /* 무시 */ }
           setSheet(null);
           toast({ kind: "ok", ...ok });
         },
         onError: (error) => fail(error, () => run(body, ok)),
       },
     );
+  };
   const send = () => {
+    if (pendingSend) return;
     setSheet(null);
     setPendingSend(true);
     const body: CardAction = { action: "approve_send", draft };
     const k = key.current;
     sendTimer.current = window.setTimeout(() => {
-      act.mutate({ body, card: c, key: k }, { onError: (e) => fail(e, () => send()), onSettled: () => setPendingSend(false) });
+      act.mutate({ body, card: c, key: k }, { onSuccess: () => { try { localStorage.removeItem(draftKey); } catch { /* 무시 */ } }, onError: (e) => fail(e, () => send()), onSettled: () => setPendingSend(false) });
     }, 5000);
     toast({
       kind: "undo",
@@ -273,7 +288,7 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
               AI 초안
             </span>
             {isOpen && !director && c.status !== "sent_or_booked" ? (
-              <textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={4} className="w-full resize-y bg-transparent text-[15px] leading-relaxed outline-none" aria-label="AI 초안 고치기" />
+              <textarea value={draft} onChange={(e) => editDraft(e.target.value)} rows={4} className="w-full resize-y bg-transparent text-[15px] leading-relaxed outline-none" aria-label="AI 초안 고치기" />
             ) : (
               <p className="text-[15px] leading-relaxed">{c.draft}</p>
             )}
@@ -282,7 +297,7 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
       )}
       {(c.risk === "urgent" || (c.noEvidence && !c.draft) || reopened) && isOpen && !director && (
         <Section title={reopened ? "새 답 쓰기" : "직접 답 쓰기"}>
-          <textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={4} placeholder={reopened ? "보호자의 새 글에 대한 답을 써 주세요" : c.noEvidence ? "자료에서 근거를 찾지 못했어요. 확인한 내용을 직접 써 주세요" : "확인한 내용을 직접 써 주세요"} className="rounded-2xl border-[1.5px] border-transparent bg-card px-4 py-3 text-[15px] outline-none focus:border-accent focus:shadow-[0_0_0_4px_var(--tint)]" />
+          <textarea value={draft} onChange={(e) => editDraft(e.target.value)} rows={4} placeholder={reopened ? "보호자의 새 글에 대한 답을 써 주세요" : c.noEvidence ? "자료에서 근거를 찾지 못했어요. 확인한 내용을 직접 써 주세요" : "확인한 내용을 직접 써 주세요"} className="rounded-2xl border-[1.5px] border-transparent bg-card px-4 py-3 text-[15px] outline-none focus:border-accent focus:shadow-[0_0_0_4px_var(--tint)]" />
         </Section>
       )}
 
@@ -403,7 +418,7 @@ function TeacherActions({ c, open, draft, slot, pending, run }: { c: Card; open:
       <div className="grid grid-cols-3 gap-2">
         <Button variant="gray" size="sm" onClick={() => open("hold")}>보류</Button>
         <Button variant="gray" size="sm" onClick={() => open("reject")}>반려</Button>
-        <Button variant="gray" size="sm" disabled={c.escalated} onClick={() => run({ action: "escalate" }, { title: "원장님께 올렸어요" })}>{c.escalated ? "원장 보고됨" : "원장님께"}</Button>
+        <Button variant="gray" size="sm" loading={pending} disabled={c.escalated} onClick={() => run({ action: "escalate" }, { title: "원장님께 올렸어요" })}>{c.escalated ? "원장 보고됨" : "원장님께"}</Button>
       </div>
       <Button loading={pending} onClick={() => open("send")} lockedReason={draft.trim().length < 2 ? "보낼 답을 써 주세요" : undefined}>
         {c.groupedCount ? `승인하고 ${c.groupedCount}명에게 보내기` : "승인하고 보내기"}

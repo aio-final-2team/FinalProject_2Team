@@ -76,7 +76,7 @@ export function TeacherHome() {
         <span className={`text-caption font-bold ${allSent ? "text-ok" : "text-accent-ink"}`}>오늘 알림장</span>
         <h2 className="mt-1 text-headline font-bold">{noteState.title}</h2>
         <p className="mt-1 text-footnote text-ink2">{noteState.sub}</p>
-        <PrimaryButton className="mt-3 w-full" onClick={() => nav("/teacher/notes")}>{noteState.action}</PrimaryButton>
+        <PrimaryButton className="mt-3 w-full" onClick={() => nav("/teacher/notes?tab=notes")}>{noteState.action}</PrimaryButton>
       </Card>
 
       <Label>오늘 할 일</Label>

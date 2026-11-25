@@ -22,7 +22,7 @@ export function TeacherNotifications({ role = "teacher" }: { role?: "teacher" | 
   const open = (n: Notification) => {
     if (!n.read_at) read.mutate(n.id);
     if (n.kind === "care_requested" || n.kind === "cancelled") nav(role === "teacher" ? "/teacher/care" : "/director/care");
-    else if (n.subject_type === "daily_note") nav("/teacher/notes");
+    else if (n.subject_type === "daily_note") nav("/teacher/notes?tab=notes");
     else if (n.subject_type === "card" && n.subject_id) nav(`/${role}/inbox/${n.subject_id}`);
     else {
       const card = n.request_id ? allCards.find((c) => c.requestId === n.request_id) : undefined;

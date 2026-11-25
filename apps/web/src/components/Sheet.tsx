@@ -1,5 +1,5 @@
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { useEffect, useId, type ReactNode } from "react";
+import { useEffect, useId, useRef, type ReactNode } from "react";
 
 const SPRING = { type: "spring", bounce: 0, duration: 0.45 } as const;
 
@@ -7,10 +7,32 @@ const SPRING = { type: "spring", bounce: 0, duration: 0.45 } as const;
  * 아래에서 올라오는 확인 시트. 되돌릴 수 없는 행동 앞에서 받는 사람·내용을 다시 보여 준다.
  * 손잡이를 아래로 밀거나, 바깥을 누르거나, Esc로 닫는다. 빠르게 밀면 조금만 밀어도 닫힌다.
  * PC에서는 화면 가운데 아래쪽에 폭 440px로 뜬다.
+ * 시트가 열려 있는 동안 브라우저 뒤로가기(안드로이드 뒤로 버튼)는 화면을 나가지 않고 시트만 닫는다.
  */
 export function Sheet({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: ReactNode }) {
   const reduce = useReducedMotion();
   const titleId = useId();
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  useEffect(() => {
+    if (!open) return;
+    let pushed = false;
+    let popped = false;
+    const mark = `sheet-${Math.random()}`;
+    const onPop = () => { popped = true; closeRef.current(); };
+    /* 개발 모드의 이중 실행에서 기록이 어긋나지 않도록 한 박자 뒤에 쌓는다 */
+    const t = window.setTimeout(() => {
+      window.history.pushState({ ...(window.history.state ?? {}), sheet: mark }, "");
+      window.addEventListener("popstate", onPop);
+      pushed = true;
+    }, 0);
+    return () => {
+      window.clearTimeout(t);
+      if (!pushed) return;
+      window.removeEventListener("popstate", onPop);
+      if (!popped && window.history.state?.sheet === mark) window.history.back();
+    };
+  }, [open]);
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();

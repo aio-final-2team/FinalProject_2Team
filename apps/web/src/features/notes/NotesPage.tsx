@@ -1,7 +1,7 @@
 import { ScreenTop } from "@/components/ScreenTop";
 import { useNotebook } from "./notebookCtx";
 import { clearCompose, loadCompose, saveCompose } from "./composeDraft";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "@/api/client";
@@ -260,6 +260,9 @@ function Review({ notes }: { notes: DailyNote[] }) {
       return next;
     });
   const [writeFor, setWriteFor] = useState<DailyNote | null>(null);
+  const lastWrite = useRef<DailyNote | null>(null);
+  if (writeFor) lastWrite.current = writeFor;
+  const shownWrite = writeFor ?? lastWrite.current; /* 닫히는 동안에도 시트를 둔다 */
   const regen = useRegenerate();
   const [regenSheet, setRegenSheet] = useState(false);
   const [inputId, setInputId] = useState(() => loadInputId(cid, date));
@@ -320,12 +323,17 @@ function Review({ notes }: { notes: DailyNote[] }) {
     patch.mutate({ id: n.id, body: { content: { items } } }, { onSuccess: () => toast({ kind: "ok", title: `${nameI(names[n.child_id] ?? "아이")} 한 줄을 넣었어요` }) });
   };
 
-  const doSend = () =>
+  const sendLock = useRef(false); /* 같은 순간 두 번 눌려도 발송 요청은 한 번만 보낸다 */
+  const doSend = () => {
+    if (sendLock.current) return;
+    sendLock.current = true;
     send.mutate(undefined, {
+      onSettled: () => { sendLock.current = false; },
       onSuccess: (r) => {
         setSheet(false);
         toast({ kind: "ok", title: `${r.sent_count}가정에 알림장을 보냈어요`, sub: "보호자 홈 '오늘 알림장'에 올라갔어요" });
-        nav("/teacher/home");
+        /* 시트가 닫히며 쌓아 둔 뒤로가기 기록을 먼저 정리한 다음 홈으로 간다 */
+        window.setTimeout(() => nav("/teacher/home"), 150);
       },
       onError: (e) => {
         setSheet(false);
@@ -339,6 +347,7 @@ function Review({ notes }: { notes: DailyNote[] }) {
         });
       },
     });
+  };
 
   const row = (n: DailyNote, sub: string, right?: React.ReactNode) => {
     const st = NOTE_STATUS[n.status];
@@ -533,13 +542,14 @@ function Review({ notes }: { notes: DailyNote[] }) {
         </div>
       </Sheet>
 
-      {writeFor && (
+      {shownWrite && (
         <RecordSheet
-          open
-          name={names[writeFor.child_id] ?? "아이"}
-          entries={records[writeFor.child_id] ?? []}
+          key={shownWrite.id}
+          open={!!writeFor}
+          name={names[shownWrite.child_id] ?? "아이"}
+          entries={records[shownWrite.child_id] ?? []}
           onClose={() => setWriteFor(null)}
-          onSave={(t) => writeLine(writeFor, t)}
+          onSave={(t) => writeLine(shownWrite, t)}
         />
       )}
     </Frame>
