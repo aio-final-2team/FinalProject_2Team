@@ -10,6 +10,8 @@ import { CarePage } from "@/features/care/CarePage";
 import { ClassPage } from "@/features/teacher/ClassPage";
 import { FeedScreen } from "@/features/feed/FeedScreen";
 import { ChildAlbum } from "@/features/feed/ChildAlbum";
+import { SignupPage } from "@/features/consent/SignupPage";
+import { ConsentsPage } from "@/features/consent/ConsentsPage";
 import { RouteError } from "@/components/RouteError";
 import { OverviewPage } from "@/features/director/OverviewPage";
 import { DocumentPage } from "@/features/teacher/DocumentPage";
@@ -29,6 +31,8 @@ import { StateView } from "@/components/StateView";
 export const router = createBrowserRouter([
   { path: "/", element: <Navigate to="/login" replace /> },
   { path: "/login", element: <LoginPage />, errorElement: <RouteError /> },
+  { path: "/signup", element: <SignupPage />, errorElement: <RouteError /> },
+  { path: "/consents", element: <Guard allow={["teacher", "director", "parent"]}><ConsentsPage /></Guard>, errorElement: <RouteError /> },
   {
     path: "/teacher",
     errorElement: <RouteError />,

@@ -12,6 +12,7 @@ export function MeSheet({ open, onClose }: { open: boolean; onClose: () => void 
   return (
     <Sheet open={open} onClose={onClose} title="내 정보">
       <p className="text-callout"><b>{user?.display_name}</b> · {role ? ROLE_LABEL[role] : ""}</p>
+      <SubButton tone="tint" className="h-[52px] w-full" onClick={() => { onClose(); nav("/consents"); }}>개인정보·동의 내역</SubButton>
       <SubButton tone="gray" className="h-[52px] w-full" onClick={() => { signOut(); nav("/login"); }}>로그아웃</SubButton>
     </Sheet>
   );
