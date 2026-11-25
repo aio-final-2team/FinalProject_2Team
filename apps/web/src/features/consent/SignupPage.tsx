@@ -23,6 +23,10 @@ export function SignupPage() {
   const [role, setRole] = useState<Role | null>(null);
   const [on, setOn] = useState<string[]>([]);
   const list = role ? consentsFor(role) : [];
+  /* 모두 동의는 별도 칸이 아닌 항목만 고른다. 별도 칸(AI 처리, 건강 정보, 얼굴 찾기)은 항목마다 직접 눌러야 한다 */
+  const bulk = list.filter((c) => !c.separate);
+  const separate = list.filter((c) => c.separate);
+  const bulkOn = bulk.length > 0 && bulk.every((c) => on.includes(c.id));
   const all = list.length > 0 && list.every((c) => on.includes(c.id));
   const toggle = (id: string) => setOn((x) => (x.includes(id) ? x.filter((i) => i !== id) : [...x, id]));
 
@@ -55,9 +59,10 @@ export function SignupPage() {
       ) : (
         <>
           <p className="mt-0.5 text-footnote font-medium text-ink2">아래 항목에 모두 동의해야 가입할 수 있어요</p>
-          <button type="button" aria-pressed={all} onClick={() => setOn(all ? [] : list.map((c) => c.id))} className={`mt-4 flex h-12 w-full items-center gap-3 rounded-lg px-3 text-left font-semibold ${all ? "bg-tint text-accent-ink" : "bg-card shadow-card"}`}>
-            <Check on={all} />모두 동의해요
+          <button type="button" aria-pressed={bulkOn} onClick={() => setOn((x) => (bulkOn ? x.filter((id) => !bulk.some((c) => c.id === id)) : [...new Set([...x, ...bulk.map((c) => c.id)])]))} className={`mt-4 flex h-12 w-full items-center gap-3 rounded-lg px-3 text-left font-semibold ${bulkOn ? "bg-tint text-accent-ink" : "bg-card shadow-card"}`}>
+            <Check on={bulkOn} />모두 동의해요
           </button>
+          {separate.length > 0 && <p className="mt-1.5 px-1 text-caption text-ink2">따로 받는 항목: {separate.map((c) => c.title).join(", ")}. 아래에서 직접 눌러 주세요.</p>}
           <ul className="mt-3 grid gap-2">
             {list.map((c) => (
               <li key={c.id} className="rounded-lg bg-card p-3 shadow-card">
