@@ -140,8 +140,11 @@ def run_request(request_id, prepared_answer=None, prepared_fields=None):
         answer, check = None, None
         if not high_risk:
             if prepared_answer and prepared_answer.get("handoff"):
+                answer = drafted if drafted and req["body"] == initial["body"] else None
+                if answer:
+                    draft.update({key: answer[key] for key in ("no_evidence", "conflict")})
                 draft["text"] = ""
-                check = prepared_answer.get("check_result")
+                check = answer.get("check_result") if answer else None
             elif (req["type"] == "inquiry" and graph_enabled()) or (
                     req["type"] == "complaint" and prepared_answer is not None):
                 # 잠금 밖에서 만든 초안은 같은 본문일 때만 쓴다. 없으면 모델을 잠금 안에서 다시 부르지 않고 초안 없는 카드로 둔다.
