@@ -33,7 +33,7 @@ export function MemoryPage() {
       <ScreenTop back={{ to: "/teacher/home", label: "홈" }} title="내 AI 기억" sub="AI가 내 결정에서 배운 것이에요. 아이 이름은 가려서 저장돼요" />
       <QueryState queries={[q]} skeleton={3} errorTitle="기억을 불러오지 못했어요">
         {groups.length === 0 ? (
-          <div className="mt-6"><StateView kind="empty" audience="staff" title="아직 배운 기억이 없어요" sub={"카드를 반려하거나 거절하면\n그 이유가 여기에 쌓여요"} /></div>
+          <div className="mt-6"><StateView kind="empty" audience="staff" title="아직 배운 기억이 없어요" sub={"카드를 거절하면\n그 이유가 여기에 쌓여요"} /></div>
         ) : (
           groups.map((g) => (
             <section key={g.kind} className="mt-5" aria-label={KIND_LABEL[g.kind]}>

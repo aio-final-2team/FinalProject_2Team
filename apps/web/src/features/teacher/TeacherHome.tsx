@@ -90,7 +90,7 @@ export function TeacherHome() {
       <Label>더 보기</Label>
       <NavList>
         <NavRow to="/teacher/feed" icon="class" title="원 소식과 앨범" sub="원에 올라온 이야기와 사진을 볼 수 있어요" />
-        <NavRow to="/teacher/memory" icon="memory" title="내 AI 기억" sub="내가 반려한 이유를 보고 지울 수 있어요" />
+        <NavRow to="/teacher/memory" icon="memory" title="내 AI 기억" sub="내가 거절한 이유를 보고 지울 수 있어요" />
         {Object.entries(SOON).map(([k, v]) => (
           <NavRow key={k} to={`/teacher/soon/${k}`} icon={v.icon} title={v.title} sub={v.sub} soon />
         ))}

@@ -47,7 +47,7 @@ export const STAFF_LABEL: Record<Status, Label> = {
   approved: { label: "승인됨", tone: "answered" },
   sent_or_booked: { label: "보냈어요", tone: "answered" },
   completed: { label: "완료", tone: "done" },
-  rejected: { label: "반려", tone: "wait" },
+  rejected: { label: "거절", tone: "wait" },
 };
 
 export type RequestType = "inquiry" | "consult" | "complaint";

@@ -63,7 +63,7 @@ const formatPeriod = (period: Period) => new Date(period.start).toLocaleString("
 const AGENT_NAME: Record<string, string> = { supervisor: "감독", document: "자료", checker: "검사", memory: "기억" };
 const actorName = (actor: string, agent: string | null) => agent ? `${AGENT_NAME[agent] ?? ""} AI`.trim() : actor === "user" ? "교직원" : actor === "agent" ? "AI" : "시스템";
 /** 처리 이력의 action 코드를 교직원이 읽는 말로 바꾼다. 모르는 코드는 내부 용어를 그대로 보이지 않는다 */
-const ACTION_LABEL: Record<string, string> = { created: "접수", classified: "분류", assigned: "담당 배정", drafted: "초안 작성", checked: "검사", approved: "승인", sent: "보내기", rejected: "반려", dismissed: "반려", held: "보류", resumed: "재개", escalated: "원장 보고", completed: "처리 완료", risk_reclassified: "위험 분류 변경" };
+const ACTION_LABEL: Record<string, string> = { created: "접수", classified: "분류", assigned: "담당 배정", drafted: "초안 작성", checked: "검사", approved: "승인", sent: "보내기", rejected: "거절", dismissed: "거절", held: "보류", resumed: "재개", escalated: "원장 보고", completed: "처리 완료", risk_reclassified: "위험 분류 변경" };
 const actionLabel = (a: string) => ACTION_LABEL[a] ?? "처리 기록";
 
 const cardFromDetail = (data: CardDetail): Card => {

@@ -11,7 +11,7 @@ const TYPE = { pickup: { label: "귀가", icon: "handover" }, medication: { labe
 const FOLD = 4;
 
 /**
- * 아이들이 보낸 귀가·투약 요청. 확인 → 완료 두 단계이고, 할 수 없는 요청은 사유를 적어 반려한다(보호자에게 전달).
+ * 아이들이 보낸 귀가·투약 요청. 확인 → 완료 두 단계이고, 할 수 없는 요청은 사유를 적어 거절한다(보호자에게 전달).
  * 보호자가 새 글을 쓰거나 입력을 고치면 판이 바뀌어 409가 난다 (문서 3.27). 학부모가 취소한 요청은 status_label이 '취소함'으로 온다.
  */
 export function CareSection({ classroomId, all }: { classroomId?: string; all?: boolean }) {
@@ -59,8 +59,8 @@ export function CareSection({ classroomId, all }: { classroomId?: string; all?: 
     decide.mutate(
       { id: c.id, decision: "reject", version: c.version, reason_text: reason.trim() },
       {
-        onSuccess: () => { setRejecting(null); setReason(""); toast({ kind: "ok", title: "요청을 반려했어요", sub: "적은 사유가 보호자에게 전달돼요" }); },
-        onError: (e) => { setRejecting(null); fail(e, c, "반려", () => setRejecting(c)); },
+        onSuccess: () => { setRejecting(null); setReason(""); toast({ kind: "ok", title: "요청을 거절했어요", sub: "적은 사유가 보호자에게 전달돼요" }); },
+        onError: (e) => { setRejecting(null); fail(e, c, "거절", () => setRejecting(c)); },
       },
     );
   };
@@ -96,7 +96,7 @@ export function CareSection({ classroomId, all }: { classroomId?: string; all?: 
                   </div>
                   {c.next_action && (
                     <div className="grid grid-cols-[1fr_2fr] gap-2">
-                      <button type="button" disabled={busyId === c.id} onClick={() => { setReason(""); setRejecting(c); }} className="h-10 rounded-md bg-fill text-footnote font-semibold text-ink active:scale-[.97] disabled:opacity-50">반려</button>
+                      <button type="button" disabled={busyId === c.id} onClick={() => { setReason(""); setRejecting(c); }} className="h-10 rounded-md bg-fill text-footnote font-semibold text-ink active:scale-[.97] disabled:opacity-50">거절</button>
                       <button type="button" disabled={busyId === c.id} onClick={() => run(c)} className="h-10 rounded-md bg-tint text-footnote font-semibold text-accent-ink active:scale-[.97] disabled:opacity-50">
                         {c.next_action === "confirm" ? "확인했어요" : c.type === "medication" ? "먹였어요" : "인계했어요"}
                       </button>
@@ -137,13 +137,13 @@ export function CareSection({ classroomId, all }: { classroomId?: string; all?: 
         )}
       </QueryState>
 
-      <Sheet open={!!rejecting} onClose={() => setRejecting(null)} title="이 요청을 반려할까요?">
+      <Sheet open={!!rejecting} onClose={() => setRejecting(null)} title="이 요청을 거절할까요?">
         <p className="text-footnote text-ink2">{rejecting?.child_name ? `${rejecting.child_name}의 ` : ""}{rejecting ? TYPE[rejecting.type].label : ""} 요청이에요. 적은 사유가 보호자에게 전달돼요.</p>
         <label className="grid gap-1.5">
           <span className="text-footnote font-semibold">사유</span>
           <textarea value={reason} onChange={(e) => setReason(e.target.value)} maxLength={1000} rows={4} placeholder="예: 투약 의뢰서가 없어서 약을 먹일 수 없어요" className="rounded-md border-[1.5px] border-line bg-card px-3 py-2.5 text-body outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--tint)]" />
         </label>
-        <Button variant="danger" loading={decide.isPending} lockedReason={reason.trim() ? undefined : "사유를 적어 주세요"} onClick={reject}>반려하기</Button>
+        <Button variant="danger" loading={decide.isPending} lockedReason={reason.trim() ? undefined : "사유를 적어 주세요"} onClick={reject}>거절하기</Button>
         <Button variant="plain" size="sm" onClick={() => setRejecting(null)}>취소</Button>
       </Sheet>
     </section>

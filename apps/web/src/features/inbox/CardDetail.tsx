@@ -218,7 +218,7 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
             <b className="block text-caption font-bold text-lav">{REASON_LABEL[c.rule.reasonCode] ?? c.rule.reasonCode}</b>
             <p className="mt-1 text-[15px] leading-relaxed">{c.rule.text}</p>
           </div>
-          <p className="px-1 text-sub text-ink2">같은 이유로 세 번 이상 반려해서 AI가 제안해요. 켜면 AI가 비슷한 카드를 만들 때 참고할 수 있어요.</p>
+          <p className="px-1 text-sub text-ink2">같은 이유로 세 번 이상 거절해서 AI가 제안해요. 켜면 AI가 비슷한 카드를 만들 때 참고할 수 있어요.</p>
         </Section>
       )}
       {c.kind === "rule_proposal" ? null : c.messages && c.messages.length > 1 ? (
@@ -338,10 +338,10 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
         <Button variant="plain" size="sm" onClick={() => setSheet(null)}>취소</Button>
       </Sheet>
 
-      <Sheet open={sheet === "reject"} onClose={() => setSheet(null)} title="이 요청을 반려할까요?">
+      <Sheet open={sheet === "reject"} onClose={() => setSheet(null)} title="이 요청을 거절할까요?">
         <p className="text-sub text-ink2">고른 이유가 학부모에게 함께 전달돼요.</p>
         <ReasonChips options={["개인정보 요청", "원 운영 범위 밖", "중복 요청"]} value={reason} onChange={setReason} />
-        <Button variant="danger" loading={act.isPending} lockedReason={reason ? undefined : "이유를 고르면 반려할 수 있어요"} onClick={() => run({ action: "reject", reason }, { title: "반려했어요", sub: reason })}>반려하기</Button>
+        <Button variant="danger" loading={act.isPending} lockedReason={reason ? undefined : "이유를 고르면 거절할 수 있어요"} onClick={() => run({ action: "reject", reason }, { title: "거절했어요", sub: reason })}>거절하기</Button>
         <Button variant="plain" size="sm" onClick={() => setSheet(null)}>취소</Button>
       </Sheet>
 
@@ -417,7 +417,7 @@ function TeacherActions({ c, open, draft, slot, pending, run }: { c: Card; open:
     <>
       <div className="grid grid-cols-3 gap-2">
         <Button variant="gray" size="sm" onClick={() => open("hold")}>보류</Button>
-        <Button variant="gray" size="sm" onClick={() => open("reject")}>반려</Button>
+        <Button variant="gray" size="sm" onClick={() => open("reject")}>거절</Button>
         <Button variant="gray" size="sm" loading={pending} disabled={c.escalated} onClick={() => run({ action: "escalate" }, { title: "원장님께 올렸어요" })}>{c.escalated ? "원장 보고됨" : "원장님께 보고"}</Button>
       </div>
       <Button loading={pending} onClick={() => open("send")} lockedReason={draft.trim().length < 2 ? "보낼 답을 써 주세요" : undefined}>
@@ -447,7 +447,7 @@ function RuleActions({ c }: { c: Card }) {
     decide.mutate(
       { ruleId: c.rule!.id, decision },
       {
-        onSuccess: () => toast({ kind: "ok", title: decision === "activate" ? "규칙을 켰어요" : "제안을 거절했어요", sub: decision === "activate" ? "AI가 참고할 수 있어요" : "같은 이유로 세 번 더 반려하면 다시 제안해요" }),
+        onSuccess: () => toast({ kind: "ok", title: decision === "activate" ? "규칙을 켰어요" : "제안을 거절했어요", sub: decision === "activate" ? "AI가 참고할 수 있어요" : "같은 이유로 세 번 더 거절하면 다시 제안해요" }),
         onError: (e) => toast({ kind: "error", title: e instanceof ApiError && e.status === 409 ? "이미 처리한 제안이에요" : "처리하지 못했어요", sub: e instanceof ApiError && e.status === 409 ? undefined : "연결을 확인하고 다시 눌러 주세요" }),
       },
     );

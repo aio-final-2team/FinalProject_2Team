@@ -5,7 +5,7 @@ import { api } from "./client";
 export type MemoryKind = "rejection_reason" | "preference" | "tone";
 export type Memory = { id: number; kind: MemoryKind; reason_code: string | null; content: string; structured: Record<string, unknown>; created_at: string };
 
-export const KIND_LABEL: Record<MemoryKind, string> = { rejection_reason: "반려·거절한 이유", preference: "선호", tone: "말투" };
+export const KIND_LABEL: Record<MemoryKind, string> = { rejection_reason: "거절한 이유", preference: "선호", tone: "말투" };
 /** 반려 이유 코드 → 담임이 읽는 말 (문서 4.1) */
 export const REASON_LABEL: Record<string, string> = { wrong_fact: "사실이 달라요", tone: "말투가 맞지 않아요", missing_info: "정보가 부족해요", privacy: "개인정보 요청", policy: "원 운영 범위 밖", slot_unavailable: "상담 가능한 시간이 아니에요", room_unavailable: "상담실을 쓸 수 없어요", other: "그 밖의 이유" };
 
