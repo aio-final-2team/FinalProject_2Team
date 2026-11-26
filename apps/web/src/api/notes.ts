@@ -1,3 +1,4 @@
+import type { ProfilePhoto } from "@/components/ChildAvatar";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Child, DailyNote, DraftJob, NoteItem } from "@/domain/notes";
 import { api } from "./client";
@@ -5,10 +6,12 @@ import { api } from "./client";
 type Page<T> = { items: T[]; total: number; page: number; size: number };
 
 /** API 30: 반 아이 목록(이름순) */
+/** 아이 정보에 서버가 프로필 사진(`profile_photo`)을 붙여 주면 아이 동그라미에 보여 준다. 없으면 이름 글자 */
+export type ChildView = Child & { profile_photo?: ProfilePhoto };
 export const useChildren = (classroomId?: string) =>
   useQuery({
     queryKey: ["children", classroomId],
-    queryFn: () => api<{ items: Child[] }>(`/api/v1/classrooms/${classroomId}/children`).then((r) => r.items),
+    queryFn: () => api<{ items: ChildView[] }>(`/api/v1/classrooms/${classroomId}/children`).then((r) => r.items),
     enabled: !!classroomId,
     staleTime: 5 * 60_000,
   });

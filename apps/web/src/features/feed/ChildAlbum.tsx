@@ -1,3 +1,4 @@
+import { ChildAvatar, type ProfilePhoto } from "@/components/ChildAvatar";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/api/client";
@@ -13,7 +14,7 @@ import { nameI } from "@/domain/notes";
 import { PhotoViewer } from "./parts";
 import { ScopeSheet } from "./ScopeSheet";
 
-type Me = { children: { id: string; display_name: string; classroom_id: string }[] };
+type Me = { children: { id: string; display_name: string; classroom_id: string; profile_photo?: ProfilePhoto }[] };
 type Group = { post: Post; photos: Photo[] };
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -83,7 +84,7 @@ export function ChildAlbum({ embedded = false }: { embedded?: boolean }) {
           )}
 
           <div className="mt-4 flex items-center gap-4">
-            <span aria-hidden className="grid size-[72px] shrink-0 place-items-center rounded-full bg-tint text-[28px] font-bold text-accent-ink">{name.slice(-1)}</span>
+            <ChildAvatar name={name} photo={kid?.profile_photo} size={72} tone="tint" textClass="text-[28px]" />
             <div className="min-w-0">
               <h2 className="truncate text-title font-bold tracking-[-0.02em]">{name}</h2>
               <p className="text-footnote text-ink2">우리 반</p>

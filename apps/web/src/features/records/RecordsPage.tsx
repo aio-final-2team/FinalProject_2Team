@@ -6,6 +6,7 @@ import { ScreenTop } from "@/components/ScreenTop";
 import { Icon } from "@/components/Icon";
 import { dateLabel, todayKST } from "@/domain/notes";
 import { QueryState } from "@/components/QueryState";
+import { ChildAvatar } from "@/components/ChildAvatar";
 import { RecordSheet } from "./RecordSheet";
 import { useNotebook } from "@/features/notes/notebookCtx";
 import { useRecords } from "./store";
@@ -64,7 +65,7 @@ export function RecordsPage() {
                       onClick={() => { setOpen(k.id); setQuery(""); }}
                       className={`flex w-full items-center gap-3 rounded-lg p-3 text-left transition-transform duration-100 active:scale-[.97] ${r.length ? "bg-card shadow-card" : "bg-g shadow-[inset_0_0_0_1.5px_var(--sep)]"}`}
                     >
-                      <span className={`grid size-10 shrink-0 place-items-center rounded-full text-callout font-bold ${r.length ? "bg-tint text-accent-ink" : "bg-fill"}`}>{k.display_name.slice(-1)}</span>
+                      <ChildAvatar name={k.display_name} photo={k.profile_photo} size={40} tone={r.length ? "tint" : "fill"} />
                       <b className="min-w-0 flex-1 truncate text-callout">{k.display_name}</b>
                       <span aria-label={`기록 ${r.length}개`} className={`shrink-0 text-headline font-bold tabular-nums ${r.length ? "text-accent-ink" : "text-ink2/60"}`}>{r.length}</span>
                     </button>

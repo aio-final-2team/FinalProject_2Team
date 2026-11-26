@@ -1,5 +1,6 @@
 import { ScreenTop } from "@/components/ScreenTop";
 import { useNotebook } from "./notebookCtx";
+import { ChildAvatar } from "@/components/ChildAvatar";
 import { clearCompose, loadCompose, saveCompose } from "./composeDraft";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
@@ -241,6 +242,7 @@ function Review({ notes }: { notes: DailyNote[] }) {
   const nav = useNavigate();
   const kids = useChildren(cid);
   const names = useMemo(() => Object.fromEntries((kids.data ?? []).map((k) => [k.id, k.display_name])), [kids.data]);
+  const photos = useMemo(() => Object.fromEntries((kids.data ?? []).map((k) => [k.id, k.profile_photo])), [kids.data]);
   const { records, add } = useRecords(cid, date);
   const patch = usePatchNote(cid, date);
   const send = useSendNotes(cid, date);
@@ -353,9 +355,7 @@ function Review({ notes }: { notes: DailyNote[] }) {
     const st = NOTE_STATUS[n.status];
     return (
       <li key={n.id} className="flex min-h-14 items-center gap-3 px-3 py-2 [&+&]:border-t [&+&]:border-sep">
-        <span aria-hidden className="grid size-8 shrink-0 place-items-center rounded-sm bg-fill text-footnote font-bold">
-          {(names[n.child_id] ?? "?").slice(-1)}
-        </span>
+        <ChildAvatar name={names[n.child_id] ?? "?"} photo={photos[n.child_id]} size={32} textClass="text-footnote" rounded="rounded-sm" />
         <Link to={`/teacher/notes/${n.id}`} className="min-w-0 flex-1">
           <span className="flex items-baseline gap-2">
             <b className="text-headline font-semibold">{names[n.child_id] ?? "아이"}</b>
