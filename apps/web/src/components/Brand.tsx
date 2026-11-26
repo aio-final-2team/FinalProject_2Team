@@ -12,6 +12,9 @@ const flat = import.meta.glob("../assets/brand/flat/*.svg", { eager: true, impor
 const flatOf = (face: string) => flat[`../assets/brand/flat/buddy-flat-${face}.svg`];
 import wordNavy from "@/assets/brand/wordmark-navy.svg";
 import wordWhite from "@/assets/brand/wordmark-white.svg";
+import mainLight from "@/assets/logo/yuchion-main-logo-light-transparent.svg";
+import mainDark from "@/assets/logo/yuchion-main-logo-dark-transparent.svg";
+import mainOnBlue from "@/assets/logo/yuchion-main-logo-transparent.svg";
 
 /** 말풍선 친구: 학부모 화면에서만 쓴다. 표정 = 서비스 상태 (에셋 README) */
 const BUDDY = { basic, processing, done, check, guide, sorry, waiting, hello } as const;
@@ -53,6 +56,17 @@ export function Wordmark({ className = "h-[18px]" }: { className?: string }) {
     <>
       <img src={wordNavy} alt="유치온" className={`${className} w-auto dark:hidden`} />
       <img src={wordWhite} alt="유치온" className={`${className} hidden w-auto dark:inline`} />
+    </>
+  );
+}
+
+/** 앱 인트로와 같은 유치온 대표 로고. 모든 화면 상단은 이 로고를 기본으로 쓴다. */
+export function MainLogo({ className = "h-8", onBlue = false }: { className?: string; onBlue?: boolean }) {
+  if (onBlue) return <img src={mainOnBlue} alt="유치온" className={`${className} w-auto`} />;
+  return (
+    <>
+      <img src={mainLight} alt="유치온" className={`${className} w-auto dark:hidden`} />
+      <img src={mainDark} alt="유치온" className={`${className} hidden w-auto dark:inline`} />
     </>
   );
 }

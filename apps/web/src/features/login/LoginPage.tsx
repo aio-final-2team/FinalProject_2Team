@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ApiError } from "@/api/client";
-import { DEMO_ACCOUNTS, DEMO_PASSWORD, HOME, useSession } from "@/app/session";
+import { DEMO_ACCOUNTS, DEMO_PASSWORD, HOME, SPLASH_KEY, useSession } from "@/app/session";
 import logoOnBlue from "@/assets/logo/yuchion-main-logo-transparent.svg";
 import { mountLogoMotion } from "@/assets/brand/yuchion-logo-motion.js";
 import { Buddy, SymbolMark } from "@/components/Brand";
@@ -10,7 +10,6 @@ import { PrimaryButton, SubButton } from "@/components/Dock";
 import type { Role } from "@/domain/types";
 
 const DEMO = import.meta.env.VITE_DEMO_ACCOUNTS !== "false";
-const SPLASH_KEY = "yuchion.splash";
 const BLUE = "bg-[linear-gradient(160deg,#3D63F2,#2440C8)]";
 
 function seenSplash(): boolean {
@@ -124,7 +123,7 @@ function LoginForm({ onEnter }: { onEnter: (r: Role) => void }) {
       onEnter(u.role);
     } catch (e) {
       /* 아이디·비밀번호 중 무엇이 틀렸는지는 알려 주지 않는다 */
-      setErr(e instanceof ApiError && e.status === 401 ? "아이디나 비밀번호가 맞지 않아요." : "로그인 서버에 연결하지 못했어요. 모의 API(8000)를 켜 주세요.");
+      setErr(e instanceof ApiError && e.status === 401 ? "아이디나 비밀번호가 맞지 않아요." : "로그인 서버에 연결하지 못했어요. 잠시 뒤 다시 시도해 주세요.");
     } finally {
       setBusy(false);
     }
@@ -172,7 +171,7 @@ function LoginForm({ onEnter }: { onEnter: (r: Role) => void }) {
               </SubButton>
             ))}
           </div>
-          <p className="text-center text-caption text-ink2">직접 입력: teacher01 · parent01 · director01 / 비밀번호 demo1234 (모의 API)</p>
+          <p className="text-center text-caption text-ink2">직접 입력: teacher01 · parent01 · director01 / 비밀번호 demo1234</p>
         </div>
       )}
     </div>

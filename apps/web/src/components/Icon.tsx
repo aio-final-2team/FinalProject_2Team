@@ -15,6 +15,8 @@ Object.assign(ICONS, {
   check: `<svg ${S} stroke-width="3"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>`,
   lock: `<svg ${S}><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>`,
   logout: `<svg ${S}><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 17l-5-5 5-5M5 12h11"/></svg>`,
+  photo: `<svg ${S}><rect x="3" y="5" width="18" height="15" rx="3"/><circle cx="9" cy="10" r="2"/><path d="M4 17l4.5-4 3.5 3 2.5-2 5.5 5"/></svg>`,
+  write: `<svg ${S}><path d="M12 20H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h7"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L11 15l-4 1 1-4z"/></svg>`,
 });
 
 export type IconName = keyof typeof ICONS | string;
