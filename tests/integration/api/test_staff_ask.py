@@ -60,14 +60,16 @@ def staff_ask_backend(request, monkeypatch, _reset_store):
     if mode == "db":
         request.getfixturevalue("seeded_db")
         from app.core import users
+        from app.modules.consents import consents
         from app.modules.documents import staff_ask
     else:
-        from app.mock import staff_ask
+        from app.mock import consents, staff_ask
         users = store
         store.state().documents.clear()
         store.state().chunks.clear()
     monkeypatch.setattr(backend, "users", users)
     monkeypatch.setattr(backend, "staff_ask", staff_ask)
+    monkeypatch.setattr(backend, "consents", consents)
     monkeypatch.setattr("agents.graphs.answer.OpenAIModel", Model)
     monkeypatch.setattr("app.modules.documents.embedding.enabled", lambda: False)
     Model.calls, Model.bad = [], False
@@ -218,3 +220,18 @@ def test_staff_ask_no_evidence_is_distinct(client, teacher, staff_ask_backend, m
     r = client.post(BASE + "/staff/ask", headers=teacher, json={"question": "준비물"})
     assert r.status_code == 200 and r.json() == {"answer": "자료에서 못 찾았어요", "evidence": [], "conflict": False}
     assert len(Model.calls) == 1
+
+
+def test_staff_ask_requires_current_consent_before_model(client, teacher, staff_ask_backend):
+    if staff_ask_backend == "mock":
+        rows = store.state().consents
+        for key in list(rows):
+            if key[1] == seed.TEACHER:
+                rows[(*key[:3], "previous")] = rows.pop(key)
+    else:
+        with transaction() as connection:
+            connection.execute(text("UPDATE user_consents SET terms_version='previous' WHERE user_id=:id"),
+                               {"id": seed.TEACHER})
+    err(client.post(BASE + "/staff/ask", headers=teacher, json={"question": "[TEST] 겨울방학 언제예요?"}),
+        403, "CONSENT_REQUIRED")
+    assert Model.calls == []

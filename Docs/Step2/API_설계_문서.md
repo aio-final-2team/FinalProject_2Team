@@ -1675,7 +1675,7 @@ GET은 내 역할의 항목만 돌려준다. 현재 판에 기록이 없으면 a
 
 반 현황의 guardians_total은 아이에게 연결된 보호자 수이고, guardians_complete는 그중 현재 판의 보호자 필수 항목을 모두 동의한 수다. 한 명 이상 완료하면 아이의 complete=true다. 보호자가 없으면 두 수는 0, complete=false다. 반환 순서는 아이 이름·ID 순이다.
 
-**미동의 차단.** 기존 역할·기관·반·아이 권한 검사 뒤, 업무 처리 전 공용 require_complete로 현재 판을 확인한다. 미완료면 403 CONSENT_REQUIRED다. 아래 여섯 쓰기 경로에만 적용하며 GET과 나머지 동작은 기존대로 제공한다. 피드 업로드는 권한·동의를 검사한 뒤 multipart 몸통을 읽는다.
+**미동의 차단.** 기존 역할·기관·반·아이 권한 검사 뒤, 업무 처리 전 공용 require_complete로 현재 판을 확인한다. 미완료면 403 CONSENT_REQUIRED다. 아래 일곱 경로(쓰기 여섯과 교직원 AI 질문)에만 적용하며 GET과 나머지 동작은 기존대로 제공한다. 피드 업로드는 권한·동의를 검사한 뒤 multipart 몸통을 읽는다.
 
 - POST `/api/v1/requests`
 - POST `/api/v1/requests/{request_id}/messages`
@@ -1683,6 +1683,7 @@ GET은 내 역할의 항목만 돌려준다. 현재 판에 기록이 없으면 a
 - POST `/api/v1/daily-notes/drafts/{input_id}/regenerate`
 - POST `/api/v1/classrooms/{classroom_id}/posts`
 - POST `/api/v1/organizations/{org_id}/posts`
+- POST `/api/v1/staff/ask` (질문을 AI에 보내므로)
 
 GET `/api/v1/me`와 로그인 응답의 user.consents_complete도 같은 판·역할 기준이다. 데모 시드는 mock·DB 모든 시드 계정을 현재 판으로 완료시켜 기존 시연을 유지한다. 0016은 동의 행을 넣지 않고 표·이력 허용 값만 만든다. 실제 동의 화면은 후속이며 호출 순서는 백엔드 구현 기록에 적었다.
 
@@ -1745,7 +1746,7 @@ GET `/api/v1/me`와 로그인 응답의 user.consents_complete도 같은 판·�
 | ④ 요청 본문 | `{"question":"준비물은 무엇인가요?"}`. 기존 요청 본문처럼 최대 2,000자이며 앞뒤 공백을 뺀 뒤 빈 질문과 추가 키는 거부한다. |
 | ⑤ 검증·권한 | 담임·원장만. 담임은 같은 기관의 원 전체 자료와 현재 담당 반 자료, 원장은 같은 기관 전체 자료. 범위 밖 자료는 검색에서 제외한다. |
 | ⑥ 정상 응답 | 200 `{answer,evidence:[{document_id,title,location,effective_date}],conflict}`. 검증된 인용만 출처로 돌려준다. |
-| ⑦ 오류 응답 | 401 UNAUTHENTICATED, 학부모 403 FORBIDDEN_ROLE, 질문 형식 오류 422 VALIDATION_FAILED, 모델 호출 실패 503 UPSTREAM_UNAVAILABLE. 공통 오류 형식(1.4) 유지. |
+| ⑦ 오류 응답 | 401 UNAUTHENTICATED, 학부모 403 FORBIDDEN_ROLE, 현재 판 필수 동의 전 403 CONSENT_REQUIRED(모델을 부르지 않음, 3.31), 질문 형식 오류 422 VALIDATION_FAILED, 모델 호출 실패 503 UPSTREAM_UNAVAILABLE. 공통 오류 형식(1.4) 유지. |
 | ⑧ 실행 규칙 | 기존 search_documents와 문의 답변 흐름(인용 확인·검사·재작성)을 재사용한다. notice·schedule·menu·policy의 active·적재 성공·기간 미종료 자료만 검색하며 시행 전 안내도 포함한다. 요청·카드·알림을 만들지 않고 events에 tool_called·agent_name=document·호출자·trace_id·근거 수만 남긴다. 모델 실패도 tool_failed·code=UPSTREAM_UNAVAILABLE 이력을 남긴다. 질문·답변 원문과 예외 원문은 이력에 저장하지 않는다. |
 
 | 필드 | 위치 | 타입 | 필수·빈값 | 설명 |
