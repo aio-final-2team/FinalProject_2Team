@@ -21,7 +21,7 @@ from app.mock import seed
 from db.seeds.demo import seed_demo
 
 ROOT = Path(__file__).resolve().parents[3]
-HEAD_CATALOG = {"tables": 31, "views": 2, "triggers": 2, "foreign_keys": 66, "columns": 301}
+HEAD_CATALOG = {"tables": 32, "views": 2, "triggers": 2, "foreign_keys": 70, "columns": 310}
 
 
 def catalog(connection):
@@ -80,7 +80,7 @@ def test_upgrade_downgrade_upgrade(db_engine, alembic_config):
     command.upgrade(alembic_config, "head")
     with db_engine.connect() as connection:
         assert dict(catalog(connection)) == first_catalog
-        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0016"
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0018"
     assert schema_dump() == first_dump
 
     # 최신 설계를 직접 적용한 스키마도 마이그레이션 head와 같아야 한다.
@@ -141,7 +141,7 @@ def test_child_memos_backfill_constraints_and_revision_round_trip(db_engine, ale
     command.upgrade(alembic_config, "head")
     with db_engine.begin() as connection:
         assert dict(catalog(connection)) == HEAD_CATALOG
-        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0016"
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0018"
         assert dict(connection.execute(text("SELECT * FROM daily_note_inputs WHERE id=:id"),
                                        {"id": before["id"]}).mappings().one()) == {**before, "child_memos": []}
         connection.execute(text("DELETE FROM daily_note_inputs"))

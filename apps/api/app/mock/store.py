@@ -186,6 +186,7 @@ class _State:
         self.rules: dict[UUID, Rule] = {}
         self.note_inputs: dict[UUID, NoteInput] = {}
         self.notes: dict[UUID, Note] = {}
+        self.daily_records = {}
         self.feed_posts = {}
         self.feed_photos = {}
         self.memories = {}

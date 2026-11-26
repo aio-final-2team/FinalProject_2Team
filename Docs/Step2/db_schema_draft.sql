@@ -1,6 +1,6 @@
--- 유치온 DB 스키마 초안 (T09) · 문서 버전 v0.24 ([제안] 필수 동의 11/24 반영)
+-- 유치온 DB 스키마 초안 (T09) · 문서 버전 v0.25 ([제안] 하루 중 기록 11/26 반영)
 -- 설계서: Docs/Step2/DB_스키마_설계서.md
--- 이 파일은 최종 설계 모양이다. 실제 적용은 apps/api/migrations의 0001~0016을 차례로 적용한다.
+-- 이 파일은 최종 설계 모양이다. 실제 적용은 apps/api/migrations의 0001~0016과 0018을 적용한다(임시 down 0016 — #377 머지 뒤 0017로 바꿀 것).
 -- 대상: PostgreSQL 16 + pgvector 0.8 (compose.yaml의 pgvector/pgvector:pg16). Supabase는 쓰지 않는다(설계서 5.1)
 -- 기관 경계: 기관에 속한 표끼리는 (id, org_id) 짝으로 참조해서 다른 원 행을 섞어 넣으면 DB가 거부한다
 
@@ -86,6 +86,24 @@ CREATE TABLE children (
     FOREIGN KEY (classroom_id, org_id) REFERENCES classrooms(id, org_id),
     UNIQUE (id, org_id)
 );
+
+-- [제안] 하루 중 기록(0018). 삭제 표시는 남기고 초안 입력에서 제외한다.
+CREATE TABLE daily_records (
+            id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+            org_id uuid NOT NULL REFERENCES organizations(id),
+            classroom_id uuid NOT NULL,
+            child_id uuid NOT NULL,
+            note_date date NOT NULL,
+            body text NOT NULL CHECK (char_length(body) <= 500),
+            author_id uuid NOT NULL,
+            created_at timestamptz NOT NULL DEFAULT now(),
+            deleted_at timestamptz,
+            FOREIGN KEY (classroom_id,org_id) REFERENCES classrooms(id,org_id),
+            FOREIGN KEY (child_id,org_id) REFERENCES children(id,org_id),
+            FOREIGN KEY (author_id,org_id) REFERENCES users(id,org_id)
+        );
+CREATE INDEX daily_records_active_idx
+        ON daily_records(org_id,classroom_id,note_date,child_id,created_at,id) WHERE deleted_at IS NULL;
 
 CREATE TABLE child_guardians (
     child_id  uuid NOT NULL,

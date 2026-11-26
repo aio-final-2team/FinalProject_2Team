@@ -12,6 +12,7 @@ from app.core.config import settings
 from app.core.schedule import KST, due_at
 from app.mock import seed, store
 from app.mock.records import NoteInput, Note
+from app.mock import daily_records
 
 
 def input_in_scope(user, input_id):
@@ -135,6 +136,7 @@ def _generate(entry, children, *, regenerated_by=None):
     menu = next(d for d in store.state().documents.values() if d.org_id == entry.org_id and d.doc_type == "menu" and d.status == "active")
     meal = next(c.content for c in store.state().chunks.values() if c.document_id == menu.id)
     memos = {memo["child_id"]: memo["memo"] for memo in entry.child_memos}
+    memos = daily_records.with_record_memos(entry, memos)
     payload = {"activities": entry.activities, "supplies": entry.supplies, "note_date": entry.note_date,
                "roster_names": [c.display_name for c in children], "children": [],
                "menu": {"document_id": menu.id, "title": menu.title, "text": meal}}

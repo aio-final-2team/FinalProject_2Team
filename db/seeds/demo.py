@@ -190,4 +190,6 @@ if __name__ == "__main__":
         seed_demo(connection, refresh_note_requests=args.refresh_note_requests)
         from db.seeds.consultations import seed_consultations
         seed_consultations(connection)
+        from db.seeds.daily_records import seed_daily_records
+        seed_daily_records(connection)
     print(f"가상 원 시드 완료: 계정 {len(seed.USERS)}개, 비밀번호 demo1234 (이미 있는 행은 유지)")

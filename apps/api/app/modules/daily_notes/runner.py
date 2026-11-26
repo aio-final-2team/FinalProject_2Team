@@ -25,6 +25,7 @@ from app.core.db import transaction
 from app.core.schedule import KST
 from app.modules.daily_notes.stub_writer import failed_child
 from app.modules.daily_notes.events import edited_child_ids, record
+from app.modules.daily_records.records import with_record_memos
 
 log = logging.getLogger(__name__)
 
@@ -77,6 +78,7 @@ def _payload(connection, entry):
         GROUP BY d.id ORDER BY d.effective_from DESC NULLS LAST, d.created_at DESC, d.id LIMIT 1
     """), values).mappings().one_or_none()
     memos = {m["child_id"]: m["memo"] for m in entry["child_memos"]}
+    memos = with_record_memos(connection, entry, memos)
     payload = {"input_id": entry["id"], "note_date": entry["note_date"], "classroom": dict(classroom),
             "activities": entry["activities"], "supplies": entry["supplies"],
             "roster_names": [c["display_name"] for c in children],
