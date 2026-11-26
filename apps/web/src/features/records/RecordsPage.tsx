@@ -65,7 +65,7 @@ export function RecordsPage() {
                       onClick={() => { setOpen(k.id); setQuery(""); }}
                       className={`flex w-full items-center gap-3 rounded-lg p-3 text-left transition-transform duration-100 active:scale-[.97] ${r.length ? "bg-card shadow-card" : "bg-g shadow-[inset_0_0_0_1.5px_var(--sep)]"}`}
                     >
-                      <ChildAvatar name={k.display_name} photo={k.profile_photo} size={40} tone={r.length ? "tint" : "fill"} />
+                      <ChildAvatar name={k.display_name} photo={k.profile_photo} childId={k.id} size={40} tone={r.length ? "tint" : "fill"} />
                       <b className="min-w-0 flex-1 truncate text-callout">{k.display_name}</b>
                       <span aria-label={`기록 ${r.length}개`} className={`shrink-0 text-headline font-bold tabular-nums ${r.length ? "text-accent-ink" : "text-ink2/60"}`}>{r.length}</span>
                     </button>

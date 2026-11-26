@@ -355,7 +355,7 @@ function Review({ notes }: { notes: DailyNote[] }) {
     const st = NOTE_STATUS[n.status];
     return (
       <li key={n.id} className="flex min-h-14 items-center gap-3 px-3 py-2 [&+&]:border-t [&+&]:border-sep">
-        <ChildAvatar name={names[n.child_id] ?? "?"} photo={photos[n.child_id]} size={32} textClass="text-footnote" rounded="rounded-sm" />
+        <ChildAvatar name={names[n.child_id] ?? "?"} photo={photos[n.child_id]} childId={n.child_id} size={32} textClass="text-footnote" rounded="rounded-sm" />
         <Link to={`/teacher/notes/${n.id}`} className="min-w-0 flex-1">
           <span className="flex items-baseline gap-2">
             <b className="text-headline font-semibold">{names[n.child_id] ?? "아이"}</b>
