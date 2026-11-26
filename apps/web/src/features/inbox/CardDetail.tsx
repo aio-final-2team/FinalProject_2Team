@@ -22,7 +22,7 @@ const WARNING: Record<string, string> = {
   notify_failed: "원장님께 가는 알림을 만들지 못했어요. 원장님께 직접 알려 주세요",
 };
 
-type SheetKind = null | "send" | "reject" | "hold" | "complete" | "confirm_slot" | "note" | "reclassify";
+type SheetKind = null | "send" | "reject" | "reject_time" | "hold" | "complete" | "confirm_slot" | "note" | "reclassify";
 
 const Section = ({ title, children }: { title: string; children: ReactNode }) => (
   <section className="grid gap-2">
@@ -338,8 +338,16 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
         <Button variant="plain" size="sm" onClick={() => setSheet(null)}>취소</Button>
       </Sheet>
 
-      <Sheet open={sheet === "reject"} onClose={() => setSheet(null)} title="이 요청을 거절할까요?">
-        <p className="text-sub text-ink2">고른 이유가 학부모에게 함께 전달돼요.</p>
+      {/* 상담: '시간 거절'은 이유를 남기고 새 시간을 받는다(reject), '상담 거절'은 상담 자체를 받지 않는다(dismiss, 이유가 학부모에게 보임) */}
+      <Sheet open={sheet === "reject_time"} onClose={() => setSheet(null)} title="이 시간을 거절할까요?">
+        <p className="text-sub text-ink2">고른 이유는 다음 시간 제안에 반영돼요. 학부모가 새 시간을 다시 골라요.</p>
+        <ReasonChips options={["연장반 당번", "전화로 충분"]} value={reason} onChange={setReason} />
+        <Button variant="danger" loading={act.isPending} lockedReason={reason ? undefined : "이유를 고르면 거절할 수 있어요"} onClick={() => run({ action: "reject_time", reason }, { title: "시간을 거절했어요", sub: reason })}>거절하기</Button>
+        <Button variant="plain" size="sm" onClick={() => setSheet(null)}>취소</Button>
+      </Sheet>
+
+      <Sheet open={sheet === "reject"} onClose={() => setSheet(null)} title={c.type === "consult" ? "이 상담을 거절할까요?" : "이 요청을 거절할까요?"}>
+        <p className="text-sub text-ink2">{c.type === "consult" ? "상담을 받지 않는 경우예요. 고른 이유가 학부모에게 보여요." : "고른 이유가 학부모에게 함께 전달돼요."}</p>
         <ReasonChips options={["개인정보 요청", "원 운영 범위 밖", "중복 요청"]} value={reason} onChange={setReason} />
         <Button variant="danger" loading={act.isPending} lockedReason={reason ? undefined : "이유를 고르면 거절할 수 있어요"} onClick={() => run({ action: "reject", reason }, { title: "거절했어요", sub: reason })}>거절하기</Button>
         <Button variant="plain" size="sm" onClick={() => setSheet(null)}>취소</Button>
@@ -408,8 +416,9 @@ function TeacherActions({ c, open, draft, slot, pending, run }: { c: Card; open:
     return <Button icon="approve" onClick={() => open("complete")}>처리 완료</Button>;
   if (c.type === "consult")
     return (
-      <div className="grid grid-cols-[1fr_2fr] gap-2">
-        <Button variant="gray" onClick={() => open("reject")}>거절</Button>
+      <div className="grid grid-cols-[1fr_1fr_2fr] gap-2">
+        <Button variant="gray" size="sm" onClick={() => open("reject_time")}>시간 거절</Button>
+        <Button variant="gray" size="sm" onClick={() => open("reject")}>상담 거절</Button>
         <Button onClick={() => open("confirm_slot")} lockedReason={slot ? undefined : "확정할 시간을 골라 주세요"}>확정하기</Button>
       </div>
     );

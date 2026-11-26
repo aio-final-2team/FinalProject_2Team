@@ -133,10 +133,10 @@ export function useCardAction(id: string, _role: Role) {
       if (body.action === "reclassify") return api<ActionResponse>(`/api/v1/cards/${id}/reclassify`, { method: "POST", body: JSON.stringify({ version, risk_level: body.risk, risk_category: body.risk === "urgent" ? body.riskCategory : null, reason: body.reason }) });
       if (body.action === "confirm_slot") return api<ActionResponse>(`/api/v1/cards/${id}/bookings`, { method: "POST", body: JSON.stringify({ version, slot_id: Number(body.slotId) }) });
       if (body.action === "note") return api<ActionResponse>(`/api/v1/cards/${id}/instructions`, { method: "POST", body: JSON.stringify({ version, instruction: body.text }) });
-      const decision = body.action === "approve_send" ? (body.draft ? "edit_approve" : "approve") : body.action === "reject" ? "dismiss" : body.action;
+      const decision = body.action === "approve_send" ? (body.draft ? "edit_approve" : "approve") : body.action === "reject" ? "dismiss" : body.action === "reject_time" ? "reject" : body.action;
       const payload: Record<string, unknown> = { version, decision };
       if (body.action === "approve_send" && body.draft) payload.edited_content = { text: body.draft };
-      if (body.action === "reject") Object.assign(payload, { reason_code: REASON_CODE[body.reason] ?? "other", reason_text: body.reason });
+      if (body.action === "reject" || body.action === "reject_time") Object.assign(payload, { reason_code: REASON_CODE[body.reason] ?? "other", reason_text: body.reason });
       if (body.action === "hold") Object.assign(payload, { reason_text: body.reason, hold_until: body.until });
       if (body.action === "complete" && body.reason) payload.reason_text = body.reason;
       return api<ActionResponse>(`/api/v1/cards/${id}/decisions`, { method: "POST", body: JSON.stringify(payload) });

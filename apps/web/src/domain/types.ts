@@ -49,6 +49,8 @@ export type Card = {
 export type CardAction =
   | { action: "approve_send"; draft?: string }
   | { action: "reject"; reason: string }
+  /** 상담 시간을 거절하고 이유를 남긴다 → 서버가 새 후보를 계산한다 (API decision reject) */
+  | { action: "reject_time"; reason: string }
   | { action: "hold"; reason: string; until: string }
   | { action: "escalate" }
   | { action: "resume" }
