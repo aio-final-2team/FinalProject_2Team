@@ -5,7 +5,7 @@ from app.core.errors import ApiError
 
 LABELS = {
     "terms": "이용약관", "privacy": "개인정보 수집·이용",
-    "ai_processing": "쓴 글이 AI 처리를 위해 국외 AI 사업자에게 전송됨",
+    "ai_processing": "쓴 글이 AI 처리를 위해 국외 AI 사업자(OpenAI, 미국)에게 전송되고, 처리 기록은 점검을 위해 LangSmith(미국)에 14일 보관됨",
     "child_info": "자녀 개인정보", "child_health": "자녀 건강·투약 정보", "child_face": "자녀 얼굴로 찾기",
 }
 

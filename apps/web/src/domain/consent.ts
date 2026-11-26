@@ -10,7 +10,7 @@ const ALL: Role[] = ["parent", "teacher", "director"];
 export const CONSENTS: Consent[] = [
   { id: "terms", title: "이용약관", who: ALL, summary: "서비스 이용약관에 동의합니다." },
   { id: "privacy", title: "개인정보 수집·이용", who: ALL, summary: "이름·연락처·역할 정보를 가입과 소통 기능에 씁니다. 탈퇴할 때까지 보관합니다." },
-  { id: "ai_processing", title: "AI 처리", who: ALL, separate: true, summary: "내가 쓴 글이 AI 처리를 위해 OpenAI(미국)로 전송됩니다. AI 학습에는 쓰지 않습니다. 보호자·선생님이 쓴 글은 모델로 보내기 전에 전화번호·주민번호·계좌·이메일을 가립니다." },
+  { id: "ai_processing", title: "AI 처리", who: ALL, separate: true, summary: "내가 쓴 글이 AI 처리를 위해 OpenAI(미국)로 전송됩니다. AI 학습에는 쓰지 않습니다. 보호자·선생님이 쓴 글은 모델로 보내기 전에 전화번호·주민번호·계좌·이메일을 가립니다. AI가 처리한 기록(보낸 글·받은 답)은 오류 점검을 위해 LangSmith(미국)에 14일 보관한 뒤 지웁니다." },
   { id: "child_info", title: "자녀 개인정보 수집", who: ["parent"], summary: "자녀 이름·생년월일·반·사진·알림장을 받습니다.", refuse: "자녀를 등록할 수 없습니다" },
   { id: "child_health", title: "자녀 건강·투약 정보", who: ["parent"], separate: true, summary: "투약·알레르기 같은 건강 정보를 투약 요청 처리에 씁니다." },
   { id: "child_face", title: "자녀 얼굴로 찾기", who: ["parent"], separate: true, summary: "사진에서 우리 아이를 찾기 위해 얼굴 특징정보를 만들어 AWS(서울)에서 처리합니다. 탈퇴하면 지웁니다." },
