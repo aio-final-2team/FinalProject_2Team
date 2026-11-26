@@ -444,7 +444,7 @@ def test_seed_twice_keeps_same_rows_and_password_hash(db_engine, alembic_config)
     first = snapshot()
     run_seed()
     assert snapshot() == first
-    assert {table: len(rows) for table, rows in first.items()} == dict(zip(tables, (1, 2, 21, 2, 21, 19, 1, 3, 3, 22, 4, 5, 5), strict=True))
+    assert {table: len(rows) for table, rows in first.items()} == dict(zip(tables, (1, 2, 21, 2, 21, 19, 1, 3, 3, 25, 4, 5, 5), strict=True))
     classrooms = {row["id"]: row for row in first["classrooms"]}
     assert (classrooms[seed.CLASS_STAR]["name"], classrooms[seed.CLASS_STAR]["age_group"]) == ("만 4세 별빛반", 4)
     assert (classrooms[seed.CLASS_SUN]["name"], classrooms[seed.CLASS_SUN]["age_group"]) == ("만 5세 햇님반", 5)
@@ -505,7 +505,7 @@ def test_seed_twice_keeps_same_rows_and_password_hash(db_engine, alembic_config)
             assert refreshed[table] == before_refresh[table]
             continue
         for old, new in zip(before_refresh[table], refreshed[table], strict=True):
-            if old["id"] == unrelated:
+            if old["id"] == unrelated or old["type"] == "consultation":
                 assert new == old
             else:
                 if old["id"] in originals:

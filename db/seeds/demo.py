@@ -188,4 +188,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
     with transaction() as connection:
         seed_demo(connection, refresh_note_requests=args.refresh_note_requests)
+        from db.seeds.consultations import seed_consultations
+        seed_consultations(connection)
     print(f"가상 원 시드 완료: 계정 {len(seed.USERS)}개, 비밀번호 demo1234 (이미 있는 행은 유지)")
