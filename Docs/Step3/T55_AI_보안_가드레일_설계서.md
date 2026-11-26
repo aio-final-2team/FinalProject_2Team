@@ -125,7 +125,7 @@ flowchart LR
 | G-2 | **구현됨** 입력을 신뢰하지 않을 데이터로 표시 | 감독·답변·검사·알림장 입력 JSON에 `untrusted_data_fields`가 있어요. `supervisor.py:47-53`, `agents/graphs/answer.py:78-82,128-136`, `agents/graphs/daily_note.py` | 모델이 악성 지시를 따르지 않는다는 점은 **실제 모델 미검증**이에요. |
 | G-3 | **구현됨** 세 유형 위험 분류 및 재분류 범위 | `request_rules.py:3-6,27-39`; `migrations/versions/0011_request_risk_all_types.py:12-17`; `modules/cards/cards.py:368-380` | 위험 분류는 문의·상담·민원, 담임 재분류는 회신 카드가 있는 문의·민원이에요. 상담은 시간 확정 흐름으로 재분류 대상이 아니에요. 기존 빈틈은 해소됐어요. |
 | G-4 | **구현됨** 코드가 특정한 주제와 다른 모델 제안을 거부·기록 | `apps/api/app/modules/requests/supervisor.py:59-68,96-100`; `modules/requests/agent_stub.py` `topic_conflict` 호출 | 코드 주제가 `other`가 아니면 다른 주제 제안은 적용하지 않고 충돌을 기록해요. |
-| G-5 | **구현됨** 감독·답변·검사 입력의 개인정보 형식 가리기 | `agents/guardrails/sensitive.py:5-20`; `supervisor.py:51-53`; `agents/graphs/answer.py:134-150` | 전화·주민등록번호·계좌·이메일 패턴을 모델 입력에서 가려요. 저장 원문은 유지해요. |
+| G-5 | **구현됨** 감독·답변·검사 입력의 개인정보 형식 가리기 | `agents/guardrails/sensitive.py:5-20`; `supervisor.py:51-53`; `agents/graphs/answer.py:134-150`; 알림장 쓰기·검사 `agents/graphs/daily_note.py`; 요청 그래프 글쓰기·검사 `apps/api/app/modules/requests/graph_agent.py` | 전화·주민등록번호·계좌·이메일 패턴을 모델 입력에서 가려요. 저장 원문은 유지해요. 알림장은 `request_id`를 지키려고 글 칸만 가려요. 시험: `tests/unit/test_t55_guardrails.py`의 `test_daily_note_model_input_masks_sensitive_but_keeps_request_id`·`test_request_graph_writer_and_checker_mask_guardian_body` |
 | G-6 | **구현됨** 의심 자료 조각 표시와 검색·답변 제외 | `apps/api/app/modules/documents/ingest.py:189-212`, `search.py:105-114`, `agents/graphs/answer.py:123-125`; `agents/guardrails/injection.py:5-14` | 표현 목록 밖의 우회 문장은 놓칠 수 있어요. 이력에 조각 번호를 남기며, 자료 화면에 별도 표시한다는 뜻은 아니에요. |
 | G-7 | **구현됨** 답변 초안의 개인정보 형식 검사 | `agents/graphs/answer.py:90-105`; `agents/guardrails/sensitive.py:5-20` | 모델 검사와 별도로 코드가 민감정보 문제를 추가해 교사 확인으로 넘겨요. |
 | G-8 | **구현됨** 투약 입력의 누락 항목을 확인하고 이벤트에는 원문 입력값을 싣지 않음 | `apps/api/app/modules/requests/requests.py:34-48`; `apps/api/app/core/care.py:22-38`; `modules/requests/events.py:11-22` | 투약 상세 값은 요청의 `care_detail`에 저장돼요. 이벤트의 `detail`에는 투약 원문을 넣지 않아요. 보관·삭제 기간은 이 문서만으로 확인되지 않아요. |
@@ -166,3 +166,4 @@ flowchart LR
 | v0.6 | 2026-11-24 | 태웅님 답 반영: G-8 이력 값 축소, G-10 서버 graph 설정, G-9 배포 설정, G-6 화면 표시 결정 시점 | 영민 |
 | v0.7 | 2026-11-26 | FB-021-2: P01 다른 가정 요청도 고정 안내로 처리, 팀 서버 같은 이미지에서 P01~P04 실행 확인(L11·SEN-01·AUT-04·AUT-05) | 영민 |
 | v0.8 | 2026-11-26 | develop `3e21148` 기준으로 위험 분류·프롬프트·개인정보 가리기·의심 조각 제외·인용 재작성·건강 문의 예외와 기존 빈틈·남은 확인을 최신화 | 영민 |
+| v0.9 | 2026-11-26 | G-5 행에 알림장·요청 그래프 입력 가리기(#360)와 시험 두 개 추가 | 태웅 |
