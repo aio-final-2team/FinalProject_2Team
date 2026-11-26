@@ -56,7 +56,7 @@ def score(words: list[str], title: str, location: str, content: str) -> float:
 
 
 def search_documents(user, kindergarten_id: str, doc_type: str, query: str, classroom_id=None, top_k: int = 5,
-                     on_date: date | None = None) -> dict:
+                     on_date: date | None = None, *, allowed_chunk_ids=None) -> dict:
     if str(kindergarten_id) != str(user.org_id):
         raise ApiError(404, "NOT_FOUND")  # 다른 기관 자료는 있다고도 알리지 않는다
     if doc_type not in DOC_TYPES or not query.strip() or not 1 <= top_k <= 20:
@@ -106,6 +106,8 @@ def search_documents(user, kindergarten_id: str, doc_type: str, query: str, clas
                "vector": vector, "version": embedding.VERSION}).mappings().all()
     ranked = []
     for row in rows:
+        if allowed_chunk_ids is not None and row["chunk_id"] not in allowed_chunk_ids:
+            continue
         if suspicious_chunk(row["content"]):
             continue
         lexical = score(words, row["document_title"], row["location"] or "", row["content"])

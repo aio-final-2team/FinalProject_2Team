@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter
 
-from app.api.routes import auth, requests, cards, resources, feed, consents, calendar, notification_settings
+from app.api.routes import auth, requests, cards, resources, feed, consents, calendar, notification_settings, staff_ask
 
 api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(auth.router)
@@ -14,3 +14,4 @@ api_router.include_router(feed.router)
 api_router.include_router(consents.router)
 api_router.include_router(calendar.router)
 api_router.include_router(notification_settings.router)
+api_router.include_router(staff_ask.router)

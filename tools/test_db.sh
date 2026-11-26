@@ -58,4 +58,5 @@ DATA_BACKEND=mock python -m pytest -q -rs tests/integration/api/test_auth.py tes
     tests/integration/api/test_consultations.py tests/integration/api/test_memories.py \
     tests/integration/api/test_consultation_reminders.py tests/integration/api/test_care_requests.py \
     tests/integration/api/test_feed.py tests/integration/api/test_consents.py tests/integration/api/test_calendar.py \
-    tests/integration/api/test_notification_settings.py tests/integration/api/test_document_upload_formats.py "$@"
+    tests/integration/api/test_notification_settings.py tests/integration/api/test_document_upload_formats.py \
+    tests/integration/api/test_staff_ask.py "$@"
