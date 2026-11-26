@@ -48,7 +48,7 @@ export function ParentHome() {
           <h1 className="mt-4 text-large-title font-bold tracking-[-0.025em]">{child ? `${nameI(child.display_name)}의 오늘` : "오늘"}</h1>
           <p className="mt-0.5 text-footnote font-medium text-on-brand/80">{dateLabel(date)}</p>
           <p className="mt-2 text-callout font-medium text-on-brand/90">오늘도 아이의 하루를 함께 볼까요?</p>
-          <Buddy face="hello" className="absolute -bottom-5 right-0 size-24 lg:-bottom-6 lg:size-28" />
+          <Buddy face="basic" className="absolute -bottom-5 right-0 size-24 lg:-bottom-6 lg:size-28" />
         </div>
       </header>
 

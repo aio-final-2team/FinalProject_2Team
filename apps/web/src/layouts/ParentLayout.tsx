@@ -27,7 +27,7 @@ export function ParentLayout() {
     <div className="min-h-full lg:grid lg:grid-cols-[232px_1fr]">
       <aside className="sticky top-0 hidden h-dvh flex-col gap-6 border-r border-sep bg-card px-4 py-6 lg:flex">
         <div className="flex items-center gap-2 px-2">
-          <Buddy face="hello" small className="size-10" />
+          <Buddy face="basic" className="size-10" />
           <Wordmark className="h-[18px]" />
         </div>
         <button type="button" onClick={() => setMe(true)} className="flex items-center gap-2 rounded-xl px-2 py-2 text-left text-sub text-ink2 hover:bg-fill">
