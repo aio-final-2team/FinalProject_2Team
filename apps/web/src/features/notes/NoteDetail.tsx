@@ -264,7 +264,7 @@ function Detail({ note, notes, name, names }: { note: DailyNote; notes: DailyNot
             </SubButton>
           ) : (
             <PrimaryButton disabled={open.length > 0} loading={patch.isPending} onClick={confirm}>
-              다 읽었어요
+              확인하기
             </PrimaryButton>
           )}
         </Dock>

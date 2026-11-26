@@ -12,6 +12,8 @@ import { fmtDateTime } from "@/domain/datetime";
 import { useToast } from "@/components/Toast";
 
 const STEPS = ["접수", "선생님 확인", "답변", "완료"];
+/** 유형별 3번째 단계 이름: 상담은 예약, 투약·귀가는 처리, 문의·민원은 답변 */
+const THIRD: Record<string, string> = { consultation: "예약", medication: "처리", pickup: "처리" };
 /** 요청 상태 → 진행 단계 (디자인 시스템 7.12 가로 점 단계). escalated면 2단계 이름이 '원장님 확인' */
 const STEP_OF: Record<string, number> = { received: 0, classified: 0, needs_info: 1, assigned: 1, awaiting_review: 1, escalated: 1, on_hold: 1, approved: 1, sent_or_booked: 2, completed: 3, rejected: 3 };
 
@@ -42,12 +44,12 @@ export function RequestDetailPage() {
       {r && (
         <>
           <ol className="mt-4 grid grid-cols-4 gap-1 rounded-lg bg-card p-3 shadow-card" aria-label="진행 단계">
-            {STEPS.map((s, i) => (
+            {STEPS.map((name, i) => { const s = i === 2 ? (THIRD[r.type] ?? name) : name; return (
               <li key={s} className="grid justify-items-center gap-1 text-center">
                 <span className={`size-3.5 rounded-full border-2 ${i < step ? "border-accent bg-accent" : i === step ? "border-accent shadow-[0_0_0_3px_var(--tint)]" : "border-fill2"}`} />
                 <span className={`text-caption ${i === step ? "font-bold text-ink" : "text-ink2"}`}>{i === 1 && r.status === "escalated" ? "원장님 확인" : s}</span>
               </li>
-            ))}
+            ); })}
           </ol>
 
           <ul className="mt-4 grid gap-2">
@@ -135,7 +137,7 @@ export function RequestDetailPage() {
       )}
       </QueryState>
       <Sheet open={sheet === "cancel"} onClose={() => setSheet(null)} title="이 요청을 취소할까요?">
-        <p className="text-footnote text-ink2">선생님에게 취소했다고 알려요. 이미 끝났거나 반려된 요청은 취소할 수 없어요.</p>
+        <p className="text-footnote text-ink2">선생님에게 취소했다고 알려요. 이미 끝났거나 처리할 수 없게 된 요청은 취소할 수 없어요.</p>
         <Button
           variant="danger"
           loading={cancel.isPending}

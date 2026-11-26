@@ -248,7 +248,7 @@ function Review({ notes }: { notes: DailyNote[] }) {
   const [sheet, setSheet] = useState(false);
   const [busy, setBusy] = useState(false);
   const [showClean, setShowClean] = useState(false);
-  /* "이대로 사용" 표시는 새로고침해도 남도록 이 기기에 둔다 (확인 전 단계라 서버 데이터는 아님) */
+  /* "문제 없음으로 옮기기" 표시는 새로고침해도 남도록 이 기기에 둔다 (확인 전 단계라 서버 데이터는 아님) */
   const plainKey = `yuchion.plainOk.${cid}.${date}`;
   const [plainOk, setPlainOkRaw] = useState<Record<string, boolean>>(() => {
     try { return JSON.parse(localStorage.getItem(plainKey) ?? "{}"); } catch { return {}; }
@@ -438,7 +438,7 @@ function Review({ notes }: { notes: DailyNote[] }) {
               <span className="flex items-center gap-2">
                 {noRecord.length}명
                 <SubButton small tone="gray" onClick={() => setPlainOk((p) => ({ ...p, ...Object.fromEntries(noRecord.map((n) => [n.id, true])) }))}>
-                  모두 이대로 사용
+                  모두 문제 없음으로 옮기기
                 </SubButton>
               </span>
             }
@@ -455,7 +455,7 @@ function Review({ notes }: { notes: DailyNote[] }) {
                     내용 추가
                   </SubButton>
                   <SubButton small tone="gray" onClick={() => setPlainOk((p) => ({ ...p, [n.id]: true }))}>
-                    이대로 사용
+                    문제 없음으로
                   </SubButton>
                 </span>,
               ),

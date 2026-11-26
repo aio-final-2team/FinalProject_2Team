@@ -42,7 +42,7 @@ export function TeacherHome() {
   const notice = docs.data?.find((d) => d.doc_type === "notice" && d.status === "active");
 
   const noteState = !list.length
-    ? { title: "오늘 알림장을 아직 만들지 않았어요", sub: recorded ? `관찰 기록 ${recorded}명의 내용을 반영할 수 있어요` : "오늘 함께한 활동부터 적으면 돼요", action: "알림장 작성 시작" }
+    ? { title: "오늘 알림장을 아직 만들지 않았어요", sub: recorded ? `관찰 기록 ${recorded}명의 내용을 반영할 수 있어요` : "오늘 함께한 활동부터 적으면 돼요", action: "알림장 만들기" }
     : allSent
       ? { title: `${c.sent}가정에 알림장을 보냈어요`, sub: "보낸 내용은 알림장에서 다시 볼 수 있어요", action: "보낸 알림장 보기" }
       : c.needs_check
@@ -81,9 +81,9 @@ export function TeacherHome() {
 
       <Label>오늘 할 일</Label>
       <NavList>
-        <NavRow to="/teacher/inbox" icon="inbox" title={`확인할 요청 ${inbox.data?.counts.review ?? 0}건`} sub="답변, 상담, 민원 요청이에요" count={inbox.data?.counts.review ?? 0} />
+        <NavRow to="/teacher/inbox" icon="inbox" title={`받은함 ${inbox.data?.counts.review ?? 0}건`} sub="답변, 상담, 민원 요청이에요" count={inbox.data?.counts.review ?? 0} />
         <NavRow to="/teacher/care" icon="medication" title={careOpen ? `귀가·투약 ${careOpen}건` : "귀가·투약"} sub={careOpen ? "보호자가 보낸 요청을 확인해 주세요" : "확인할 요청이 없어요"} count={careOpen} />
-        <NavRow to="/teacher/notes?tab=records" icon="class" title={`오늘 ${recorded}명 기록`} sub="필요한 아이만 짧게 남겨도 돼요" />
+        <NavRow to="/teacher/notes?tab=records" icon="class" title="관찰 기록" sub={`오늘 ${recorded}명 기록 · 필요한 아이만 짧게 남겨도 돼요`} />
         <NavRow to="/teacher/class" icon="document" title="오늘 우리 반" sub={meal?.value ?? (notice ? `가정통신문 · ${notice.title}` : menuDoc ? "오늘 식단은 알림장에 자동으로 들어가요" : "식단표와 가정통신문 보기")} />
       </NavList>
 

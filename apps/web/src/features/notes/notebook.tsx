@@ -9,7 +9,7 @@ import { RecordsPage } from "@/features/records/RecordsPage";
  * 두 화면은 제목을 "알림장"으로 맞추고, 칸 전환 줄을 제목 아래에 붙인다.
  */
 const TABS = [
-  { key: "notes", label: "알림장" },
+  { key: "notes", label: "오늘 알림장" },
   { key: "records", label: "관찰 기록" },
 ] as const;
 
