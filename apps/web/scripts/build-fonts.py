@@ -8,15 +8,9 @@ import sys
 from fontTools import subset
 from fontTools.ttLib import TTFont
 
-# 한글 2,350자(KS X 1001) + 영문·숫자·기호. 이 밖의 글자는 Pretendard로 나온다.
-han = []
-for hi in range(0xB0, 0xC9):
-    for lo in range(0xA1, 0xFF):
-        try:
-            han.append(bytes([hi, lo]).decode("euc-kr"))
-        except UnicodeDecodeError:
-            pass
-chars = "".join(han) + "".join(chr(c) for c in range(0x20, 0x7F)) + "①②③④⑤⑥⑦⑧⑨⑩·—–…“”‘’‹›→←↑↓✓×"
+# 한글 완성형 11,172자 전부 + 영문·숫자·기호. 아이 이름의 드문 글자도 둥근미소로 나온다.
+han = [chr(c) for c in range(0xAC00, 0xD7A4)]
+chars = "".join(han) + "".join(chr(c) for c in range(0x3131, 0x3164)) + "".join(chr(c) for c in range(0x20, 0x7F)) + "①②③④⑤⑥⑦⑧⑨⑩·—–…“”‘’‹›→←↑↓✓×"
 
 for src, dst in zip(sys.argv[1:3], ("public/fonts/Dunggeunmiso-400.woff2", "public/fonts/Dunggeunmiso-700.woff2")):
     opt = subset.Options()
