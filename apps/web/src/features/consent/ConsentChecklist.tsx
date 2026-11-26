@@ -1,16 +1,16 @@
 import type { Dispatch, SetStateAction } from "react";
-import { consentsFor } from "@/domain/consent";
+import { consentsFor, type Consent } from "@/domain/consent";
 import type { Role } from "@/domain/types";
 
 /** 역할이 받는 동의 항목을 전부 눌렀는지 */
-export const allAgreed = (role: Role, on: string[]) => consentsFor(role).every((c) => on.includes(c.id));
+export const allAgreed = (list: Consent[], on: string[]) => list.length > 0 && list.every((c) => on.includes(c.id));
 
 /**
  * 동의 항목 목록. 가입 화면과 로그인 뒤 동의 화면이 같이 쓴다.
  * 모두 동의는 별도 칸이 아닌 항목만 고르고, 별도 칸(AI 처리, 건강 정보, 얼굴 찾기)은 항목마다 직접 눌러야 한다.
  */
-export function ConsentChecklist({ role, on, setOn, afterLogin = false }: { role: Role; on: string[]; setOn: Dispatch<SetStateAction<string[]>>; afterLogin?: boolean }) {
-  const list = consentsFor(role);
+export function ConsentChecklist({ role, on, setOn, afterLogin = false, items }: { role: Role; on: string[]; setOn: Dispatch<SetStateAction<string[]>>; afterLogin?: boolean; items?: Consent[] }) {
+  const list = items ?? consentsFor(role);
   const bulk = list.filter((c) => !c.separate);
   const separate = list.filter((c) => c.separate);
   const bulkOn = bulk.length > 0 && bulk.every((c) => on.includes(c.id));

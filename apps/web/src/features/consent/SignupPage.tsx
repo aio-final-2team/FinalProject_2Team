@@ -4,7 +4,7 @@ import { BackLink } from "@/components/BackLink";
 import { PrimaryButton } from "@/components/Dock";
 import { Icon } from "@/components/Icon";
 import { useToast } from "@/components/Toast";
-import { saveConsent } from "@/domain/consent";
+import { consentsFor, saveConsent } from "@/domain/consent";
 import { ConsentChecklist, allAgreed } from "./ConsentChecklist";
 import type { Role } from "@/domain/types";
 
@@ -54,7 +54,7 @@ export function SignupPage() {
           <p className="mt-0.5 text-footnote font-medium text-ink2">아래 항목에 모두 동의해야 가입할 수 있어요</p>
           <ConsentChecklist role={role} on={on} setOn={setOn} />
           <div className="glass fixed inset-x-0 bottom-0 z-20 mx-auto max-w-[480px] border-t border-sep bg-bar px-4 pb-[max(12px,env(safe-area-inset-bottom))] pt-2.5 backdrop-blur-xl">
-            <PrimaryButton disabled={!allAgreed(role, on)} onClick={() => { saveConsent(role, on); toast({ kind: "ok", title: "동의를 저장했어요", sub: "이제 로그인할 수 있어요" }); nav("/login", { replace: true }); }}>동의하고 가입하기</PrimaryButton>
+            <PrimaryButton disabled={!allAgreed(consentsFor(role), on)} onClick={() => { saveConsent(role, on); toast({ kind: "ok", title: "동의를 저장했어요", sub: "이제 로그인할 수 있어요" }); nav("/login", { replace: true }); }}>동의하고 가입하기</PrimaryButton>
           </div>
         </>
       )}

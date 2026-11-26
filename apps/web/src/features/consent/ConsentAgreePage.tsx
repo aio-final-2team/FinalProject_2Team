@@ -6,7 +6,7 @@ import { HOME, useSession } from "@/app/session";
 import { PrimaryButton } from "@/components/Dock";
 import { QueryState } from "@/components/QueryState";
 import { useToast } from "@/components/Toast";
-import { consentsFor } from "@/domain/consent";
+import { CONSENTS, type Consent } from "@/domain/consent";
 import { ConsentChecklist, allAgreed } from "./ConsentChecklist";
 
 /**
@@ -23,13 +23,16 @@ export function ConsentAgreePage() {
   const agree = useAgreeConsents();
   const [on, setOn] = useState<string[]>([]);
   if (!role) return null;
+  /* 서버가 이 사람에게 요구하는 항목 그대로 보여 주고 저장한다. 서버가 항목을 빼거나 더해도 화면이 맞는다 */
+  const required = q.data?.items ?? [];
+  const list: Consent[] = required.map((it) => CONSENTS.find((c) => c.id === it.item) ?? { id: it.item, title: it.label, who: [role], summary: "", refuse: "이용할 수 없어요" });
 
   const submit = () => {
     const version = q.data?.terms_version;
     if (!version || busy.current) return;
     busy.current = true;
     agree.mutate(
-      { items: consentsFor(role).map((c) => c.id), terms_version: version },
+      { items: list.map((c) => c.id), terms_version: version },
       {
         onSettled: () => { busy.current = false; },
         onSuccess: () => {
@@ -60,9 +63,9 @@ export function ConsentAgreePage() {
       <h1 className="text-large-title font-bold tracking-[-0.025em]">필수 동의</h1>
       <p className="mt-0.5 text-footnote font-medium text-ink2">서비스를 쓰려면 아래 항목에 모두 동의해 주세요</p>
       <QueryState queries={[q]} skeleton={3} errorTitle="동의 항목을 불러오지 못했어요">
-        <ConsentChecklist role={role} on={on} setOn={setOn} afterLogin />
+        <ConsentChecklist role={role} on={on} setOn={setOn} afterLogin items={list} />
         <div className="glass fixed inset-x-0 bottom-0 z-20 mx-auto max-w-[480px] border-t border-sep bg-bar px-4 pb-[max(12px,env(safe-area-inset-bottom))] pt-2.5 backdrop-blur-xl">
-          <PrimaryButton disabled={!allAgreed(role, on)} loading={agree.isPending} onClick={submit}>동의하고 시작하기</PrimaryButton>
+          <PrimaryButton disabled={!allAgreed(list, on)} loading={agree.isPending} onClick={submit}>동의하고 시작하기</PrimaryButton>
         </div>
       </QueryState>
     </div>
