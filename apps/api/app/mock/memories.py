@@ -3,7 +3,8 @@ from uuid import uuid4
 import os
 from math import sqrt
 
-from app.core.constants import (REJECTION_RULE_TEXTS, REJECTION_RULE_THRESHOLD, TONE_LIMIT, TONE_READ_LIMIT,
+from app.core.consents import memory_kinds
+from app.core.constants import (CONSENT_VERSION, REJECTION_RULE_TEXTS, REJECTION_RULE_THRESHOLD, TONE_LIMIT, TONE_READ_LIMIT,
                                 SAVED_ANSWER_MIN_SIMILARITY)
 from app.core.errors import ApiError
 from app.core.memory_rules import mask_child_names, validate_rule_json, tone_contents, parent_candidates, memory_page
@@ -94,7 +95,11 @@ def save_parent_candidates(req, candidates, names):
             or mask_child_names(req["body"], [n for n in names if n != child.display_name]) != req["body"]):
         return
     with store._lock:
+        kinds = memory_kinds({item for (org, uid, item, version) in store.state().consents
+                              if (org, uid, version) == (req["org_id"], req["requester_id"], CONSENT_VERSION)})
         for item in parent_candidates(candidates, req["body"], names):
+            if item["kind"] not in kinds:
+                continue
             child_id = child.id if item["kind"] == "care_note" else None
             if any(m.org_id == req["org_id"] and m.owner_id == req["requester_id"] and m.kind == item["kind"]
                    and m.child_id == child_id and m.deleted_at is None
@@ -138,7 +143,7 @@ def propose_rule(owner_id, reason_code, rule_text, rule_json, *, org_id):
             return existing
         declined_at = max((r.decided_at for r in store.state().rules.values() if r.org_id == org_id
                            and r.owner_id == owner_id and r.reason_code == reason_code
-                           and r.status == "declined" and r.decided_at is not None), default=None)
+                           and r.status in ("declined", "off") and r.decided_at is not None), default=None)
         count = sum(m.org_id == org_id and m.owner_id == owner_id and m.kind == "rejection_reason"
                     and m.reason_code == reason_code and m.deleted_at is None
                     and (declined_at is None or m.created_at > declined_at) for m in store.state().memories.values())

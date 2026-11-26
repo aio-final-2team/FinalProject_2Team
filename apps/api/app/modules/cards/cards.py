@@ -309,6 +309,13 @@ def rule_decision(user, rule_id, body):
         rule = connection.execute(text("""
             SELECT * FROM memory_rules WHERE id=:id AND org_id=:org AND owner_id=:owner FOR NO KEY UPDATE
         """), values).mappings().one()
+        if body.decision == "off":
+            # FR-20: 켜 둔 규칙만 끈다. 같은 거절이 다시 세 번 쌓이면 새 제안 카드로 묻는다.
+            if rule["status"] != "active":
+                raise ApiError(409, "INVALID_TRANSITION")
+            connection.execute(text("UPDATE memory_rules SET status='off',decided_at=clock_timestamp() WHERE id=:id"),
+                               {"id": rule_id})
+            return {"rule": {"id": rule_id, "status": "off"}}
         if rule["status"] != "proposed" or card is None or card["status"] not in ("pending", "in_review"):
             raise ApiError(409, "INVALID_TRANSITION")
         card = dict(card)

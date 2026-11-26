@@ -147,3 +147,23 @@ def test_memory_saved_answer_toggle_scope_and_invalidation(client,teacher,teache
     change(saved_case,'documents' if saved_case.mode=='db' else 'saved_answers',
            'status','superseded' if saved_case.mode=='db' else 'invalidated')
     assert client.patch(path,headers=teacher,json={'status':'active'}).status_code==409
+
+
+@pytest.mark.parametrize('withdrawn, kinds', [('child_health', ['preference']), ('ai_processing', [])])
+def test_memory_parent_needs_consent_for_each_kind(memory_backend, withdrawn, kinds):
+    from sqlalchemy import text
+    if memory_backend == 'db':
+        with transaction() as c:
+            c.execute(text("DELETE FROM user_consents WHERE user_id=:user AND item=:item"),
+                      {'user': seed.PARENT, 'item': withdrawn})
+    else:
+        for key in [k for k in store.state().consents if k[1] == seed.PARENT and k[2] == withdrawn]:
+            del store.state().consents[key]
+    save(memory_backend, [CARE, PREF])
+    if memory_backend == 'db':
+        with transaction() as c:
+            assert sorted(c.scalars(text("SELECT kind FROM memories"))) == kinds
+            assert c.scalar(text("SELECT count(*) FROM notifications WHERE kind='memory_candidate'")) == 0
+    else:
+        assert sorted(m.kind for m in store.state().memories.values()) == kinds
+        assert not [n for n in store.state().notifications.values() if n.kind == 'memory_candidate']

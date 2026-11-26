@@ -340,6 +340,11 @@ def rule_decision(user, rule_id, body):
         rule = store.state().rules.get(rule_id)
         if rule is None or rule.org_id != user.org_id or rule.owner_id != user.id:
             store.deny(user)
+        if body.decision == "off":
+            if rule.status != "active":
+                raise ApiError(409, "INVALID_TRANSITION")
+            rule.status, rule.decided_at = "off", store.now()
+            return {"rule": {"id": rule.id, "status": rule.status}}
         if rule.status != "proposed":
             raise ApiError(409, "INVALID_TRANSITION")
         card = next((c for c in store.state().cards.values() if c.org_id == user.org_id

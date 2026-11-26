@@ -1082,8 +1082,8 @@ HTTP/1.1 200 OK
 | ② 요청 헤더 | `Authorization`(필수), `X-Request-ID`(권장), `Content-Type: application/json`. |
 | ③ 경로·쿼리 | rule_id(UUID, 필수). |
 | ④ 요청 본문 | decision. |
-| ⑤ 검증·권한 | 로그인한 규칙 주인만. 같은 기관인지, 규칙 주인인지는 검사하지만 역할이 다르다는 이유만으로 403을 내지는 않는다. proposed 상태인 규칙만 결정할 수 있다. |
-| ⑥ 정상 응답 | 200 + rule { id, status }. activate는 active, decline은 declined. |
+| ⑤ 검증·권한 | 로그인한 규칙 주인만. 같은 기관인지, 규칙 주인인지는 검사하지만 역할이 다르다는 이유만으로 403을 내지는 않는다. activate·decline은 proposed 규칙만, off는 active 규칙만 받는다. 그 밖은 409 INVALID_TRANSITION. |
+| ⑥ 정상 응답 | 200 + rule { id, status }. activate는 active, decline은 declined, off는 off. |
 | ⑦ 오류 응답 | 아래 오류 표. |
 | ⑧ 실행 규칙 | 연결된 제안 카드를 done으로 바꾸고 판을 1 올린다. 켜면 approve, 거절하면 reject로 결정과 이력을 남긴다. 같은 규칙을 다시 요청하면 409다. 모의 상담 후보에는 규칙을 적용하지 않는다. |
 
@@ -1092,7 +1092,7 @@ DB 모드도 같은 결정 계약을 쓴다. 카드를 거절하거나 반려한
 | 필드 | 위치 | 타입 | 필수 | 빈값 | 제약 | 설명 |
 | --- | --- | --- | --- | --- | --- | --- |
 | `rule_id` | 경로 | string(UUID) | 필수 | 불가 | 본인 규칙 | 카드 상세 rule.id |
-| `decision` | 본문 | string | 필수 | 불가 | `activate`·`decline` | 켜기·거절 |
+| `decision` | 본문 | string | 필수 | 불가 | `activate`·`decline`·`off` | 켜기·거절·켜 둔 규칙 끄기(FR-20) |
 | `rule.id` | 응답 | string(UUID) | 항상 | 불가 | 요청한 규칙 ID | 결정 대상 |
 | `rule.status` | 응답 | string | 항상 | 불가 | `active`·`declined` | 저장한 상태 |
 
@@ -1512,7 +1512,15 @@ HTTP/1.1 200 OK
 | `rules[]` | 응답 | id·reason_code·rule_text·status | 담임 본인의 proposed·active·off·declined 규칙, 다른 역할은 빈 목록 |
 | `total`·`page`·`size` | 응답 | 정수 | 범위·종류로 거른 뒤 쪽 나누기 |
 
-DELETE는 본인 기억과 학부모의 자기 아이 돌봄 메모만 지우며 성공은 204다. content와 structured를 비우고 deleted_at을 남겨 이후 모든 작성 입력에서 제외한다. 승인 답과 규칙의 UUID는 이 삭제 주소에 보내지 않는다.
+DELETE는 본인 기억과 학부모의 자기 아이 돌봄 메모만 지우며 성공은 204다. content와 structured를 비우고 deleted_at을 남겨 이후 모든 작성 입력에서 제외한다. 승인 답과 규칙의 UUID는 이 삭제 주소에 보내지 않는다. 화면은 `items[].source`로 버튼 주소를 고른다.
+
+| `source` | 화면 버튼 | 주소 |
+| --- | --- | --- |
+| `memory` | 지우기 | `DELETE /memories/{id}` (정수 id). 돌봄 메모 pending은 API 67로 기억·버리기 |
+| `saved_answer` | 끄기·다시 켜기 | API 69 `PATCH /saved-answers/{id}` `{status:"off"\|"active"}` |
+| `rule` | 끄기 | 3.17 `POST /memory-rules/{id}/decision` `{decision:"off"}`. 끈 규칙은 목록에 status off로 남고, 같은 이유 거절이 끈 뒤로 3번 더 쌓이면 새 제안 카드로 다시 묻는다(FR-20). 끈 규칙을 그대로 다시 켜는 주소는 없다 |
+
+보호자 기억 후보(선호·돌봄 메모)는 보호자의 현재 약관 판 동의를 다시 확인한 뒤 만든다. `ai_processing`이 없으면 기억 추출 모델에 글을 보내지 않고, 돌봄 메모는 `child_info`·`child_health`까지 있어야 저장한다.
 
 API 67 `POST /memories/{memory_id}/confirm`은 `{decision:"remember"|"discard"}`를 받는다. 그 아이 보호자만 pending 후보를 결정하며 다른 상태는 409 INVALID_TRANSITION이다. remember는 confirmed와 confirmed_at, discard는 discarded와 빈 content·structured를 남긴다. 응답은 `{id,confirm_status,confirmed_at}`다. 학부모 요청 상세 `GET /requests/{id}`의 `memory_candidates:[{id,child_name,content}]`에는 그 요청에서 생긴 pending만 들어간다(없거나 교직원이면 빈 목록). memory_candidate 앱 알림은 후보마다 한 번이고 원문은 알림에 싣지 않는다.
 

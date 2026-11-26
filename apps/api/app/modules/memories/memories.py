@@ -8,7 +8,8 @@ from pathlib import Path
 from sqlalchemy import text
 
 from app.core import scope
-from app.core.constants import REJECTION_RULE_TEXTS, REJECTION_RULE_THRESHOLD, TONE_LIMIT, TONE_READ_LIMIT
+from app.core.consents import memory_kinds
+from app.core.constants import CONSENT_VERSION, REJECTION_RULE_TEXTS, REJECTION_RULE_THRESHOLD, TONE_LIMIT, TONE_READ_LIMIT
 from app.core.db import transaction
 from app.core.schedule import KST
 from app.core.errors import ApiError
@@ -114,6 +115,12 @@ def load_child_notes(connection, org_id, child_id, reader_id):
     """), {"org": org_id, "child": child_id, "reader": reader_id, "today": datetime.now(KST).date()}).mappings()]
 
 
+def _memory_kinds(connection, req):
+    return memory_kinds(set(connection.scalars(text("""
+        SELECT item FROM user_consents WHERE org_id=:org AND user_id=:user AND terms_version=:version
+    """), {"org": req["org_id"], "user": req["requester_id"], "version": CONSENT_VERSION})))
+
+
 def save_parent_candidates(connection, req, candidates, names):
     own_name = connection.scalar(text("SELECT display_name FROM children WHERE id=:child AND org_id=:org"),
                                  {"child": req["child_id"], "org": req["org_id"]})
@@ -123,9 +130,12 @@ def save_parent_candidates(connection, req, candidates, names):
         WHERE (org_id,child_id,user_id)=(:org,:child,:owner))"""),
         {"org": req["org_id"], "child": req["child_id"], "owner": req["requester_id"]}):
         return
+    kinds = _memory_kinds(connection, req)
     connection.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))"),
                        {"key": f"parent-memory:{req['org_id']}:{req['requester_id']}"})
     for item in parent_candidates(candidates, req["body"], names):
+        if item["kind"] not in kinds:
+            continue
         child = req["child_id"] if item["kind"] == "care_note" else None
         memory_id = connection.scalar(text("""
             INSERT INTO memories(org_id,owner_id,kind,content,structured,child_id,confirm_status)
@@ -157,6 +167,9 @@ def after_request(request_id):
                 return
             if not re.search(r"선호|항상|보통|평소|매번|평일|매주|알레르기|낮잠|잠들|등원|안아|낯가림|분리불안", req["body"]):
                 return
+            # 국외 AI 전송에 동의하지 않은 보호자의 글은 기억 추출 모델에 보내지 않아요.
+            if not _memory_kinds(connection, req):
+                return
             names = list(connection.scalars(text("SELECT display_name FROM children WHERE org_id=:org"), {"org": req["org_id"]}))
         prompt = (Path(__file__).resolve().parents[5] / "agents/prompts/memory.md").read_text()
         reply = OpenAIModel("MEMORY").json(prompt, json.dumps({"parent_body": mask_sensitive(mask_child_names(req["body"], names)),
@@ -184,7 +197,7 @@ def propose_rule(connection, owner_id, reason_code, rule_text, rule_json, *, org
           AND kind='rejection_reason' AND reason_code=:code AND deleted_at IS NULL
           AND created_at>coalesce((
             SELECT max(decided_at) FROM memory_rules WHERE org_id=:org AND owner_id=:owner
-              AND reason_code=:code AND status='declined'), '-infinity'::timestamptz)
+              AND reason_code=:code AND status IN ('declined','off')), '-infinity'::timestamptz)
     """), {"org": org_id, "owner": owner_id, "code": reason_code})
     if count < REJECTION_RULE_THRESHOLD:
         return None
