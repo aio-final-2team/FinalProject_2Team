@@ -1,5 +1,8 @@
+import { useEffect } from "react";
 import { Link, useParams, useSearchParams } from "react-router";
 import { useCards, type TypeFilter } from "@/api/cards";
+import { TYPE_LABEL as REQ_TYPE, useAiAnswered } from "@/api/requests";
+import { ScreenTop } from "@/components/ScreenTop";
 import { dateLabel, todayKST } from "@/domain/notes";
 import { BackLink as SharedBackLink } from "@/components/BackLink";
 import { SkeletonRows, StateView } from "@/components/StateView";
@@ -7,6 +10,9 @@ import { Pill, WeightIcon } from "@/components/Tags";
 import { INBOX_FILTERS, TYPE_LABEL, type InboxFilter } from "@/domain/status";
 import { reviewRank, type Card, type Role } from "@/domain/types";
 import { CardDetail } from "./CardDetail";
+
+/** 카드를 열기 전 목록 스크롤 위치. 휴대폰에서 목록 → 상세 → 뒤로 갈 때 보던 자리로 돌아오게 한다 */
+let listScroll = 0;
 
 const EMPTY: Record<InboxFilter, string> = {
   review: "지금 확인할 카드가 없어요",
@@ -34,19 +40,22 @@ function weightOf(c: Card) {
 
 function Row({ c, active, to, role }: { c: Card; active: boolean; to: string; role: Exclude<Role, "parent"> }) {
   const w = weightOf(c);
-  const head = c.risk === "urgent" ? `긴급 · ${c.urgentReason}` : c.risk === "judge" ? `판단 필요 · ${TYPE_LABEL[c.type]}` : `${TYPE_LABEL[c.type]} · ${c.title}`;
+  /* 제목은 한 번만 보여 준다. 접수 원문은 제목에 이미 담겨 있으면 다시 쓰지 않는다 */
+  const norm = (t: string) => t.replace(/[\s"'“”.…]/g, "");
+  const head = c.risk === "urgent" ? (c.urgentReason ?? c.title) : c.title;
+  const showOriginal = !!c.original && !norm(c.original).startsWith(norm(c.title)) && !norm(c.title).startsWith(norm(c.original));
   const flags: { t: string; tone: "action" | "answered" | "done" | "wait" | "urgent" }[] = [];
   if (c.risk === "urgent") flags.push({ t: "초안 없음", tone: "urgent" });
   if (c.risk === "judge") flags.push({ t: "AI 판단 불확실", tone: "action" });
   if (c.repeatCount && c.repeatCount >= 3) flags.push({ t: `반복 ${c.repeatCount}번째`, tone: "action" });
   if (c.escalated) flags.push({ t: "원장 보고", tone: "wait" });
-  if (c.check?.passed) flags.push({ t: "검사 통과", tone: "done" });
   if (c.parentConfirmedAt && c.status === "sent_or_booked") flags.push({ t: "처리 완료 대기", tone: "answered" });
   if (c.slots) flags.push({ t: `학부모가 ${c.slots.filter((s) => s.picked).length}개 고름`, tone: "wait" });
   if (c.groupedCount) flags.push({ t: `같은 질문 ${c.groupedCount}건`, tone: "wait" });
   return (
     <Link
       to={to}
+      onClick={() => { listScroll = window.scrollY; }}
       aria-current={active ? "page" : undefined}
       className={`flex gap-3 rounded-2xl px-3.5 py-3 transition-colors ${active ? "bg-tint" : "bg-card hover:bg-fill"}`}
     >
@@ -57,7 +66,10 @@ function Row({ c, active, to, role }: { c: Card; active: boolean; to: string; ro
           <span className="shrink-0 text-[12px] text-ink2 tabular-nums">{ago(c.createdAt)}</span>
         </span>
         <span className="text-[13px] text-ink2">
-          {role === "director" && <span className="mr-1 font-semibold text-ink">{c.className}</span>}"{c.original}"
+          {role === "director" && <span className="mr-1 font-semibold text-ink">{c.className} ·</span>}
+          {c.childName && <span className="mr-1 font-semibold text-ink">{c.childName} ·</span>}
+          {c.risk === "judge" ? "판단 필요 · " : ""}{TYPE_LABEL[c.type]}
+          {showOriginal && <> · "{c.original}"</>}
         </span>
         {flags.length > 0 && (
           <span className="mt-1 flex flex-wrap gap-1">
@@ -82,30 +94,43 @@ export function InboxPage({ role }: { role: Exclude<Role, "parent"> }) {
   const filter = (params.get("filter") as InboxFilter) || "review";
   const type = (params.get("type") as TypeFilter) || "all";
   const { data, isLoading, isError, refetch, dataUpdatedAt } = useCards(filter, type);
+  /* 카드 없이 AI가 끝낸 요청은 끝난 일이므로 "완료" 필터 아래에 둔다 */
+  const aiAnswered = useAiAnswered(filter === "done").data ?? [];
   const counts = data?.counts ?? Object.fromEntries(INBOX_FILTERS.map((f) => [f.key, 0]));
   const list = (data?.items ?? [])
     .sort((a, b) => (filter === "review" ? reviewRank(a) - reviewRank(b) : 0) || +new Date(a.createdAt) - +new Date(b.createdAt));
   const q = `?filter=${filter}${type === "all" ? "" : `&type=${type}`}`;
   const TYPES: { key: TypeFilter; label: string }[] = [{ key: "all", label: "전체" }, { key: "complaint", label: "민원" }, { key: "consultation", label: "상담" }, { key: "inquiry", label: "문의" }];
   const base = `/${role}/inbox`;
+  /* 상세에서 목록으로 돌아오면(휴대폰) 보던 위치로 되돌린다. 받은함을 완전히 떠나면 위치를 지운다 */
+  useEffect(() => {
+    if (!cardId && !isLoading && listScroll > 0) window.scrollTo(0, listScroll);
+  }, [cardId, isLoading]);
+  useEffect(() => () => { if (!window.location.pathname.startsWith(base)) listScroll = 0; }, [base]);
 
   const listPane = (
     <section className={`min-w-0 ${cardId ? "hidden lg:block" : ""}`} aria-label="받은함 목록">
-      <header className="sticky top-0 z-10 bg-g/90 px-4 pb-3 pt-[max(16px,env(safe-area-inset-top))] backdrop-blur-xl lg:px-5 lg:pt-6">
-        <p className="text-sub text-ink2">{role === "teacher" ? "우리 반" : "원 전체"} · {dateLabel(todayKST())}</p>
-        <h1 className="text-title font-bold tracking-[-0.025em]">받은함</h1>
-        {role === "director" && counts.review > 0 && (
-          <p className="mt-1 text-sub text-ink2">
-            원장 보고 <b className="text-ink">{data?.items.filter((c) => c.escalated).length ?? 0}건</b>을 먼저 봐 주세요
-          </p>
-        )}
+      <div className="sticky top-0 z-10 bg-g/90 px-4 pb-3 backdrop-blur-xl lg:px-5 lg:pt-4">
+        <ScreenTop
+          title="받은함"
+          sub={
+            <>
+              {role === "teacher" ? "우리 반" : "원 전체"} · {dateLabel(todayKST())}
+              {role === "director" && counts.review > 0 && (
+                <>
+                  <br />원장 보고 <b className="text-ink">{data?.items.filter((c) => c.escalated).length ?? 0}건</b>을 먼저 봐 주세요
+                </>
+              )}
+            </>
+          }
+        />
         <div className="-mx-4 mt-3 flex gap-1.5 overflow-x-auto px-4 [scrollbar-width:none] lg:mx-0 lg:flex-wrap lg:px-0" role="tablist" aria-label="받은함 필터">
           {INBOX_FILTERS.map((f) => (
             <button
               key={f.key}
               role="tab"
               aria-selected={filter === f.key}
-              onClick={() => setParams({ filter: f.key })}
+              onClick={() => { listScroll = 0; setParams({ filter: f.key, ...(type === "all" ? {} : { type }) }); }}
               className={`shrink-0 rounded-full px-3 py-1.5 text-[13px] font-medium transition-[transform,background] duration-200 active:scale-95 ${filter === f.key ? "bg-ink text-card" : "bg-card text-ink hover:bg-fill2"}`}
             >
               {f.label}
@@ -113,27 +138,38 @@ export function InboxPage({ role }: { role: Exclude<Role, "parent"> }) {
             </button>
           ))}
         </div>
-        <div className="mt-2 flex gap-4 border-b border-sep" role="tablist" aria-label="요청 종류">
+        <div className="mt-1.5 flex items-center gap-1" role="group" aria-label="요청 종류">
           {TYPES.map((t) => (
             <button
               key={t.key}
-              role="tab"
-              aria-selected={type === t.key}
-              onClick={() => setParams({ filter, ...(t.key === "all" ? {} : { type: t.key }) })}
-              className={`-mb-px h-10 border-b-2 text-footnote font-semibold ${type === t.key ? "border-accent text-accent-ink" : "border-transparent text-ink2"}`}
+              type="button"
+              aria-pressed={type === t.key}
+              onClick={() => { listScroll = 0; setParams({ filter, ...(t.key === "all" ? {} : { type: t.key }) }); }}
+              className={`inline-flex h-9 items-center rounded-md px-2.5 text-footnote transition-colors active:scale-95 ${type === t.key ? "bg-fill font-bold text-ink" : "font-medium text-ink2"}`}
             >
               {t.label}
-              <span className="ml-1 tabular-nums">{data?.typeCounts[t.key] ?? 0}</span>
+              <span className="ml-1 tabular-nums opacity-60">{data?.typeCounts[t.key] ?? 0}</span>
             </button>
           ))}
         </div>
-      </header>
+      </div>
       <div className="grid gap-2 px-3 pb-6 lg:px-4">
         {isLoading && <SkeletonRows />}
         {isError && (
           <StateView kind="error" audience="staff" title="카드를 불러오지 못했어요" sub={dataUpdatedAt ? `마지막으로 불러온 시각 ${new Date(dataUpdatedAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}` : "연결을 확인해 주세요"} action={{ label: "다시 시도", run: () => refetch() }} />
         )}
         {data && list.length === 0 && <StateView kind="empty" audience="staff" title={EMPTY[filter]} sub="새 카드가 오면 숫자로 알려 드려요" />}
+        {aiAnswered.length > 0 && (
+          <section className="mt-4 grid gap-2" aria-label="바로 안내한 요청">
+            <h3 className="px-1 text-sub font-medium text-ink2">바로 안내한 요청 <span className="tabular-nums">{aiAnswered.length}건</span></h3>
+            {aiAnswered.map((r) => (
+              <Link key={r.id} to={`${base}/ai/${r.id}`} className="grid gap-0.5 rounded-2xl bg-card px-3.5 py-3 transition-colors hover:bg-fill">
+                <b className="text-[14.5px]">{r.title ?? REQ_TYPE[r.type]}</b>
+                <span className="text-[13px] text-ink2">{[REQ_TYPE[r.type], r.child_name, r.requester_name].filter(Boolean).join(" · ")} · 바로 안내함</span>
+              </Link>
+            ))}
+          </section>
+        )}
         {list.map((c) => (
           <Row key={c.id} c={c} role={role} active={c.id === cardId} to={`${base}/${c.id}${q}`} />
         ))}

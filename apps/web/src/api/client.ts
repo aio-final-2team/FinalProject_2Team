@@ -66,6 +66,7 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {
       /* 본문이 JSON이 아닐 때 */
     }
+    if (res.status === 403 && code === "CONSENT_REQUIRED") window.dispatchEvent(new Event("yuchion:consent-required"));
     throw new ApiError(res.status, message, code, details);
   }
   if (res.status === 204) return undefined as T;

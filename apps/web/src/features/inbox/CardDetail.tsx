@@ -8,8 +8,9 @@ import { Sheet } from "@/components/Sheet";
 import { SkeletonRows, StateView } from "@/components/StateView";
 import { Pill, StatusPill, TypeTag } from "@/components/Tags";
 import { useToast } from "@/components/Toast";
-import { TYPE_LABEL } from "@/domain/status";
+import { REASON_LABEL, useRuleDecision } from "@/api/memory";
 import type { Card, CardAction, Role } from "@/domain/types";
+import { fmtDateTime } from "@/domain/datetime";
 import { BackLink } from "./InboxPage";
 
 /** API 3.7 warnings[] 코드를 교사가 읽는 말로 */
@@ -21,7 +22,7 @@ const WARNING: Record<string, string> = {
   notify_failed: "원장님께 가는 알림을 만들지 못했어요. 원장님께 직접 알려 주세요",
 };
 
-type SheetKind = null | "send" | "reject" | "hold" | "complete" | "confirm_slot" | "note" | "reclassify";
+type SheetKind = null | "send" | "reject" | "reject_time" | "hold" | "complete" | "confirm_slot" | "note" | "reclassify";
 
 const Section = ({ title, children }: { title: string; children: ReactNode }) => (
   <section className="grid gap-2">
@@ -56,14 +57,24 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
   const [reason, setReason] = useState("");
   const [text, setText] = useState("");
   const [draft, setDraft] = useState("");
+  const reopened = !!c?.previousText && !c?.draft;
+  /* 같은 문장을 제목, 원문, 요약에서 되풀이하지 않는다 */
+  const same = (x?: string | null, y?: string | null) => { const n = (t?: string | null) => (t ?? "").replace(/[\s"'“”.…]/g, ""); return !!x && !!y && (n(x).startsWith(n(y)) || n(y).startsWith(n(x))); };
+  const showOriginal = !!c?.original && !same(c.original, c.title);
+  const showSummary = !!c?.summary && !same(c.summary, c.original) && !same(c.summary, c.title);
   const [slot, setSlot] = useState("");
   const [pendingSend, setPendingSend] = useState(false);
   const key = useRef(newKey());
   const sendTimer = useRef<number>(0);
+  const busy = useRef(false); /* 같은 순간 두 번 눌려도 요청은 한 번만 보낸다 */
+  const draftKey = `yuchion.cardDraft.${id}`;
 
   useEffect(() => {
     if (c) {
-      setDraft(c.draft ?? "");
+      /* 고치다 나간 초안이 있으면(서버 초안이 그대로일 때만) 되살린다 */
+      let saved = c.draft ?? "";
+      try { const v = JSON.parse(localStorage.getItem(draftKey) ?? "null"); if (v && v.base === (c.draft ?? "") && typeof v.text === "string") saved = v.text; } catch { /* 저장이 막혀도 서버 초안으로 시작 */ }
+      setDraft(saved);
       setSlot(c.slots?.find((s) => s.picked)?.id ?? "");
     }
   }, [c?.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -88,24 +99,34 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
     }
     toast({ kind: "error", title: "처리하지 못했어요", sub: error instanceof ApiError ? "서버에서 처리하지 못했어요.\n잠시 뒤 다시 눌러 주세요" : "연결을 확인하고 다시 눌러 주세요", action: { label: "다시 시도", run: retry } });
   };
-  const run = (body: CardAction, ok: { title: string; sub?: string }) =>
+  const editDraft = (v: string) => {
+    setDraft(v);
+    try { if (v === (c.draft ?? "")) localStorage.removeItem(draftKey); else localStorage.setItem(draftKey, JSON.stringify({ base: c.draft ?? "", text: v })); } catch { /* 이번 화면에서만 유지 */ }
+  };
+  const run = (body: CardAction, ok: { title: string; sub?: string }) => {
+    if (busy.current) return;
+    busy.current = true;
     act.mutate(
       { body, card: c, key: key.current },
       {
+        onSettled: () => { busy.current = false; },
         onSuccess: () => {
+          try { localStorage.removeItem(draftKey); } catch { /* 무시 */ }
           setSheet(null);
           toast({ kind: "ok", ...ok });
         },
         onError: (error) => fail(error, () => run(body, ok)),
       },
     );
+  };
   const send = () => {
+    if (pendingSend) return;
     setSheet(null);
     setPendingSend(true);
     const body: CardAction = { action: "approve_send", draft };
     const k = key.current;
     sendTimer.current = window.setTimeout(() => {
-      act.mutate({ body, card: c, key: k }, { onError: (e) => fail(e, () => send()), onSettled: () => setPendingSend(false) });
+      act.mutate({ body, card: c, key: k }, { onSuccess: () => { try { localStorage.removeItem(draftKey); } catch { /* 무시 */ } }, onError: (e) => fail(e, () => send()), onSettled: () => setPendingSend(false) });
     }, 5000);
     toast({
       kind: "undo",
@@ -124,6 +145,8 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
 
   const isOpen = !["completed", "rejected", "sent_or_booked"].includes(c.status) || ((c.parentConfirmedAt || c.type === "complaint") && c.status === "sent_or_booked");
   const director = role === "director";
+  /* 원장 보고 카드는 원장만 처리한다(API 결정 403). 교사는 내용만 본다 */
+  const reportOnly = !director && c?.kind === "director_report";
   const holdDates = [1, 2, 7].map((days) => {
     const d = new Date();
     d.setDate(d.getDate() + days);
@@ -131,29 +154,34 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
   });
 
   return (
-    <article className="mx-auto grid max-w-[720px] gap-5 px-4 pb-40 pt-[max(8px,env(safe-area-inset-top))] lg:px-8 lg:pt-8">
-      <BackLink to={backTo} />
+    <article className="mx-auto grid max-w-[720px] gap-5 px-4 pb-40 pt-[max(8px,env(safe-area-inset-top))] lg:px-8 lg:pt-4">
+      <div>
+        <div className="flex min-h-[52px] items-center"><BackLink to={backTo} /></div>
       <header className="grid gap-2">
         <div className="flex flex-wrap items-center gap-1.5">
           <TypeTag type={c.type} />
           <StatusPill status={c.status} role="staff" />
+          {c.messages?.some((m) => m.from === "ai") && <Pill tone="wait">바로 안내함</Pill>}
           {c.risk === "urgent" && <Pill tone="urgent">긴급 · {c.urgentReason}</Pill>}
           {c.risk === "judge" && <Pill tone="action">판단 필요</Pill>}
           {c.repeatCount && c.repeatCount >= 3 && <Pill tone="action">반복 {c.repeatCount}번째 · 30일</Pill>}
           {c.escalated && c.status !== "escalated" && <Pill>원장 보고</Pill>}
           {c.check?.passed && <Pill tone="done">검사 통과</Pill>}
           {c.check && !c.check.passed && <Pill tone="action">검사 확인 필요</Pill>}
-          {c.noEvidence && <Pill tone="action">근거 없음</Pill>}
+          {c.noEvidence && !c.warnings?.length && <Pill tone="action">근거 없음</Pill>}
         </div>
-        <h2 className="text-[22px] font-bold tracking-[-0.02em]">
-          {TYPE_LABEL[c.type]} · {c.title}
-        </h2>
-        <p className="text-sub text-ink2">
-          {c.className} · {c.guardianName}
-        </p>
+        <h1 className="text-large-title font-bold tracking-[-0.025em]">{c.title}</h1>
+        {[c.className, c.childName, c.requesterName].filter(Boolean).length > 0 && (
+          <p className="text-sub text-ink2">{[c.className, c.childName, c.requesterName].filter(Boolean).join(" · ")}</p>
+        )}
       </header>
+      </div>
 
-      {(c.warnings?.length || (c.check && !c.check.passed && c.check.issues?.length)) ? (
+      {reportOnly && (
+        <p className="rounded-2xl bg-lav-tint px-4 py-3 text-callout text-ink">원장님께 보고한 카드예요. 원장님이 확인한 뒤 이어서 처리돼요. 보호자에게 보낼 답은 같은 요청의 답장 카드에서 써 주세요.</p>
+      )}
+
+      {!reportOnly && c.kind !== "rule_proposal" && (c.warnings?.length || (c.check && !c.check.passed && c.check.issues?.length)) ? (
         <ul className="grid gap-1.5 rounded-2xl bg-card px-4 py-3 text-[14px]" aria-label="확인해 주세요">
           {c.warnings?.map((w) => (
             <li key={w} className="flex gap-2">
@@ -191,10 +219,43 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
         </div>
       )}
 
-      <Section title="학부모 원문">
-        <blockquote className="rounded-2xl bg-card px-4 py-3.5 text-[15px] leading-relaxed">{c.original}</blockquote>
-        {c.summary && <p className="px-1 text-sub text-ink2">AI 요약: {c.summary}</p>}
-      </Section>
+      {c.kind === "rule_proposal" && c.rule && (
+        <Section title="AI가 제안하는 규칙">
+          <div className="rounded-2xl bg-lav-tint px-4 py-3.5">
+            <b className="block text-caption font-bold text-lav">{REASON_LABEL[c.rule.reasonCode] ?? c.rule.reasonCode}</b>
+            <p className="mt-1 text-[15px] leading-relaxed">{c.rule.text}</p>
+          </div>
+          <p className="px-1 text-sub text-ink2">같은 이유로 세 번 이상 거절해서 AI가 제안해요. 켜면 AI가 비슷한 카드를 만들 때 참고할 수 있어요.</p>
+        </Section>
+      )}
+      {c.kind === "rule_proposal" ? null : c.messages && c.messages.length > 1 ? (
+        <Section title="주고받은 글">
+          <ul className="grid gap-2" aria-label="주고받은 글">
+            {c.messages.map((m) => (
+              <li key={m.id} className={`max-w-[88%] rounded-2xl px-3.5 py-2.5 text-callout ${m.from === "teacher" ? "ml-auto rounded-br-sm bg-brand-fill text-on-brand" : m.from === "ai" ? "rounded-bl-sm bg-lav-tint" : m.from === "system" ? "rounded-bl-sm bg-fill" : "rounded-bl-sm bg-card shadow-card"}`}>
+                <span className="mb-0.5 block text-caption font-semibold opacity-70">{m.from === "parent" ? "학부모" : m.from === "teacher" ? "선생님" : m.from === "ai" ? "바로 안내 · 정해진 문구" : "시스템"}</span>
+                <span className="whitespace-pre-line break-keep">{m.body}</span>
+              </li>
+            ))}
+          </ul>
+          {showSummary && <p className="px-1 text-sub text-ink2">AI 요약: {c.summary}</p>}
+        </Section>
+      ) : (
+        <>
+          {showOriginal && (
+            <Section title="학부모 원문">
+              <blockquote className="rounded-2xl bg-card px-4 py-3.5 text-[15px] leading-relaxed">{c.original}</blockquote>
+            </Section>
+          )}
+          {showSummary && <p className="px-1 text-sub text-ink2">AI 요약: {c.summary}</p>}
+        </>
+      )}
+      {reopened && (
+        <Section title="지난 답">
+          <p className="rounded-2xl bg-g px-4 py-3 text-[14.5px] text-ink2">{c.previousText}</p>
+          <p className="px-1 text-sub text-ink2">학부모가 글을 더 남겨서 카드가 다시 열렸어요. 새 답을 써 주세요.</p>
+        </Section>
+      )}
 
       {c.sources.length > 0 && (
         <Section title="근거">
@@ -211,7 +272,7 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
       )}
 
       {c.slots && (
-        <Section title="학부모가 고른 시간 · 하나를 확정해 주세요">
+        <Section title="학부모가 고른 시간, 하나를 확정해 주세요">
           <div className="overflow-hidden rounded-2xl bg-card" role="radiogroup">
             {c.slots
               .filter((s) => s.picked)
@@ -227,23 +288,23 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
       )}
 
       {c.risk === "normal" && c.draft !== undefined && (
-        <Section title={c.status === "awaiting_review" || c.status === "escalated" ? "AI 초안 · 고칠 수 있어요" : "보낸 답"}>
+        <Section title={c.status === "awaiting_review" || c.status === "escalated" ? "AI 초안, 고칠 수 있어요" : "보낸 답"}>
           <div className="grid gap-1.5 rounded-2xl bg-tint px-4 py-3">
             <span className="inline-flex items-center gap-1 text-cap font-bold text-accent-ink">
               <Icon name="ai" className="size-3.5" />
               AI 초안
             </span>
             {isOpen && !director && c.status !== "sent_or_booked" ? (
-              <textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={4} className="w-full resize-y bg-transparent text-[15px] leading-relaxed outline-none" aria-label="AI 초안 고치기" />
+              <textarea value={draft} onChange={(e) => editDraft(e.target.value)} rows={4} className="w-full resize-y bg-transparent text-[15px] leading-relaxed outline-none" aria-label="AI 초안 고치기" />
             ) : (
               <p className="text-[15px] leading-relaxed">{c.draft}</p>
             )}
           </div>
         </Section>
       )}
-      {(c.risk === "urgent" || (c.noEvidence && !c.draft)) && isOpen && !director && (
-        <Section title="직접 답 쓰기">
-          <textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={4} placeholder={c.noEvidence ? "자료에서 근거를 찾지 못했어요. 확인한 내용을 직접 써 주세요" : "확인한 내용을 직접 써 주세요"} className="rounded-2xl border-[1.5px] border-transparent bg-card px-4 py-3 text-[15px] outline-none focus:border-accent focus:shadow-[0_0_0_4px_var(--tint)]" />
+      {(c.risk === "urgent" || (c.noEvidence && !c.draft) || reopened) && isOpen && !director && (
+        <Section title={reopened ? "새 답 쓰기" : "직접 답 쓰기"}>
+          <textarea value={draft} onChange={(e) => editDraft(e.target.value)} rows={4} placeholder={reopened ? "보호자의 새 글에 대한 답을 써 주세요" : c.noEvidence ? "자료에서 근거를 찾지 못했어요. 확인한 내용을 직접 써 주세요" : "확인한 내용을 직접 써 주세요"} className="rounded-2xl border-[1.5px] border-transparent bg-card px-4 py-3 text-[15px] outline-none focus:border-accent focus:shadow-[0_0_0_4px_var(--tint)]" />
         </Section>
       )}
 
@@ -258,7 +319,7 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
           <ol className="grid gap-1.5 px-1 text-sub text-ink2">
             {c.history.map((h, i) => (
               <li key={i}>
-                <b className="text-ink">{h.who}</b> · {h.what} · {new Date(h.at).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                <b className="text-ink">{h.who}</b> · {h.what} · {fmtDateTime(h.at)}
               </li>
             ))}
           </ol>
@@ -266,8 +327,8 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
       )}
 
       {/* 아래 고정 행동 칸 */}
-      {isOpen && (
-        <div className={`glass fixed inset-x-0 z-20 ${director ? "bottom-0 pb-[max(12px,env(safe-area-inset-bottom))]" : "bottom-[calc(64px+env(safe-area-inset-bottom))]"} bg-bar px-4 py-3 shadow-[0_-1px_0_var(--sep)] backdrop-blur-xl backdrop-saturate-[1.8] lg:sticky lg:bottom-4 lg:mx-0 lg:rounded-2xl lg:shadow-[0_8px_30px_rgba(11,31,58,.12),0_0_0_.5px_var(--sep)]`}>
+      {isOpen && !reportOnly && (
+        <div data-bottom-bar className={`glass fixed inset-x-0 z-20 ${director ? "bottom-0 pb-[max(12px,env(safe-area-inset-bottom))]" : "bottom-[calc(64px+env(safe-area-inset-bottom))]"} bg-bar px-4 py-3 shadow-[0_-1px_0_var(--sep)] backdrop-blur-xl backdrop-saturate-[1.8] lg:sticky lg:bottom-4 lg:mx-0 lg:rounded-2xl lg:shadow-[0_8px_30px_rgba(11,31,58,.12),0_0_0_.5px_var(--sep)]`}>
           <div className="mx-auto grid max-w-[720px] gap-2">{director ? <DirectorActions c={c} open={open} /> : <TeacherActions c={c} open={open} draft={draft} slot={slot} pending={pendingSend || act.isPending} run={run} />}</div>
         </div>
       )}
@@ -284,10 +345,18 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
         <Button variant="plain" size="sm" onClick={() => setSheet(null)}>취소</Button>
       </Sheet>
 
-      <Sheet open={sheet === "reject"} onClose={() => setSheet(null)} title="이 요청을 반려할까요?">
-        <p className="text-sub text-ink2">고른 이유가 학부모에게 함께 전달돼요.</p>
+      {/* 상담: '시간 거절'은 이유를 남기고 새 시간을 받는다(reject), '상담 거절'은 상담 자체를 받지 않는다(dismiss, 이유가 학부모에게 보임) */}
+      <Sheet open={sheet === "reject_time"} onClose={() => setSheet(null)} title="이 시간을 거절할까요?">
+        <p className="text-sub text-ink2">고른 이유는 다음 시간 제안에 반영돼요. 학부모가 새 시간을 다시 골라요.</p>
+        <ReasonChips options={["연장반 당번", "전화로 충분"]} value={reason} onChange={setReason} />
+        <Button variant="danger" loading={act.isPending} lockedReason={reason ? undefined : "이유를 고르면 거절할 수 있어요"} onClick={() => run({ action: "reject_time", reason }, { title: "시간을 거절했어요", sub: reason })}>거절하기</Button>
+        <Button variant="plain" size="sm" onClick={() => setSheet(null)}>취소</Button>
+      </Sheet>
+
+      <Sheet open={sheet === "reject"} onClose={() => setSheet(null)} title={c.type === "consult" ? "이 상담을 거절할까요?" : "이 요청을 거절할까요?"}>
+        <p className="text-sub text-ink2">{c.type === "consult" ? "상담을 받지 않는 경우예요. 고른 이유가 학부모에게 보여요." : "고른 이유가 학부모에게 함께 전달돼요."}</p>
         <ReasonChips options={["개인정보 요청", "원 운영 범위 밖", "중복 요청"]} value={reason} onChange={setReason} />
-        <Button variant="danger" loading={act.isPending} lockedReason={reason ? undefined : "이유를 고르면 반려할 수 있어요"} onClick={() => run({ action: "reject", reason }, { title: "반려했어요", sub: reason })}>반려하기</Button>
+        <Button variant="danger" loading={act.isPending} lockedReason={reason ? undefined : "이유를 고르면 거절할 수 있어요"} onClick={() => run({ action: "reject", reason }, { title: "거절했어요", sub: reason })}>거절하기</Button>
         <Button variant="plain" size="sm" onClick={() => setSheet(null)}>취소</Button>
       </Sheet>
 
@@ -332,6 +401,7 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
 }
 
 function TeacherActions({ c, open, draft, slot, pending, run }: { c: Card; open: (k: SheetKind) => void; draft: string; slot: string; pending: boolean; run: (b: CardAction, ok: { title: string; sub?: string }) => void }) {
+  if (c.kind === "rule_proposal" && c.rule) return <RuleActions c={c} />;
   if (c.status === "on_hold")
     return (
       <>
@@ -353,8 +423,9 @@ function TeacherActions({ c, open, draft, slot, pending, run }: { c: Card; open:
     return <Button icon="approve" onClick={() => open("complete")}>처리 완료</Button>;
   if (c.type === "consult")
     return (
-      <div className="grid grid-cols-[1fr_2fr] gap-2">
-        <Button variant="gray" onClick={() => open("reject")}>거절</Button>
+      <div className="grid grid-cols-[1fr_1fr_2fr] gap-2">
+        <Button variant="gray" size="sm" onClick={() => open("reject_time")}>시간 거절</Button>
+        <Button variant="gray" size="sm" onClick={() => open("reject")}>상담 거절</Button>
         <Button onClick={() => open("confirm_slot")} lockedReason={slot ? undefined : "확정할 시간을 골라 주세요"}>확정하기</Button>
       </div>
     );
@@ -362,8 +433,8 @@ function TeacherActions({ c, open, draft, slot, pending, run }: { c: Card; open:
     <>
       <div className="grid grid-cols-3 gap-2">
         <Button variant="gray" size="sm" onClick={() => open("hold")}>보류</Button>
-        <Button variant="gray" size="sm" onClick={() => open("reject")}>반려</Button>
-        <Button variant="gray" size="sm" disabled={c.escalated} onClick={() => run({ action: "escalate" }, { title: "원장님께 올렸어요" })}>{c.escalated ? "원장 보고됨" : "원장님께"}</Button>
+        <Button variant="gray" size="sm" onClick={() => open("reject")}>거절</Button>
+        <Button variant="gray" size="sm" loading={pending} disabled={c.escalated} onClick={() => run({ action: "escalate" }, { title: "원장님께 올렸어요" })}>{c.escalated ? "원장 보고됨" : "원장님께 보고"}</Button>
       </div>
       <Button loading={pending} onClick={() => open("send")} lockedReason={draft.trim().length < 2 ? "보낼 답을 써 주세요" : undefined}>
         {c.groupedCount ? `승인하고 ${c.groupedCount}명에게 보내기` : "승인하고 보내기"}
@@ -377,9 +448,29 @@ function DirectorActions({ c, open }: { c: Card; open: (k: SheetKind) => void })
     <>
       <p className="text-center text-sub text-ink2">민원 회신은 담임 승인으로만 나가요</p>
       <div className="grid grid-cols-2 gap-2">
-        <Button variant="tinted" lockedReason="담당 교직원 목록 API 연결 후 사용할 수 있어요">재배정</Button>
+        <Button variant="tinted" lockedReason="준비 중이에요">재배정</Button>
         <Button onClick={() => open("note")}>{c.directorNote ? "지시 고치기" : "지시 남기기"}</Button>
       </div>
     </>
+  );
+}
+
+/** 개인 규칙 제안 카드의 켜기·거절 (API 20) */
+function RuleActions({ c }: { c: Card }) {
+  const decide = useRuleDecision();
+  const toast = useToast();
+  const go = (decision: "activate" | "decline") =>
+    decide.mutate(
+      { ruleId: c.rule!.id, decision },
+      {
+        onSuccess: () => toast({ kind: "ok", title: decision === "activate" ? "규칙을 켰어요" : "제안을 거절했어요", sub: decision === "activate" ? "AI가 참고할 수 있어요" : "같은 이유로 세 번 더 거절하면 다시 제안해요" }),
+        onError: (e) => toast({ kind: "error", title: e instanceof ApiError && e.status === 409 ? "이미 처리한 제안이에요" : "처리하지 못했어요", sub: e instanceof ApiError && e.status === 409 ? undefined : "연결을 확인하고 다시 눌러 주세요" }),
+      },
+    );
+  return (
+    <div className="grid grid-cols-[1fr_2fr] gap-2">
+      <Button variant="gray" loading={decide.isPending} onClick={() => go("decline")}>거절</Button>
+      <Button loading={decide.isPending} onClick={() => go("activate")}>규칙 켜기</Button>
+    </div>
   );
 }

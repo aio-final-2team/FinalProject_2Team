@@ -1,24 +1,33 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { PrimaryButton, SubButton } from "@/components/Dock";
 import { Sheet } from "@/components/Sheet";
 import type { RecordEntry } from "./store";
 
 const QUICK = ["점심 다 먹음", "점심 반 남김", "낮잠 짧음", "친구 도와줌", "블록놀이 집중", "컨디션 좋음"];
 
+/** 저장하지 않고 닫은 글을 아이 이름별로 기억한다. 저장하면 지운다 */
+const unsaved = new Map<string, { picked: string[]; text: string }>();
+
 /** A-02 한 줄 기록 시트: 빠른 버튼 + 한 줄 (디자인 시스템 7.13 시트) */
 export function RecordSheet({ name, entries, open, onClose, onSave, onRemove }: { name: string; entries: RecordEntry[]; open: boolean; onClose: () => void; onSave: (text: string) => void; onRemove?: (index: number) => void }) {
-  const [picked, setPicked] = useState<string[]>([]);
-  const [text, setText] = useState("");
+  const [picked, setPicked] = useState<string[]>(() => unsaved.get(name)?.picked ?? []);
+  const [text, setText] = useState(() => unsaved.get(name)?.text ?? "");
   const close = () => {
+    if (picked.length || text.trim()) unsaved.set(name, { picked, text });
+    else unsaved.delete(name);
+    onClose();
+  };
+  const saved = useRef(false); /* 닫히는 동안 한 번 더 눌려도 기록은 한 번만 남긴다 */
+  useEffect(() => { if (open) saved.current = false; }, [open]);
+  const save = () => {
+    const t = [...picked, text.trim()].filter(Boolean).join(", ");
+    if (!t || saved.current) return;
+    saved.current = true;
+    onSave(t);
+    unsaved.delete(name);
     setPicked([]);
     setText("");
     onClose();
-  };
-  const save = () => {
-    const t = [...picked, text.trim()].filter(Boolean).join(", ");
-    if (!t) return;
-    onSave(t);
-    close();
   };
   return (
     <Sheet open={open} onClose={close} title={`${name} 기록 남기기`}>

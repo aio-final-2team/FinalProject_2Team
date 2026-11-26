@@ -3,6 +3,18 @@
 @import "./tokens.css";
 @import "./motion.css";
 
+/* dark: 클래스는 기기 설정과 직접 고른 모드(data-theme) 둘 다 따른다 */
+@custom-variant dark {
+  &:where([data-theme="dark"], [data-theme="dark"] *) {
+    @slot;
+  }
+  @media (prefers-color-scheme: dark) {
+    &:where(:root:not([data-theme="light"]), :root:not([data-theme="light"]) *) {
+      @slot;
+    }
+  }
+}
+
 /* 토큰을 Tailwind 클래스로 연결한다: bg-card, text-ink2, border-sep … */
 @theme inline {
   --color-page: var(--page);
@@ -25,6 +37,8 @@
   --color-accent-ink: var(--accent-ink);
   --color-tint: var(--tint);
   --color-on-accent: var(--on-accent);
+  --color-warm-accent: var(--warm-accent);
+  --color-on-warm: var(--on-warm);
   --color-mint: var(--mint);
   --color-ok: var(--ok);
   --color-ok-tint: var(--ok-tint);
