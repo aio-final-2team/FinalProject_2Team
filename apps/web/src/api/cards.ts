@@ -1,6 +1,7 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { InboxFilter, RequestType, Status } from "@/domain/status";
 import type { Card, CardAction, HistoryItem, Role, Slot, Source } from "@/domain/types";
+import { useSession } from "@/app/session";
 import { api, uuid } from "./client";
 
 type ApiRequestType = "inquiry" | "consultation" | "complaint";
@@ -90,16 +91,27 @@ const cardFromDetail = (data: CardDetail): Card => {
   };
 };
 
-export const useCards = (filter: InboxFilter, type: TypeFilter = "all") => useQuery({
-  queryKey: ["cards", "list", filter, type],
-  queryFn: async (): Promise<CardsResult> => {
-    const apiFilter = UI_TO_API_FILTER[filter];
-    const result = await api<CardList>(`/api/v1/cards?filter=${apiFilter}&size=100${type === "all" ? "" : `&request_type=${type}`}`);
-    const counts = Object.fromEntries(Object.entries(result.counts).map(([key, value]) => [API_TO_UI_FILTER[key as ApiInboxFilter], value])) as Record<InboxFilter, number>;
-    const typeCounts = { all: 0, complaint: 0, consultation: 0, inquiry: 0, ...((result as { type_counts?: Partial<Record<TypeFilter, number>> }).type_counts ?? {}) };
-    return { items: result.items.map((item) => cardFromItem(item, filter)), counts, typeCounts };
-  },
-});
+export const useCards = (filter: InboxFilter, type: TypeFilter = "all") => {
+  const role = useSession().user?.role;
+  const teacher = role === "teacher";
+  return useQuery({
+    queryKey: ["cards", "list", filter, type, role],
+    queryFn: async (): Promise<CardsResult> => {
+      const apiFilter = UI_TO_API_FILTER[filter];
+      /* 교사는 원장 보고 카드를 처리하지 못한다(API 403). 같은 요청의 답장 카드와 겹쳐 두 줄로 보이므로 목록에서 뺀다.
+         빼고 나면 서버가 준 종류별 숫자가 맞지 않아서, 교사는 종류 없이 받아 온 뒤 화면에서 나누고 숫자도 다시 센다 */
+      const result = await api<CardList>(`/api/v1/cards?filter=${apiFilter}&size=100${type === "all" || teacher ? "" : `&request_type=${type}`}`);
+      const counts = Object.fromEntries(Object.entries(result.counts).map(([key, value]) => [API_TO_UI_FILTER[key as ApiInboxFilter], value])) as Record<InboxFilter, number>;
+      const typeCounts = { all: 0, complaint: 0, consultation: 0, inquiry: 0, ...((result as { type_counts?: Partial<Record<TypeFilter, number>> }).type_counts ?? {}) };
+      if (!teacher) return { items: result.items.map((item) => cardFromItem(item, filter)), counts, typeCounts };
+      const own = result.items.filter((item) => item.kind !== "director_report");
+      const byType = (t: TypeFilter) => own.filter((item) => item.request_type === t).length;
+      const recount = { all: own.length, complaint: byType("complaint"), consultation: byType("consultation"), inquiry: byType("inquiry") };
+      const shown = type === "all" ? own : own.filter((item) => item.request_type === type);
+      return { items: shown.map((item) => cardFromItem(item, filter)), counts: { ...counts, [filter]: own.length }, typeCounts: recount };
+    },
+  });
+};
 
 /** 모든 상태의 카드를 한 줄로 합친다 (알림의 요청 ID로 카드를 찾을 때 쓴다). 상태별 목록 캐시를 그대로 같이 쓴다. */
 const ALL_FILTERS: InboxFilter[] = ["review", "judge", "unassigned", "hold", "progress", "done"];
