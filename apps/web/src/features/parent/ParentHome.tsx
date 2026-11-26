@@ -5,10 +5,11 @@ import { TYPE_LABEL, useMyRequests } from "@/api/requests";
 import { Buddy } from "@/components/Brand";
 import { QueryState } from "@/components/QueryState";
 import { Icon } from "@/components/Icon";
+import { ChildAvatar, type ProfilePhoto } from "@/components/ChildAvatar";
 import wordWhite from "@/assets/brand/wordmark-white.svg";
 import { dateLabel, itemLabel, nameI, todayKST, type DailyNote } from "@/domain/notes";
 
-type Me = { user: { display_name: string }; children: { id: string; display_name: string; classroom_id: string }[] };
+type Me = { user: { display_name: string }; children: { id: string; display_name: string; classroom_id: string; profile_photo?: ProfilePhoto }[] };
 
 /**
  * A-08 학부모 홈 · 오늘 알림장 (디자인 시스템 7.8 블루 머리 · 7.11 알림장 카드).
@@ -85,7 +86,7 @@ export function ParentHome() {
             {/* 사진 칸은 B안(사진 확장)에서 붙는다. 사진 없는 날 규칙대로 글만 보여 준다 */}
             <div className="p-5">
               <div className="flex items-start gap-3">
-                <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-tint text-accent-ink"><Icon name="document" className="size-5" /></span>
+                <ChildAvatar name={child?.display_name ?? "아이"} photo={child?.profile_photo} childId={child?.id} size={48} tone="tint" />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2 text-caption text-ink2">
                     <span className="font-bold text-accent-ink">오늘 알림장</span>
