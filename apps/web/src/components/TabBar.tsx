@@ -32,7 +32,7 @@ export function TabBar({ items, center, extra, className = "" }: { items: TabIte
       {left.map(tab)}
       {center && (
         <Link to={center.to} aria-label={center.label} className="grid justify-items-center">
-          <span className="-mt-5 grid size-[52px] place-items-center rounded-full bg-brand-fill text-on-brand shadow-float active:scale-95">
+          <span className="-mt-5 grid size-[52px] place-items-center rounded-full bg-warm-accent text-on-warm shadow-float transition-transform duration-100 active:scale-95">
             <Icon name="plus" className="size-6" />
           </span>
           <span className="sr-only">{center.label}</span>
