@@ -135,6 +135,7 @@ class Note:
     ai_original: dict = field(default_factory=dict)
     version: int = 1
     corrected_at: datetime | None = None
+    supplies_checked_at: datetime | None = None
 
     def __post_init__(self):
         self.ai_original = deepcopy(self.content)

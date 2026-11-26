@@ -149,6 +149,7 @@ CREATE TABLE requests (
     updated_at       timestamptz NOT NULL DEFAULT now(),
     closed_at        timestamptz,
     care_detail      jsonb NOT NULL DEFAULT '{}',  -- 투약·귀가 입력. 접수 이력에는 값 대신 fields 목록만 남김(0012)
+    source_note_id   uuid,                 -- 답장 원문 알림장(0019), 아래에서 기관 짝 FK 연결
     FOREIGN KEY (classroom_id, org_id) REFERENCES classrooms(id, org_id),
     FOREIGN KEY (child_id, org_id) REFERENCES children(id, org_id),
     FOREIGN KEY (requester_id, org_id) REFERENCES users(id, org_id),
@@ -615,6 +616,7 @@ CREATE TABLE daily_notes (
     ai_original    jsonb NOT NULL DEFAULT '{}',  -- 마지막 AI 초안. 교사 수정 때 유지, 미수정 초안 재생성 때 갱신(v0.9)
     version        integer NOT NULL DEFAULT 1 CHECK (version >= 1),  -- 정정 성공마다 +1(0015)
     corrected_at   timestamptz,           -- 마지막 정정 시각(0015)
+    supplies_checked_at timestamptz,      -- 보호자의 첫 준비물 확인 시각(0019)
     CONSTRAINT daily_notes_id_org_key UNIQUE (id, org_id),
     FOREIGN KEY (input_id, org_id, note_date) REFERENCES daily_note_inputs(id, org_id, note_date),
     FOREIGN KEY (child_id, org_id) REFERENCES children(id, org_id),
@@ -626,6 +628,10 @@ CREATE TABLE daily_notes (
 
 ALTER TABLE events ADD CONSTRAINT events_daily_note_org_fkey
     FOREIGN KEY (daily_note_id, org_id) REFERENCES daily_notes(id, org_id);
+
+ALTER TABLE requests ADD CONSTRAINT requests_source_note_org_fkey
+    FOREIGN KEY (source_note_id, org_id) REFERENCES daily_notes(id, org_id);
+CREATE INDEX requests_source_note_idx ON requests (source_note_id,created_at,id);
 
 -- ─────────────────────────────────────────────
 -- 9. 서비스 안 알림

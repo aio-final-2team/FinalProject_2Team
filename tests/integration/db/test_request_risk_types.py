@@ -1,5 +1,6 @@
 """문의·상담에도 위험 등급이 저장되고, 위험한 문의는 자료 AI를 부르지 않고 사람에게 넘어가요."""
 
+from alembic.script import ScriptDirectory
 from uuid import uuid4
 
 from alembic import command

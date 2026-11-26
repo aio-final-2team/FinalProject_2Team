@@ -21,7 +21,7 @@ from app.mock import seed
 from db.seeds.demo import seed_demo
 
 ROOT = Path(__file__).resolve().parents[3]
-HEAD_CATALOG = {"tables": 32, "views": 2, "triggers": 2, "foreign_keys": 70, "columns": 310}
+HEAD_CATALOG = {"tables": 32, "views": 2, "triggers": 2, "foreign_keys": 71, "columns": 312}
 
 
 def catalog(connection):
@@ -80,7 +80,7 @@ def test_upgrade_downgrade_upgrade(db_engine, alembic_config):
     command.upgrade(alembic_config, "head")
     with db_engine.connect() as connection:
         assert dict(catalog(connection)) == first_catalog
-        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0018"
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0019"
     assert schema_dump() == first_dump
 
     # 최신 설계를 직접 적용한 스키마도 마이그레이션 head와 같아야 한다.
@@ -141,7 +141,7 @@ def test_child_memos_backfill_constraints_and_revision_round_trip(db_engine, ale
     command.upgrade(alembic_config, "head")
     with db_engine.begin() as connection:
         assert dict(catalog(connection)) == HEAD_CATALOG
-        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0018"
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0019"
         assert dict(connection.execute(text("SELECT * FROM daily_note_inputs WHERE id=:id"),
                                        {"id": before["id"]}).mappings().one()) == {**before, "child_memos": []}
         connection.execute(text("DELETE FROM daily_note_inputs"))
@@ -163,6 +163,7 @@ def test_requeue_action_upgrade_downgrade_preserves_requests_and_old_events(seed
     # 없어진 칸을 포함하는 SELECT * 준비 구문이 풀 연결에 남지 않게 해요.
     seeded_db.dispose()
     request_before.pop("care_detail")  # 0012보다 이전 판에는 없는 칸이에요.
+    assert request_before.pop("source_note_id") is None  # 0019보다 이전 판에는 없는 칸이에요.
     with seeded_db.begin() as connection:
         assert connection.scalar(text("SELECT count(*) FROM events WHERE id=:id"), {"id": original}) == 1
         assert connection.scalar(text("SELECT count(*) FROM events WHERE action='agent_requeued'")) == 0
@@ -394,7 +395,7 @@ def test_0015_note_correction_backfill_constraints_and_round_trip(seeded_db, ale
     with seeded_db.begin() as connection:
         assert dict(connection.execute(text("SELECT * FROM daily_notes WHERE id=:id"),
                                        {"id": before["id"]}).mappings().one()) == {
-            **before, "version": 1, "corrected_at": None}
+            **before, "version": 1, "corrected_at": None, "supplies_checked_at": None}
         for value, state in ((0, "23514"), (None, "23502")):
             with pytest.raises(IntegrityError) as error, connection.begin_nested():
                 connection.execute(text("UPDATE daily_notes SET version=:version WHERE id=:id"),

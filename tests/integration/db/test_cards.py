@@ -113,7 +113,8 @@ def test_0013_escalated_reply_view_roundtrip_preserves_rows(db_client, seeded_db
 
     def snapshot():
         with seeded_db.connect() as connection:
-            return {table: connection.execute(text(f"SELECT * FROM {table} ORDER BY id")).mappings().all()
+            return {table: [{**({"source_note_id": None} if table == "requests" else {}), **row}
+                            for row in connection.execute(text(f"SELECT * FROM {table} ORDER BY id")).mappings()]
                     for table in ("requests", "cards", "approvals", "events", "notifications")}
 
     def buckets():

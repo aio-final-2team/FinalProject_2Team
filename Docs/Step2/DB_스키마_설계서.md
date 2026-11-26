@@ -8,7 +8,7 @@
 | 2차 검토 링크 | `develop` 브랜치의 [DB 스키마 설계서](https://github.com/aio-final-2team/FinalProject_2Team/blob/develop/Docs/Step2/DB_스키마_설계서.md) |
 | 시연 코드 기준 커밋 | 레포 [README](../../README.md#2차-검토-문서)의 '시연 코드 기준 커밋' 한 줄을 본다(11/24 밤 기준 develop `641591f`, 흐름 고치기 #338까지 팀 서버에 배포). 팀 서버를 다시 배포하면 README 그 한 줄만 고친다 |
 | 대상 DB | PostgreSQL 16 + pgvector 0.8 (`compose.yaml`의 `pgvector/pgvector:pg16`). Supabase를 쓰지 않는 이유는 5.1에 있다 |
-| DDL | 최종 모양은 [`db_schema_draft.sql`](db_schema_draft.sql)에 있고, 실제 DB에는 `apps/api/migrations`의 0001~0016과 0018을 적용한다(0018은 임시 down 0016이며 #377 머지 뒤 0017로 바꿀 것) |
+| DDL | 최종 모양은 [`db_schema_draft.sql`](db_schema_draft.sql)에 있고, 실제 DB에는 `apps/api/migrations`의 0001~0016·0018·0019를 적용한다(0018은 임시 down 0016이며 #377 머지 뒤 0017로 바꿀 것) |
 | 함께 보는 문서 | 기획서 11/23 develop 판(`8f45d51`, #319) 3장(FR-01~FR-13)·4장(NFR)·6장(공통 상태)·7장, T04 흐름·권한 명세, [입출력 계약표 v0.21](입출력_계약표_초안.md), [API 설계 문서 v0.13](API_설계_문서.md) |
 
 **1차 검토 뒤 보완.** 1차 검토 뒤에 바뀐 내용과 그 내용을 지키는 시험을 표 하나에 모았다. 시험은 모두 시연 코드 기준 커밋에서 `tools/test_db.sh`로 다시 돌려 통과했다. 표의 시험 파일은 모두 `tests/integration/`(DB는 `db/`, HTTP는 `api/`) 아래에 있고, `api/` 시험은 모의·시험 PG 두 모드에서 모두 돈다. 반영 커밋 칸에는 develop에 합쳐진 커밋을 적었다.
@@ -107,6 +107,7 @@ erDiagram
     requests |o--o{ events : "request_id"
     daily_notes { uuid id PK }
     daily_notes |o--o{ events : "daily_note_id"
+    daily_notes |o--o{ requests : "source_note_id"
     requests ||--o{ request_messages : "request_id"
     users |o--o{ request_messages : "sender_id"
     users |o--o{ requests : "assignee_id"
@@ -278,8 +279,9 @@ erDiagram
 | 62 | `classrooms` | 1 : N | `daily_records` | `daily_records.(classroom_id, org_id)` → `classrooms.(id, org_id)` |
 | 63 | `children` | 1 : N | `daily_records` | `daily_records.(child_id, org_id)` → `children.(id, org_id)` |
 | 64 | `users` | 1 : N | `daily_records` | `daily_records.(author_id, org_id)` → `users.(id, org_id)` |
+| 65 | `daily_notes` | 0..1 : N | `requests` | `requests.(source_note_id, org_id)` → `daily_notes.(id, org_id)` |
 
-**ERD 선 수 = 표 행 수 = 64.** 같은 부모와 자식 사이에 FK가 둘 이상 있으면(예: `requests`의 `requester_id`·`assignee_id` → `users`) 선과 행을 FK마다 따로 센다. DDL에 있는 FK 제약은 모두 70개인데, 이 중 6개는 맨 끝 피드·앨범 절의 표에 걸려 있어서 이 그림과 표에는 넣지 않았다. FK 제약 수는 DB 카탈로그에서 센다(9장 C3).
+**ERD 선 수 = 표 행 수 = 65.** 같은 부모와 자식 사이에 FK가 둘 이상 있으면(예: `requests`의 `requester_id`·`assignee_id` → `users`) 선과 행을 FK마다 따로 센다. DDL에 있는 FK 제약은 모두 71개인데, 이 중 6개는 맨 끝 피드·앨범 절의 표에 걸려 있어서 이 그림과 표에는 넣지 않았다. FK 제약 수는 DB 카탈로그에서 센다(9장 C3).
 
 
 FK를 걸 수 없는 참조가 두 곳 있다. `cards.subject_id`와 `notifications.subject_id`는 대상 종류(`subject_type`)에 따라 가리키는 표가 달라지므로 FK를 두지 않았다. 대신 저장하기 전에 API가 대상이 같은 기관에 있는지 확인한다.
@@ -378,7 +380,7 @@ FK를 걸 수 없는 참조가 두 곳 있다. `cards.subject_id`와 `notificati
 
 **[제안] 가입 필수 동의(API 3.31).** `user_consents`는 (org_id,user_id,item,terms_version)이 유일하다. 모든 역할은 terms·privacy·ai_processing에, 보호자는 child_info·child_health·child_face에도 전부 동의한다. ai_processing은 쓴 글을 AI 처리를 위해 국외 AI 사업자에게 전송함을 알린다. 현재 판은 코드 상수 CONSENT_VERSION이며, 이전 판도 기록으로 보존한다. 다시 동의해도 최초 agreed_at을 바꾸지 않는다. 현재 판의 역할별 항목이 전부 있어야 완료다. 반 현황은 아이마다 연결된 보호자 수·완료한 수를 세고 한 명 이상 완료하면 complete=true다.
 
-0016은 표와 `consent_agreed` 이력의 CHECK 허용 값만 만든다. 동의 행은 넣지 않는다. 데모 시드는 mock의 모든 계정을 현재 판으로 채우며 기존 기록을 유지한다. 새 동의와 행위자·약관 판·항목 목록·trace_id를 담은 이력 한 줄은 같은 트랜잭션이다. 반복 요청은 이력도 중복하지 않는다. 0015로 내리면 동의 표가 사라지므로 기록 백업이 필요하다. 이미 남긴 consent_agreed 이력은 0012와 같은 NOT VALID 방식으로 보존한다. 최신 head 카탈로그는 표 31·뷰 2·트리거 2·FK 66·컬럼 301이다.
+0016은 표와 `consent_agreed` 이력의 CHECK 허용 값만 만든다. 동의 행은 넣지 않는다. 데모 시드는 mock의 모든 계정을 현재 판으로 채우며 기존 기록을 유지한다. 새 동의와 행위자·약관 판·항목 목록·trace_id를 담은 이력 한 줄은 같은 트랜잭션이다. 반복 요청은 이력도 중복하지 않는다. 0015로 내리면 동의 표가 사라지므로 기록 백업이 필요하다. 이미 남긴 consent_agreed 이력은 0012와 같은 NOT VALID 방식으로 보존한다. 최신 head 카탈로그는 표 31·뷰 2·트리거 2·FK 67·컬럼 303이다(0019 답장·준비물 확인 포함).
 
 ### 2.2 요청·카드·승인·이력
 
@@ -407,6 +409,7 @@ FK를 걸 수 없는 참조가 두 곳 있다. `cards.subject_id`와 `notificati
 | `requests` | `care_detail` | `jsonb` / NOT NULL, 기본값 '{}' | 투약·귀가 입력 값. 투약명·용량·시간 또는 인계자 UUID·이름·관계(0012) |
 | `requests` | `assignee_id` | `uuid` / NULL 허용, FK (assignee_id, org_id) → users | 요청 담당 교직원 |
 | `requests` | `previous_request_id` | `uuid` / NULL 허용, FK (previous_request_id, org_id) → requests | 다시 연 요청이면 이전 요청 |
+| `requests` | `source_note_id` | `uuid` / NULL 허용, FK (source_note_id, org_id) → daily_notes (0019) | 답장 원문의 알림장. 일반 요청은 null이며 별도 답장 표 없이 기존 문의 흐름 사용 |
 | `requests` | `created_at` | `timestamptz` / NOT NULL, 기본값 now() | 접수 시각 |
 | `requests` | `updated_at` | `timestamptz` / NOT NULL, 기본값 now() | 마지막으로 바뀐 시각 |
 | `requests` | `closed_at` | `timestamptz` / NULL 허용 | 끝난 시각 |
@@ -715,6 +718,7 @@ FK를 걸 수 없는 참조가 두 곳 있다. `cards.subject_id`와 `notificati
 | `daily_notes` | `sent_at` | `timestamptz` / NULL 허용 | 보낸 시각 |
 | `daily_notes` | `version` | `integer` / NOT NULL, 기본값 1, CHECK >=1 (0015) | 정정용 판. 정정 성공 때만 +1, 현재 판을 보내야 정정 가능 |
 | `daily_notes` | `corrected_at` | `timestamptz` / NULL 허용 (0015) | 마지막 정정 시각. 정정 전 null, 학부모 응답에도 포함 |
+| `daily_notes` | `supplies_checked_at` | `timestamptz` / NULL 허용 (0019) | 보호자의 첫 준비물 확인 시각. 반복·동시 호출도 처음 값을 유지하며 세 역할에게 보임 |
 | `daily_notes` | `created_at` | `timestamptz` / NOT NULL, 기본값 now() | 만든 시각 |
 | `notifications` | `id` | `bigint` / PK, 자동 증가 | 알림 ID |
 | `notifications` | `org_id` | `uuid` / NOT NULL, FK → organizations.id | 기관 |
@@ -748,7 +752,7 @@ FK를 걸 수 없는 참조가 두 곳 있다. `cards.subject_id`와 `notificati
 | `eval_runs` | `created_at` | `timestamptz` / NOT NULL, 기본값 now() | 기록한 시각 |
 
 - `daily_note_inputs` 표 제약: `UNIQUE (classroom_id, note_date)` · `UNIQUE (id, org_id, note_date)` · `daily_note_inputs_child_memos_array`: `CHECK (jsonb_typeof(child_memos) = 'array')`
-- `daily_notes` 표 제약: `CHECK ((status <> 'sent') OR (jsonb_array_length(open_checks) = 0))` · `CHECK ((status <> ALL (ARRAY['ready', 'sent'])) OR ((confirmed_by IS NOT NULL) AND (confirmed_at IS NOT NULL)))` · `UNIQUE (child_id, note_date)` · `UNIQUE (id, org_id)`(events의 기관 짝 FK용)
+- `daily_notes` 표 제약: `CHECK ((status <> 'sent') OR (jsonb_array_length(open_checks) = 0))` · `CHECK ((status <> ALL (ARRAY['ready', 'sent'])) OR ((confirmed_by IS NOT NULL) AND (confirmed_at IS NOT NULL)))` · `UNIQUE (child_id, note_date)` · `UNIQUE (id, org_id)`(events·답장 requests의 기관 짝 FK용)
 - `notifications` 표 제약: `CHECK ((subject_type IS NULL) = (subject_id IS NULL))` · `CHECK (subject_type = 'daily_note')`
 - `eval_runs` 표 제약: `CHECK ((passed + errors) <= total)`
 
@@ -1465,8 +1469,8 @@ MVP에서 이미 적용되는 삭제는 담임 기억의 내용 비우기·`dele
 
 | 체크리스트(가이드 22쪽) | 이 문서 |
 | --- | --- |
-| ERD 그림과 관계 명세 표가 서로 일치한다 | 1.2·1.3. ERD 선 64개 = 관계 표 64행 = DDL FK 제약 70개 중 피드·앨범 표의 6개를 뺀 64개(1.3) |
-| 모든 컬럼에 타입·제약·의미가 적혀 있다 | 2장과 맨 끝 [제안] 피드·앨범 절. 최신 head의 컬럼은 310개이며 하루 중 기록 아홉 컬럼을 포함함 |
+| ERD 그림과 관계 명세 표가 서로 일치한다 | 1.2·1.3. ERD 선 65개 = 관계 표 65행 = DDL FK 제약 71개 중 피드·앨범 표의 6개를 뺀 65개(1.3) |
+| 모든 컬럼에 타입·제약·의미가 적혀 있다 | 2장과 맨 끝 [제안] 피드·앨범 절. 최신 head의 컬럼은 312개이며 하루 중 기록 아홉 컬럼과 0019의 답장·준비물 확인 두 컬럼을 포함함 |
 | 모든 테이블에 기본키와 created_at이 있다 | 2장. 기존 표 27개(9장 C1·C2). 필수 동의 시각은 agreed_at이며, 피드·앨범 표 중 feed_photo_children에는 created_at이 없다 |
 | API 설계 문서와 필드명·ID 형식이 같다 | 2.0 ID 형식 표. 필드와 DB 컬럼 대응표는 API 설계 문서 7장 |
 | 벡터 차원, 인덱스 연산자, 임베딩 모델이 적혀 있다 | 3장 |

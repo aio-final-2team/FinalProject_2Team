@@ -1,5 +1,6 @@
 """T46 동시 완료·감사 실패 롤백과 0008 되돌리기를 실제 임시 DB에서 검사해요."""
 
+from alembic.script import ScriptDirectory
 from concurrent.futures import ThreadPoolExecutor
 from threading import Event
 
@@ -224,7 +225,7 @@ def test_note_listing_uses_one_connection_and_one_bulk_request_query(db_client, 
         with original() as connection:
             yield connection
     def count_query(connection, cursor, statement, parameters, context, many):
-        if "SELECT id,type,status,child_id FROM requests" in statement:
+        if "SELECT id,type,status,child_id" in statement and "FROM requests" in statement:
             queries.append(statement)
     monkeypatch.setattr(notes, "transaction", counted_connection)
     event.listen(seeded_db, "before_cursor_execute", count_query)

@@ -3447,6 +3447,118 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
           description: Unprocessable Entity
+  /api/v1/daily-notes/{note_id}/replies:
+    post:
+      tags:
+      - '[제안] 알림장 답장·준비물 확인'
+      summary: Reply
+      operationId: reply_api_v1_daily_notes__note_id__replies_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: note_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Note Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MessageIn'
+      responses:
+        '202':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NoteReplyAccepted'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+  /api/v1/daily-notes/{note_id}/supplies-check:
+    post:
+      tags:
+      - '[제안] 알림장 답장·준비물 확인'
+      summary: Supplies Check
+      operationId: supplies_check_api_v1_daily_notes__note_id__supplies_check_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: note_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Note Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuppliesCheckOut'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
   /health:
     get:
       tags:
@@ -5613,6 +5725,17 @@ components:
             format: date-time
           - type: 'null'
           title: Corrected At
+        supplies_checked_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Supplies Checked At
+        replies:
+          items:
+            $ref: '#/components/schemas/NoteReply'
+          type: array
+          title: Replies
         input_id:
           type: string
           format: uuid
@@ -5648,6 +5771,51 @@ components:
           default: false
       type: object
       title: NotePatchIn
+    NoteReply:
+      properties:
+        request_id:
+          type: string
+          format: uuid
+          title: Request Id
+        body:
+          type: string
+          title: Body
+        status:
+          type: string
+          enum:
+          - received
+          - classified
+          - needs_info
+          - assigned
+          - awaiting_review
+          - approved
+          - sent_or_booked
+          - completed
+          - on_hold
+          - escalated
+          - rejected
+          title: Status
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      type: object
+      required:
+      - request_id
+      - body
+      - status
+      - created_at
+      title: NoteReply
+    NoteReplyAccepted:
+      properties:
+        request_id:
+          type: string
+          format: uuid
+          title: Request Id
+      type: object
+      required:
+      - request_id
+      title: NoteReplyAccepted
     NoteResponse:
       properties:
         note:
@@ -5738,6 +5906,17 @@ components:
             format: date-time
           - type: 'null'
           title: Corrected At
+        supplies_checked_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Supplies Checked At
+        replies:
+          items:
+            $ref: '#/components/schemas/NoteReply'
+          type: array
+          title: Replies
       type: object
       required:
       - id
@@ -6613,6 +6792,10 @@ components:
           type: string
           format: date-time
           title: Updated At
+        source_note:
+          anyOf:
+          - $ref: '#/components/schemas/SourceNote'
+          - type: 'null'
       type: object
       required:
       - id
@@ -6784,6 +6967,21 @@ components:
       - id
       - status
       title: SlotState
+    SourceNote:
+      properties:
+        note_id:
+          type: string
+          format: uuid
+          title: Note Id
+        note_date:
+          type: string
+          format: date
+          title: Note Date
+      type: object
+      required:
+      - note_id
+      - note_date
+      title: SourceNote
     SourceOut:
       properties:
         document_title:
@@ -6867,6 +7065,10 @@ components:
           type: string
           format: date-time
           title: Updated At
+        source_note:
+          anyOf:
+          - $ref: '#/components/schemas/SourceNote'
+          - type: 'null'
         child_id:
           anyOf:
           - type: string
@@ -7045,6 +7247,16 @@ components:
       - size
       - items
       title: StaffRequestList
+    SuppliesCheckOut:
+      properties:
+        supplies_checked_at:
+          type: string
+          format: date-time
+          title: Supplies Checked At
+      type: object
+      required:
+      - supplies_checked_at
+      title: SuppliesCheckOut
     TimelineItem:
       properties:
         label:

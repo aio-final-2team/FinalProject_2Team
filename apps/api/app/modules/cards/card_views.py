@@ -10,7 +10,7 @@ from app.core import scope
 from app.core.db import transaction
 from app.core.schedule import KST
 from app.modules.requests.complaints import repeat_count
-from app.modules.requests.requests import _expire, _hold_until
+from app.modules.requests.requests import _expire, _hold_until, source_note
 from app.modules.daily_notes.notes import batch_view
 
 FILTERS = ("unassigned", "needs_review", "uncertain", "on_hold", "in_progress", "done")
@@ -47,6 +47,7 @@ def staff_request(connection, req, card_kind=None):
         "repeat_count": repeat_count(connection, req),
         "status_label": staff_label(req["status"], req["type"], card_kind=card_kind),
         "hold_until": _hold_until(connection, req),
+        "source_note": source_note(connection, req),
     }
 
 
