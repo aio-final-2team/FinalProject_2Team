@@ -9,6 +9,7 @@ if [[ "${DATA_BACKEND:-mock}" == "db" ]]; then
         python -m db.seeds.demo
         # 자료 창고 가상 통신문 30개(T20). 같은 내용은 건너뛰어서 다시 켜도 안전해요.
         python -m db.seeds.documents
+        python -m db.seeds.memories
     fi
 fi
 
