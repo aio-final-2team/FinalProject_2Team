@@ -2,6 +2,7 @@
 
 from datetime import date
 
+from agents.guardrails.injection import suspicious_chunk
 from app.core.schedule import KST
 from app.modules.documents.conflicts import extract_facts
 from app.modules.documents.parsing import Chunk, DocumentMeta, ParsedDocument
@@ -24,7 +25,8 @@ def items(user, documents, start, end):
         meta["effective_from"] = doc["effective_from"] or doc["created_at"].astimezone(KST).date()
         parsed = ParsedDocument(DocumentMeta(id=str(doc["id"]), kindergarten_id=str(doc["org_id"]),
                                 classroom_keys=(), **meta), "", doc["content_sha256"], tuple(
-            Chunk(c["chunk_index"], c["location"] or "", c["content"]) for c in doc["chunks"]))
+            Chunk(c["chunk_index"], c["location"] or "", c["content"]) for c in doc["chunks"]
+            if not suspicious_chunk(c["content"])))  # 검색처럼 의심 조각은 일정에도 안 보임(T55 G-6)
         for fact in extract_facts(parsed):
             if fact.kind != "date":
                 continue
