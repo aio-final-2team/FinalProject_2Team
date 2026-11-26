@@ -121,4 +121,21 @@ def search_documents(user, kindergarten_id: str, doc_type: str, query: str, clas
                 -(row["effective_from"] or date.min).toordinal(), row["chunk_id"])
 
     ranked.sort(key=order)
-    return {"chunks": ranked[:top_k]}
+
+    def is_upcoming(row):
+        return row["effective_from"] is not None and row["effective_from"] > today
+
+    # 미리 올린 자료가 여러 개면 점수만으로 지금 판을 전부 밀어낸다("오늘 점심"에 다음 달 식단만 남음).
+    # 적용 전 자료는 절반까지만 싣고, 나머지는 지금 시행 중인 자료로 채운다. 순서는 점수 그대로.
+    current_count = sum(not is_upcoming(row) for row in ranked)
+    upcoming_cap = max(top_k // 2, top_k - current_count)
+    picked, upcoming_used = [], 0
+    for row in ranked:
+        if is_upcoming(row):
+            if upcoming_used >= upcoming_cap:
+                continue
+            upcoming_used += 1
+        picked.append(row)
+        if len(picked) == top_k:
+            break
+    return {"chunks": picked}
