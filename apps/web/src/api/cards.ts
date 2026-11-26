@@ -78,7 +78,7 @@ const cardFromDetail = (data: CardDetail): Card => {
     urgentReason: riskLabel(req?.risk_category), title: req?.title ?? data.card.summary, childName: "", guardianName: "보호자",
     className: "담당 반", createdAt: req?.created_at ?? new Date().toISOString(), original: req?.body ?? data.card.summary,
     summary: data.card.summary || undefined, draft: draft || undefined, sources,
-    messages: data.messages?.map((m) => ({ id: m.id, fromParent: m.sender_role === "parent", body: m.body, at: m.created_at })),
+    messages: data.messages?.map((m) => ({ id: m.id, fromParent: m.sender_role === "parent", from: m.sender_role === "parent" ? "parent" : m.sender_type === "agent" ? "ai" : m.sender_type === "system" ? "system" : "teacher", body: m.body, at: m.created_at })),
     rule: data.rule ? { id: data.rule.id, reasonCode: data.rule.reason_code, text: data.rule.rule_text, status: data.rule.status } : undefined,
     previousText: typeof data.card.draft.previous_text === "string" && data.card.draft.previous_text ? data.card.draft.previous_text : undefined,
     check: data.card.check_result ? { passed: !!data.card.check_result.passed, note: data.card.check_result.note, issues: (data.card.check_result.issues ?? []).map(issueText).filter(Boolean), attempt: data.card.check_result.attempt } : undefined,

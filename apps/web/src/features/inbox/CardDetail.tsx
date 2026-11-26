@@ -158,6 +158,7 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
         <div className="flex flex-wrap items-center gap-1.5">
           <TypeTag type={c.type} />
           <StatusPill status={c.status} role="staff" />
+          {c.messages?.some((m) => m.from === "ai") && <Pill tone="wait">AI가 먼저 안내함</Pill>}
           {c.risk === "urgent" && <Pill tone="urgent">긴급 · {c.urgentReason}</Pill>}
           {c.risk === "judge" && <Pill tone="action">판단 필요</Pill>}
           {c.repeatCount && c.repeatCount >= 3 && <Pill tone="action">반복 {c.repeatCount}번째 · 30일</Pill>}
@@ -225,8 +226,8 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
         <Section title="주고받은 글">
           <ul className="grid gap-2" aria-label="주고받은 글">
             {c.messages.map((m) => (
-              <li key={m.id} className={`max-w-[88%] rounded-2xl px-3.5 py-2.5 text-callout ${m.fromParent ? "rounded-bl-sm bg-card shadow-card" : "ml-auto rounded-br-sm bg-brand-fill text-on-brand"}`}>
-                <span className="mb-0.5 block text-caption font-semibold opacity-70">{m.fromParent ? "학부모" : "선생님"}</span>
+              <li key={m.id} className={`max-w-[88%] rounded-2xl px-3.5 py-2.5 text-callout ${m.from === "teacher" ? "ml-auto rounded-br-sm bg-brand-fill text-on-brand" : m.from === "ai" ? "rounded-bl-sm bg-lav-tint" : m.from === "system" ? "rounded-bl-sm bg-fill" : "rounded-bl-sm bg-card shadow-card"}`}>
+                <span className="mb-0.5 block text-caption font-semibold opacity-70">{m.from === "parent" ? "학부모" : m.from === "teacher" ? "선생님" : m.from === "ai" ? "AI 안내 · 담임 승인 없이 나간 글" : "시스템"}</span>
                 <span className="whitespace-pre-line break-keep">{m.body}</span>
               </li>
             ))}

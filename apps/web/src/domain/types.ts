@@ -32,7 +32,8 @@ export type Card = {
   noEvidence?: boolean;
   repeatCount?: number;
   /** 학부모와 주고받은 글 전체(카드 상세 messages[]) */
-  messages?: { id: number; fromParent: boolean; body: string; at: string }[];
+  /** from: 학부모 · 선생님 · AI(권한 밖 고정 안내처럼 담임 승인 없이 나간 글) · 시스템 */
+  messages?: { id: number; fromParent: boolean; from: "parent" | "teacher" | "ai" | "system"; body: string; at: string }[];
   /** 학부모가 글을 더 남겨 카드가 다시 열렸을 때 지난 답 (draft.previous_text). 이때 초안은 비어 있다 */
   previousText?: string;
   /** 개인 규칙 제안 카드(kind rule_proposal)의 규칙. 켜기(activate)·거절(decline)한다 */
