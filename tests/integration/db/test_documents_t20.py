@@ -80,7 +80,7 @@ def test_injected_document_chunk_is_marked_and_not_searched(db_client, teacher, 
 
 
 def test_fixture_documents_load_with_locations_and_classrooms(seeded_db, docs):
-    assert len(docs["added"]) == 63 and docs["skipped"] == ["NT-2026-31"]  # C3(새싹반)은 시드에 없음
+    assert len(docs["added"]) == 65 and docs["skipped"] == ["NT-2026-31"]  # C3(새싹반)은 시드에 없음
     with seeded_db.begin() as connection:
         assert seed_documents(connection)["added"] == []  # 다시 해도 같은 내용은 건너뜀
         row = connection.execute(text("""

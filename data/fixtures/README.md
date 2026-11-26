@@ -4,7 +4,7 @@
 
 ## kg-demo-01 (T11)
 
-- `kg-demo-01/`: 가상 햇살유치원(`KG-DEMO-01`) 문서 64개(통신문 17·학사 일정 8·식단 13·운영 규정 24·상담 시간표 2)와 `consult_timetable/staff_busy_blocks.json`
+- `kg-demo-01/`: 가상 햇살유치원(`KG-DEMO-01`) 문서 66개(통신문 17·학사 일정 8·식단 13·운영 규정 26·상담 시간표 2)와 `consult_timetable/staff_busy_blocks.json`
 - 문서 목록·평가 문항 연결: [`kg-demo-01/README.md`](kg-demo-01/README.md)
 - 다시 만들기·검사: `python3 data/fixtures/make_fixtures.py`
 

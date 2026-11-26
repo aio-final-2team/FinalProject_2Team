@@ -1,4 +1,4 @@
-"""T20 원 자료 읽기·조각 나누기 시험 (T11 가상 원 자료 64개 기준)."""
+"""T20 원 자료 읽기·조각 나누기 시험 (T11 가상 원 자료 66개 기준)."""
 
 from datetime import date
 from pathlib import Path
@@ -20,7 +20,7 @@ def load(doc_id: str):
 
 
 def test_all_fixture_documents_parse():
-    assert len(DOC_FILES) == 64  # T11 README '적재 대상 64개'
+    assert len(DOC_FILES) == 66  # T11 README '적재 대상 66개'
     for path in DOC_FILES:
         doc = parse_document(path.read_text(encoding="utf-8"))
         assert doc.meta.id == path.stem
@@ -88,7 +88,7 @@ def test_quote_from_fixture_is_inside_a_chunk():
 def test_added_documents_preserve_winter_break_evaluation():
     generator = runpy.run_path(str(FIXTURES.parent / "make_fixtures.py"))
     added = [p for p in DOC_FILES if p.stem not in generator["ORIGINAL_DOC_IDS"]]
-    assert len(added) == 34
+    assert len(added) == 36
     for path in added:
         doc = parse_document(path.read_text(encoding="utf-8"))
         assert 10 <= len(next(d["body"] for d in generator["DOCS"] if d["id"] == path.stem).splitlines()) <= 40
