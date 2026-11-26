@@ -3,6 +3,7 @@
 from uuid import uuid4
 
 from alembic import command
+from alembic.script import ScriptDirectory
 from sqlalchemy import text
 
 from app.core.db import transaction
@@ -42,4 +43,4 @@ def test_0011_round_trip_keeps_complaint_risk_and_clears_other_types(seeded_db, 
     command.upgrade(alembic_config, "head")
     with seeded_db.begin() as connection:
         connection.execute(text("UPDATE requests SET risk_level='uncertain' WHERE id=:id"), {"id": rows["inquiry"]})
-        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0016"
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == ScriptDirectory.from_config(alembic_config).get_current_head()
