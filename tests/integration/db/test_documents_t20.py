@@ -80,7 +80,7 @@ def test_injected_document_chunk_is_marked_and_not_searched(db_client, teacher, 
 
 
 def test_fixture_documents_load_with_locations_and_classrooms(seeded_db, docs):
-    assert len(docs["added"]) == 29 and docs["skipped"] == ["NT-2026-31"]  # C3(새싹반)은 시드에 없음
+    assert len(docs["added"]) == 63 and docs["skipped"] == ["NT-2026-31"]  # C3(새싹반)은 시드에 없음
     with seeded_db.begin() as connection:
         assert seed_documents(connection)["added"] == []  # 다시 해도 같은 내용은 건너뜀
         row = connection.execute(text("""
@@ -132,6 +132,34 @@ def test_parent_search_accepts_string_classroom_ids(docs):
         search_documents(parent(), str(seed.ORG), "notice", "현장체험학습 도시락",
                          classroom_id=str(seed.CLASS_SUN), on_date=date(2026, 11, 20))
     assert denied.value.status == 404
+
+
+@pytest.mark.parametrize(("doc_type", "query", "on_date", "title", "answer"), [
+    ("policy", "체육복은 무슨 요일", date(2026, 11, 26), "원복·체육복 요일과 실내화·물통·낮잠 이불 준비물", "화·목"),
+    ("policy", "통학버스 시간", date(2026, 11, 26), "통학버스 노선·시간과 타는 곳", "08:20"),
+    ("policy", "원비 얼마", date(2026, 11, 26), "한 달 교육비 금액·납부 방법·카드 결제·환불", "85,000원"),
+    ("menu", "11/30 점심", date(2026, 11, 26), "다음 주 12월 1주 점심 식단 미리보기 (11/30~12/04)", "닭볶음탕"),
+    ("menu", "12월 3주 식단표", date(2026, 12, 8), "12월 3주 점심 식단표·오후 간식 (12/14~12/18)", "12-14"),
+    ("menu", "1월 2주 식단표", date(2027, 1, 4), "1월 2주 점심 식단표·오후 간식 (1/11~1/15)", "01-11"),
+])
+def test_parent_finds_operating_and_upcoming_meal_answers_first(docs, doc_type, query, on_date, title, answer):
+    found = search_documents(parent(), str(seed.ORG), doc_type, query,
+                             classroom_id=seed.CLASS_STAR, on_date=on_date)["chunks"]
+    assert found and found[0]["document_title"] == title
+    assert answer in found[0]["content"]
+
+
+def test_parent_sees_c4_trip_but_no_c5_only_documents(docs):
+    for classroom in (None, seed.CLASS_STAR):
+        found = search_documents(parent(), str(seed.ORG), "notice", "현장체험학습 도시락",
+                                 classroom_id=classroom, top_k=20, on_date=date(2026, 11, 26))["chunks"]
+        own = [c for c in found if c["document_title"] == "12월 현장체험학습 안내 (만 4세반)"]
+        assert any("도시락을 싸지 않습니다" in c["content"] and "13:00" in c["content"] for c in own)
+        assert all(c["document_title"] != "11월 현장체험학습 안내 (만 5세반)" for c in found)
+        plans = search_documents(parent(), str(seed.ORG), "schedule", "12월 주간 활동 계획",
+                                 classroom_id=classroom, top_k=20, on_date=date(2026, 12, 8))["chunks"]
+        assert any("만 4세 별빛반 12월" in c["document_title"] for c in plans)
+        assert all(c["document_title"] != "만 5세반 12월 주간 활동 계획" for c in plans)
 
 
 def test_upload_conflicting_notice_is_pending_with_conflicts(db_client, teacher, docs):

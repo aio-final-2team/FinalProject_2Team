@@ -1,7 +1,7 @@
 """T11 가상 원 자료(`data/fixtures/kg-demo-01`)를 DB `documents`·`document_chunks`·`document_classrooms`에 넣는다(T20).
 
 저장소 루트에서 `PYTHONPATH=apps/api python -m db.seeds.documents`로 실행해요. 데모 시드(`db.seeds.demo`) 뒤에 써요.
-- 적재 대상은 README 'T20 적재 규칙'의 다섯 폴더 Markdown 30개뿐이에요(README·알림장 데이터는 넣지 않음).
+- 적재 대상은 README 'T20 적재 규칙'의 다섯 폴더 Markdown 64개뿐이에요(README·알림장 데이터는 넣지 않음).
 - 반 키는 시드 반으로 이어요: C4 → 만 4세 별빛반(`…0101`), C5 → 만 5세 햇님반(`…0102`). 시드에 없는 반(C3)만
   대상인 문서는 원 전체로 잘못 보이지 않게 넣지 않아요.
 - 같은 내용(`content_sha256`)이 이미 있으면 건너뛰어요. 원 자료끼리 일부러 넣은 충돌(겨울방학 12/24 vs 12/26)은
