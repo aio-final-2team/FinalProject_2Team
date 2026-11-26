@@ -1,9 +1,9 @@
-import { createContext, useContext, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { api, setToken } from "@/api/client";
 import type { Role } from "@/domain/types";
 
 /** 로그인한 사람 (API 3.8 POST /auth/login, GET /me) */
-export type SessionUser = { id: string; role: Role; display_name: string; org_id: string; classroom_ids: string[] };
+export type SessionUser = { id: string; role: Role; display_name: string; org_id: string; classroom_ids: string[]; consents_complete?: boolean };
 type LoginRes = { access_token: string; token_type: string; user: SessionUser; children: { id: string; display_name: string; classroom_id: string }[] };
 
 type Session = {
@@ -11,8 +11,10 @@ type Session = {
   user: SessionUser | null;
   signIn: (loginId: string, password: string) => Promise<SessionUser>;
   signOut: () => void;
+  /** 필수 동의를 마쳤는지 바꾼다 (동의 저장 후 true, 서버가 CONSENT_REQUIRED로 막으면 false) */
+  setConsentsComplete: (done: boolean) => void;
 };
-const Ctx = createContext<Session>({ role: null, user: null, signIn: async () => Promise.reject(), signOut: () => {} });
+const Ctx = createContext<Session>({ role: null, user: null, signIn: async () => Promise.reject(), signOut: () => {}, setConsentsComplete: () => {} });
 const KEY = "yuchion.user";
 
 function read(): SessionUser | null {
@@ -37,6 +39,23 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setUser(r.user);
     return r.user;
   };
+  const setConsentsComplete = (done: boolean) =>
+    setUser((u) => {
+      if (!u) return u;
+      const next = { ...u, consents_complete: done };
+      try {
+        sessionStorage.setItem(KEY, JSON.stringify(next));
+      } catch {
+        /* 무시 */
+      }
+      return next;
+    });
+  /* 서버가 필수 동의 없이 쓰기를 막으면(403 CONSENT_REQUIRED) 동의 화면으로 보낸다 */
+  useEffect(() => {
+    const h = () => setConsentsComplete(false);
+    window.addEventListener("yuchion:consent-required", h);
+    return () => window.removeEventListener("yuchion:consent-required", h);
+  }, []);
   const signOut = () => {
     setToken(null);
     try {
@@ -46,7 +65,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
     setUser(null);
   };
-  return <Ctx.Provider value={{ role: user?.role ?? null, user, signIn, signOut }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ role: user?.role ?? null, user, signIn, signOut, setConsentsComplete }}>{children}</Ctx.Provider>;
 }
 
 export const useSession = () => useContext(Ctx);
