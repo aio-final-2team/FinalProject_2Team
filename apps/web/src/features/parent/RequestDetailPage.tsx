@@ -9,6 +9,7 @@ import { Dock, PrimaryButton } from "@/components/Dock";
 import { ScreenTop } from "@/components/ScreenTop";
 import { QueryState } from "@/components/QueryState";
 import { fmtDateTime } from "@/domain/datetime";
+import { MemoryCandidates } from "./MemoryCandidates";
 import { useToast } from "@/components/Toast";
 import { term } from "@/domain/wording";
 
@@ -52,6 +53,8 @@ export function RequestDetailPage() {
               </li>
             ); })}
           </ol>
+
+          {!!d!.memory_candidates?.length && <MemoryCandidates items={d!.memory_candidates} />}
 
           <ul className="mt-4 grid gap-2">
             {d!.messages.map((m) => (

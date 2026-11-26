@@ -22,6 +22,8 @@ export type RequestDetail = {
   request: RequestSummary & { body?: string; missing_fields: string[]; parent_confirmed_at: string | null; created_at: string };
   messages: { id: number; sender_type: "user" | "agent" | "system"; sender_role?: "parent" | "teacher" | "director" | null; body: string; created_at: string }[];
   timeline: { label: string; at: string }[];
+  /** 돌봄 메모 확인 대기(서버 #377). 서버가 아직 안 주면 없다 */
+  memory_candidates?: { id: number; child_name: string; content: string }[];
   consultation?: { slots: Slot[]; booking: { id: string; room: string; period: { start: string; end: string } } | null } | null;
   sources?: { document_title: string; location: string | null; effective_from: string | null }[];
   rejection?: { reason_code: string; reason_text: string } | null;
