@@ -791,6 +791,8 @@ FK를 걸 수 없는 참조가 두 곳 있다. `cards.subject_id`와 `notificati
 
 **평가.** `eval_runs`는 요청한 모델 ID와 응답에 돌아온 모델 ID를 함께 남긴다. 그래서 원장 현황의 '평가 결과'와 모델 선택 근거(T05)를 같은 기록에서 볼 수 있다.
 
+`tools/eval_request.py`·`tools/eval_daily_note.py`는 `--record`를 붙인 경우에만 `DATABASE_URL`의 이 표에 실행당 한 줄을 기록한다(`suite='service'`). 요청 평가는 20문항, 알림장 평가는 메모 함정·보호자 요청을 합친 40문항을 `total`·`passed`로 남긴다. `started_at`은 평가 시작 시각, `report_url`은 `--out` 경로이며 없으면 NULL이다. `requested_model`은 `fake`·`echo` 또는 설정된 작성 모델 ID이고, `note` JSON에는 도구 이름·검사 모델과 알림장 두 묶음의 통과/전체를 남긴다. 실행기가 응답 모델 ID를 수집하지 않아 `returned_model`은 NULL, 채점 실패는 실행 오류가 아니므로 `errors`는 기본값 0이다. `created_at`은 DB 기본값을 쓴다. 옵션이 없으면 기록·DB 접속 없이 기존 출력·JSON·종료 동작을 유지하며, 기록 실패는 오류로 종료한다.
+
 
 ### 2.7 교직원 받은함과 원장 현황 (뷰)
 
