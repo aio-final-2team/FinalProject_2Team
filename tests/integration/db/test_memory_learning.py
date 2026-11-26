@@ -35,10 +35,12 @@ def approve(client, card, decision="edit_approve"):
 def install_memory(monkeypatch, result):
     monkeypatch.setenv("LLM_MODEL_MEMORY", "fake-memory")
     class Model:
+        inputs = []
         def __init__(self, role):
             assert role == "MEMORY"
         def json(self, system, user):
             value = json.loads(user)
+            self.inputs.append(value)
             # 새 연결로 봐도 이미 승인과 발송이 커밋돼 있어야 해요.
             with transaction() as connection:
                 assert connection.scalar(text("SELECT count(*) FROM approvals")) >= 1
@@ -48,15 +50,18 @@ def install_memory(monkeypatch, result):
                 raise result
             return result
     monkeypatch.setattr(memories, "OpenAIModel", Model)
+    return Model
 
 
 def test_edit_approve_learns_then_next_inquiry_writer_reads(db_client, seeded_db, monkeypatch):
     monkeypatch.delenv("EMBEDDING_MODEL", raising=False)
-    install_memory(monkeypatch, {"tones": [TONE]})
+    model = install_memory(monkeypatch, {"tones": [TONE]})
     card, _, _ = create_card(db_client, "[TEST] 준비물 알려 주세요")
     original = card["draft"]["text"]
     assert original
     approve(db_client, card)
+    assert model.inputs[0]["original"] == original
+    assert model.inputs[0]["edited"] != original
     loaded = graph_agent._load_request_memory(card["request_id"])
     assert loaded == [TONE]
     setup_graph(seeded_db, monkeypatch, {"text": "", "evidence": [], "no_evidence": True})
@@ -116,3 +121,73 @@ def test_daily_note_payload_and_owner_scope(db_client, monkeypatch):
     daily_note.write(model, payload, payload["children"][0], [])
     daily_note.review(model, payload, payload["children"][0], [])
     assert seen[0]["memories"] == [TONE] and "memories" not in seen[1]
+
+
+@pytest.fixture
+def saved_draft(db_client, seeded_db, monkeypatch):
+    from app.modules.documents import embedding
+    from tests.integration.db.test_answer_t33 import Writer
+    monkeypatch.setenv("LLM_MODEL_MEMORY", "")
+    monkeypatch.setattr(embedding, "enabled", lambda: True)
+    monkeypatch.setattr(embedding, "embed", lambda texts: [[1.0] + [0.0] * 1023])
+    with transaction() as connection:
+        chunk = connection.execute(text("SELECT id,content FROM document_chunks WHERE document_id=:id LIMIT 1"),
+                                   {"id": seed.NOTICE}).mappings().one()
+    setup_graph(seeded_db, monkeypatch, {"text": "[TEST] 행사는 함께 참여해요.", "no_evidence": False, "conflict": False,
+                                       "evidence": [{"chunk_id": chunk["id"], "quote": chunk["content"]}]})
+    card, _, _ = create_card(db_client, "행사 안내 알려 주세요")
+    approve(db_client, card, "approve")
+    return card, Writer
+
+
+def test_prior_answer_reaches_both_writers_but_neither_checker(db_client, saved_draft, monkeypatch):
+    card, writer = saved_draft
+    assert not card["draft"]["no_evidence"]
+    writer.calls = []
+    next_card, evidence, _ = create_card(db_client, "행사 안내 알려 주세요")
+    calls = [(role, json.loads(user)) for role, user in writer.calls]
+    assert {role for role, _ in calls} == {"DOCUMENT", "CHECKER"}
+    prior = next(payload["prior_answer"] for role, payload in calls if role == "DOCUMENT")
+    assert prior["answer"] == card["draft"]["text"]
+    assert all("prior_answer" not in payload and "memories" not in payload for role, payload in calls if role == "CHECKER")
+    writer.calls = []
+    state = {"request_id": next_card["request_id"], "parallel": {"chunks": graph_agent._search_request(next_card["request_id"]),
+                                                                "memories": [TONE]}}
+    draft = graph_agent._write_request(state)["draft"]
+    graph_agent._check_request({**state, "draft": draft})
+    assert json.loads(writer.calls[0][1])["prior_answer"] == prior
+    assert "prior_answer" not in json.loads(writer.calls[1][1])
+    with transaction() as connection:
+        assert connection.scalar(text("SELECT count(*) FROM saved_answer_sources")) == 1
+        # 기존 card_evidence에는 지금 검사한 조각만 있고 저장 답은 추가하지 않아요.
+        assert connection.scalar(text("SELECT count(*) FROM card_evidence WHERE card_id=:id"), {"id": next_card["id"]}) == len(evidence)
+
+
+@pytest.mark.parametrize("status", ["conflict_pending", "superseded"])
+def test_document_change_invalidates_even_off_answers(db_client, saved_draft, status):
+    with transaction() as connection:
+        connection.execute(text("UPDATE saved_answers SET status='off'"))
+        connection.execute(text("UPDATE documents SET status=:status WHERE id=:id"), {"status": status, "id": seed.NOTICE})
+        row = connection.execute(text("SELECT status,invalidated_at FROM saved_answers")).one()
+        assert row.status == "invalidated" and row.invalidated_at is not None
+
+
+def test_embedding_failure_keeps_approval_and_lookup_falls_back(db_client, seeded_db, monkeypatch):
+    from app.modules.documents import embedding
+    from app.modules.memories.saved_answers import find_saved_answer
+    monkeypatch.setattr(embedding, "enabled", lambda: True)
+    monkeypatch.setattr(embedding, "embed", lambda texts: (_ for _ in ()).throw(RuntimeError("[TEST] embed failed")))
+    monkeypatch.setenv("LLM_MODEL_MEMORY", "")
+    card, _, _ = create_card(db_client, "[TEST] 준비물 알려 주세요")
+    with transaction() as connection:
+        connection.execute(text("UPDATE cards SET draft=draft || CAST(:flags AS jsonb) WHERE id=:id"),
+                           {"id": card["id"], "flags": json.dumps({"no_evidence": False})})
+        connection.execute(text("""INSERT INTO card_evidence(card_id,org_id,chunk_id,rank,quote)
+            SELECT :card,org_id,id,1,content FROM document_chunks WHERE document_id=:doc LIMIT 1"""),
+                           {"card": card["id"], "doc": seed.NOTICE})
+    approve(db_client, card)
+    with transaction() as connection:
+        assert connection.scalar(text("SELECT count(*) FROM saved_answers")) == 0
+        assert connection.scalar(text("SELECT count(*) FROM events WHERE agent_name='memory' AND action='tool_failed'")) == 1
+        req = dict(connection.execute(text("SELECT * FROM requests WHERE id=:id"), {"id": card["request_id"]}).mappings().one())
+    assert find_saved_answer(req) is None

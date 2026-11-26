@@ -55,6 +55,11 @@ def memory_failed(card, tool):
 @feature("담임 말투 기억")
 def after_approval(user, card, req, decision, content):
     # API 백그라운드: 승인 커밋 뒤, 덮어쓰기 전 초안 스냅샷과 실제 발송문을 비교해요.
+    try:
+        from app.modules.memories.saved_answers import remember_answer
+        remember_answer(user, card, req, content)
+    except Exception:
+        memory_failed(card, "save_answer")
     if decision != "edit_approve" or user.role != "teacher" or not os.getenv("LLM_MODEL_MEMORY", "").strip():
         return
     try:

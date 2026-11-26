@@ -117,6 +117,7 @@ def _load_request_memory(request_id):
 def _write_request(state):
     from agents.graphs import answer as answer_graph
     from app.modules.documents.answer import graph_enabled
+    from app.modules.memories.saved_answers import find_saved_answer
 
     req = _request_context(state["request_id"])
     if req["type"] == "inquiry" and not graph_enabled():
@@ -125,6 +126,7 @@ def _write_request(state):
     prompt = answer_graph._prompt("documents.md", "## 입력", "## 알림장 초안 쓰기") + answer_graph.WRITE_FORMAT
     # 보호자 글은 문의 답변 그래프(answer.py)처럼 가려서 모델에 보낸다(T55 G-5). 원 자료 조각은 그대로 둔다.
     payload = {"question": mask_sensitive(req["body"]), "chunks": chunks, "memories": state["parallel"].get("memories", []),
+               "prior_answer": find_saved_answer(req),
                "review_issues": state.get("issues", [])}
     reply = answer_graph._ask_writer(answer_graph.OpenAIModel("DOCUMENT"), prompt, payload, [])
     if reply is None:

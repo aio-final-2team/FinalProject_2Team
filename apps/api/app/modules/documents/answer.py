@@ -22,8 +22,10 @@ def answer_for_request(req, writer=None, checker=None, forecast=None):
 
     try:
         from app.modules.requests.graph_agent import _load_request_memory
+        from app.modules.memories.saved_answers import find_saved_answer
         memories = _load_request_memory(req["id"])
-        return draft_answer(req["body"], search, writer=writer, checker=checker, memories=memories)
+        return draft_answer(req["body"], search, writer=writer, checker=checker, memories=memories,
+                            prior_answer=find_saved_answer(req))
     except Exception:  # 모델·자료 오류가 카드 생성을 막지 않도록 한다
         return fallback(["search", "write"])
 

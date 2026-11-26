@@ -121,6 +121,8 @@ def decide(user, card_id, body, background_tasks=None):
             store.add_event(req, {"hold": "held", "resume": "resumed", "acknowledge": "report_acknowledged"}[decision],
                             reason_text=body.reason_text, **actor)
         elif decision in ("approve", "edit_approve"):
+            from app.mock.memories import remember_answer
+            remember_answer(user, card, req, content)
             card.draft = content
             card.status = "approved"
             store.set_request_status(req, "approved", action="approved", **actor)
