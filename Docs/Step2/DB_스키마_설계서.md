@@ -8,7 +8,7 @@
 | 2차 검토 링크 | `develop` 브랜치의 [DB 스키마 설계서](https://github.com/aio-final-2team/FinalProject_2Team/blob/develop/Docs/Step2/DB_스키마_설계서.md) |
 | 시연 코드 기준 커밋 | 레포 [README](../../README.md#2차-검토-문서)의 '시연 코드 기준 커밋' 한 줄을 본다(11/24 밤 기준 develop `641591f`, 흐름 고치기 #338까지 팀 서버에 배포). 팀 서버를 다시 배포하면 README 그 한 줄만 고친다 |
 | 대상 DB | PostgreSQL 16 + pgvector 0.8 (`compose.yaml`의 `pgvector/pgvector:pg16`). Supabase를 쓰지 않는 이유는 5.1에 있다 |
-| DDL | 최종 모양은 [`db_schema_draft.sql`](db_schema_draft.sql)에 있고, 실제 DB에는 `apps/api/migrations`의 0001~0016을 차례로 적용한다 |
+| DDL | 최종 모양은 [`db_schema_draft.sql`](db_schema_draft.sql)에 있고, 실제 DB에는 `apps/api/migrations`의 0001~0016·0020을 차례로 적용한다 |
 | 함께 보는 문서 | 기획서 11/23 develop 판(`8f45d51`, #319) 3장(FR-01~FR-13)·4장(NFR)·6장(공통 상태)·7장, T04 흐름·권한 명세, [입출력 계약표 v0.21](입출력_계약표_초안.md), [API 설계 문서 v0.13](API_설계_문서.md) |
 
 **1차 검토 뒤 보완.** 1차 검토 뒤에 바뀐 내용과 그 내용을 지키는 시험을 표 하나에 모았다. 시험은 모두 시연 코드 기준 커밋에서 `tools/test_db.sh`로 다시 돌려 통과했다. 표의 시험 파일은 모두 `tests/integration/`(DB는 `db/`, HTTP는 `api/`) 아래에 있고, `api/` 시험은 모의·시험 PG 두 모드에서 모두 돈다. 반영 커밋 칸에는 develop에 합쳐진 커밋을 적었다.
@@ -33,7 +33,7 @@
 | DB 2 | 검사를 통과한 아이별 초안만 복구 성공으로 세고, 사람에게 넘김·재시도 진입 실패를 따로 센다 | DB 2.6 'T58 복구 집계 기준' | `db/test_daily_note_recovery.py`의 현재 집계와 T58 기준 차이 기록, `daily_note_drafted` 저장 코드·0001/0003 DDL 확인 | 이 PR |
 | DB 3 | 시험 수치마다 커밋·날짜·alembic 판·범위·명령을 붙이고 권한·마이그레이션을 다시 확인한다 | API 2.2, DB 4.4·6.2·9.2 | `db/test_scope.py`, `db/test_scope_cases.py`, `db/test_migrations.py`, `db/test_feed_migration.py`, `db/test_request_risk_types.py` | 이 PR |
 
-이 문서는 유치온 DB에 있는 표 31개, 뷰 2개, 트리거 2개를 설명한다. 1~6장은 강사님의 'DB 스키마 설계서 작성법'에 나온 여섯 가지 순서를 따른다. 7장부터는 이 서비스에만 있는 범위·원칙·상태 값·시험 결과를 덧붙였다. 피드·앨범 표처럼 제목에 [제안]이 붙은 절은 아직 팀이 확인하지 않았다.
+이 문서는 유치온 DB에 있는 표 32개, 뷰 2개, 트리거 2개를 설명한다. 1~6장은 강사님의 'DB 스키마 설계서 작성법'에 나온 여섯 가지 순서를 따른다. 7장부터는 이 서비스에만 있는 범위·원칙·상태 값·시험 결과를 덧붙였다. 피드·앨범 표처럼 제목에 [제안]이 붙은 절은 아직 팀이 확인하지 않았다.
 
 **목차.** 1. ERD와 관계 명세 · 2. 엔터티 정의 · 3. pgvector 스키마 · 4. 권한 정책(RLS 대신 API 검사) · 5. 세션·캐시 설계 · 6. 인덱스와 쿼리 최적화 · 7. 범위와 설계 원칙 · 8. 상태 값과 세 흐름 대조 · 9. DB가 막는 것과 확인 결과 · 10. LangGraph 체크포인트 · 11. 나중에 더하는 표 · [제안] T54 피드·앨범 표 · 변경 이력 · 부록. 가이드 제출 전 체크리스트
 
@@ -41,14 +41,14 @@
 
 ### 1.1 영역과 그리는 방법
 
-ERD는 피드·앨범 표 3개(맨 끝 절)를 뺀 표 28개를 여섯 영역으로 나눠 그린다. 상자 안에는 키 컬럼(PK·FK·UK)만 적고, 다른 영역에 있는 부모 표는 `id PK`만 든 작은 상자로 넣는다. 선 하나는 DDL의 FK 제약 하나와 짝을 이루고, 선 이름으로는 FK 컬럼을 적는다. 다만 기관 짝(`org_id`)과 함께 거는 FK는 `org_id`를 빼고 남은 컬럼 이름만 적는다.
+ERD는 피드·앨범 표 3개(맨 끝 절)를 뺀 표 29개를 여섯 영역으로 나눠 그린다. 상자 안에는 키 컬럼(PK·FK·UK)만 적고, 다른 영역에 있는 부모 표는 `id PK`만 든 작은 상자로 넣는다. 선 하나는 DDL의 FK 제약 하나와 짝을 이루고, 선 이름으로는 FK 컬럼을 적는다. 다만 기관 짝(`org_id`)과 함께 거는 FK는 `org_id`를 빼고 남은 컬럼 이름만 적는다.
 
 - `||--o{` 1 : N (자식의 FK가 NOT NULL) · `|o--o{` 0..1 : N (FK가 비어도 됨) · `|o--o|` 0..1 : 0..1 (FK에 UNIQUE)
 - N : M 관계는 다음 중간 테이블로 푼다: `classroom_staff`(반 ↔ 교사), `child_guardians`(아이 ↔ 보호자), `card_evidence`(카드 ↔ 문서 조각), `saved_answer_sources`(원에 남은 답 ↔ 문서), `document_classrooms`(문서 ↔ 대상 반).
 
 | 영역 | 테이블 | 선 수 |
 | --- | --- | --- |
-| ① 기관·사람 | `organizations` `classrooms` `users` `classroom_staff` `children` `child_guardians` `user_consents` | 9 |
+| ① 기관·사람 | `organizations` `classrooms` `users` `classroom_staff` `children` `child_guardians` `user_consents` `user_settings` | 11 |
 | ② 요청·카드·승인 | `requests` `request_messages` `cards` `approvals` `card_evidence` `events` | 18 |
 | ③ 자료·검색 | `documents` `document_chunks` `document_classrooms` | 6 |
 | ④ 상담 | `rooms` `staff_busy_blocks` `consultation_slots` `consultation_bookings` | 10 |
@@ -66,6 +66,7 @@ erDiagram
     classrooms { uuid id PK uuid org_id FK }
     users { uuid id PK uuid org_id FK text login_id UK }
     user_consents { uuid id PK uuid org_id FK uuid user_id FK text item text terms_version timestamptz agreed_at }
+    user_settings { uuid user_id PK, FK uuid org_id FK time quiet_start time quiet_end timestamptz updated_at }
     classroom_staff { uuid classroom_id PK, FK uuid org_id FK uuid user_id PK, FK }
     children { uuid id PK uuid org_id FK uuid classroom_id FK }
     child_guardians { uuid child_id PK, FK uuid org_id FK uuid user_id PK, FK }
@@ -78,6 +79,8 @@ erDiagram
     organizations ||--o{ users : "org_id"
     organizations ||--o{ user_consents : "org_id"
     users ||--o{ user_consents : "user_id"
+    users ||--o| user_settings : "user_id"
+    organizations ||--o{ user_settings : "org_id"
 ```
 
 **② 요청·카드·승인** (다른 영역 부모: `children`, `classrooms`, `document_chunks`, `organizations`, `users`)
@@ -269,8 +272,10 @@ erDiagram
 | 58 | `daily_notes` | 0..1 : N | `events` | `events.(daily_note_id, org_id)` → `daily_notes.(id, org_id)` |
 | 59 | `organizations` | 1 : N | `user_consents` | `user_consents.org_id` → `organizations.id` |
 | 60 | `users` | 1 : N | `user_consents` | `user_consents.(user_id, org_id)` → `users.(id, org_id)` |
+| 61 | `users` | 1 : 0..1 | `user_settings` | `user_settings.user_id` → `users.id` |
+| 62 | `organizations` | 1 : N | `user_settings` | `user_settings.org_id` → `organizations.id` |
 
-**ERD 선 수 = 표 행 수 = 60.** 같은 부모와 자식 사이에 FK가 둘 이상 있으면(예: `requests`의 `requester_id`·`assignee_id` → `users`) 선과 행을 FK마다 따로 센다. DDL에 있는 FK 제약은 모두 66개인데, 이 중 6개는 맨 끝 피드·앨범 절의 표에 걸려 있어서 이 그림과 표에는 넣지 않았다. FK 제약 수는 DB 카탈로그에서 센다(9장 C3).
+**ERD 선 수 = 표 행 수 = 62.** 같은 부모와 자식 사이에 FK가 둘 이상 있으면(예: `requests`의 `requester_id`·`assignee_id` → `users`) 선과 행을 FK마다 따로 센다. DDL에 있는 FK 제약은 모두 68개인데, 이 중 6개는 맨 끝 피드·앨범 절의 표에 걸려 있어서 이 그림과 표에는 넣지 않았다. FK 제약 수는 DB 카탈로그에서 센다(9장 C3).
 
 
 FK를 걸 수 없는 참조가 두 곳 있다. `cards.subject_id`와 `notifications.subject_id`는 대상 종류(`subject_type`)에 따라 가리키는 표가 달라지므로 FK를 두지 않았다. 대신 저장하기 전에 API가 대상이 같은 기관에 있는지 확인한다.
@@ -281,7 +286,7 @@ FK를 걸 수 없는 참조가 두 곳 있다. `cards.subject_id`와 `notificati
 
 | 일부러 겹쳐 둔 것 | 어디 | 이유 | 어긋남을 막는 방법 |
 | --- | --- | --- | --- |
-| 기관 경계 `org_id` | 기관에 속한 표 28개(피드·앨범 표 3개 포함) | 부모를 따라가면 알 수 있지만, 다른 원의 행이 섞여 들어오면 DB에서 거부하도록 둠(NFR-01) | `(id, org_id)` 복합 FK. 부모와 `org_id`가 다르면 저장 거부(9장 B1~B11·B13) |
+| 기관 경계 `org_id` | 기관에 속한 표 29개(피드·앨범 표 3개 포함) | 부모를 따라가면 알 수 있지만, 다른 원의 행이 섞여 들어오면 DB에서 거부하도록 둠(NFR-01) | `(id, org_id)` 복합 FK. 부모와 `org_id`가 다르면 저장 거부(9장 B1~B11·B13) |
 | AI 결과 `jsonb` | `cards.draft`·`check_result`, `approvals.edited_content`, `requests.missing_fields`, `events.detail`, `memories.structured`, `memory_rules.rule_json`, `daily_notes.content`·`open_checks` | AI 출력 모양이 자주 바뀌고, SQL에서 안쪽 값으로 찾지 않음 | 저장 전 Pydantic 검사. SQL에서 꼭 봐야 하는 값(`open_checks` 개수)만 CHECK |
 | 집계는 저장하지 않음 | 반복 민원 수, 받은함 필터, 원장 현황 | 숫자를 칸에 저장해 두면 실제와 어긋날 수 있음 | 볼 때마다 뷰(`staff_inbox`·`director_overview`)와 인덱스(`requests_repeat_idx`)로 셈 |
 | 복사 ① 상담 예약의 후보 값 | `consultation_bookings.teacher_id`·`room_id`·`period` (`slot_id`로도 알 수 있음) | 배제 제약(EXCLUDE)으로 겹침을 막으려면 비교할 칸이 같은 표에 있어야 함 | 확정하는 트랜잭션에서 API가 후보 값을 그대로 복사 |
@@ -296,7 +301,7 @@ FK를 걸 수 없는 참조가 두 곳 있다. `cards.subject_id`와 `notificati
 ### 2.0 공통 규칙과 ID 형식
 
 - 이 장의 표에는 모두 기본키와 `created_at timestamptz NOT NULL DEFAULT now()`가 있다(9장 C1·C2).
-- 시각은 모두 `timestamptz`로 쓰고, 날짜만 필요한 칸(보류 예정일·적용일·알림장 날짜·담당 기간)만 `date`로 둔다.
+- 개인 알림의 시·분은 `time`, 그 밖의 시각은 `timestamptz`로 쓰고, 날짜만 필요한 칸(보류 예정일·적용일·알림장 날짜·담당 기간)만 `date`로 둔다.
 - 값이 정해진 컬럼은 PostgreSQL ENUM 대신 `text` + `CHECK`로 둔다(7장).
 
 | PK 형식 | 테이블 | API에서 |
@@ -341,6 +346,11 @@ FK를 걸 수 없는 참조가 두 곳 있다. `cards.subject_id`와 `notificati
 | `user_consents` | `item` | `text` / NOT NULL, CHECK: terms·privacy·ai_processing·child_info·child_health·child_face | 필수 항목 키 |
 | `user_consents` | `terms_version` | `text` / NOT NULL | 동의한 약관 판 |
 | `user_consents` | `agreed_at` | `timestamptz` / NOT NULL, 기본값 now() | 항목별 최초 동의 시각 |
+| `user_settings` | `user_id` | `uuid` / PK, FK → users.id | 개인 알림 설정 소유자 |
+| `user_settings` | `org_id` | `uuid` / NOT NULL, FK → organizations.id | 소유자 기관 |
+| `user_settings` | `quiet_start` | `time` / NULL 허용 | KST 조용한 시간 시작(포함) |
+| `user_settings` | `quiet_end` | `time` / NULL 허용 | KST 조용한 시간 종료(미포함), 자정 넘김 허용 |
+| `user_settings` | `updated_at` | `timestamptz` / NOT NULL, 기본값 now() | 최초 저장·마지막 변경 시각 |
 | `classroom_staff` | `classroom_id` | `uuid` / PK(classroom_id, user_id), FK (classroom_id, org_id) → classrooms | 맡은 반 |
 | `classroom_staff` | `org_id` | `uuid` / NOT NULL, 기관 짝 FK에 들어감 | 기관(경계 짝) |
 | `classroom_staff` | `user_id` | `uuid` / PK(classroom_id, user_id), FK (user_id, org_id) → users | 교사 계정 |
@@ -369,7 +379,7 @@ FK를 걸 수 없는 참조가 두 곳 있다. `cards.subject_id`와 `notificati
 
 **[제안] 가입 필수 동의(API 3.31).** `user_consents`는 (org_id,user_id,item,terms_version)이 유일하다. 모든 역할은 terms·privacy·ai_processing에, 보호자는 child_info·child_health·child_face에도 전부 동의한다. ai_processing은 쓴 글을 AI 처리를 위해 국외 AI 사업자에게 전송함을 알린다. 현재 판은 코드 상수 CONSENT_VERSION이며, 이전 판도 기록으로 보존한다. 다시 동의해도 최초 agreed_at을 바꾸지 않는다. 현재 판의 역할별 항목이 전부 있어야 완료다. 반 현황은 아이마다 연결된 보호자 수·완료한 수를 세고 한 명 이상 완료하면 complete=true다.
 
-0016은 표와 `consent_agreed` 이력의 CHECK 허용 값만 만든다. 동의 행은 넣지 않는다. 데모 시드는 mock의 모든 계정을 현재 판으로 채우며 기존 기록을 유지한다. 새 동의와 행위자·약관 판·항목 목록·trace_id를 담은 이력 한 줄은 같은 트랜잭션이다. 반복 요청은 이력도 중복하지 않는다. 0015로 내리면 동의 표가 사라지므로 기록 백업이 필요하다. 이미 남긴 consent_agreed 이력은 0012와 같은 NOT VALID 방식으로 보존한다. 최신 head 카탈로그는 표 31·뷰 2·트리거 2·FK 66·컬럼 301이다.
+0016은 표와 `consent_agreed` 이력의 CHECK 허용 값만 만든다. 동의 행은 넣지 않는다. 데모 시드는 mock의 모든 계정을 현재 판으로 채우며 기존 기록을 유지한다. 새 동의와 행위자·약관 판·항목 목록·trace_id를 담은 이력 한 줄은 같은 트랜잭션이다. 반복 요청은 이력도 중복하지 않는다. 0015로 내리면 동의 표가 사라지므로 기록 백업이 필요하다. 이미 남긴 consent_agreed 이력은 0012와 같은 NOT VALID 방식으로 보존한다. 최신 head 카탈로그는 표 32·뷰 2·트리거 2·FK 68·컬럼 306이다.
 
 ### 2.2 요청·카드·승인·이력
 
@@ -1442,7 +1452,7 @@ MVP에서 이미 적용되는 삭제는 담임 기억의 내용 비우기·`dele
 | 체크리스트(가이드 22쪽) | 이 문서 |
 | --- | --- |
 | ERD 그림과 관계 명세 표가 서로 일치한다 | 1.2·1.3. ERD 선 60개 = 관계 표 60행 = DDL FK 제약 66개 중 피드·앨범 표의 6개를 뺀 60개(1.3) |
-| 모든 컬럼에 타입·제약·의미가 적혀 있다 | 2장과 맨 끝 [제안] 피드·앨범 절. 최신 head의 컬럼은 301개이며 필수 동의 여섯 컬럼을 포함함 |
+| 모든 컬럼에 타입·제약·의미가 적혀 있다 | 2장과 맨 끝 [제안] 피드·앨범 절. 최신 head의 컬럼은 306개이며 필수 동의 여섯 컬럼·개인 알림 설정 다섯 컬럼을 포함함 |
 | 모든 테이블에 기본키와 created_at이 있다 | 2장. 기존 표 27개(9장 C1·C2). 필수 동의 시각은 agreed_at이며, 피드·앨범 표 중 feed_photo_children에는 created_at이 없다 |
 | API 설계 문서와 필드명·ID 형식이 같다 | 2.0 ID 형식 표. 필드와 DB 컬럼 대응표는 API 설계 문서 7장 |
 | 벡터 차원, 인덱스 연산자, 임베딩 모델이 적혀 있다 | 3장 |

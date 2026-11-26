@@ -190,6 +190,7 @@ class _State:
         self.feed_photos = {}
         self.memories = {}
         self.consents = {}
+        self.user_settings = {}
         self._seq = 1000
 
     def next_int(self) -> int:

@@ -134,7 +134,8 @@ def sweep_consultation_notifications(now=None, *, teacher_id=None, day=None):
             for recipient, key in zip(recipients, keys):
                 if recipient not in roles or key in existing:
                     continue
-                after = now if kind == ENDING else deliver_after(now, roles[recipient])
+                after = now if kind == ENDING else deliver_after(now, roles[recipient], user_id=recipient,
+                                                               connection=connection)
                 if after < booking["end"]:
                     pending.append((recipient, key, after))
             if not pending:

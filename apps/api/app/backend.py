@@ -8,7 +8,7 @@ from app.core.config import settings
 if settings.data_backend == "mock":
     from app.mock import cards, card_views, documents, memories, notes, notifications, request_actions, store
     from app.mock import consultation_reminders
-    from app.mock import feed, consents, calendar
+    from app.mock import feed, consents, calendar, notification_settings
     users = store
 else:
     from app.modules.consents import consents
@@ -24,3 +24,4 @@ else:
     store = users
     from app.modules.cards import cards, card_views
     from app.modules.notifications import notifications
+    from app.modules.notifications import settings as notification_settings

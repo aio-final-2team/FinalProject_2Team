@@ -263,7 +263,7 @@ def _notify_guardians(connection, note, kind, dedupe_prefix, now):
             ON CONFLICT (dedupe_key) DO NOTHING
         """), {"org": note["org_id"], "recipient": guardian["id"], "note": note["id"],
                "kind": kind, "title": notification_title(kind), "key": f"{dedupe_prefix}:{guardian['id']}",
-               "after": deliver_after(now, guardian["role"])})
+               "after": deliver_after(now, guardian["role"], user_id=guardian["id"])})
 
 
 def correct(user, note_id, body):

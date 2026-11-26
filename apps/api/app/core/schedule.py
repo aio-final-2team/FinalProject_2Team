@@ -33,11 +33,22 @@ def due_at(start: datetime, request_type=None, risk_level=None, kind=None):
         start = midnight
 
 
-def deliver_after(start: datetime, role: str, risk_level=None, risk_category=None, *, request_type=None):
+def deliver_after(start: datetime, role: str, risk_level=None, risk_category=None, *, request_type=None,
+                  user_id=None, connection=None, lookup=None):
     start = start.astimezone(KST)
     if (request_type == "pickup" or role == "parent"
             or (risk_level == "urgent" and risk_category in settings.immediate_risk_categories)):
         return start
+    if user_id is not None and role in ("teacher", "director"):
+        from app import backend
+        quiet = (lookup or backend.notification_settings.get)(user_id, connection=connection)
+        if quiet["quiet_start"] is not None:
+            begin, end = (time.fromisoformat(quiet[key]) for key in ("quiet_start", "quiet_end"))
+            clock = start.time()
+            if (begin < end and begin <= clock < end) or (begin > end and (clock >= begin or clock < end)):
+                day = start.date() + timedelta(days=int(begin > end and clock >= begin))
+                return datetime.combine(day, end, KST)
+            return start
     opening, closing = settings.work_hours
     while not working_day(start.date()) or start.time() >= closing:
         start = datetime.combine(start.date() + timedelta(days=1), opening, KST)

@@ -8,7 +8,7 @@ from app.core.constants import (CARE_REQUEST_TYPES, CARE_MESSAGE_NOTICE, CARE_UP
                                 NOTIFICATION_TITLES as TITLES, consultation_booking_body, notification_title, rejection_body)
 from app.core.schedule import deliver_after
 from app.core.errors import ApiError
-from app.mock import store
+from app.mock import store, notification_settings
 from app.mock.records import Notification
 
 
@@ -28,7 +28,8 @@ def create(ev, recipient_id, kind, body=None, subject_id=None, *, dedupe_key=Non
         body=body, dedupe_key=key, request_id=ev.request_id, card_id=ev.card_id,
         subject_type="daily_note" if subject_id else None, subject_id=subject_id, created_at=ev.created_at,
         deliver_after=deliver_after(ev.created_at, recipient.role, req.risk_level if req else None,
-                                    req.risk_category if req else None, request_type=req.type if req else None))
+                                    req.risk_category if req else None, request_type=req.type if req else None,
+                                    user_id=recipient_id, lookup=notification_settings.get))
     state.notifications[notification.id] = notification
 
 

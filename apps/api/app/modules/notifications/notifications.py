@@ -26,7 +26,8 @@ def enqueue(connection, event, req, recipient_id, kind, body=None, *, dedupe_key
            "kind": kind, "title": notification_title(kind, req.get("type") if req else None), "body": body,
            "key": dedupe_key or f"event:{event['id']}:{recipient_id}", "subject": subject_id,
            "deliver": deliver_after(event["created_at"], recipient["role"], req["risk_level"] if req else None,
-                                    req["risk_category"] if req else None, request_type=req.get("type") if req else None)})
+                                    req["risk_category"] if req else None, request_type=req.get("type") if req else None,
+                                    user_id=recipient_id, connection=connection)})
 
 
 def notify_event(connection, event, req, card):
