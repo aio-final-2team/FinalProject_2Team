@@ -28,7 +28,7 @@ export function TabBar({ items, center, extra, className = "" }: { items: TabIte
     </Link>
   );
   return (
-    <nav className={`glass fixed inset-x-0 bottom-0 z-30 mx-auto grid grid-flow-col items-end bg-bar pb-[max(10px,env(safe-area-inset-bottom))] pt-2 shadow-[0_-1px_0_var(--sep)] backdrop-blur-xl backdrop-saturate-[1.8] ${className}`} aria-label="주 메뉴">
+    <nav data-bottom-bar className={`glass fixed inset-x-0 bottom-0 z-30 mx-auto grid grid-flow-col items-end bg-bar pb-[max(10px,env(safe-area-inset-bottom))] pt-2 shadow-[0_-1px_0_var(--sep)] backdrop-blur-xl backdrop-saturate-[1.8] ${className}`} aria-label="주 메뉴">
       {left.map(tab)}
       {center && (
         <Link to={center.to} aria-label={center.label} className="grid justify-items-center">

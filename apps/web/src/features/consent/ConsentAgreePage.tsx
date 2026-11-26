@@ -64,7 +64,7 @@ export function ConsentAgreePage() {
       <p className="mt-0.5 text-footnote font-medium text-ink2">서비스를 이용하려면 아래 항목에 모두 동의해야 합니다</p>
       <QueryState queries={[q]} skeleton={3} errorTitle="동의 항목을 불러오지 못했습니다">
         <ConsentChecklist role={role} on={on} setOn={setOn} items={list} />
-        <div className="glass fixed inset-x-0 bottom-0 z-20 mx-auto max-w-[480px] border-t border-sep bg-bar px-4 pb-[max(12px,env(safe-area-inset-bottom))] pt-2.5 backdrop-blur-xl">
+        <div data-bottom-bar className="glass fixed inset-x-0 bottom-0 z-20 mx-auto max-w-[480px] border-t border-sep bg-bar px-4 pb-[max(12px,env(safe-area-inset-bottom))] pt-2.5 backdrop-blur-xl">
           <PrimaryButton disabled={!allAgreed(list, on)} loading={agree.isPending} onClick={submit}>동의하고 시작하기</PrimaryButton>
         </div>
       </QueryState>
