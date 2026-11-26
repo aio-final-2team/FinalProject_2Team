@@ -186,7 +186,7 @@ def detail(user, card_id):
             for row in connection.execute(
                 text("""
             SELECT d.title AS document_title,ch.location,coalesce(d.effective_from,d.created_at::date) AS effective_from,
-                   coalesce(e.quote,'') AS quote,(d.status='active' AND (d.effective_from IS NULL OR d.effective_from<=CURRENT_DATE)
+                   coalesce(e.quote,'') AS quote,(d.status='active'
                      AND (d.effective_to IS NULL OR d.effective_to>=CURRENT_DATE)) AS is_current
             FROM card_evidence e JOIN document_chunks ch ON (ch.id,ch.org_id)=(e.chunk_id,e.org_id)
             JOIN documents d ON (d.id,d.org_id)=(ch.document_id,ch.org_id)
