@@ -1,7 +1,8 @@
 import { useNavigate } from "react-router";
 import { useNotifications, useReadNotification, type Notification } from "@/api/notifications";
+import { TYPE_LABEL, useMyRequests } from "@/api/requests";
 import { Buddy } from "@/components/Brand";
-import { NotificationGroups, NotificationRow } from "@/components/NotificationRow";
+import { NotificationGroups, NotificationRow, notificationTag } from "@/components/NotificationRow";
 import { ScreenTop } from "@/components/ScreenTop";
 import { QueryState } from "@/components/QueryState";
 
@@ -10,6 +11,8 @@ export function NotificationsPage() {
   const nav = useNavigate();
   const list = useNotifications();
   const read = useReadNotification();
+  const requests = useMyRequests();
+  const typeOf = (n: Notification) => { const t = n.request_id ? requests.data?.items.find((r) => r.id === n.request_id)?.type : undefined; return t ? TYPE_LABEL[t] : undefined; };
   const items = list.data?.items ?? [];
 
   const open = (n: Notification) => {
@@ -29,7 +32,7 @@ export function NotificationsPage() {
           <b className="text-headline">새 알림이 없어요</b>
         </div>
       ) : (
-        <NotificationGroups items={items} renderRow={(n) => <NotificationRow key={n.id} n={n} onOpen={() => open(n)} />} />
+        <NotificationGroups items={items} tagOf={(n) => notificationTag(n, typeOf(n))} renderRow={(n) => <NotificationRow key={n.id} n={n} tag={notificationTag(n, typeOf(n))} onOpen={() => open(n)} />} />
       )}
       </QueryState>
     </div>

@@ -1,4 +1,4 @@
-import { NotificationGroups, NotificationRow } from "@/components/NotificationRow";
+import { NotificationGroups, NotificationRow, notificationTag } from "@/components/NotificationRow";
 import { ScreenTop } from "@/components/ScreenTop";
 import { useNavigate } from "react-router";
 import { QueryState, StaleBanner } from "@/components/QueryState";
@@ -46,9 +46,10 @@ export function TeacherNotifications({ role = "teacher" }: { role?: "teacher" | 
       ) : (
         <NotificationGroups
           items={items}
+          tagOf={(n) => notificationTag(n, cardOf(n) ? TYPE_LABEL[cardOf(n)!.type] : undefined)}
           renderRow={(n) => {
             const c = cardOf(n);
-            return <NotificationRow key={n.id} n={n} line={c ? `${TYPE_LABEL[c.type]} · ${c.childName ? `${c.childName} · ` : ""}${c.title}` : null} onOpen={() => open(n)} />;
+            return <NotificationRow key={n.id} n={n} tag={notificationTag(n, c ? TYPE_LABEL[c.type] : undefined)} line={c ? `${TYPE_LABEL[c.type]} · ${c.childName ? `${c.childName} · ` : ""}${c.title}` : null} onOpen={() => open(n)} />;
           }}
         />
       )}
