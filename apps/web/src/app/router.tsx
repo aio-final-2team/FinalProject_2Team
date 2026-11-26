@@ -24,6 +24,7 @@ import { NewRequestPage } from "@/features/parent/NewRequestPage";
 import { NotificationsPage } from "@/features/parent/NotificationsPage";
 import { RequestDetailPage } from "@/features/parent/RequestDetailPage";
 import { RequestsPage } from "@/features/parent/RequestsPage";
+import { ParentAiPage } from "@/features/parent/ParentAiPage";
 import { ParentLayout } from "@/layouts/ParentLayout";
 import { StaffLayout } from "@/layouts/StaffLayout";
 import { StateView } from "@/components/StateView";
@@ -100,6 +101,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <Navigate to="home" replace /> },
       { path: "home", element: <ParentHome /> },
+      { path: "ai", element: <ParentAiPage /> },
       { path: "notifications", element: <NotificationsPage /> },
       { path: "feed", element: <FeedScreen role="parent" /> },
       { path: "album", element: <Navigate to="/parent/feed?tab=mine" replace /> },

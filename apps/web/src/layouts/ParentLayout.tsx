@@ -13,7 +13,7 @@ export function ParentLayout() {
   const { pathname } = useLocation();
   const [me, setMe] = useState(false);
   const items = [
-    { to: "/parent/home", icon: "home", label: "홈", also: ["/parent/notifications"] },
+    { to: "/parent/home", icon: "home", label: "홈", also: ["/parent/notifications", "/parent/ai"] },
     { to: "/parent/feed", icon: "photo", label: "사진" },
     { to: "/parent/requests", icon: "inquiry", label: "요청", not: ["/parent/requests/new"] },
   ];

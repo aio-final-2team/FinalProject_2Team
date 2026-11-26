@@ -48,7 +48,15 @@ export function ParentHome() {
           <h1 className="mt-4 text-large-title font-bold tracking-[-0.025em]">{child ? `${nameI(child.display_name)}의 오늘` : "오늘"}</h1>
           <p className="mt-0.5 text-footnote font-medium text-on-brand/80">{dateLabel(date)}</p>
           <p className="mt-2 text-callout font-medium text-on-brand/90">오늘도 아이의 하루를 함께 볼까요?</p>
-          <Buddy face="basic" className="absolute -bottom-5 right-0 size-24 lg:-bottom-6 lg:size-28" />
+          <Link
+            to="/parent/ai"
+            aria-label="AI 도우미와 대화하기"
+            className="m-float absolute -bottom-5 right-0 rounded-full transition-transform duration-100 active:scale-[.96] lg:-bottom-6"
+          >
+            <span className="absolute -left-20 top-1 rounded-full bg-card px-2.5 py-1 text-caption font-bold text-accent-ink shadow-card">물어보세요
+            </span>
+            <Buddy face="basic" className="size-24 lg:size-28" />
+          </Link>
         </div>
       </header>
 
