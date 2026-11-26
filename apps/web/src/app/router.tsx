@@ -10,7 +10,6 @@ import { SoonPage } from "@/features/teacher/SoonPage";
 import { CarePage } from "@/features/care/CarePage";
 import { ClassPage } from "@/features/teacher/ClassPage";
 import { FeedScreen } from "@/features/feed/FeedScreen";
-import { SignupPage } from "@/features/consent/SignupPage";
 import { ConsentsPage } from "@/features/consent/ConsentsPage";
 import { ConsentAgreePage } from "@/features/consent/ConsentAgreePage";
 import { RouteError } from "@/components/RouteError";
@@ -32,7 +31,8 @@ import { StateView } from "@/components/StateView";
 export const router = createBrowserRouter([
   { path: "/", element: <Navigate to="/login" replace /> },
   { path: "/login", element: <LoginPage />, errorElement: <RouteError /> },
-  { path: "/signup", element: <SignupPage />, errorElement: <RouteError /> },
+  /* 가입하기는 계정을 만드는 서버 기능이 없어 숨겼다(지혜님 요청). 화면 코드(SignupPage)는 남겨 두었다 */
+  { path: "/signup", element: <Navigate to="/login" replace /> },
   { path: "/consents/agree", element: <Guard allow={["teacher", "director", "parent"]} skipConsent><ConsentAgreePage /></Guard>, errorElement: <RouteError /> },
   {
     element: (

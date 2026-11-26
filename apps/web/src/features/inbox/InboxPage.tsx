@@ -160,12 +160,12 @@ export function InboxPage({ role }: { role: Exclude<Role, "parent"> }) {
         )}
         {data && list.length === 0 && <StateView kind="empty" audience="staff" title={EMPTY[filter]} sub="새 카드가 오면 숫자로 알려 드려요" />}
         {aiAnswered.length > 0 && (
-          <section className="mt-4 grid gap-2" aria-label="AI가 바로 답한 요청">
-            <h3 className="px-1 text-sub font-medium text-ink2">AI가 바로 답한 요청 <span className="tabular-nums">{aiAnswered.length}건</span></h3>
+          <section className="mt-4 grid gap-2" aria-label="바로 안내한 요청">
+            <h3 className="px-1 text-sub font-medium text-ink2">바로 안내한 요청 <span className="tabular-nums">{aiAnswered.length}건</span></h3>
             {aiAnswered.map((r) => (
               <Link key={r.id} to={`${base}/ai/${r.id}`} className="grid gap-0.5 rounded-2xl bg-card px-3.5 py-3 transition-colors hover:bg-fill">
                 <b className="text-[14.5px]">{r.title ?? REQ_TYPE[r.type]}</b>
-                <span className="text-[13px] text-ink2">{[REQ_TYPE[r.type], r.child_name, r.requester_name].filter(Boolean).join(" · ")} · AI가 답함</span>
+                <span className="text-[13px] text-ink2">{[REQ_TYPE[r.type], r.child_name, r.requester_name].filter(Boolean).join(" · ")} · 바로 안내함</span>
               </Link>
             ))}
           </section>

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { useNavigate } from "react-router";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ApiError } from "@/api/client";
 import { DEMO_ACCOUNTS, DEMO_PASSWORD, HOME, SPLASH_KEY, useSession } from "@/app/session";
@@ -157,7 +157,6 @@ function LoginForm({ onEnter }: { onEnter: (r: Role) => void }) {
           로그인
         </PrimaryButton>
       </form>
-      <p className="text-center text-footnote text-ink2">처음이세요? <Link to="/signup" className="font-semibold text-accent">가입하기</Link></p>
       {DEMO && (
         <div className="grid gap-2">
           <div className="flex items-center gap-3 text-footnote text-ink2">
