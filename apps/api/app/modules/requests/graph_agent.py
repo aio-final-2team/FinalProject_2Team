@@ -127,7 +127,9 @@ def _write_request(state):
     # 보호자 글은 문의 답변 그래프(answer.py)처럼 가려서 모델에 보낸다(T55 G-5). 원 자료 조각은 그대로 둔다.
     payload = {"question": mask_sensitive(req["body"]), "chunks": chunks, "memories": state["parallel"].get("memories", []),
                "prior_answer": find_saved_answer(req),
-               "review_issues": state.get("issues", [])}
+               "review_issues": state.get("issues", []),
+               # 저장된 기억·승인한 답도 사용자가 쓴 글에서 왔으니 지시가 아닌 데이터로 표시한다(T55 G-2).
+               "untrusted_data_fields": ["question", "chunks", "memories", "prior_answer"]}
     reply = answer_graph._ask_writer(answer_graph.OpenAIModel("DOCUMENT"), prompt, payload, [])
     if reply is None:
         return {"draft": {"text": "", "evidence": [], "no_evidence": True, "conflict": False}}
