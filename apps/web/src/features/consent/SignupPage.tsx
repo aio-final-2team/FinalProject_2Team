@@ -29,7 +29,7 @@ export function SignupPage() {
       <h1 className="mt-1 text-large-title font-bold tracking-[-0.025em]">가입</h1>
       {!role ? (
         <>
-          <p className="mt-0.5 text-footnote font-medium text-ink2">어떤 역할로 가입하나요?</p>
+          <p className="mt-0.5 text-footnote font-medium text-ink2">어떤 역할로 가입하시겠습니까?</p>
           <ul aria-label="역할" className="mt-4 grid gap-2">
             {ROLES.map((r) => (
               <li key={r.role}>
@@ -38,7 +38,7 @@ export function SignupPage() {
                     <b className="text-headline">{r.title}</b>
                     <Icon name="chevR" className="size-4 text-ink2" />
                   </span>
-                  <span className="mt-1.5 block text-caption font-semibold text-ink2">이런 일을 할 수 있어요</span>
+                  <span className="mt-1.5 block text-caption font-semibold text-ink2">할 수 있는 일</span>
                   <ul className="mt-1 grid gap-1 text-footnote">
                     {r.can.map((c) => (
                       <li key={c} className="flex items-start gap-2"><span aria-hidden className="mt-[7px] size-1 shrink-0 rounded-full bg-accent" /><span className="break-keep">{c}</span></li>
@@ -51,10 +51,10 @@ export function SignupPage() {
         </>
       ) : (
         <>
-          <p className="mt-0.5 text-footnote font-medium text-ink2">아래 항목에 모두 동의해야 가입할 수 있어요</p>
+          <p className="mt-0.5 text-footnote font-medium text-ink2">아래 항목에 모두 동의해야 가입할 수 있습니다</p>
           <ConsentChecklist role={role} on={on} setOn={setOn} />
           <div className="glass fixed inset-x-0 bottom-0 z-20 mx-auto max-w-[480px] border-t border-sep bg-bar px-4 pb-[max(12px,env(safe-area-inset-bottom))] pt-2.5 backdrop-blur-xl">
-            <PrimaryButton disabled={!allAgreed(consentsFor(role), on)} onClick={() => { saveConsent(role, on); toast({ kind: "ok", title: "동의를 저장했어요", sub: "이제 로그인할 수 있어요" }); nav("/login", { replace: true }); }}>동의하고 가입하기</PrimaryButton>
+            <PrimaryButton disabled={!allAgreed(consentsFor(role), on)} onClick={() => { saveConsent(role, on); toast({ kind: "ok", title: "동의를 저장했습니다", sub: "이제 로그인할 수 있습니다" }); nav("/login", { replace: true }); }}>동의하고 가입하기</PrimaryButton>
           </div>
         </>
       )}

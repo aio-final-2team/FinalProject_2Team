@@ -18,13 +18,13 @@ export function ConsentChecklist({ role, on, setOn, afterLogin = false, items }:
   return (
     <>
       <button type="button" aria-pressed={bulkOn} onClick={() => setOn((x) => (bulkOn ? x.filter((id) => !bulk.some((c) => c.id === id)) : [...new Set([...x, ...bulk.map((c) => c.id)])]))} className={`mt-4 flex h-12 w-full items-center gap-3 rounded-lg px-3 text-left font-semibold ${bulkOn ? "bg-tint text-accent-ink" : "bg-card shadow-card"}`}>
-        <Check on={bulkOn} />모두 동의해요
+        <Check on={bulkOn} />모두 동의합니다
       </button>
       <Cards items={bulk} on={on} toggle={toggle} afterLogin={afterLogin} />
       {separate.length > 0 && (
         <section aria-label="직접 선택해야 하는 항목" className="mt-6">
           <h2 className="px-1 text-footnote font-semibold text-ink2">직접 선택해야 하는 항목</h2>
-          <p className="mt-0.5 px-1 text-caption text-ink2">위의 “모두 동의해요”로 선택되지 않아요. 하나씩 직접 눌러 주세요.</p>
+          <p className="mt-0.5 px-1 text-caption text-ink2">위의 “모두 동의합니다”로 선택되지 않습니다. 하나씩 직접 눌러 주십시오.</p>
           <Cards items={separate} on={on} toggle={toggle} afterLogin={afterLogin} />
         </section>
       )}

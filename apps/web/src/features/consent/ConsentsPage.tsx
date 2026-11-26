@@ -17,7 +17,7 @@ export function ConsentsPage() {
   return (
     <div className={`mx-auto min-h-dvh bg-g px-4 pb-10 ${role === "parent" ? "max-w-[480px]" : "max-w-[680px]"}`}>
       <ScreenTop audience={role === "parent" ? "parent" : "staff"} back={{ to: HOME[role], label: "돌아가기" }} title="개인정보·동의 내역" sub={user?.display_name} />
-      <QueryState queries={[q]} skeleton={3} errorTitle="동의 내역을 불러오지 못했어요">
+      <QueryState queries={[q]} skeleton={3} errorTitle="동의 내역을 불러오지 못했습니다">
         <ul className="mt-4 overflow-hidden rounded-lg bg-card shadow-card [&>li+li]:border-t [&>li+li]:border-sep">
           {(q.data?.items ?? []).map((it) => {
             const c = CONSENTS.find((x) => x.id === it.item);
@@ -45,8 +45,8 @@ export function ConsentsPage() {
       )}
       <p className="mt-4 break-keep px-1 text-footnote text-ink2">동의를 거두려면 탈퇴해야 합니다. 탈퇴하면 올린 글, 사진, 얼굴 특징정보를 지웁니다.</p>
       <button type="button" onClick={() => setQuit(true)} className="mt-3 h-11 w-full rounded-md bg-fill text-callout font-semibold text-ink active:scale-[.98]">탈퇴하기</button>
-      <Sheet open={quit} onClose={() => setQuit(false)} title="탈퇴는 준비 중이에요">
-        <p className="text-footnote text-ink2">탈퇴 기능이 열리면 이 화면에서 할 수 있어요.</p>
+      <Sheet open={quit} onClose={() => setQuit(false)} title="탈퇴는 준비 중입니다">
+        <p className="text-footnote text-ink2">탈퇴 기능이 열리면 이 화면에서 할 수 있습니다.</p>
         <Button variant="plain" size="sm" onClick={() => setQuit(false)}>닫기</Button>
       </Sheet>
     </div>
