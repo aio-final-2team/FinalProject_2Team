@@ -145,6 +145,8 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
 
   const isOpen = !["completed", "rejected", "sent_or_booked"].includes(c.status) || ((c.parentConfirmedAt || c.type === "complaint") && c.status === "sent_or_booked");
   const director = role === "director";
+  /* 원장 보고 카드는 원장만 처리한다(API 결정 403). 교사는 내용만 본다 */
+  const reportOnly = !director && c?.kind === "director_report";
   const holdDates = [1, 2, 7].map((days) => {
     const d = new Date();
     d.setDate(d.getDate() + days);
@@ -175,7 +177,11 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
         )}
       </header>
 
-      {c.kind !== "rule_proposal" && (c.warnings?.length || (c.check && !c.check.passed && c.check.issues?.length)) ? (
+      {reportOnly && (
+        <p className="rounded-2xl bg-lav-tint px-4 py-3 text-callout text-ink">원장님께 보고한 카드예요. 원장님이 확인한 뒤 이어서 처리돼요. 보호자에게 보낼 답은 같은 요청의 답장 카드에서 써 주세요.</p>
+      )}
+
+      {!reportOnly && c.kind !== "rule_proposal" && (c.warnings?.length || (c.check && !c.check.passed && c.check.issues?.length)) ? (
         <ul className="grid gap-1.5 rounded-2xl bg-card px-4 py-3 text-[14px]" aria-label="확인해 주세요">
           {c.warnings?.map((w) => (
             <li key={w} className="flex gap-2">
@@ -321,7 +327,7 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
       )}
 
       {/* 아래 고정 행동 칸 */}
-      {isOpen && (
+      {isOpen && !reportOnly && (
         <div className={`glass fixed inset-x-0 z-20 ${director ? "bottom-0 pb-[max(12px,env(safe-area-inset-bottom))]" : "bottom-[calc(64px+env(safe-area-inset-bottom))]"} bg-bar px-4 py-3 shadow-[0_-1px_0_var(--sep)] backdrop-blur-xl backdrop-saturate-[1.8] lg:sticky lg:bottom-4 lg:mx-0 lg:rounded-2xl lg:shadow-[0_8px_30px_rgba(11,31,58,.12),0_0_0_.5px_var(--sep)]`}>
           <div className="mx-auto grid max-w-[720px] gap-2">{director ? <DirectorActions c={c} open={open} /> : <TeacherActions c={c} open={open} draft={draft} slot={slot} pending={pendingSend || act.isPending} run={run} />}</div>
         </div>
