@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api, uuid } from "./client";
+import { useLiveStream } from "./stream";
 
 /** 학부모 요청 (API 3·4·5·7, 3.1·3.2·3.9·3.10) */
 export type RequestType = "inquiry" | "consultation" | "complaint" | "medication" | "pickup";
@@ -65,8 +66,11 @@ export const TYPE_LABEL: Record<string, string> = { inquiry: "문의", consultat
 
 export const useMyRequests = () => useQuery({ queryKey: ["my-requests"], queryFn: () => api<{ items: RequestSummary[]; total: number }>("/api/v1/requests?size=50") });
 
-export const useRequest = (id?: string) =>
-  useQuery({ queryKey: ["request", id], queryFn: () => api<RequestDetail>(`/api/v1/requests/${id}`), enabled: !!id, refetchInterval: 5000 });
+/** live: 학부모 본인 요청 화면에서만 AI 진행 스트림(API 6, 학부모 전용)을 연다 */
+export const useRequest = (id?: string, live = false) => {
+  useLiveStream(live && id ? `/api/v1/requests/${id}/stream` : undefined, ["request", id]);
+  return useQuery({ queryKey: ["request", id], queryFn: () => api<RequestDetail>(`/api/v1/requests/${id}`), enabled: !!id, refetchInterval: 15_000 });
+};
 
 export function useCreateRequest() {
   const qc = useQueryClient();

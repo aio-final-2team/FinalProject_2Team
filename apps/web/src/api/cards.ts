@@ -1,3 +1,4 @@
+import { useLiveStream } from "./stream";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { InboxFilter, RequestType, Status } from "@/domain/status";
 import type { Card, CardAction, HistoryItem, Role, Slot, Source } from "@/domain/types";
@@ -129,7 +130,10 @@ export const useAllCards = () => {
   return results.flatMap((r) => r.data ?? []);
 };
 
-export const useCard = (id: string | undefined) => useQuery({ queryKey: ["cards", "detail", id], queryFn: () => api<CardDetail>(`/api/v1/cards/${id}`).then(cardFromDetail), enabled: !!id });
+export const useCard = (id: string | undefined) => {
+  useLiveStream(id ? `/api/v1/cards/${id}/stream` : undefined, ["cards", "detail", id]);
+  return useQuery({ queryKey: ["cards", "detail", id], queryFn: () => api<CardDetail>(`/api/v1/cards/${id}`).then(cardFromDetail), enabled: !!id });
+};
 /** 검사 결과 issues는 서버에서 [{field, problem}]로 온다 (field: 출처·날짜·대상·누락·민감정보). 옛 모양(문자열·message·text)도 읽는다. */
 function issueText(i: unknown): string {
   if (typeof i === "string") return i;
