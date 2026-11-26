@@ -121,8 +121,9 @@ def test_search_scope_for_parent_class_and_other_org(docs):
     with pytest.raises(ApiError):
         search_documents(staff(), str(seed.ORG), "law", "겨울방학")  # 도구 doc_type은 네 가지만
     future = search_documents(staff(), str(seed.ORG), "notice", "크리스마스", on_date=date(2026, 11, 20))["chunks"]
-    assert future and future[0]["document_title"] == "크리스마스 행사 안내"  # 미리 공지한 시행 전(12/01) 자료도 찾음
-    assert future[0]["effective_from"] == date(2026, 12, 1)  # 답에서 '12월 1일부터'라고 말할 수 있게 시행일을 같이 줌
+    # 미리 공지한 시행 전(12/01) 자료도 찾음. 12월 가정통신문(#367)도 크리스마스를 다뤄서 어느 쪽이 1등이어도 된다.
+    christmas = [c for c in future if c["document_title"] == "크리스마스 행사 안내"]
+    assert christmas and christmas[0]["effective_from"] == date(2026, 12, 1)  # 답에서 '12월 1일부터'라고 말할 수 있게 시행일을 같이 줌
 
 
 def test_parent_search_accepts_string_classroom_ids(docs):
