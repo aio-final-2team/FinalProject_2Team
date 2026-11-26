@@ -10,6 +10,7 @@ import { ScreenTop } from "@/components/ScreenTop";
 import { QueryState } from "@/components/QueryState";
 import { fmtDateTime } from "@/domain/datetime";
 import { useToast } from "@/components/Toast";
+import { term } from "@/domain/wording";
 
 const STEPS = ["접수", "선생님 확인", "답변", "완료"];
 /** 유형별 3번째 단계 이름: 상담은 예약, 투약·귀가는 처리, 문의·민원은 답변 */
@@ -39,7 +40,7 @@ export function RequestDetailPage() {
 
   return (
     <div className="mx-auto max-w-[680px] px-4 pb-48">
-      <ScreenTop audience="parent" back={{ to: "/parent/requests", label: "요청" }} title={r?.title ?? "요청"} sub={r ? <>{TYPE_LABEL[r.type] ?? r.type} · <span className="font-bold text-lav">{r.status_label}</span></> : undefined} />
+      <ScreenTop audience="parent" back={{ to: "/parent/requests", label: "요청" }} title={r?.title ?? "요청"} sub={r ? <>{TYPE_LABEL[r.type] ?? r.type} · <span className="font-bold text-lav">{term(r.status_label)}</span></> : undefined} />
       <QueryState queries={[q]} skeleton={3} errorTitle="이 요청을 불러오지 못했어요">
       {r && (
         <>

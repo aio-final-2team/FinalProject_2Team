@@ -4,6 +4,7 @@ import { Buddy } from "@/components/Brand";
 import { Icon } from "@/components/Icon";
 import { ScreenTop } from "@/components/ScreenTop";
 import { QueryState } from "@/components/QueryState";
+import { term } from "@/domain/wording";
 
 /** P-02 요청 목록 (T21 뼈대). 상태 이름은 서버가 주는 status_label을 그대로 쓴다 (학부모용 표시 이름) */
 export function RequestsPage() {
@@ -29,7 +30,7 @@ export function RequestsPage() {
                 <span className="min-w-0 flex-1">
                   <b className="block truncate text-headline font-semibold">{r.title ?? "제목 없음"}</b>
                   <span className="flex gap-2 text-footnote">
-                    <span className="font-bold text-lav">{r.status_label}</span>
+                    <span className="font-bold text-lav">{term(r.status_label)}</span>
                     {r.next_action && <span className="text-ink2">· {r.next_action}</span>}
                   </span>
                 </span>

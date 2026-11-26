@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import { Icon } from "./Icon";
 import { fmtDate } from "@/domain/datetime";
 import type { Notification } from "@/api/notifications";
+import { term } from "@/domain/wording";
 
 /** 알림 종류별 아이콘 (서버 kind). 모르는 종류는 받은함 아이콘 */
 export const KIND_ICON: Record<string, string> = {
@@ -32,8 +33,8 @@ export function NotificationRow({ n, line, tag, onOpen }: { n: Notification; lin
         <span aria-hidden className={`size-2 shrink-0 rounded-full ${unread ? "bg-accent" : "bg-transparent"}`} />
         <span aria-hidden className={`grid size-9 shrink-0 place-items-center rounded-md ${unread ? "bg-tint text-accent-ink" : "bg-fill text-ink2"}`}><Icon name={KIND_ICON[n.kind] ?? "inbox"} className="size-5" /></span>
         <span className="min-w-0 flex-1">
-          <b className={`block text-callout ${unread ? "font-semibold" : "font-medium text-ink2"}`}>{tag && !n.title.includes(tag) && <Tag>{tag}</Tag>}{n.title}</b>
-          {(n.body ?? line) && <span className="block truncate text-footnote text-ink2">{n.body ?? line}</span>}
+          <b className={`block text-callout ${unread ? "font-semibold" : "font-medium text-ink2"}`}>{tag && !n.title.includes(tag) && <Tag>{tag}</Tag>}{term(n.title)}</b>
+          {(n.body ?? line) && <span className="block truncate text-footnote text-ink2">{term(n.body ?? line)}</span>}
         </span>
         <time className="shrink-0 text-caption text-ink2 tabular-nums">{fmtDate(n.deliver_after)}</time>
       </button>
@@ -70,7 +71,7 @@ function Group({ items, renderRow, tag }: { items: Notification[]; renderRow: (n
         <span aria-hidden className={`size-2 shrink-0 rounded-full ${unread ? "bg-accent" : "bg-transparent"}`} />
         <span aria-hidden className={`grid size-9 shrink-0 place-items-center rounded-md ${unread ? "bg-tint text-accent-ink" : "bg-fill text-ink2"}`}><Icon name={KIND_ICON[first.kind] ?? "inbox"} className="size-5" /></span>
         <span className="min-w-0 flex-1">
-          <b className={`block text-callout ${unread ? "font-semibold" : "font-medium text-ink2"}`}>{tag && !first.title.includes(tag) && <Tag>{tag}</Tag>}{first.title} <span className="tabular-nums">{items.length}건</span></b>
+          <b className={`block text-callout ${unread ? "font-semibold" : "font-medium text-ink2"}`}>{tag && !first.title.includes(tag) && <Tag>{tag}</Tag>}{term(first.title)} <span className="tabular-nums">{items.length}건</span></b>
           <span className="block truncate text-footnote text-ink2">{unread ? `안 읽음 ${unread}건` : "모두 읽었어요"}</span>
         </span>
         <time className="shrink-0 text-caption text-ink2 tabular-nums">{fmtDate(first.deliver_after)}</time>

@@ -7,6 +7,7 @@ import { QueryState } from "@/components/QueryState";
 import { Icon } from "@/components/Icon";
 import { ChildAvatar, type ProfilePhoto } from "@/components/ChildAvatar";
 import { dateLabel, itemLabel, nameI, todayKST, type DailyNote } from "@/domain/notes";
+import { term } from "@/domain/wording";
 
 type Me = { user: { display_name: string }; children: { id: string; display_name: string; classroom_id: string; profile_photo?: ProfilePhoto }[] };
 
@@ -64,7 +65,7 @@ export function ParentHome() {
                     <span aria-hidden className="grid size-9 shrink-0 place-items-center rounded-lg bg-tint text-caption font-bold text-accent-ink">{(TYPE_LABEL[r.type] ?? r.type).slice(0, 2)}</span>
                     <span className="min-w-0 flex-1">
                       <b className="block truncate text-headline font-semibold">{r.title ?? "제목 없음"}</b>
-                      <span className="text-footnote font-bold text-lav">{r.status_label}</span>
+                      <span className="text-footnote font-bold text-lav">{term(r.status_label)}</span>
                     </span>
                     <Icon name="chevR" className="size-4 text-ink2" />
                   </Link>

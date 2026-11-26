@@ -6,6 +6,7 @@ import { Icon } from "@/components/Icon";
 import { QueryState } from "@/components/QueryState";
 import { Sheet } from "@/components/Sheet";
 import { useToast } from "@/components/Toast";
+import { term } from "@/domain/wording";
 
 const TYPE = { pickup: { label: "귀가", icon: "handover" }, medication: { label: "투약", icon: "medication" } } as const;
 const FOLD = 4;
@@ -87,7 +88,7 @@ export function CareSection({ classroomId, all }: { classroomId?: string; all?: 
                       <span className="flex items-center gap-2">
                         {c.child_name && <b className="text-callout">{c.child_name}</b>}
                         <b className="text-caption font-bold text-accent-ink">{t.label}</b>
-                        <span className="text-caption font-semibold text-ink2">{c.status_label}</span>
+                        <span className="text-caption font-semibold text-ink2">{term(c.status_label)}</span>
                       </span>
                       <span className="mt-0.5 block text-callout font-semibold">{c.title}</span>
                       {c.type === "pickup" && c.unregistered_pickup && <span className="mt-1 block text-footnote font-semibold text-danger">등록되지 않은 인계자예요. 누가 데려가는지 꼭 확인해 주세요</span>}
@@ -128,7 +129,7 @@ export function CareSection({ classroomId, all }: { classroomId?: string; all?: 
                       <span className="block truncate text-callout font-semibold">{c.child_name ? `${c.child_name} · ` : ""}{c.title}</span>
                       <span className="text-caption text-ink2">{TYPE[c.type].label}</span>
                     </span>
-                    <span className={`shrink-0 text-caption font-semibold ${c.status === "completed" ? "text-ok" : "text-ink2"}`}>{c.status === "completed" ? "완료" : c.status_label}</span>
+                    <span className={`shrink-0 text-caption font-semibold ${c.status === "completed" ? "text-ok" : "text-ink2"}`}>{c.status === "completed" ? "완료" : term(c.status_label)}</span>
                   </li>
                 ))}
               </ul>

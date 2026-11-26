@@ -3,6 +3,7 @@ import type { InboxFilter, RequestType, Status } from "@/domain/status";
 import type { Card, CardAction, HistoryItem, Role, Slot, Source } from "@/domain/types";
 import { useSession } from "@/app/session";
 import { api, uuid } from "./client";
+import { term } from "@/domain/wording";
 
 type ApiRequestType = "inquiry" | "consultation" | "complaint";
 type ApiInboxFilter = "unassigned" | "needs_review" | "uncertain" | "on_hold" | "in_progress" | "done";
@@ -55,7 +56,7 @@ const statusFromItem = (item: CardItem, filter: InboxFilter): Status => {
 const cardFromItem = (item: CardItem, filter: InboxFilter): Card => ({
   id: item.id, version: item.version, kind: item.kind, inboxFilter: filter,
   requestId: item.request_id ?? "-", type: requestType(item.request_type), status: statusFromItem(item, filter), risk: risk(item.risk_level),
-  urgentReason: riskLabel(item.risk_category), title: item.title || item.status_label, childName: item.child_name ?? "", guardianName: item.requester_name ?? "보호자", requesterName: item.requester_name ?? undefined,
+  urgentReason: riskLabel(item.risk_category), title: item.title || term(item.status_label), childName: item.child_name ?? "", guardianName: item.requester_name ?? "보호자", requesterName: item.requester_name ?? undefined,
   className: item.classroom.name, createdAt: item.due_at ?? new Date().toISOString(), original: item.title, sources: [],
   check: item.check ? { passed: item.check.passed, note: item.check.issue_count ? `확인 항목 ${item.check.issue_count}개` : undefined } : undefined,
   repeatCount: item.repeat_count ?? undefined, escalated: item.risk_level === "urgent" || item.kind === "director_report",
