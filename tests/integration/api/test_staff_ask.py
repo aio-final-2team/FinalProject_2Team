@@ -150,12 +150,17 @@ def test_staff_ask_model_failure_is_503_and_recorded(client, teacher, staff_ask_
     from agents.llm import ModelError
 
     add_doc(staff_ask_backend, "준비물은 수건")
-    for index, (role, error_type) in enumerate((role, error) for role in ("DOCUMENT", "CHECKER")
-                                              for error in (ModelError, RuntimeError)):
+    for index, (role, error) in enumerate((role, error) for role in ("DOCUMENT", "CHECKER")
+                                         for error in (ModelError("[TEST] private upstream error"),
+                                                       ModelError("[TEST] private format error", format=True),
+                                                       RuntimeError("[TEST] private upstream error"))):
         class FailedModel(Model):
+            failures = 0
+
             def json(self, system, user):
                 if self.role == role:
-                    raise error_type("[TEST] private upstream error")
+                    type(self).failures += 1
+                    raise error
                 return super().json(system, user)
 
         monkeypatch.setattr("agents.graphs.answer.OpenAIModel", FailedModel)
@@ -164,17 +169,41 @@ def test_staff_ask_model_failure_is_503_and_recorded(client, teacher, staff_ask_
         err(r, 503, "UPSTREAM_UNAVAILABLE")
         assert r.json() == {"error": {"code": "UPSTREAM_UNAVAILABLE", "message": "잠시 뒤 다시 처리할게요.",
                                      "trace_id": trace, "details": {}}}
+        assert FailedModel.failures == (2 if isinstance(error, ModelError) and (error.format or role == "CHECKER") else 1)
     if staff_ask_backend == "mock":
         events = [e.__dict__ for e in store.state().events if e.detail.get("tool") == "staff_ask"]
     else:
         with transaction() as c:
             events = c.execute(text("SELECT * FROM events WHERE detail->>'tool'='staff_ask'")).mappings().all()
-    assert len(events) == 4
-    assert {e["detail"]["trace_id"] for e in events} == {f"[TEST]-staff-ask-failed-{i}" for i in range(4)}
+    assert len(events) == 6
+    assert {e["detail"]["trace_id"] for e in events} == {f"[TEST]-staff-ask-failed-{i}" for i in range(6)}
     assert all(e["action"] == "tool_failed" and e["agent_name"] == "document" and e["actor_id"] == seed.TEACHER
                and e["request_id"] is None and e["card_id"] is None
                and e["detail"]["code"] == "UPSTREAM_UNAVAILABLE" and e["detail"]["evidence_count"] == 0
                and "private" not in json.dumps(e["detail"]) for e in events)
+
+
+def test_staff_ask_format_error_retries_then_answers(client, teacher, staff_ask_backend, monkeypatch):
+    from agents.llm import ModelError
+
+    doc = add_doc(staff_ask_backend, "준비물은 수건")
+    for role in ("DOCUMENT", "CHECKER"):
+        class RetryingModel(Model):
+            attempts = 0
+
+            def json(self, system, user):
+                if self.role == role:
+                    type(self).attempts += 1
+                    if self.attempts == 1:
+                        raise ModelError("[TEST] JSON이 아닌 답", format=True)
+                return super().json(system, user)
+
+        monkeypatch.setattr("agents.graphs.answer.OpenAIModel", RetryingModel)
+        r = client.post(BASE + "/staff/ask", headers=teacher, json={"question": "준비물"})
+        assert r.status_code == 200, r.text
+        assert r.json() == {"answer": "준비물은 수건이에요.", "conflict": False, "evidence": [{"document_id": doc,
+            "title": "[TEST] 안내", "location": "[TEST] 준비", "effective_date": "2026-12-01"}]}
+        assert RetryingModel.attempts == 2
 
 
 def test_staff_ask_no_evidence_is_distinct(client, teacher, staff_ask_backend, monkeypatch):

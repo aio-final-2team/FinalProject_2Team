@@ -1758,7 +1758,7 @@ GET `/api/v1/me`와 로그인 응답의 user.consents_complete도 같은 판·�
 | evidence[].effective_date | 응답 | date 또는 null | 항상, null 가능 | 문서 effective_from |
 
 - 자료 충돌: 200, answer=`자료마다 내용이 달라요. 아래 두 자료를 확인해 주세요.`, conflict=true, 충돌한 양쪽 자료의 검증된 evidence를 반환한다(겨울방학 12/24·12/26 둘 다). 검색·인용에 없는 출처는 만들지 않는다.
-- 모델 호출 실패(작성·검사 예외): 503 `UPSTREAM_UNAVAILABLE`, 1.4의 `{error:{code,message,trace_id,details}}` 형식을 반환한다.
+- 모델 호출 실패: 기존 답변 흐름의 모양 오류·검사 재시도를 유지하며, 재시도 뒤에도 모델 오류로 답변을 못 만들면 503 `UPSTREAM_UNAVAILABLE`, 1.4의 `{error:{code,message,trace_id,details}}` 형식을 반환한다. 재시도에 성공하면 정상 200이다. ModelError 이외의 예외도 503이다.
 - 근거 없음: 200, answer=`자료에서 못 찾았어요`, evidence=[], conflict=false. 인용·검사 검증에서 근거를 확정하지 못해도 같은 안전 응답을 쓴다.
 
 모델에 보내는 질문·자료 제목·위치·본문·검사 입력은 기존 mask_sensitive를 통과한다. 지시문이 섞인 조각은 기존 guardrails로 제외한다. 근거가 없으면 모델을 호출하지 않는다. mock·DB 계약은 같으며 시험에는 가짜 작성·검사 모델을 주입한다. 새 표·마이그레이션은 없다.
