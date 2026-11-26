@@ -15,8 +15,8 @@ export type Memory = {
 };
 
 export const KIND_LABEL: Record<MemoryKind, string> = { rejection_reason: "거절한 이유", preference: "선호", tone: "말투", care_note: "돌봄 메모", saved_answer: "승인한 답", rule: "규칙" };
-/** 하나씩 지울 수 있는 기억(숫자 id). 승인한 답은 끄기, 규칙은 카드에서 정한다 */
-export const isDeletable = (m: Memory) => typeof m.id === "number";
+/** source=memory만 삭제한다. 구버전 서버는 source가 없으므로 숫자 id를 기억으로 본다. */
+export const isDeletable = (m: Memory) => m.source === "memory" || (!m.source && typeof m.id === "number");
 /** 승인한 답·규칙의 상태(structured.status) */
 export const statusOf = (m: Memory) => (typeof m.structured?.status === "string" ? (m.structured.status as string) : undefined);
 /** 반려 이유 코드 → 담임이 읽는 말 (문서 4.1) */
@@ -50,11 +50,11 @@ export function useSavedAnswerStatus() {
   });
 }
 
-/** 규칙 제안 카드의 켜기(activate)·거절(decline) */
+/** 규칙 제안 카드의 켜기·거절, 기억 화면의 활성 규칙 끄기 (API 20) */
 export function useRuleDecision() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (v: { ruleId: string; decision: "activate" | "decline" }) => api<{ rule: { id: string; status: string } }>(`/api/v1/memory-rules/${v.ruleId}/decision`, { method: "POST", body: JSON.stringify({ decision: v.decision }) }),
+    mutationFn: (v: { ruleId: string; decision: "activate" | "decline" | "off" }) => api<{ rule: { id: string; status: string } }>(`/api/v1/memory-rules/${v.ruleId}/decision`, { method: "POST", body: JSON.stringify({ decision: v.decision }) }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["cards"] });
       qc.invalidateQueries({ queryKey: ["memories"] });

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ApiError } from "@/api/client";
-import { KIND_LABEL, REASON_LABEL, isDeletable, statusOf, useConfirmMemory, useDeleteMemory, useMemories, useSavedAnswerStatus, type Memory, type MemoryKind } from "@/api/memory";
+import { KIND_LABEL, REASON_LABEL, isDeletable, statusOf, useConfirmMemory, useDeleteMemory, useMemories, useRuleDecision, useSavedAnswerStatus, type Memory, type MemoryKind } from "@/api/memory";
 import { Button } from "@/components/Button";
 import { QueryState } from "@/components/QueryState";
 import { ScreenTop } from "@/components/ScreenTop";
@@ -35,6 +35,7 @@ export function MemoryPage({ role = "teacher" }: { role?: Role }) {
   const del = useDeleteMemory();
   const confirm = useConfirmMemory();
   const saved = useSavedAnswerStatus();
+  const rule = useRuleDecision();
   const toast = useToast();
   const [target, setTarget] = useState<Memory | null>(null);
   /* 기억하지 않기로 한 것은 내용이 비어 있으므로 보이지 않는다 */
@@ -60,6 +61,12 @@ export function MemoryPage({ role = "teacher" }: { role?: Role }) {
   const toggle = (m: Memory) => {
     const next = statusOf(m) === "off" ? "active" : "off";
     saved.mutate({ id: String(m.id), status: next }, { onSuccess: () => toast({ kind: "ok", title: next === "off" ? "껐어요" : "켰어요" }), onError: () => failed("바꾸지 못했어요") });
+  };
+  const turnRuleOff = (m: Memory) => {
+    rule.mutate(
+      { ruleId: String(m.id), decision: "off" },
+      { onSuccess: () => toast({ kind: "ok", title: "규칙을 껐어요" }), onError: () => failed("규칙을 끄지 못했어요") },
+    );
   };
 
   return (
@@ -110,6 +117,9 @@ export function MemoryPage({ role = "teacher" }: { role?: Role }) {
                         )}
                         {m.kind === "saved_answer" && (
                           <button type="button" disabled={saved.isPending} onClick={() => toggle(m)} className="h-9 shrink-0 rounded-md px-2.5 text-footnote font-semibold text-ink2 active:scale-[.97] disabled:opacity-50">{statusOf(m) === "off" ? "켜기" : "끄기"}</button>
+                        )}
+                        {m.kind === "rule" && statusOf(m) === "active" && (
+                          <button type="button" disabled={rule.isPending} onClick={() => turnRuleOff(m)} className="h-9 shrink-0 rounded-md px-2.5 text-footnote font-semibold text-ink2 active:scale-[.97] disabled:opacity-50">끄기</button>
                         )}
                       </li>
                     );
