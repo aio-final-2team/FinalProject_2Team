@@ -12,9 +12,9 @@ from app.core.errors import trace_id_of
 from app.core.schedule import KST
 from app import backend
 from app.api.schemas.actions import MessageIn, SlotChoicesIn, ConsultationDelayIn
-from app.api.schemas.requests import RequestStatus
+from app.api.schemas.requests import RequestStatus, RequestType
 from app.api.schemas.requests import CareDecisionIn, CareDecisionOut, CareUpdateIn, PickupGuardiansOut
-from app.api.schemas.views import CareRequestList, RequestList, MessageResponse, ChoicesResponse, ConfirmResponse, ConsultationDelayResponse
+from app.api.schemas.views import CareRequestList, RequestList, StaffRequestList, MessageResponse, ChoicesResponse, ConfirmResponse, ConsultationDelayResponse
 from fastapi import Query
 from typing import Literal
 
@@ -80,11 +80,14 @@ def get_request(request_id: UUID, user: CurrentUser = Depends(current_user)) -> 
     return backend.request_actions.detail(user, request_id)
 
 
-@router.get("/requests", response_model=RequestList, responses=errors(401, 403, 422))
+@router.get("/requests", response_model=RequestList | StaffRequestList, responses=errors(401, 403, 404, 422))
 def list_requests(status: RequestStatus | None = None, page: int = Query(1, ge=1), size: int = Query(20, ge=1, le=100),
                   sort: Literal["-created_at", "created_at", "-updated_at", "updated_at"] = "-created_at",
-                  user: CurrentUser = Depends(require_roles("parent"))):
-    return backend.request_actions.listing(user, status, page, size, sort)
+                  answered_by: Literal["agent", "staff"] | None = None, classroom_id: UUID | None = None,
+                  type: RequestType | None = None,
+                  user: CurrentUser = Depends(require_roles("parent", "teacher", "director"))):
+    result = backend.request_actions.listing(user, status, page, size, sort, answered_by, classroom_id, type)
+    return (RequestList if user.role == "parent" else StaffRequestList).model_validate(result)
 
 
 @router.get("/requests/{request_id}/stream", response_class=Response,

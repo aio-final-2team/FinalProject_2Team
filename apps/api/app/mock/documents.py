@@ -112,6 +112,7 @@ def evidence(card, parent=False):
             continue
         result.append({"document_title": doc.title, "location": chunk.location,
                        "effective_from": doc.effective_from, "quote": link.quote,
-                       "is_current": doc.status == "active" and doc.effective_from <= store.now().date()
+                       # 시행 전 문서도 지금 판이에요. 옛 판·충돌 대기·기간 만료만 거짓(API 설계 문서 3.3 evidence)
+                       "is_current": doc.status == "active"
                                      and (doc.effective_to is None or doc.effective_to >= store.now().date())})
     return result
