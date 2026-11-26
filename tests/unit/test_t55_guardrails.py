@@ -64,6 +64,46 @@ def test_daily_note_writer_and_checker_mark_memo():
         assert {"child_memo", "requests"} <= set(user["untrusted_data_fields"])
 
 
+def test_daily_note_model_input_masks_sensitive_but_keeps_request_id():
+    request_id = "00000000-0000-4000-8000-000000005411"  # UUID도 계좌 모양에 걸려서 글 칸만 가려야 해요
+    child = {"display_name": "민지", "memo": "엄마 010-1234-5678로 연락함",
+             "requests": [{"request_id": request_id, "type": "pickup", "text": "이모(010 9876 5432)가 데려가요"}]}
+    payload = {"note_date": "2026-11-24", "activities": "준비물 문의는 a@b.kr로", "supplies": ""}
+    own = [{"key": "pickup", "value": "보호자 요청: 이모(010 9876 5432)가 데려가요",
+            "source": {"type": "request", "request_id": request_id}}]
+    writer = Fake({"child": "", "requests": []})
+    checker = Fake({"checks": []})
+    write(writer, payload, child, [])
+    review(checker, payload, child, own)
+    for model in (writer, checker):
+        _, user = model.calls[0]
+        sent = json.dumps(user, ensure_ascii=False)
+        assert "010" not in sent and "a@b.kr" not in sent
+        assert user["child_memo"] == "엄마 [전화번호]로 연락함"
+        assert user["requests"][0]["request_id"] == request_id
+    assert checker.calls[0][1]["draft"][0]["value"] == "보호자 요청: 이모([전화번호])가 데려가요"
+    assert child["memo"] == "엄마 010-1234-5678로 연락함"  # 원본은 그대로(코드 검사·화면용)
+
+
+def test_request_graph_writer_and_checker_mask_guardian_body(monkeypatch):
+    from agents.graphs import answer as answer_graph
+    from app.modules.requests import graph_agent
+
+    body = "아이 아빠 번호 010-1111-2222로 연락 주세요"
+    monkeypatch.setattr(graph_agent, "_request_context", lambda request_id: {"type": "complaint", "body": body})
+    monkeypatch.setattr(answer_graph, "OpenAIModel", lambda kind: None)
+    sent = {}
+    monkeypatch.setattr(answer_graph, "_ask_writer",
+                        lambda model, prompt, payload, trace: sent.setdefault("write", payload) and None)
+    monkeypatch.setattr(answer_graph, "_review",
+                        lambda model, question, draft, chunks, attempt, trace: sent.setdefault("check", question) and [])
+    state = {"request_id": "r1", "parallel": {"chunks": []}, "draft": {"text": ""}}
+    graph_agent._write_request(state)
+    graph_agent._check_request(state)
+    assert sent["write"]["question"] == "아이 아빠 번호 [전화번호]로 연락 주세요"
+    assert sent["check"] == "아이 아빠 번호 [전화번호]로 연락 주세요"
+
+
 @pytest.mark.parametrize("text", ["010-1234-5678", "900101-1234567", "123-456-789012", "a@example.com"])
 def test_sensitive_formats_positive(text):
     assert SENSITIVE.search(text)
