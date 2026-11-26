@@ -1,10 +1,9 @@
-"""[제안] 같은 기관의 일정 자료만 읽으며 범위 거부를 기록해요."""
+"""[제안] 같은 기관에서 볼 수 있는 일정 자료만 읽어요."""
 
 from sqlalchemy import text
 
 from app.core.calendar import items
 from app.core.db import transaction
-from app.modules.feed.feed import record
 
 
 def listing(user, start, end):
@@ -18,5 +17,4 @@ def listing(user, start, end):
             FROM documents d WHERE d.org_id=:org AND d.status='active' AND d.ingest_status='succeeded'
               AND d.doc_type IN ('schedule','notice') ORDER BY d.id
         """), {"org": user.org_id}).mappings().all()
-        return items(user, rows, start, end, lambda document_id: record(
-            connection, user, "permission_denied", resource="document", resource_id=str(document_id)))
+        return items(user, rows, start, end)

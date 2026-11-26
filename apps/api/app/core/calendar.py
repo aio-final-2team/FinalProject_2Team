@@ -7,7 +7,7 @@ from app.modules.documents.conflicts import extract_facts
 from app.modules.documents.parsing import Chunk, DocumentMeta, ParsedDocument
 
 
-def items(user, documents, start, end, deny):
+def items(user, documents, start, end):
     from app import backend
 
     classes = (backend.users.classroom_ids_of(user.id) if user.role == "teacher" else
@@ -19,7 +19,6 @@ def items(user, documents, start, end, deny):
             continue
         if (user.role == "parent" and doc["visibility"] == "staff") or (
                 user.role != "director" and doc["classroom_ids"] and not set(classes).intersection(doc["classroom_ids"])):
-            deny(doc["id"])
             continue
         meta = {k: doc[k] for k in ("title", "doc_type", "visibility", "source", "is_virtual")}
         meta["effective_from"] = doc["effective_from"] or doc["created_at"].astimezone(KST).date()

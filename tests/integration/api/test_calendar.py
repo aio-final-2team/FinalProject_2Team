@@ -86,6 +86,7 @@ def test_calendar_scope_status_visibility_and_current_assignments(client, parent
         rows = response.json()["items"]
         assert {r["document_id"] for r in rows} == expected and all(r["end_date"] is None for r in rows)
         assert rows == sorted(rows, key=lambda r: (r["date"], r["title"], r["document_title"], r["location"]))
+        assert client.get(BASE + "/calendar", headers=actor, params=PERIOD).json() == response.json()
     if calendar_backend == "mock":
         events = [e.__dict__ for e in store.state().events if e.action == "permission_denied"]
         store.state().classroom_staff.clear()
@@ -95,9 +96,14 @@ def test_calendar_scope_status_visibility_and_current_assignments(client, parent
             events = connection.execute(text("SELECT * FROM events WHERE action='permission_denied'")).mappings().all()
             connection.execute(text("UPDATE classroom_staff SET valid_to=CURRENT_DATE-1"))
             connection.execute(text("DELETE FROM child_guardians WHERE user_id=:user"), {"user": seed.PARENT})
-    assert events and all(e["org_id"] == seed.ORG and e["detail"]["trace_id"] == "[TEST]-calendar" for e in events)
+    assert events == []
     for actor, expected in ((parent, {public}), (teacher, {public, staff})):
         assert {r["document_id"] for r in client.get(BASE + "/calendar", headers=actor, params=PERIOD).json()["items"]} == expected
+    if calendar_backend == "mock":
+        assert not any(e.action == "permission_denied" for e in store.state().events)
+    else:
+        with transaction() as connection:
+            assert connection.scalar(text("SELECT count(*) FROM events WHERE action='permission_denied'")) == 0
 
 
 def test_calendar_required_dates_validation_and_login(client, parent):

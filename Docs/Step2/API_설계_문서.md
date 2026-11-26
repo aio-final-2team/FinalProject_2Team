@@ -1687,7 +1687,7 @@ GET `/api/v1/me`와 로그인 응답의 user.consents_complete도 같은 판·�
 | ② 요청 헤더 | Authorization 필수, X-Request-ID 권장. |
 | ③ 경로·쿼리 | 경로 변수 없음. from·to 둘 다 필수이며 기존 날짜 쿼리처럼 YYYY-MM-DD로 보낸다. |
 | ④ 요청 본문 | 없음. |
-| ⑤ 검증·권한 | 자기 기관만 조회한다. 원장은 기관 전체, 담임은 현재 담당 반, 학부모는 현재 연결된 아이의 반 자료를 본다. 대상 반이 없는 기관 전체 자료는 모두 볼 수 있다. 학부모에게 staff 자료는 제외한다. 반·공개 범위 밖 자료는 제외하고 permission_denied 이력에 자료 ID·trace_id만 남긴다. 다른 기관 자료는 읽지 않는다. |
+| ⑤ 검증·권한 | 자기 기관만 조회한다. 원장은 기관 전체, 담임은 현재 담당 반, 학부모는 현재 연결된 아이의 반 자료를 본다. 대상 반이 없는 기관 전체 자료는 모두 볼 수 있다. 학부모에게 staff 자료는 제외한다. 목록에서 반·공개 범위 밖 자료는 조용히 제외하고 permission_denied 이력을 만들지 않는다. 다른 기관 자료는 읽지 않는다. |
 | ⑥ 정상 응답 | 200 `{items:[{date,end_date,title,document_id,document_title,location}]}`. 없으면 items=[]. |
 | ⑦ 오류 응답 | 로그인 없음·무효는 401 UNAUTHENTICATED. 날짜 생략·잘못된 날짜·from>to는 422 VALIDATION_FAILED. 공통 오류 형식은 1.4와 같다. |
 | ⑧ 실행 규칙 | status=active·ingest_status=succeeded인 schedule·notice만 대상으로 기존 extract_facts를 재사용한다. 날짜 사실만 쓰며 AI·임베딩은 호출하지 않는다. 자료의 시행 전 일정도 조회할 수 있다. |
