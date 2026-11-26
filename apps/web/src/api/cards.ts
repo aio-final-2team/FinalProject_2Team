@@ -64,16 +64,19 @@ const cardFromItem = (item: CardItem, filter: InboxFilter): Card => ({
 
 const formatPeriod = (period: Period) => new Date(period.start).toLocaleString("ko-KR", { month: "numeric", day: "numeric", weekday: "short", hour: "2-digit", minute: "2-digit" });
 const AGENT_NAME: Record<string, string> = { supervisor: "감독", document: "자료", checker: "검사", memory: "기억" };
-const actorName = (actor: string, agent: string | null) => agent ? `${AGENT_NAME[agent] ?? ""} AI`.trim() : actor === "user" ? "교직원" : actor === "agent" ? "AI" : "시스템";
+/** 학부모가 하는 동작. 서버는 행위자 종류를 user로만 주어서, 동작으로 학부모와 교직원을 가른다 */
+const PARENT_ACTIONS = new Set(["created", "message_added", "cancelled", "care_updated", "parent_confirmed", "slots_chosen"]);
+const actorName = (actor: string, agent: string | null, action: string) =>
+  agent ? `${AGENT_NAME[agent] ?? ""} AI`.trim() : actor === "user" ? (PARENT_ACTIONS.has(action) ? "학부모" : "교직원") : actor === "agent" ? "AI" : "시스템";
 /** 처리 이력의 action 코드를 교직원이 읽는 말로 바꾼다. 모르는 코드는 내부 용어를 그대로 보이지 않는다 */
-const ACTION_LABEL: Record<string, string> = { created: "접수", classified: "분류", assigned: "담당 배정", drafted: "초안 작성", checked: "검사", approved: "승인", sent: "보내기", rejected: "거절", dismissed: "거절", held: "보류", resumed: "재개", escalated: "원장 보고", completed: "처리 완료", risk_reclassified: "위험 분류 변경" };
+const ACTION_LABEL: Record<string, string> = { created: "접수", classified: "분류", assigned: "담당 배정", drafted: "초안 작성", checked: "검사", approved: "승인", sent: "보내기", rejected: "거절", dismissed: "거절", held: "보류", resumed: "재개", escalated: "원장 보고", completed: "처리 완료", risk_reclassified: "위험 분류 변경", message_added: "글 추가", cancelled: "취소", care_updated: "입력 수정" };
 const actionLabel = (a: string) => ACTION_LABEL[a] ?? "처리 기록";
 
 const cardFromDetail = (data: CardDetail): Card => {
   const req = data.request;
   const sources: Source[] = data.evidence.map((e) => ({ doc: e.document_title, where: e.location ?? "", effective: e.effective_from ?? "", old: !e.is_current }));
   const slots: Slot[] | undefined = data.parent_choices.length ? data.parent_choices.map((s) => ({ id: String(s.slot_id), at: formatPeriod(s.period), mode: "대면", picked: true })) : undefined;
-  const history: HistoryItem[] = data.timeline.map((e) => ({ at: e.created_at, who: actorName(e.actor_type, e.agent_name), what: actionLabel(e.action) }));
+  const history: HistoryItem[] = data.timeline.map((e) => ({ at: e.created_at, who: actorName(e.actor_type, e.agent_name, e.action), what: actionLabel(e.action) }));
   const draft = typeof data.card.draft.text === "string" ? data.card.draft.text : undefined;
   return {
     id: data.card.id, version: data.card.version, kind: data.card.kind, requestId: req?.id ?? "-", type: requestType(req?.type),
