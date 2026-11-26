@@ -2,11 +2,10 @@ import { Link } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/api/client";
 import { TYPE_LABEL, useMyRequests } from "@/api/requests";
-import { Buddy } from "@/components/Brand";
+import { Buddy, MainLogo } from "@/components/Brand";
 import { QueryState } from "@/components/QueryState";
 import { Icon } from "@/components/Icon";
 import { ChildAvatar, type ProfilePhoto } from "@/components/ChildAvatar";
-import wordWhite from "@/assets/brand/wordmark-white.svg";
 import { dateLabel, itemLabel, nameI, todayKST, type DailyNote } from "@/domain/notes";
 
 type Me = { user: { display_name: string }; children: { id: string; display_name: string; classroom_id: string; profile_photo?: ProfilePhoto }[] };
@@ -39,7 +38,7 @@ export function ParentHome() {
       {/* 블루 머리: 학부모 홈에만 브랜드 블루를 넓게 쓴다 */}
       <header className="relative overflow-hidden bg-brand-fill px-4 pb-6 pt-[max(12px,env(safe-area-inset-top))] text-on-brand">
         <div className="mx-auto flex max-w-[680px] items-center justify-between">
-          <img src={wordWhite} alt="유치온" className="h-5 w-auto" />
+          <MainLogo onBlue className="h-9" />
           <div className="flex items-center">
             <Link to="/parent/notifications" className="grid size-11 place-items-center rounded-md" aria-label="알림">
               <Icon name="bell" className="size-6" />

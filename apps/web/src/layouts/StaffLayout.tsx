@@ -6,7 +6,7 @@ import { useCards } from "@/api/cards";
 import { useNotes } from "@/api/notes";
 import { todayKST } from "@/domain/notes";
 import { useSession } from "@/app/session";
-import { Wordmark, SymbolMark } from "@/components/Brand";
+import { MainLogo } from "@/components/Brand";
 import { Icon } from "@/components/Icon";
 import type { Role } from "@/domain/types";
 
@@ -41,9 +41,8 @@ export function StaffLayout({ role }: { role: Exclude<Role, "parent"> }) {
   return (
     <div className="min-h-full lg:grid lg:grid-cols-[232px_1fr]">
       <aside className="sticky top-0 hidden h-dvh flex-col gap-6 border-r border-sep bg-card px-4 py-6 lg:flex">
-        <div className="flex items-center gap-2 px-2">
-          <SymbolMark className="size-7" />
-          <Wordmark className="h-[18px]" />
+        <div className="px-2">
+          <MainLogo className="h-10" />
         </div>
         <div className="px-2 text-sub text-ink2">{user?.display_name ?? (role === "teacher" ? "선생님" : "원장")}</div>
         <nav className="grid gap-1" aria-label="주 메뉴">
