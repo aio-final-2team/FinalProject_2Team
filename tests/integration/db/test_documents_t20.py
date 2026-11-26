@@ -121,7 +121,8 @@ def test_search_scope_for_parent_class_and_other_org(docs):
     with pytest.raises(ApiError):
         search_documents(staff(), str(seed.ORG), "law", "겨울방학")  # 도구 doc_type은 네 가지만
     future = search_documents(staff(), str(seed.ORG), "notice", "크리스마스", on_date=date(2026, 11, 20))["chunks"]
-    assert future == []  # 시행일(12/01) 전 자료는 아직 찾지 않음
+    assert future and future[0]["document_title"] == "크리스마스 행사 안내"  # 미리 공지한 시행 전(12/01) 자료도 찾음
+    assert future[0]["effective_from"] == date(2026, 12, 1)  # 답에서 '12월 1일부터'라고 말할 수 있게 시행일을 같이 줌
 
 
 def test_parent_search_accepts_string_classroom_ids(docs):
@@ -270,3 +271,19 @@ def test_teacher_cannot_target_or_read_other_class_document(db_client, teacher, 
     with seeded_db.begin() as connection:
         sun_doc = connection.scalar(text("SELECT id FROM documents WHERE title='만 5세반 12월 주간 활동 계획'"))
     assert db_client.get(f"/api/v1/documents/{sun_doc}", headers=teacher).status_code == 404
+
+
+def test_search_finds_next_month_schedule_before_it_starts(docs):
+    """11월에 '12월 초 일정'을 물으면 미리 올린 12월 월간 일정을 찾는다(시행일 12/01)."""
+    found = search_documents(parent(), str(seed.ORG), "schedule", "12월 초에 원 일정 뭐 있어요?",
+                             on_date=date(2026, 11, 26))["chunks"]
+    assert found and found[0]["document_title"] == "12월 월간 일정"
+    assert "소방 대피 훈련" in found[0]["content"]
+
+
+def test_search_skips_expired_documents(docs, seeded_db):
+    with seeded_db.begin() as connection:
+        connection.execute(text("UPDATE documents SET effective_to=:day WHERE title='겨울방학 안내'"),
+                           {"day": date(2026, 11, 19)})
+    found = search_documents(staff(), str(seed.ORG), "notice", "겨울방학", on_date=date(2026, 11, 20))["chunks"]
+    assert all(c["document_title"] != "겨울방학 안내" for c in found)  # 기간이 끝난 문서는 계속 뺌

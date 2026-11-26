@@ -9,6 +9,7 @@ from uuid import UUID
 from sqlalchemy import text
 
 from agents.graphs.request import build_graph
+from agents.guardrails.sensitive import mask_sensitive
 from app.core.db import database_url, transaction
 from app.core.schedule import KST
 from app.modules.requests.agent_stub import run_request as prepare_request
@@ -124,7 +125,8 @@ def _write_request(state):
         return {"draft": {}, "passed": True}
     chunks = state["parallel"]["chunks"]
     prompt = answer_graph._prompt("documents.md", "## 입력", "## 알림장 초안 쓰기") + answer_graph.WRITE_FORMAT
-    payload = {"question": req["body"], "chunks": chunks, "memories": state["parallel"].get("memories", []),
+    # 보호자 글은 문의 답변 그래프(answer.py)처럼 가려서 모델에 보낸다(T55 G-5). 원 자료 조각은 그대로 둔다.
+    payload = {"question": mask_sensitive(req["body"]), "chunks": chunks, "memories": state["parallel"].get("memories", []),
                "review_issues": state.get("issues", [])}
     reply = answer_graph._ask_writer(answer_graph.OpenAIModel("DOCUMENT"), prompt, payload, [])
     if reply is None:
@@ -139,7 +141,7 @@ def _check_request(state):
     req = _request_context(state["request_id"])
     if req["type"] == "inquiry" and not graph_enabled():
         return {"passed": True, "issues": []}
-    issues = answer_graph._review(answer_graph.OpenAIModel("CHECKER"), req["body"], state["draft"],
+    issues = answer_graph._review(answer_graph.OpenAIModel("CHECKER"), mask_sensitive(req["body"]), state["draft"],
                                   state["parallel"]["chunks"], state.get("attempt", 0) + 1, [])
     if issues is None:
         return {"passed": False, "issues": [{"field": "출처", "problem": "검사하지 못했어요."}],

@@ -14,6 +14,7 @@ import re
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+from agents.guardrails.sensitive import mask_sensitive
 from agents.llm import JsonModel, ModelError, OpenAIModel, feature, keep_trace
 
 PROMPTS = Path(__file__).resolve().parents[1] / "prompts"
@@ -161,13 +162,22 @@ def twice(call):
         return call()
 
 
+def masked(text):
+    """선생님·보호자가 쓴 글만 가려서 모델에 보낸다(T55 G-5). request_id 같은 UUID는 계좌 모양에 걸려서 건드리지 않는다."""
+    return mask_sensitive(text) if isinstance(text, str) else text
+
+
+def masked_requests(child) -> list[dict]:
+    return [{**req, "text": masked(req.get("text"))} for req in child.get("requests") or []]
+
+
 def write(model: JsonModel, payload, child, issues) -> list[dict]:
     user = json.dumps({
         "note_date": payload["note_date"], "classroom": payload.get("classroom"),
-        "activities": payload["activities"], "supplies": payload.get("supplies"),
+        "activities": masked(payload["activities"]), "supplies": masked(payload.get("supplies")),
         "menu": (payload.get("menu") or {}).get("text"),
-        "child_name": child["display_name"], "child_memo": child.get("memo") or "",
-        "requests": child.get("requests") or [], "review_issues": issues,
+        "child_name": child["display_name"], "child_memo": masked(child.get("memo") or ""),
+        "requests": masked_requests(child), "review_issues": issues,
         "untrusted_data_fields": ["child_memo", "requests", "menu"],
     }, ensure_ascii=False)
     answer = model.json(section("common.md", "# 공통 규칙") + section("documents.md", "## 알림장 초안 쓰기") + WRITE_FORMAT, user)
@@ -236,9 +246,10 @@ def memo_left_out(memo: str, own: list[dict], found: list[dict]) -> list[dict]:
 
 def review(model: JsonModel, payload, child, own) -> list[dict]:
     user = json.dumps({
-        "activities": payload["activities"], "supplies": payload.get("supplies"),
+        "activities": masked(payload["activities"]), "supplies": masked(payload.get("supplies")),
         "menu": (payload.get("menu") or {}).get("text"),
-        "child_memo": child.get("memo") or "", "requests": child.get("requests") or [], "draft": own,
+        "child_memo": masked(child.get("memo") or ""), "requests": masked_requests(child),
+        "draft": [{**line, "value": masked(line.get("value"))} for line in own],
         "untrusted_data_fields": ["child_memo", "requests", "menu", "draft"],
     }, ensure_ascii=False)
     answer = model.json(section("common.md", "# 공통 규칙") + section("checker.md", "## 알림장: 메모와 대조한다") + CHECK_FORMAT, user)

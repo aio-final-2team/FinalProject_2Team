@@ -86,7 +86,7 @@ def search_documents(user, kindergarten_id: str, doc_type: str, query: str, clas
                         THEN 1 - (ch.embedding <=> CAST(:vector AS vector)) ELSE NULL END AS vector_score
             FROM document_chunks ch JOIN documents d ON (d.id, d.org_id) = (ch.document_id, ch.org_id)
             WHERE d.org_id = :org AND d.doc_type = :doc_type AND d.status = 'active' AND d.ingest_status = 'succeeded'
-              AND (d.effective_from IS NULL OR d.effective_from <= :today)
+              -- 시행 전 문서(미리 공지한 12월 일정 등)도 찾는다. 기간이 끝난 문서만 뺀다. 같은 점수면 지금 시행 중인 문서가 앞.
               AND (d.effective_to IS NULL OR d.effective_to >= :today)
               AND (NOT :parent OR d.visibility IN ('parents', 'all'))
               AND (NOT :parent OR NOT EXISTS (SELECT 1 FROM document_classrooms dc
@@ -114,9 +114,10 @@ def search_documents(user, kindergarten_id: str, doc_type: str, query: str, clas
             ranked.append({key: row[key] for key in ("chunk_id", "document_title", "location", "effective_from", "content")}
                           | {"location": row["location"] or "본문", "score": value})
     def order(row):
-        # 점수가 같으면 제목·위치에 낱말이 있는 조각, 낱말이 더 많이 나오는 조각, 새 판 순서
+        # 점수가 같으면 지금 시행 중인 문서, 제목·위치에 낱말이 있는 조각, 낱말이 더 많이 나오는 조각, 새 판 순서
         heads = sum((w in row["document_title"]) + (w in row["location"]) for w in words)
-        return (-row["score"], -heads, -sum(row["content"].count(w) for w in words),
+        upcoming = row["effective_from"] is not None and row["effective_from"] > today
+        return (-row["score"], upcoming, -heads, -sum(row["content"].count(w) for w in words),
                 -(row["effective_from"] or date.min).toordinal(), row["chunk_id"])
 
     ranked.sort(key=order)

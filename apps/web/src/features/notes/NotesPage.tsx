@@ -1,16 +1,19 @@
-import { BackLink } from "@/components/BackLink";
-import { useEffect, useMemo, useState } from "react";
+import { ScreenTop } from "@/components/ScreenTop";
+import { useNotebook } from "./notebookCtx";
+import { ChildAvatar } from "@/components/ChildAvatar";
+import { clearCompose, loadCompose, saveCompose } from "./composeDraft";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "@/api/client";
 import { QueryState } from "@/components/QueryState";
-import { loadInputId, recoverInputId, saveInputId, useChildren, useCreateDraft, useDraftJob, useNotes, usePatchNote, useRegenerate, useSendNotes } from "@/api/notes";
+import { loadInputId, saveInputId, useChildren, useCreateDraft, useDraftJob, useNotes, usePatchNote, useRegenerate, useSendNotes } from "@/api/notes";
 import { useSession } from "@/app/session";
 import { Dock, PrimaryButton, SubButton } from "@/components/Dock";
 import { Icon } from "@/components/Icon";
 import { Sheet } from "@/components/Sheet";
 import { useToast } from "@/components/Toast";
-import { CHECK_KIND, NOTE_STATUS, dateLabel, nameI, todayKST, type DailyNote, type NoteItem } from "@/domain/notes";
+import { CHECK_KIND, NOTE_STATUS, dateLabel, itemLabel, nameI, todayKST, type DailyNote, type NoteItem } from "@/domain/notes";
 import { RecordSheet } from "@/features/records/RecordSheet";
 import { useRecords } from "@/features/records/store";
 
@@ -45,11 +48,11 @@ export function NotesPage() {
 /* 공통 틀: ‹ 홈, 큰 제목, 보조 줄 */
 function Frame({ title = "오늘 알림장", sub, children }: { title?: string; sub?: React.ReactNode; children: React.ReactNode }) {
   const { user } = useSession();
+  const nb = useNotebook();
   return (
     <div className="mx-auto max-w-[680px] px-4 pb-48 lg:pb-10">
-      <BackLink to="/teacher/home" label="홈" className="mt-2" />
-      <h1 className="text-large-title font-bold tracking-[-0.025em]">{title}</h1>
-      <p className="mt-0.5 text-footnote font-medium text-ink2">{sub ?? `${user?.display_name} · ${dateLabel(todayKST())} · 17:00까지`}</p>
+      <ScreenTop title={nb?.title ?? title} sub={sub ?? `${user?.display_name} · ${dateLabel(todayKST())} · 17:00까지`} />
+      {nb?.top}
       {children}
     </div>
   );
@@ -80,8 +83,11 @@ function Compose({ onStarted }: { onStarted: (id: string) => void }) {
   const kids = useChildren(cid);
   const { records, memoOf } = useRecords(cid, date);
   const create = useCreateDraft();
-  const [activities, setActivities] = useState("");
-  const [supplies, setSupplies] = useState("");
+  const saved = useMemo(() => loadCompose(cid, date), [cid, date]);
+  const [activities, setActivities] = useState(saved.activities);
+  const [supplies, setSupplies] = useState(saved.supplies);
+  /* 적는 대로 이 기기에 임시 저장해서, 다른 화면에 다녀와도 내용이 남는다 */
+  useEffect(() => { saveCompose(cid, date, { activities, supplies }); }, [cid, date, activities, supplies]);
   const [err, setErr] = useState("");
   const recorded = (kids.data ?? []).filter((k) => records[k.id]?.length);
 
@@ -100,7 +106,7 @@ function Compose({ onStarted }: { onStarted: (id: string) => void }) {
         supplies: supplies.trim(),
         child_memos: recorded.map((k) => ({ child_id: k.id, memo: memoOf(k.id) })).filter((m) => m.memo),
       },
-      { onSuccess: (job) => { saveInputId(cid, date, job.input_id); onStarted(job.input_id); }, onError: (e) => setErr(e instanceof ApiError ? e.message : "초안 만들기를 시작하지 못했어요. 잠시 뒤 다시 눌러 주세요.") },
+      { onSuccess: (job) => { saveInputId(cid, date, job.input_id); clearCompose(cid, date); onStarted(job.input_id); }, onError: (e) => setErr(e instanceof ApiError ? e.message : "초안 만들기를 시작하지 못했어요. 잠시 뒤 다시 눌러 주세요.") },
     );
   };
   const field = "w-full rounded-md border-[1.5px] bg-card px-3 text-body outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--tint)]";
@@ -114,7 +120,7 @@ function Compose({ onStarted }: { onStarted: (id: string) => void }) {
           <span className="text-callout font-semibold text-ink2">명 기록 반영</span>
         </div>
         <p className="text-footnote text-ink2">기록이 있는 아이의 개별 내용만 선택해서 반영돼요</p>
-        <Link to="/teacher/records" className="mt-2 inline-flex h-8 items-center rounded-md bg-fill px-2.5 text-footnote font-semibold">
+        <Link to="/teacher/notes?tab=records" className="mt-2 inline-flex h-8 items-center rounded-md bg-fill px-2.5 text-footnote font-semibold">
           관찰 기록 보기
         </Link>
       </section>
@@ -137,6 +143,7 @@ function Compose({ onStarted }: { onStarted: (id: string) => void }) {
       )}
       <Label>가정에서 준비할 것</Label>
       <input value={supplies} maxLength={2000} onChange={(e) => setSupplies(e.target.value)} placeholder="예: 11/27(금) 김장 체험: 앞치마, 팔토시" className={`${field} h-12 border-line`} />
+      {(activities || supplies) && <p className="mt-1.5 px-1 text-caption text-ink2">적은 내용은 이 기기에 임시 저장돼요</p>}
 
       <Label>
         <span className="inline-flex items-center gap-1">
@@ -145,8 +152,8 @@ function Compose({ onStarted }: { onStarted: (id: string) => void }) {
         </span>
       </Label>
       <div className="flex flex-wrap gap-1.5">
-        <span className="rounded-sm bg-ok-tint px-2 py-1 text-caption font-semibold text-ok">식단표 · 오늘 메뉴</span>
-        <span className="rounded-sm bg-lav-tint px-2 py-1 text-caption font-semibold text-lav">보호자 요청 · 오늘 접수분</span>
+        <span className="rounded-sm bg-ok-tint px-2 py-1 text-caption font-semibold text-ok">오늘 식단표</span>
+        <span className="rounded-sm bg-lav-tint px-2 py-1 text-caption font-semibold text-lav">오늘 접수한 보호자 요청</span>
       </div>
 
       <Dock>
@@ -235,6 +242,7 @@ function Review({ notes }: { notes: DailyNote[] }) {
   const nav = useNavigate();
   const kids = useChildren(cid);
   const names = useMemo(() => Object.fromEntries((kids.data ?? []).map((k) => [k.id, k.display_name])), [kids.data]);
+  const photos = useMemo(() => Object.fromEntries((kids.data ?? []).map((k) => [k.id, k.profile_photo])), [kids.data]);
   const { records, add } = useRecords(cid, date);
   const patch = usePatchNote(cid, date);
   const send = useSendNotes(cid, date);
@@ -242,7 +250,7 @@ function Review({ notes }: { notes: DailyNote[] }) {
   const [sheet, setSheet] = useState(false);
   const [busy, setBusy] = useState(false);
   const [showClean, setShowClean] = useState(false);
-  /* "이대로 사용" 표시는 새로고침해도 남도록 이 기기에 둔다 (확인 전 단계라 서버 데이터는 아님) */
+  /* "문제 없음으로 옮기기" 표시는 새로고침해도 남도록 이 기기에 둔다 (확인 전 단계라 서버 데이터는 아님) */
   const plainKey = `yuchion.plainOk.${cid}.${date}`;
   const [plainOk, setPlainOkRaw] = useState<Record<string, boolean>>(() => {
     try { return JSON.parse(localStorage.getItem(plainKey) ?? "{}"); } catch { return {}; }
@@ -254,14 +262,17 @@ function Review({ notes }: { notes: DailyNote[] }) {
       return next;
     });
   const [writeFor, setWriteFor] = useState<DailyNote | null>(null);
+  const lastWrite = useRef<DailyNote | null>(null);
+  if (writeFor) lastWrite.current = writeFor;
+  const shownWrite = writeFor ?? lastWrite.current; /* 닫히는 동안에도 시트를 둔다 */
   const regen = useRegenerate();
   const [regenSheet, setRegenSheet] = useState(false);
   const [inputId, setInputId] = useState(() => loadInputId(cid, date));
-  /* 다른 기기에서 만든 알림장이라 이 기기에 입력 ID가 없으면 API 3.19의 중복 접수 규칙으로 되찾는다 */
+  /* 알림장 목록이 항목마다 input_id를 주므로, 다른 기기에서 만든 알림장도 이 값으로 이어 받는다 */
+  const serverInputId = notes.find((n) => n.input_id)?.input_id;
   useEffect(() => {
-    if (inputId) return;
-    recoverInputId(cid, date).then((id) => { saveInputId(cid, date, id); setInputId(id); }).catch(() => {});
-  }, [inputId, cid, date]);
+    if (serverInputId && serverInputId !== inputId) { saveInputId(cid, date, serverInputId); setInputId(serverInputId); }
+  }, [serverInputId, inputId, cid, date]);
   /* 보내기가 409 NOTE_BATCH_BLOCKED로 막혔을 때 details.blocked[]를 보여 준다. 빈 목록은 초안 작업이 만드는 중(queued·running)이거나 실패(failed)일 때 온다 (3.19) */
   const draftJob = useDraftJob(inputId ?? undefined);
   const [blocked, setBlocked] = useState<{ note_id: string; child_id: string; open_checks?: { problem?: string }[] }[] | null>(null);
@@ -314,12 +325,17 @@ function Review({ notes }: { notes: DailyNote[] }) {
     patch.mutate({ id: n.id, body: { content: { items } } }, { onSuccess: () => toast({ kind: "ok", title: `${nameI(names[n.child_id] ?? "아이")} 한 줄을 넣었어요` }) });
   };
 
-  const doSend = () =>
+  const sendLock = useRef(false); /* 같은 순간 두 번 눌려도 발송 요청은 한 번만 보낸다 */
+  const doSend = () => {
+    if (sendLock.current) return;
+    sendLock.current = true;
     send.mutate(undefined, {
+      onSettled: () => { sendLock.current = false; },
       onSuccess: (r) => {
         setSheet(false);
         toast({ kind: "ok", title: `${r.sent_count}가정에 알림장을 보냈어요`, sub: "보호자 홈 '오늘 알림장'에 올라갔어요" });
-        nav("/teacher/home");
+        /* 시트가 닫히며 쌓아 둔 뒤로가기 기록을 먼저 정리한 다음 홈으로 간다 */
+        window.setTimeout(() => nav("/teacher/home"), 150);
       },
       onError: (e) => {
         setSheet(false);
@@ -333,18 +349,17 @@ function Review({ notes }: { notes: DailyNote[] }) {
         });
       },
     });
+  };
 
   const row = (n: DailyNote, sub: string, right?: React.ReactNode) => {
     const st = NOTE_STATUS[n.status];
     return (
       <li key={n.id} className="flex min-h-14 items-center gap-3 px-3 py-2 [&+&]:border-t [&+&]:border-sep">
-        <span aria-hidden className="grid size-8 shrink-0 place-items-center rounded-sm bg-fill text-footnote font-bold">
-          {(names[n.child_id] ?? "?").slice(-1)}
-        </span>
+        <ChildAvatar name={names[n.child_id] ?? "?"} photo={photos[n.child_id]} childId={n.child_id} size={32} textClass="text-footnote" rounded="rounded-sm" />
         <Link to={`/teacher/notes/${n.id}`} className="min-w-0 flex-1">
           <span className="flex items-baseline gap-2">
             <b className="text-headline font-semibold">{names[n.child_id] ?? "아이"}</b>
-            <span className={`text-caption font-bold ${st.cls}`}>{st.label}</span>
+            {!(allSent && n.status === "sent") && <span className={`text-caption font-bold ${st.cls}`}>{st.label}</span>}
           </span>
           <span className="block truncate text-footnote text-ink2">{sub}</span>
         </Link>
@@ -355,8 +370,8 @@ function Review({ notes }: { notes: DailyNote[] }) {
 
   const preview = notes.find((n) => hasChild(n)) ?? notes[0];
   return (
-    <Frame title="알림장 확인" sub={`${user?.display_name} · ${notes.length}명 · ${allSent ? "보냄" : "17:00까지"}`}>
-      <section className="mt-4 rounded-lg bg-card p-3 shadow-card">
+    <Frame title="알림장 확인" sub={`${user?.display_name} · ${notes.length}명${allSent ? "" : " · 17:00까지"}`}>
+      {!allSent && <section className="mt-4 rounded-lg bg-card p-3 shadow-card">
         <Meter parts={[[c.sent, "bg-ok"], [c.ready, "bg-lav"], [c.needs_check, "bg-accent"], [c.draft, "bg-ink3"]]} total={notes.length} />
         <div className="flex flex-wrap gap-x-3 text-footnote text-ink2">
           {allSent ? (
@@ -371,7 +386,7 @@ function Review({ notes }: { notes: DailyNote[] }) {
             </>
           )}
         </div>
-      </section>
+      </section>}
 
       {blocked && !allSent && (
         <section role="alert" className="mt-4 rounded-lg bg-danger-tint p-3 text-callout">
@@ -423,7 +438,7 @@ function Review({ notes }: { notes: DailyNote[] }) {
               <span className="flex items-center gap-2">
                 {noRecord.length}명
                 <SubButton small tone="gray" onClick={() => setPlainOk((p) => ({ ...p, ...Object.fromEntries(noRecord.map((n) => [n.id, true])) }))}>
-                  모두 이대로 사용
+                  모두 문제 없음으로 옮기기
                 </SubButton>
               </span>
             }
@@ -440,7 +455,7 @@ function Review({ notes }: { notes: DailyNote[] }) {
                     내용 추가
                   </SubButton>
                   <SubButton small tone="gray" onClick={() => setPlainOk((p) => ({ ...p, [n.id]: true }))}>
-                    이대로 사용
+                    문제 없음으로
                   </SubButton>
                 </span>,
               ),
@@ -464,7 +479,7 @@ function Review({ notes }: { notes: DailyNote[] }) {
                   {busy ? "확인하는 중…" : `${clean.length}명 모두 확인`}
                 </SubButton>
               ) : (
-                <span className="text-caption font-bold text-lav">확인할 통과 아이가 없어요</span>
+                <span className="text-caption font-bold text-lav">확인할 아이가 없어요</span>
               )}
             </div>
           </section>
@@ -479,7 +494,7 @@ function Review({ notes }: { notes: DailyNote[] }) {
 
       {allSent && (
         <>
-          <Label right={<span>{c.sent}명</span>}>보냄</Label>
+          <Label right={<span>{c.sent}명</span>}>보냈어요</Label>
           <ul className="overflow-hidden rounded-lg bg-card shadow-card">{notes.map((n) => row(n, n.content.items.find((i) => i.key === "child")?.value ?? "반 활동만 들어갔어요"))}</ul>
         </>
       )}
@@ -494,13 +509,13 @@ function Review({ notes }: { notes: DailyNote[] }) {
 
       {/* A-07 일괄 발송 시트 */}
       <Sheet open={sheet} onClose={() => setSheet(false)} title={`${notes.length}명에게 한 번에 보내기`}>
-        <p className="text-footnote text-ink2">{user?.display_name} 보호자 {notes.length}가정 · 보내면 고칠 수 없어요</p>
+        <p className="text-footnote text-ink2">반 전체 {notes.length}명에게 보내요. 보낸 뒤에는 정정으로만 고칠 수 있어요</p>
         {preview && (
           <div className="grid gap-1 rounded-lg bg-g p-3 text-callout">
             <b className="text-headline">{nameI(names[preview.child_id] ?? "아이")}의 오늘</b>
             {preview.content.items.filter((it) => it.value.trim()).map((it, i) => (
               <span key={i}>
-                <b className="mr-1.5 text-footnote text-ink2">{it.key === "child" ? "아이 이야기" : it.label}</b>
+                <b className="mr-1.5 text-footnote text-ink2">{it.key === "child" ? "아이 이야기" : itemLabel(it)}</b>
                 {it.value}
               </span>
             ))}
@@ -527,13 +542,14 @@ function Review({ notes }: { notes: DailyNote[] }) {
         </div>
       </Sheet>
 
-      {writeFor && (
+      {shownWrite && (
         <RecordSheet
-          open
-          name={names[writeFor.child_id] ?? "아이"}
-          entries={records[writeFor.child_id] ?? []}
+          key={shownWrite.id}
+          open={!!writeFor}
+          name={names[shownWrite.child_id] ?? "아이"}
+          entries={records[shownWrite.child_id] ?? []}
           onClose={() => setWriteFor(null)}
-          onSave={(t) => writeLine(writeFor, t)}
+          onSave={(t) => writeLine(shownWrite, t)}
         />
       )}
     </Frame>

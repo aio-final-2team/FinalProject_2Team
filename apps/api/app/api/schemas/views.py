@@ -26,6 +26,18 @@ class RequestList(Page):
     items: list[RequestItem]
 
 
+class StaffRequestItem(RequestItem):
+    classroom_id: UUID | None
+    child_id: UUID | None
+    child_name: str | None
+    requester_name: str | None
+    answered_by: Literal["agent", "staff"] | None
+
+
+class StaffRequestList(Page):
+    items: list[StaffRequestItem]
+
+
 class CareRequestItem(RequestItem):
     child_id: UUID
     child_name: str
@@ -117,6 +129,9 @@ class CardItem(BaseModel):
     status_label: str
     version: int
     request_id: UUID | None
+    child_id: UUID | None
+    child_name: str | None
+    requester_name: str | None
     request_type: Literal["inquiry", "consultation", "complaint"] | None
     title: str
     urgency: str | None
@@ -177,6 +192,9 @@ class InstructionView(BaseModel):
 
 
 class StaffRequest(RequestView):
+    child_id: UUID | None
+    child_name: str | None
+    requester_name: str | None
     body: str
     risk_level: str | None
     risk_category: str | None

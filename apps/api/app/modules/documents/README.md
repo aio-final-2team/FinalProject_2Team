@@ -6,7 +6,7 @@
 | --- | --- |
 | `documents.py` | 교직원 자료 목록(태웅). 아래 `ingest`의 올리기·상세를 함께 내보냄 |
 | `ingest.py` | **자료 올리기(DB)**: 같은 내용이면 기존 문서(200), 아니면 문서 행을 만들고 조각 나누기·충돌 검사까지 끝낸 뒤 202. 충돌이면 `status = conflict_pending`이고 옛 판은 그대로 둠. 충돌 목록은 이력 `events(action='checked', detail.conflicts)`, 실패는 `events(tool_failed)`. 상세 조회 범위는 원장 전체·담임은 원 전체 + 지금 담당 반 |
-| `search.py` | **`search_documents` 도구(DB)**: 낱말 검색. 사용 중·적재 완료·적용 기간 안 문서만, 학부모는 공개 범위 `parents`·`all`과 원 전체 + 아이 반 자료만. 결과 `chunks[] {chunk_id, document_title, location, effective_from, content, score}` |
+| `search.py` | **`search_documents` 도구(DB)**: 낱말 검색. 사용 중·적재 완료·적용이 끝나지 않은 문서만(적용 전 자료도 찾되, 같은 점수면 지금 적용 중인 자료가 먼저), 학부모는 공개 범위 `parents`·`all`과 원 전체 + 아이 반 자료만. 결과 `chunks[] {chunk_id, document_title, location, effective_from, content, score}` |
 | `parsing.py` | Markdown 원 자료를 읽어 머리말을 `documents` 열로 바꾸고, `## ` 제목 단위로 조각을 나눔. 제목이 근거 위치(`document_chunks.location`). 제목이 없으면 조각 하나, 위치 '본문' |
 | `conflicts.py` | 새 문서와 사용 중인 문서를 비교해 같은 항목의 날짜·숫자가 다르면 충돌 목록을 냄. 규칙 기반이라 모델을 부르지 않음. 대상 반이 겹치는 문서끼리만 비교 |
 
