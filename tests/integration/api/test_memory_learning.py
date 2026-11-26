@@ -114,7 +114,8 @@ def change(case, table, field, value):
 
 @pytest.mark.parametrize("choice", ["approve", "edit_approve"])
 def test_saved_answer_storage_and_scope(client, teacher, saved_case, choice):
-    sent = "[TEST] 담임이 직접 확인한 행사 안내예요."
+    name = seed.CHILDREN[0]["display_name"]
+    sent = f"[TEST] {name} 담임이 직접 확인한 행사 안내예요. 010-1234-5678"
     extra = {"edited_content": {"text": sent}} if choice == "edit_approve" else {}
     assert decision(client, teacher, saved_case.cid, choice, **extra).status_code == 200
     row, = rows(saved_case)
@@ -125,8 +126,8 @@ def test_saved_answer_storage_and_scope(client, teacher, saved_case, choice):
     assert row["embedding_model"] == embedding.MODEL and row["embedding_version"] == embedding.VERSION
     prior = find(saved_case)
     assert prior and prior["answer"] == row["answer"] and prior["approved_at"] == row["created_at"]
-    if choice == "edit_approve":
-        assert prior["answer"] == sent
+    if choice == "edit_approve":  # 다른 가정 초안의 참고가 되므로 답도 이름·전화번호를 가려 저장해요
+        assert prior["answer"] == sent.replace(name, "○○").replace("010-1234-5678", "[전화번호]")
     assert find(saved_case, classroom_id=seed.CLASS_SUN) is None
     assert find(saved_case, org_id=uuid4()) is None
     change(saved_case, "saved_answers", "status", "off")

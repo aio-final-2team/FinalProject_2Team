@@ -16,11 +16,15 @@ from app.modules.documents import embedding
 log = logging.getLogger(__name__)
 
 
-def masked_question(req):
+def masked(org_id, value):
     with transaction() as connection:
         names = list(connection.scalars(text("SELECT display_name FROM children WHERE org_id=:org"),
-                                        {"org": req["org_id"]}))
-    return mask_sensitive(mask_child_names(req["body"], names))
+                                        {"org": org_id}))
+    return mask_sensitive(mask_child_names(value, names))
+
+
+def masked_question(req):
+    return masked(req["org_id"], req["body"])
 
 
 def remember_answer(user, card, req, content):
@@ -36,6 +40,8 @@ def remember_answer(user, card, req, content):
     if not sources:
         return
     question = masked_question(req)
+    # 다른 가정 질문의 초안 참고로 쓰이므로 답도 아이 이름·민감정보 형식을 가려 저장해요.
+    answer = masked(req["org_id"], content["text"])
     vectors = embedding.embed([question])
     if len(vectors) != 1 or len(vectors[0]) != 1024:
         return
@@ -55,7 +61,7 @@ def remember_answer(user, card, req, content):
               AND a.decided_by=:owner AND a.decision IN ('approve','edit_approve') RETURNING id
         """), {"org": user.org_id, "class": req["classroom_id"], "question": question,
                "vector": json.dumps(vectors[0]), "model": embedding.MODEL, "version": embedding.VERSION,
-               "answer": content["text"], "card": card["id"], "owner": user.id, "card_version": card["version"]})
+               "answer": answer, "card": card["id"], "owner": user.id, "card_version": card["version"]})
         if saved_id is not None:
             for source in sources:
                 connection.execute(text("""

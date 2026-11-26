@@ -135,7 +135,7 @@ def draft_answer(question: str, search, writer=None, checker=None, *, memories=(
                                                     "memories": list(memories),
                                                     "prior_answer": prior_answer,
                                                     "review_issues": issues,
-                                                    "untrusted_data_fields": ["question", "chunks"]}, trace)
+                                                    "untrusted_data_fields": ["question", "chunks", "memories", "prior_answer"]}, trace)
         if answer is None:
             return fallback(trace)
         draft = _verify(answer, candidates, trace)

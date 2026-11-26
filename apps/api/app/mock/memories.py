@@ -25,7 +25,7 @@ def remember_answer(user, card, req, content):
     saved_id = uuid4()
     store.state().saved_answers[saved_id] = {
         "id": saved_id, "org_id": user.org_id, "classroom_id": req.classroom_id,
-        "question": mask_sensitive(mask_child_names(req.body, names)), "answer": content["text"],
+        "question": mask_sensitive(mask_child_names(req.body, names)), "answer": mask_sensitive(mask_child_names(content["text"], names)),
         "source_card_id": card.id, "approved_by": user.id, "status": "active",
         # 모의 고정 벡터. 모델 호출·질문 의미 판정은 하지 않아요.
         "question_embedding": [1.0] + [0.0] * 1023, "embedding_model": MODEL, "embedding_version": VERSION,
