@@ -3,6 +3,7 @@ import { newKey, useCard, useCardAction } from "@/api/cards";
 import { useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "@/api/client";
 import { Button } from "@/components/Button";
+import { ConsultDelay } from "./ConsultDelay";
 import { Icon } from "@/components/Icon";
 import { Sheet } from "@/components/Sheet";
 import { SkeletonRows, StateView } from "@/components/StateView";
@@ -176,6 +177,8 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
         )}
       </header>
       </div>
+
+      {!director && c.type === "consult" && c.status === "sent_or_booked" && c.requestId !== "-" && <ConsultDelay requestId={c.requestId} />}
 
       {reportOnly && (
         <p className="rounded-2xl bg-lav-tint px-4 py-3 text-callout text-ink">원장님께 보고한 카드예요. 원장님이 확인한 뒤 이어서 처리돼요. 보호자에게 보낼 답은 같은 요청의 답장 카드에서 써 주세요.</p>

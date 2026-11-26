@@ -47,6 +47,16 @@ export const useAiAnswered = (enabled: boolean) =>
     },
   });
 
+/** 상담 예상 종료 기록 (API 37). 그 반 예약 담임만, 상담이 시작된 뒤에만 */
+export type DelayResult = { booking: { id: string; period: { start: string; end: string }; status: string; expected_end_at: string | null }; affected_bookings: number };
+export function useConsultDelay(requestId?: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { bookingId: string; expectedEndAt: string }) => api<DelayResult>(`/api/v1/consultations/${v.bookingId}/delay`, { method: "POST", body: JSON.stringify({ expected_end_at: v.expectedEndAt }) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["request", requestId] }),
+  });
+}
+
 export const TYPE_LABEL: Record<string, string> = { inquiry: "문의", consultation: "상담", complaint: "민원", medication: "투약", pickup: "귀가" };
 
 export const useMyRequests = () => useQuery({ queryKey: ["my-requests"], queryFn: () => api<{ items: RequestSummary[]; total: number }>("/api/v1/requests?size=50") });
