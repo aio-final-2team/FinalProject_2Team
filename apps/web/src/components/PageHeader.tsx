@@ -25,7 +25,7 @@ export function PageHeader({ title, meta, identity, back, backLabel, action }: {
         </div>
       )}
       {identity && <p className="mt-1 text-footnote font-semibold text-accent-ink">{identity}</p>}
-      <h1 className="text-large-title font-bold tracking-[-0.025em]">{title}</h1>
+      <h1 className="text-large-title font-bold tracking-[-0.01em]">{title}</h1>
       {meta && <p className="mt-0.5 text-footnote font-medium text-ink2">{meta}</p>}
     </header>
   );

@@ -15,8 +15,23 @@
   }
 }
 
+/* 제목·짧은 라벨 서체: 학교안심 둥근미소(KERIS, OFL). 본문·숫자·시간은 Pretendard. 한글 2,350자 + 영문·숫자·기호만 담았고 그 밖의 글자는 Pretendard로 나온다(FONTS.md) */
+@font-face {
+  font-family: "학교안심 둥근미소";
+  src: url("/fonts/Dunggeunmiso-400.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "학교안심 둥근미소";
+  src: url("/fonts/Dunggeunmiso-700.woff2") format("woff2");
+  font-weight: 700;
+  font-display: swap;
+}
+
 /* 토큰을 Tailwind 클래스로 연결한다: bg-card, text-ink2, border-sep … */
 @theme inline {
+  --font-display: "학교안심 둥근미소", "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif;
   --color-page: var(--page);
   --color-g: var(--g);
   --color-raise: var(--raise);
@@ -90,6 +105,11 @@
 }
 
 @layer base {
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+  }
   html,
   body,
   #root {

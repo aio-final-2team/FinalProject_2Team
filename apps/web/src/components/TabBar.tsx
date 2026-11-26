@@ -15,7 +15,7 @@ export const tabOn = (path: string, it: Pick<TabItem, "to" | "also" | "not">) =>
  */
 export function TabBar({ items, center, extra, className = "" }: { items: TabItem[]; center?: { to: string; label: string }; extra?: { icon: string; label: string; onClick: () => void }; className?: string }) {
   const { pathname } = useLocation();
-  const cell = "relative grid justify-items-center gap-0.5 text-caption font-semibold";
+  const cell = "relative grid justify-items-center gap-0.5 font-display text-caption font-semibold";
   const left = center ? items.slice(0, Math.ceil(items.length / 2)) : items;
   const right = center ? items.slice(Math.ceil(items.length / 2)) : [];
   const tab = (it: TabItem) => (

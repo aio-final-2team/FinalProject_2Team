@@ -171,7 +171,7 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
           {c.check && !c.check.passed && <Pill tone="action">검사 확인 필요</Pill>}
           {c.noEvidence && !c.warnings?.length && <Pill tone="action">근거 없음</Pill>}
         </div>
-        <h1 className="text-large-title font-bold tracking-[-0.025em]">{c.title}</h1>
+        <h1 className="text-large-title font-bold tracking-[-0.01em]">{c.title}</h1>
         {[c.className, c.childName, c.requesterName].filter(Boolean).length > 0 && (
           <p className="text-sub text-ink2">{[c.className, c.childName, c.requesterName].filter(Boolean).join(" · ")}</p>
         )}
