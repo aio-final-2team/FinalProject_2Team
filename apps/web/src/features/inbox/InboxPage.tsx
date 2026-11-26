@@ -139,7 +139,6 @@ export function InboxPage({ role }: { role: Exclude<Role, "parent"> }) {
           ))}
         </div>
         <div className="mt-1.5 flex items-center gap-1" role="group" aria-label="요청 종류">
-          <span className="mr-1 text-caption font-semibold text-ink2">종류</span>
           {TYPES.map((t) => (
             <button
               key={t.key}

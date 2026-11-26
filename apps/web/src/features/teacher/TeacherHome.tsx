@@ -6,7 +6,7 @@ import { useCareRequests } from "@/api/care";
 import { useChildren, useNotes } from "@/api/notes";
 import { useSession } from "@/app/session";
 import { ScreenTop } from "@/components/ScreenTop";
-import { PrimaryButton } from "@/components/Dock";
+import { SubButton } from "@/components/Dock";
 import { BellLink } from "@/components/BellLink";
 import { Icon } from "@/components/Icon";
 import { dateLabel, todayKST } from "@/domain/notes";
@@ -40,6 +40,8 @@ export function TeacherHome() {
   const meal = list[0]?.content.items.find((i) => i.key === "meal");
   const menuDoc = docs.data?.find((d) => d.doc_type === "menu" && d.status === "active");
   const notice = docs.data?.find((d) => d.doc_type === "notice" && d.status === "active");
+  // TODO(#368): 반·담임 표시 이름 API가 오면 실제 값으로 교체한다.
+  const homeTitle = "별빛반 손영민 선생님";
 
   const noteState = !list.length
     ? { title: "오늘 알림장을 아직 만들지 않았어요", sub: recorded ? `관찰 기록 ${recorded}명의 내용을 반영할 수 있어요` : "오늘 함께한 활동부터 적으면 돼요", action: "알림장 만들기" }
@@ -55,9 +57,18 @@ export function TeacherHome() {
 
   return (
     <div className="mx-auto max-w-[680px] px-4 pb-32 lg:pb-10">
-      <ScreenTop title="오늘" sub={`${dateLabel(date)} · ${user?.display_name}`} right={<BellLink to="/teacher/notifications" />} />
+      <ScreenTop title={homeTitle} sub={dateLabel(date)} right={<BellLink to="/teacher/notifications" />} />
 
       <QueryState queries={[kids, notes, inbox]} skeleton={3}>
+      <Link to="/teacher/class" className="mt-4 flex items-center gap-3 rounded-xl bg-tint p-4 text-ink shadow-card transition-transform duration-100 active:scale-[.98]">
+        <span className="grid size-12 shrink-0 place-items-center rounded-xl bg-card text-accent-ink shadow-card"><Icon name="document" className="size-6" /></span>
+        <span className="min-w-0 flex-1">
+          <span className="text-caption font-bold text-accent-ink">오늘 우리 반</span>
+          <b className="mt-0.5 block truncate text-callout">{meal?.value ?? (notice ? notice.title : menuDoc ? "오늘의 식단과 소식을 보아요" : "우리 반 이야기를 보아요")}</b>
+          <span className="mt-0.5 block text-footnote text-ink2">식단표와 가정통신문을 한곳에서 확인해요</span>
+        </span>
+        <Icon name="chevR" className="size-4 shrink-0 text-accent-ink" />
+      </Link>
       {urgent.length > 0 && (
         <>
           <Label>먼저 확인해 주세요</Label>
@@ -71,20 +82,19 @@ export function TeacherHome() {
           </section>
         </>
       )}
-      <Label>다음 할 일</Label>
-      <Card accent={!allSent}>
-        <span className={`text-caption font-bold ${allSent ? "text-ok" : "text-accent-ink"}`}>오늘 알림장</span>
-        <h2 className="mt-1 text-headline font-bold">{noteState.title}</h2>
-        <p className="mt-1 text-footnote text-ink2">{noteState.sub}</p>
-        <PrimaryButton className="mt-3 w-full" onClick={() => nav("/teacher/notes?tab=notes")}>{noteState.action}</PrimaryButton>
+      <Label>오늘 알림장</Label>
+      <Card accent>
+        <span className={`inline-flex rounded-full px-2.5 py-1 text-caption font-bold ${allSent ? "bg-ok-tint text-ok" : "bg-tint text-accent-ink"}`}>오늘 알림장</span>
+        <h2 className="mt-2 text-headline font-bold">{noteState.title}</h2>
+        <p className="mt-1.5 text-footnote leading-relaxed text-ink2">{noteState.sub}</p>
+        <SubButton className="mt-3 w-full rounded-lg" onClick={() => nav("/teacher/notes?tab=notes")}>{noteState.action}</SubButton>
       </Card>
 
-      <Label>오늘 할 일</Label>
+      <Label>오늘 살펴볼 것</Label>
       <NavList>
-        <NavRow to="/teacher/inbox" icon="inbox" title={`받은함 ${inbox.data?.counts.review ?? 0}건`} sub="답변, 상담, 민원 요청이에요" count={inbox.data?.counts.review ?? 0} />
-        <NavRow to="/teacher/care" icon="medication" title={careOpen ? `귀가·투약 ${careOpen}건` : "귀가·투약"} sub={careOpen ? "보호자가 보낸 요청을 확인해 주세요" : "확인할 요청이 없어요"} count={careOpen} />
-        <NavRow to="/teacher/notes?tab=records" icon="class" title="관찰 기록" sub={`오늘 ${recorded}명 기록 · 필요한 아이만 짧게 남겨도 돼요`} />
-        <NavRow to="/teacher/class" icon="document" title="오늘 우리 반" sub={meal?.value ?? (notice ? `가정통신문 · ${notice.title}` : menuDoc ? "오늘 식단은 알림장에 자동으로 들어가요" : "식단표와 가정통신문 보기")} />
+        <NavRow to="/teacher/inbox" icon="inbox" title={`받은함 ${inbox.data?.counts.review ?? 0}건`} sub="보호자가 보낸 이야기를 살펴봐요" count={inbox.data?.counts.review ?? 0} />
+        <NavRow to="/teacher/care" icon="medication" title={careOpen ? `귀가·투약 ${careOpen}건` : "귀가·투약"} sub={careOpen ? "오늘의 귀가와 투약 약속을 확인해요" : "오늘은 확인할 요청이 없어요"} count={careOpen} />
+        <NavRow to="/teacher/notes?tab=records" icon="class" title="관찰 기록" sub={`오늘 ${recorded}명의 순간을 남겼어요 · 필요한 아이만 적어도 돼요`} />
       </NavList>
 
       <Label>더 보기</Label>
@@ -102,23 +112,23 @@ export function TeacherHome() {
 }
 
 function Label({ children }: { children: React.ReactNode }) {
-  return <div className="mb-2 mt-5 px-1 text-footnote font-semibold text-ink2">{children}</div>;
+  return <div className="mb-2.5 mt-6 px-1 text-callout font-bold text-ink">{children}</div>;
 }
 
 function Card({ children, accent }: { children: React.ReactNode; accent?: boolean }) {
-  return <section className={`rounded-lg bg-card p-3 ${accent ? "border-[1.5px] border-accent" : "shadow-card"}`}>{children}</section>;
+  return <section className={`rounded-xl bg-card p-4 ${accent ? "border-[1.5px] border-accent shadow-card" : "shadow-card"}`}>{children}</section>;
 }
 
 /** 이동 행 묶음. 행 전체가 눌리고 높이 60 이상이라 손가락으로 누르기 쉽다 */
 function NavList({ children }: { children: React.ReactNode }) {
-  return <ul className="overflow-hidden rounded-lg bg-card shadow-card">{children}</ul>;
+  return <ul className="overflow-hidden rounded-xl bg-card shadow-card">{children}</ul>;
 }
 
 function NavRow({ to, icon, title, sub, count = 0, soon = false }: { to: string; icon: string; title: string; sub: string; count?: number; soon?: boolean }) {
   return (
     <li className="[&+&]:border-t [&+&]:border-sep">
-      <Link to={to} className="flex min-h-[60px] items-center gap-3 px-3 py-2.5 transition-colors active:bg-fill">
-        <span className="grid size-10 shrink-0 place-items-center rounded-md bg-tint text-accent-ink"><Icon name={icon} className="size-5" /></span>
+      <Link to={to} className="flex min-h-[68px] items-center gap-3 px-3.5 py-3 transition-[transform,background-color] duration-100 active:scale-[.99] active:bg-fill">
+        <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-tint text-accent-ink"><Icon name={icon} className="size-5" /></span>
         <span className="min-w-0 flex-1">
           <b className="block truncate text-callout">{title}</b>
           <span className="block truncate text-footnote text-ink2">{sub}</span>

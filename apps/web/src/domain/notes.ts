@@ -87,8 +87,8 @@ export function todayKST(): string {
 
 export function dateLabel(iso: string): string {
   const [y, m, d] = iso.split("-").map(Number);
-  const w = "일월화수목금토"[new Date(y, m - 1, d).getDay()];
-  return `${m}월 ${d}일(${w})`;
+  const w = ["일요일", "월요일", "화요일", "수요일", "목요일", "금요일", "토요일"][new Date(y, m - 1, d).getDay()];
+  return `${m}월 ${d}일 ${w}`;
 }
 
 /** 이름 뒤 조사: 가온 → 가온이 */
