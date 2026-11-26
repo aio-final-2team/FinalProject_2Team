@@ -52,7 +52,7 @@ ERD는 피드·앨범 표 3개(맨 끝 절)를 뺀 표 28개를 여섯 영역으
 | ② 요청·카드·승인 | `requests` `request_messages` `cards` `approvals` `card_evidence` `events` | 18 |
 | ③ 자료·검색 | `documents` `document_chunks` `document_classrooms` | 6 |
 | ④ 상담 | `rooms` `staff_busy_blocks` `consultation_slots` `consultation_bookings` | 10 |
-| ⑤ 기억·원에 남은 답 | `memories` `memory_rules` `saved_answers` `saved_answer_sources` | 8 |
+| ⑤ 기억·원에 남은 답 | `memories` `memory_rules` `saved_answers` `saved_answer_sources` | 9 |
 | ⑥ 알림장·알림·평가 | `daily_note_inputs` `daily_notes` `notifications` `eval_runs`(기관에 속하지 않는 평가 기록이라 선 없음) | 9 |
 
 
@@ -170,7 +170,9 @@ erDiagram
     classrooms { uuid id PK }
     documents { uuid id PK }
     users { uuid id PK }
+    children { uuid id PK }
     users ||--o{ memories : "owner_id"
+    children |o--o{ memories : "child_id"
     cards |o--o{ memories : "source_card_id"
     users ||--o{ memory_rules : "owner_id"
     users ||--o{ saved_answers : "approved_by"
@@ -269,8 +271,9 @@ erDiagram
 | 58 | `daily_notes` | 0..1 : N | `events` | `events.(daily_note_id, org_id)` → `daily_notes.(id, org_id)` |
 | 59 | `organizations` | 1 : N | `user_consents` | `user_consents.org_id` → `organizations.id` |
 | 60 | `users` | 1 : N | `user_consents` | `user_consents.(user_id, org_id)` → `users.(id, org_id)` |
+| 61 | `children` | 0..1 : N | `memories` | `memories.(child_id, org_id)` → `children.(id, org_id)` |
 
-**ERD 선 수 = 표 행 수 = 60.** 같은 부모와 자식 사이에 FK가 둘 이상 있으면(예: `requests`의 `requester_id`·`assignee_id` → `users`) 선과 행을 FK마다 따로 센다. DDL에 있는 FK 제약은 모두 66개인데, 이 중 6개는 맨 끝 피드·앨범 절의 표에 걸려 있어서 이 그림과 표에는 넣지 않았다. FK 제약 수는 DB 카탈로그에서 센다(9장 C3).
+**ERD 선 수 = 표 행 수 = 61.** 같은 부모와 자식 사이에 FK가 둘 이상 있으면(예: `requests`의 `requester_id`·`assignee_id` → `users`) 선과 행을 FK마다 따로 센다. DDL에 있는 FK 제약은 모두 67개인데, 이 중 6개는 맨 끝 피드·앨범 절의 표에 걸려 있어서 이 그림과 표에는 넣지 않았다. FK 제약 수는 DB 카탈로그에서 센다(9장 C3).
 
 
 FK를 걸 수 없는 참조가 두 곳 있다. `cards.subject_id`와 `notifications.subject_id`는 대상 종류(`subject_type`)에 따라 가리키는 표가 달라지므로 FK를 두지 않았다. 대신 저장하기 전에 API가 대상이 같은 기관에 있는지 확인한다.
@@ -1444,8 +1447,8 @@ MVP에서 이미 적용되는 삭제는 담임 기억의 내용 비우기·`dele
 
 | 체크리스트(가이드 22쪽) | 이 문서 |
 | --- | --- |
-| ERD 그림과 관계 명세 표가 서로 일치한다 | 1.2·1.3. ERD 선 60개 = 관계 표 60행 = DDL FK 제약 66개 중 피드·앨범 표의 6개를 뺀 60개(1.3) |
-| 모든 컬럼에 타입·제약·의미가 적혀 있다 | 2장과 맨 끝 [제안] 피드·앨범 절. 최신 head의 컬럼은 301개이며 필수 동의 여섯 컬럼을 포함함 |
+| ERD 그림과 관계 명세 표가 서로 일치한다 | 1.2·1.3. ERD 선 61개 = 관계 표 61행 = DDL FK 제약 67개 중 피드·앨범 표의 6개를 뺀 61개(1.3) |
+| 모든 컬럼에 타입·제약·의미가 적혀 있다 | 2장과 맨 끝 [제안] 피드·앨범 절. 최신 head의 컬럼은 304개이며 필수 동의 여섯 컬럼·0017 돌봄 메모 세 컬럼을 포함함 |
 | 모든 테이블에 기본키와 created_at이 있다 | 2장. 기존 표 27개(9장 C1·C2). 필수 동의 시각은 agreed_at이며, 피드·앨범 표 중 feed_photo_children에는 created_at이 없다 |
 | API 설계 문서와 필드명·ID 형식이 같다 | 2.0 ID 형식 표. 필드와 DB 컬럼 대응표는 API 설계 문서 7장 |
 | 벡터 차원, 인덱스 연산자, 임베딩 모델이 적혀 있다 | 3장 |
