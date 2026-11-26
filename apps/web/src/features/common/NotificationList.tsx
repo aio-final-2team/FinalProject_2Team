@@ -1,4 +1,4 @@
-import { NotificationRow } from "@/components/NotificationRow";
+import { NotificationGroups, NotificationRow } from "@/components/NotificationRow";
 import { ScreenTop } from "@/components/ScreenTop";
 import { useNavigate } from "react-router";
 import { QueryState, StaleBanner } from "@/components/QueryState";
@@ -44,12 +44,13 @@ export function TeacherNotifications({ role = "teacher" }: { role?: "teacher" | 
           <p className="text-callout text-ink2">퇴근 뒤에는 아이 안전 알림만 바로 와요.</p>
         </div>
       ) : (
-        <ul className="overflow-hidden rounded-lg bg-card shadow-card">
-          {items.map((n) => {
+        <NotificationGroups
+          items={items}
+          renderRow={(n) => {
             const c = cardOf(n);
             return <NotificationRow key={n.id} n={n} line={c ? `${TYPE_LABEL[c.type]} · ${c.childName ? `${c.childName} · ` : ""}${c.title}` : null} onOpen={() => open(n)} />;
-          })}
-        </ul>
+          }}
+        />
       )}
     </div>
   );

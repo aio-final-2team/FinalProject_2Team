@@ -1,7 +1,7 @@
 import { useNavigate } from "react-router";
 import { useNotifications, useReadNotification, type Notification } from "@/api/notifications";
 import { Buddy } from "@/components/Brand";
-import { NotificationRow } from "@/components/NotificationRow";
+import { NotificationGroups, NotificationRow } from "@/components/NotificationRow";
 import { ScreenTop } from "@/components/ScreenTop";
 import { QueryState } from "@/components/QueryState";
 
@@ -29,9 +29,7 @@ export function NotificationsPage() {
           <b className="text-headline">새 알림이 없어요</b>
         </div>
       ) : (
-        <ul className="overflow-hidden rounded-lg bg-card shadow-card">
-          {items.map((n) => <NotificationRow key={n.id} n={n} onOpen={() => open(n)} />)}
-        </ul>
+        <NotificationGroups items={items} renderRow={(n) => <NotificationRow key={n.id} n={n} onOpen={() => open(n)} />} />
       )}
       </QueryState>
     </div>
