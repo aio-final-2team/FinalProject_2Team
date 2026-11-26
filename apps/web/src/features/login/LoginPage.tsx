@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ApiError } from "@/api/client";
-import { DEMO_ACCOUNTS, DEMO_PASSWORD, HOME, useSession } from "@/app/session";
+import { DEMO_ACCOUNTS, DEMO_PASSWORD, HOME, SPLASH_KEY, useSession } from "@/app/session";
 import logoOnBlue from "@/assets/logo/yuchion-main-logo-transparent.svg";
 import { mountLogoMotion } from "@/assets/brand/yuchion-logo-motion.js";
 import { Buddy, SymbolMark } from "@/components/Brand";
@@ -10,7 +10,6 @@ import { PrimaryButton, SubButton } from "@/components/Dock";
 import type { Role } from "@/domain/types";
 
 const DEMO = import.meta.env.VITE_DEMO_ACCOUNTS !== "false";
-const SPLASH_KEY = "yuchion.splash";
 const BLUE = "bg-[linear-gradient(160deg,#3D63F2,#2440C8)]";
 
 function seenSplash(): boolean {

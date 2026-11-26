@@ -16,6 +16,8 @@ type Session = {
 };
 const Ctx = createContext<Session>({ role: null, user: null, signIn: async () => Promise.reject(), signOut: () => {}, setConsentsComplete: () => {} });
 const KEY = "yuchion.user";
+/** 로고 모션을 이미 봤는지(이번 방문). 로그아웃하면 지워서 로그인 화면이 모션부터 다시 시작한다 */
+export const SPLASH_KEY = "yuchion.splash";
 
 function read(): SessionUser | null {
   try {
@@ -60,6 +62,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setToken(null);
     try {
       sessionStorage.removeItem(KEY);
+      sessionStorage.removeItem(SPLASH_KEY);
     } catch {
       /* 무시 */
     }
