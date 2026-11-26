@@ -3,11 +3,12 @@
 ※ 이 문서는 유치온 개발·평가용 가상 자료입니다. 실제 기관·인물·아동 정보가 아닙니다.
 
 - 기관 ID `KG-DEMO-01` · 반: 만 3세 새싹반, 만 4세 별빛반, 만 5세 햇님반
-- 교사: `T-DEMO-01` 김하늘 선생님(가상, 만 5세반 담임), `T-DEMO-02` 이바다 선생님(가상, 만 4세반 담임), `T-DEMO-03` 박구름 선생님(가상, 만 3세반 담임)
+- 교사: `T-DEMO-01` 윤서진 선생님(가상, 만 4세반 담임), `T-DEMO-02` 박도윤 선생님(가상, 만 5세반 담임), `T-DEMO-03` 박구름 선생님(가상, 만 3세반 담임)
 - 기준일: 2026-11-16(월) (팀 자체 30문항 v0.5 공통 설정)
 - 문서 형식: 11/13 통신문 양식(원훈·호수·항목별 안내·준비물), 위치는 `## 1쪽 …` 제목으로 표시
 - 머리말(front matter): `id`, `title`, `doc_type`(notice·schedule·menu·policy·consult_timetable), `kindergarten_id`, `classroom`, `classroom_keys`, `effective_from`, `published_at`, `visibility`(all·parents·staff), `source`(virtual), `is_virtual` — DB `documents` 표 열 이름에 맞춤(PR #238)
 - 상담 시간표는 문서(`consult_timetable/CS-*.md`, 사람용·검색용)와 `consult_timetable/staff_busy_blocks.json`(DB `staff_busy_blocks` 적재용, 계약표 5장) 두 형태로 둡니다. 둘 다 생성기의 `FREE_SLOTS` 한 곳에서 만들고, 검사는 생성된 두 파일을 직접 읽어 비교합니다.
+- T-DEMO-01 윤서진은 만 4세 별빛반, T-DEMO-02 박도윤은 만 5세 햇님반 담임입니다. 바뀐 시간표를 DB에 반영하려면 문서 시드를 다시 실행합니다.
 - 다시 만들기: `python3 data/fixtures/make_fixtures.py` (생성 + 완료 기준 검사) · 검사만: `python3 data/fixtures/make_fixtures.py --check-only` (손으로 고친 파일도 그대로 검사)
 
 ## T20 적재 규칙
@@ -37,8 +38,8 @@
 | 반 키 | `name` | `age_group` | 담임 |
 | --- | --- | --- | --- |
 | C3 | 만 3세 새싹반 | 3 | T-DEMO-03 |
-| C4 | 만 4세 별빛반 | 4 | T-DEMO-02 |
-| C5 | 만 5세 햇님반 | 5 | T-DEMO-01 |
+| C4 | 만 4세 별빛반 | 4 | T-DEMO-01 |
+| C5 | 만 5세 햇님반 | 5 | T-DEMO-02 |
 
 **복수 반 문서 (#238 T09 v0.6 `f9188b7` 기준, 태웅님 확인)**
 `documents`에는 반 칸이 없고, 대상 반은 연결 표 `document_classrooms (document_id, classroom_id)`에 반마다 한 줄씩 넣습니다. 줄이 없으면 원 전체 자료입니다. 문서는 `documents`에 한 번만 넣으므로 `UNIQUE (org_id, content_sha256)`와 부딪히지 않습니다. 학부모 근거 검색은 원 전체 자료와 우리 아이 반 자료만 찾습니다(설계서 3.3 ①). 그래서 `NT-2026-30`(만 4·5세반 김장 체험)은 만 3세반 학부모 검색에 나오지 않습니다.
@@ -89,5 +90,5 @@
 | [PL-MEDICATION](policy/PL-MEDICATION.md) | policy | 운영 규정 — 투약 의뢰 | 전체 | 2026-09-01 | — |  |
 | [PL-FEES](policy/PL-FEES.md) | policy | 운영 규정 — 원비 및 납부 | 전체 | 2026-09-01 | — | 권한 밖 문항(P04 원비 카드 결제 요청) 참고용: 앱은 결제를 처리하지 않음. |
 | [PL-PRIVACY](policy/PL-PRIVACY.md) | policy | 운영 규정 — 개인정보와 사진 공개 | 전체 | 2026-09-01 | — | 권한 밖 문항(P02 옆 반 정보 요청) 참고용. |
-| [CS-T01-2026-11](consult_timetable/CS-T01-2026-11.md) | consult_timetable | 상담 시간표 — 김하늘 선생님(만 5세반, T-DEMO-01) | 만 5세 햇님반 | 2026-11-02 | YC-N06, YC-M03, YC-M04, YC-F01 | 11/20 후보 10:00·14:00·16:30 = YC-M03 모의 응답과 같음. 10:00 거절 이유 '오전은 수업 시간' = YC-M04. |
-| [CS-T02-2026-11](consult_timetable/CS-T02-2026-11.md) | consult_timetable | 상담 시간표 — 이바다 선생님(만 4세반, T-DEMO-02) | 만 4세 별빛반 | 2026-11-02 | — | 빈 날짜(11/20) 사례: YC-F02 '가능한 시간 없음' 응답 유형 참고. |
+| [CS-T01-2026-11](consult_timetable/CS-T01-2026-11.md) | consult_timetable | 상담 시간표 — 윤서진 선생님(만 4세반, T-DEMO-01) | 만 4세 별빛반 | 2026-11-02 | YC-N06, YC-M03, YC-M04, YC-F01 | 11/20 후보 10:00·14:00·16:30 = YC-M03 모의 응답과 같음. 10:00 거절 이유 '오전은 수업 시간' = YC-M04. |
+| [CS-T02-2026-11](consult_timetable/CS-T02-2026-11.md) | consult_timetable | 상담 시간표 — 박도윤 선생님(만 5세반, T-DEMO-02) | 만 5세 햇님반 | 2026-11-02 | — | 빈 날짜(11/20) 사례: YC-F02 '가능한 시간 없음' 응답 유형 참고. |

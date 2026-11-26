@@ -10,7 +10,8 @@ from sqlalchemy import text
 from app.core.errors import ApiError
 from app.mock import seed
 from app.modules.documents.search import search_documents
-from db.seeds.documents import seed_documents
+from app.modules.documents.parsing import parse_document
+from db.seeds.documents import FIXTURES, seed_documents
 
 WINTER_1226 = """---
 title: "겨울방학 일정 다시 알림"
@@ -132,6 +133,56 @@ def test_parent_search_accepts_string_classroom_ids(docs):
         search_documents(parent(), str(seed.ORG), "notice", "현장체험학습 도시락",
                          classroom_id=str(seed.CLASS_SUN), on_date=date(2026, 11, 20))
     assert denied.value.status == 404
+
+
+def test_parent_finds_own_teacher_consult_timetable(docs):
+    found = search_documents(parent(), str(seed.ORG), "consult_timetable", "상담 시간표 11-20",
+                             classroom_id=seed.CLASS_STAR, on_date=date(2026, 11, 20))["chunks"]
+    assert found
+    assert all("T-DEMO-01" in chunk["document_title"] for chunk in found)
+    assert any("윤서진" in chunk["document_title"] and "10:00, 14:00, 16:30" in chunk["content"]
+               for chunk in found)
+
+
+def test_reseed_supersedes_old_virtual_timetable_only(seeded_db):
+    path = FIXTURES / "consult_timetable" / "CS-T01-2026-11.md"
+    current = path.read_text(encoding="utf-8")
+    old = parse_document(current.replace("윤서진", "김하늘").replace("만 4세 별빛반", "만 5세 햇님반")
+                         .replace("만 4세반", "만 5세반").replace("[C4]", "[C5]"))
+    with seeded_db.begin() as connection:
+        old_id = connection.scalar(text("""
+            INSERT INTO documents (org_id,title,doc_type,source,status,ingest_status,content_sha256,is_virtual)
+            VALUES (:org,:title,'consult_timetable','virtual','active','succeeded',:sha,true) RETURNING id
+        """), {"org": seed.ORG, "title": old.meta.title, "sha": old.content_sha256})
+        connection.execute(text("""
+            INSERT INTO document_classrooms (document_id,classroom_id,org_id) VALUES (:doc,:classroom,:org)
+        """), {"doc": old_id, "classroom": seed.CLASS_SUN, "org": seed.ORG})
+        for chunk in old.chunks:
+            connection.execute(text("""
+                INSERT INTO document_chunks (document_id,org_id,chunk_index,location,content)
+                VALUES (:doc,:org,:index,:location,:content)
+            """), {"doc": old_id, "org": seed.ORG, "index": chunk.index,
+                   "location": chunk.location, "content": chunk.content})
+        human_id = connection.scalar(text("""
+            INSERT INTO documents (org_id,title,doc_type,source,status,ingest_status,content_sha256,is_virtual)
+            VALUES (:org,'사람이 올린 문서','notice','uploaded','active','succeeded','human:t11',false) RETURNING id
+        """), {"org": seed.ORG})
+        seed_documents(connection)
+        statuses = connection.execute(text("""
+            SELECT id,status FROM documents WHERE id IN (:old,:human,:menu,:notice,:old_notice)
+        """), {"old": old_id, "human": human_id, "menu": seed.MENU,
+               "notice": seed.NOTICE, "old_notice": seed.OLD_NOTICE}).all()
+        new_id = connection.scalar(text("""
+            SELECT id FROM documents WHERE org_id=:org AND content_sha256=:sha
+        """), {"org": seed.ORG, "sha": parse_document(current).content_sha256})
+        assert seed_documents(connection)["added"] == []
+        assert connection.scalar(text("SELECT status FROM documents WHERE id=:id"), {"id": old_id}) == "superseded"
+    assert dict(statuses) == {old_id: "superseded", human_id: "active", seed.MENU: "active",
+                              seed.NOTICE: "active", seed.OLD_NOTICE: "superseded"}
+    assert new_id != old_id
+    found = search_documents(parent(), str(seed.ORG), "consult_timetable", "상담 시간표 11-20",
+                             classroom_id=seed.CLASS_STAR, on_date=date(2026, 11, 20))["chunks"]
+    assert found and all("김하늘" not in chunk["document_title"] for chunk in found)
 
 
 def test_upload_conflicting_notice_is_pending_with_conflicts(db_client, teacher, docs):

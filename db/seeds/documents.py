@@ -4,7 +4,8 @@
 - 적재 대상은 README 'T20 적재 규칙'의 다섯 폴더 Markdown 30개뿐이에요(README·알림장 데이터는 넣지 않음).
 - 반 키는 시드 반으로 이어요: C4 → 만 4세 별빛반(`…0101`), C5 → 만 5세 햇님반(`…0102`). 시드에 없는 반(C3)만
   대상인 문서는 원 전체로 잘못 보이지 않게 넣지 않아요.
-- 같은 내용(`content_sha256`)이 이미 있으면 건너뛰어요. 원 자료끼리 일부러 넣은 충돌(겨울방학 12/24 vs 12/26)은
+- 같은 내용(`content_sha256`)이 이미 있으면 건너뛰고, 현재 원 자료에 없는 옛 가상 문서는 superseded로 내려요.
+  원 자료끼리 일부러 넣은 충돌(겨울방학 12/24 vs 12/26)은
   평가용이라 충돌 검사를 하지 않고 둘 다 사용 중(active)으로 넣어요.
 """
 
@@ -28,8 +29,10 @@ def fixture_files() -> list[Path]:
 def seed_documents(connection) -> dict[str, list[str]]:
     """넣은 문서 id·건너뛴 문서 id를 돌려줘요."""
     added, skipped = [], []
+    current_shas = []
     for path in fixture_files():
         parsed = parse_document(path.read_text(encoding="utf-8"))
+        current_shas.append(parsed.content_sha256)
         meta = parsed.meta
         classrooms = [CLASSROOMS[key] for key in meta.classroom_keys if key in CLASSROOMS]
         if meta.classroom_keys and not classrooms:
@@ -58,6 +61,18 @@ def seed_documents(connection) -> dict[str, list[str]]:
             """), {"d": document_id, "org": seed.ORG, "i": chunk.index, "loc": chunk.location,
                    "content": chunk.content})
         added.append(meta.id)
+    connection.execute(text("""
+        UPDATE documents SET status='superseded'
+        WHERE org_id=:org AND is_virtual=true AND status='active'
+          AND id <> ALL(CAST(:demo_ids AS uuid[]))
+          AND content_sha256 <> ALL(CAST(:shas AS text[]))
+    """), {"org": seed.ORG, "demo_ids": [seed.MENU, seed.NOTICE, seed.OLD_NOTICE], "shas": current_shas})
+    connection.execute(text("""
+        UPDATE documents SET status='active'
+        WHERE org_id=:org AND is_virtual=true AND status='superseded'
+          AND id <> ALL(CAST(:demo_ids AS uuid[]))
+          AND content_sha256 = ANY(CAST(:shas AS text[]))
+    """), {"org": seed.ORG, "demo_ids": [seed.MENU, seed.NOTICE, seed.OLD_NOTICE], "shas": current_shas})
     return {"added": added, "skipped": skipped}
 
 

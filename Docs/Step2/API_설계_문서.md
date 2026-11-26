@@ -1790,12 +1790,15 @@ def decide(card_id: UUID, body: CardDecision, user: User = Depends(current_staff
 
 아래 표는 계약표 4장에 있는 도구마다 실패 코드와 실패 후 처리를 적은 것이다. '실패 후 처리' 열은 기본값이다. `retryable`이 참이면 1번 다시 부르고, 그래도 실패하거나 `retryable`이 거짓이면 사람 카드로 넘긴다. 에이전트별 세부 행동은 T14 에이전트 명세 6장에 있다.
 
+T20 가상 상담 시간표는 T-DEMO-01 윤서진 선생님이 만 4세 별빛반, T-DEMO-02 박도윤 선생님이 만 5세 햇님반 담당이다. 기존 적재본을 교체하려면 `db.seeds.documents`를 다시 실행해 옛 가상 문서를 `superseded`로 내려야 한다.
+
 | 도구 | 부르는 AI | 실행 조건 | 성공 `data` | 실패 코드 | 실패 후 처리(기본) |
 | --- | --- | --- | --- | --- | --- |
 | `route_request` | 감독 | 요청이 `received`·`classified` | 분류 결과를 저장 | `UPSTREAM_UNAVAILABLE`·`SAVE_FAILED`(참), `INVALID_TRANSITION`(거짓) | 1번 다시 → 실패면 코드로 위험·분류를 다시 저장하고 담임에게 초안 없는 사람 카드로 넘김. 긴급·판단 필요면 원장 보고도 만듦(6.3). 유효한 담임이 없을 때만 미배정 |
 | `create_card` | 감독·자료 | 요청이 끝나지 않음 | `card_id` | `SAVE_FAILED`(참), `VALIDATION_FAILED`·`INVALID_TRANSITION`(거짓) | 1번 다시 → 실패면 학부모에게 '말씀하신 내용은 받았는데 선생님께 넘기는 중에 저장 오류가 났어요. 확인이 늦어질 수 있으니 급하시면 원으로 전화 주세요'라고 솔직히 안내('선생님께 전달했어요'라고 하지 않음, 30문항 YC-F04). 요청은 `POST /requests` 단계에서 이미 저장돼 '내 요청' 화면에 '접수됨'으로 보이므로, '접수가 안 됐어요'라고도 하지 않음. 카드는 서버 점검 작업이 코드 위험·담임 배정을 적용해 다시 올림(6.3). 유효한 담임이 없을 때만 미배정 |
 | `notify_staff` | 감독 | 카드가 있음 | `notification_id` | `SAVE_FAILED`(참), `NOT_FOUND`(거짓) | 1번 다시 → 실패해도 카드는 받은함에 그대로 남음. 긴급·판단 필요 카드면 `warnings[]`에 `notify_failed`를 붙여 카드에서 눈에 띄게 하고, 이력에도 남김 |
 | `search_documents` | 자료 | 요청한 기관의 자료만, 학부모면 원 전체 + 아이 반 자료 | `chunks[]` | `TOOL_TIMEOUT`·`UPSTREAM_UNAVAILABLE`(참), `VALIDATION_FAILED`·`NOT_FOUND`(거짓) | 1번 다시 → 실패하거나 근거가 없으면 추측하지 않고 담임 카드로 넘김(`no_evidence`) |
+
 | `get_law_article` | 자료 | 법령 이름·조문이 있음 | `text`, `source_url`, `fetched_at` | `UPSTREAM_UNAVAILABLE`(참), `NOT_FOUND`(거짓) | 1번 다시 → 실패면 법령 인용 없이 초안을 쓰고, 카드에 '법령 확인 못 함' 표시 |
 | `get_memory` | 기억 | 기억의 주인이 요청 담당자 | `memories[]`, `active_rules[]` | `SAVE_FAILED`(참) | 1번 다시 → 실패면 기억 없이 진행 |
 | `propose_rule` | 기억 | 같은 주인·같은 이유 코드가 3번(마지막 decline 뒤에 쌓인 새 기억만 셈). rule_json은 객체, after·before는 HH:MM | `rule_id`(이미 있으면 기존 ID) | `SAVE_FAILED`(참), `VALIDATION_FAILED`(거짓) | 1번 다시 → 실패면 제안만 되돌리고 tool_failed 기록(카드 거절·기억은 유지하고, 다음에 다시 셈) |
