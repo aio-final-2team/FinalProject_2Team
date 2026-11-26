@@ -35,7 +35,7 @@ export function ParentHome() {
   return (
     <div className="min-h-full pb-8">
       {/* 블루 머리: 학부모 홈에만 브랜드 블루를 넓게 쓴다 */}
-      <header className="bg-brand-fill px-4 pb-6 pt-[max(12px,env(safe-area-inset-top))] text-on-brand">
+      <header className="relative overflow-hidden bg-brand-fill px-4 pb-6 pt-[max(12px,env(safe-area-inset-top))] text-on-brand">
         <div className="mx-auto flex max-w-[680px] items-center justify-between">
           <img src={wordWhite} alt="유치온" className="h-5 w-auto" />
           <div className="flex items-center">
@@ -44,9 +44,11 @@ export function ParentHome() {
             </Link>
           </div>
         </div>
-        <div className="mx-auto max-w-[680px]">
+        <div className="relative mx-auto max-w-[680px] pr-24 lg:pr-32">
           <h1 className="mt-4 text-large-title font-bold tracking-[-0.025em]">{child ? `${nameI(child.display_name)}의 오늘` : "오늘"}</h1>
           <p className="mt-0.5 text-footnote font-medium text-on-brand/80">{dateLabel(date)}</p>
+          <p className="mt-2 text-callout font-medium text-on-brand/90">오늘도 아이의 하루를 함께 볼까요?</p>
+          <Buddy face="hello" className="absolute -bottom-5 right-0 size-24 lg:-bottom-6 lg:size-28" />
         </div>
       </header>
 
