@@ -15,3 +15,8 @@ export function useAgreeConsents() {
     onSuccess: (d) => qc.setQueryData(["consents"], d),
   });
 }
+
+/** 반 아이별 보호자 동의 현황 (API 55). 같은 원의 원장·현재 그 반 담임만 */
+export type ChildConsent = { child_id: string; display_name: string; guardians_total: number; guardians_complete: number; complete: boolean };
+export const useClassroomConsents = (classroomId?: string) =>
+  useQuery({ queryKey: ["consents", "classroom", classroomId], enabled: !!classroomId, queryFn: () => api<{ items: ChildConsent[] }>(`/api/v1/classrooms/${classroomId}/consents`).then((r) => r.items) });

@@ -22,6 +22,8 @@ export type Card = {
   /** 서버가 준 요청한 보호자 표시 이름(API 카드 응답 requester_name). 없으면 비어 있다 */
   requesterName?: string;
   className: string;
+  /** 카드 목록이 주는 반 id(원장이 반을 고를 때 쓴다) */
+  classroomId?: string;
   createdAt: string;
   original: string;
   summary?: string;

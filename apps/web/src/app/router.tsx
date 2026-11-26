@@ -1,6 +1,7 @@
 import { createBrowserRouter, Navigate } from "react-router";
 import { Guard } from "@/features/common/Guard";
 import { RoleLayout } from "@/layouts/RoleLayout";
+import { ClassConsentsPage } from "@/features/consent/ClassConsentsPage";
 import { InboxPage } from "@/features/inbox/InboxPage";
 import { AiAnsweredPage } from "@/features/inbox/AiAnsweredPage";
 import { LoginPage } from "@/features/login/LoginPage";
@@ -64,6 +65,7 @@ export const router = createBrowserRouter([
       { path: "care", element: <CarePage /> },
       { path: "feed", element: <FeedScreen role="teacher" /> },
       { path: "memory", element: <MemoryPage /> },
+      { path: "class-consents", element: <ClassConsentsPage role="teacher" /> },
       /* 문의·민원 받은함은 11/27 범위 밖(알림장과 따로). 주소만 남겨 둔다 */
       { path: "inbox", element: <InboxPage role="teacher" /> },
       { path: "inbox/ai/:requestId", element: <AiAnsweredPage role="teacher" /> },
@@ -84,6 +86,7 @@ export const router = createBrowserRouter([
       { path: "care", element: <CarePage role="director" /> },
       { path: "notifications", element: <TeacherNotifications role="director" /> },
       { path: "feed", element: <FeedScreen role="director" /> },
+      { path: "class-consents", element: <ClassConsentsPage role="director" /> },
       { path: "inbox", element: <InboxPage role="director" /> },
       { path: "inbox/ai/:requestId", element: <AiAnsweredPage role="director" /> },
       { path: "inbox/:cardId", element: <InboxPage role="director" /> },

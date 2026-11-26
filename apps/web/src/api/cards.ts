@@ -57,7 +57,7 @@ const cardFromItem = (item: CardItem, filter: InboxFilter): Card => ({
   id: item.id, version: item.version, kind: item.kind, inboxFilter: filter,
   requestId: item.request_id ?? "-", type: requestType(item.request_type), status: statusFromItem(item, filter), risk: risk(item.risk_level),
   urgentReason: riskLabel(item.risk_category), title: item.title || term(item.status_label), childName: item.child_name ?? "", guardianName: item.requester_name ?? "보호자", requesterName: item.requester_name ?? undefined,
-  className: item.classroom.name, createdAt: item.due_at ?? new Date().toISOString(), original: item.title, sources: [],
+  className: item.classroom.name, classroomId: item.classroom.id, createdAt: item.due_at ?? new Date().toISOString(), original: item.title, sources: [],
   check: item.check ? { passed: item.check.passed, note: item.check.issue_count ? `확인 항목 ${item.check.issue_count}개` : undefined } : undefined,
   repeatCount: item.repeat_count ?? undefined, escalated: item.risk_level === "urgent" || item.kind === "director_report",
   assigned: !!item.assignee, slots: item.parent_choice_count ? [] : undefined, history: [],
