@@ -13,6 +13,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from app.core.errors import ApiError
+from app.core.consents import require_complete
 from app.core.constants import CARE_REQUEST_TYPES, OUT_OF_SCOPE_MESSAGES
 from app.mock import seed
 from app.core.schedule import KST, due_at
@@ -176,6 +177,7 @@ class _State:
         self.events: list[Event] = []
         self.approvals: list[Approval] = []
         self.bookings: dict[UUID, Booking] = {}
+        self.staff_busy_blocks: list[dict] = []
         self.notifications: dict[int, Notification] = {}
         self.documents: dict[UUID, Document] = {}
         self.document_classrooms: dict[UUID, list[UUID]] = {}
@@ -187,6 +189,7 @@ class _State:
         self.feed_posts = {}
         self.feed_photos = {}
         self.memories = {}
+        self.consents = {}
         self._seq = 1000
 
     def next_int(self) -> int:
@@ -302,6 +305,7 @@ def create_request(user, *, client_request_id: str, type: str, body: str, child_
     with _lock:
         for r in _state.requests.values():
             if r.requester_id == user.id and r.client_request_id == client_request_id:
+                require_complete(user)
                 return r, False
         child = _state.children.get(child_id)
         if child is None or child.org_id != user.org_id or user.id not in child.guardian_ids:
@@ -316,6 +320,7 @@ def create_request(user, *, client_request_id: str, type: str, body: str, child_
             prev = request_in_scope(user, previous_request_id)
             if prev.status not in ("completed", "rejected"):
                 raise ApiError(409, "INVALID_TRANSITION")
+        require_complete(user)
         req = Request(id=uuid4(), org_id=user.org_id, classroom_id=child.classroom_id, child_id=child.id,
                       requester_id=user.id, client_request_id=client_request_id, type=type, body=body,
                       title=body.split("\n")[0][:40], previous_request_id=previous_request_id, care_detail=detail)
@@ -410,7 +415,17 @@ def _next_weekday(d: date) -> date:
     return d
 
 
-def _propose_slots(card: Card, teacher: UUID | None, round_no: int = 1, *, preferred_times=None) -> list[Slot]:
+def slot_conflicts(org_id, teacher, room, period):
+    start, end = period["start"], period["end"]
+    return any(b["org_id"] == org_id and b["user_id"] == teacher
+               and start < b["period"]["end"] and b["period"]["start"] < end
+               for b in _state.staff_busy_blocks) or any(
+        b.org_id == org_id and b.status == "confirmed" and (b.teacher_id == teacher or b.room_id == room)
+        and start < (b.expected_end_at or b.period["end"]) and b.period["start"] < end
+        for b in _state.bookings.values())
+
+
+def _propose_slots(card: Card, teacher: UUID | None, round_no: int = 1, *, preferred_times=None, count=3) -> list[Slot]:
     """평일 15:00·16:00 중 확정·살아 있는 체크와 겹치지 않는 세 칸을 골라요."""
     from app.modules.consultations.slots import preference_key
     if preferred_times is None:
@@ -429,10 +444,7 @@ def _propose_slots(card: Card, teacher: UUID | None, round_no: int = 1, *, prefe
             def overlaps(period):
                 return start < period["end"] and period["start"] < end
 
-            if any(b.org_id == card.org_id and b.status == "confirmed"
-                   and (b.teacher_id == teacher or b.room_id == room)
-                   and overlaps({"start": b.period["start"], "end": b.expected_end_at or b.period["end"]})
-                   for b in _state.bookings.values()):
+            if slot_conflicts(card.org_id, teacher, room, {"start": start, "end": end}):
                 continue
             if any(s.org_id == card.org_id and overlaps(s.period) and (
                     _state.cards[s.card_id].request_id == card.request_id
@@ -442,7 +454,7 @@ def _propose_slots(card: Card, teacher: UUID | None, round_no: int = 1, *, prefe
             candidates.append({"start": start, "end": end})
         day = _next_weekday(day)
     out = []
-    for rank, period in enumerate(sorted(candidates, key=preference_key(preferred_times, now()))[:3], 1):
+    for rank, period in enumerate(sorted(candidates, key=preference_key(preferred_times, now()))[:count], 1):
         slot = Slot(id=_state.next_int(), card_id=card.id, org_id=card.org_id, teacher_id=teacher,
                     room_id=room, period=period, round=round_no, rank=rank)
         _state.slots[slot.id] = slot

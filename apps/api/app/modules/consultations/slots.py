@@ -131,7 +131,7 @@ def find_consult_slots(connection, teacher_id, date, *, org_id, request_id=None,
     return sorted(candidates, key=preference_key(preferred_times, now))[:3]
 
 
-def propose_slots(connection, req, card, teacher, round_no=None, *, preferred_times=None):
+def propose_slots(connection, req, card, teacher, round_no=None, *, preferred_times=None, count=3):
     """날짜 칸이 없는 HTTP 대역은 내일부터 14일 안에서 빠른 후보 세 개를 모아요."""
     if teacher is None:
         return []
@@ -155,10 +155,10 @@ def propose_slots(connection, req, card, teacher, round_no=None, *, preferred_ti
         candidates.extend(find_consult_slots(connection, teacher, day, org_id=req["org_id"],
                                              request_id=req["id"], rules=rules, now=now,
                                              preferred_times=preferred_times))
-        if len(candidates) >= 3 and not preferred_times:
+        if len(candidates) >= count and not preferred_times:
             break
     saved = []
-    for rank, candidate in enumerate(sorted(candidates, key=preference_key(preferred_times, now))[:3], 1):
+    for rank, candidate in enumerate(sorted(candidates, key=preference_key(preferred_times, now))[:count], 1):
         saved.append(dict(connection.execute(text("""
             INSERT INTO consultation_slots (card_id,org_id,teacher_id,room_id,period,round,rank)
             VALUES (:card,:org,:teacher,:room,tstzrange(:start,:end,'[)'),:round,:rank)

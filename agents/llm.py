@@ -2,8 +2,14 @@
 
 재시도는 API 설계 문서 6.1·6.2와 같다: 1번 30초, 시간 초과·429·5xx·연결 오류만 최대 2번 다시(1초 → 2초).
 400·401·403·422처럼 요청이 틀린 오류와 JSON이 아닌 답은 바로 ModelError로 올린다.
+
+LANGSMITH_TRACING=true이고 LANGSMITH_API_KEY가 있으면 모델 호출마다 보낸 글·받은 답·토큰 수를 LangSmith에 남긴다.
+추적 이름은 "역할:모델"(예: SUPERVISOR:gpt-6-luna)이다. 추적 준비가 실패해도 모델 호출은 그대로 한다.
+feature("알림장 초안")을 붙인 함수 안의 모델 호출은 LangSmith에서 그 기능 이름 아래 한 묶음으로 보인다.
 """
 
+import contextvars
+import functools
 import json
 import os
 import time
@@ -30,6 +36,55 @@ def model_name(role: str) -> str:
     return os.getenv(f"LLM_MODEL_{role}") or os.getenv("LLM_MODEL_DEFAULT", "gpt-6-luna")
 
 
+def tracing_on() -> bool:
+    return os.getenv("LANGSMITH_TRACING", "").lower() == "true" and bool(os.getenv("LANGSMITH_API_KEY"))
+
+
+def traced(client, role: str, name: str):
+    """추적이 켜져 있으면 LangSmith가 호출을 기록하도록 감싼다."""
+    if not tracing_on():
+        return client
+    try:
+        from langsmith.wrappers import wrap_openai
+
+        return wrap_openai(client, chat_name=f"{role}:{name}",
+                           tracing_extra={"tags": [role.lower()], "metadata": {"role": role}})
+    except Exception:  # noqa: BLE001 - 추적은 덤이라 실패해도 호출은 한다
+        return client
+
+
+def feature(name: str):
+    """기능 하나에서 일어난 모델 호출을 LangSmith에서 한 묶음으로 보이게 한다. 묶음에는 이름만 남기고 입력·결과는 남기지 않는다."""
+
+    def wrap(func):
+        @functools.wraps(func)
+        def inner(*args, **kwargs):
+            if not tracing_on():
+                return func(*args, **kwargs)
+            try:
+                from langsmith import traceable
+
+                grouped = traceable(name=name, run_type="chain", process_inputs=lambda _: {},
+                                    process_outputs=lambda _: {})(func)
+            except Exception:  # noqa: BLE001 - 추적은 덤이라 준비가 실패해도 일은 한다
+                return func(*args, **kwargs)
+            return grouped(*args, **kwargs)
+
+        return inner
+
+    return wrap
+
+
+def keep_trace(func):
+    """다른 스레드에서 돌려도 지금 묶음에 남도록 지금 문맥을 실어 준다."""
+    context = contextvars.copy_context()
+
+    def inner(*args, **kwargs):
+        return context.copy().run(func, *args, **kwargs)
+
+    return inner
+
+
 def retryable(error: Exception) -> bool:
     """시간 초과·연결 오류·429·5xx만 다시 해 볼 만하다(6.2)."""
     name = type(error).__name__
@@ -43,6 +98,7 @@ class OpenAIModel:
     """JSON 한 덩어리를 돌려받는 호출."""
 
     def __init__(self, role: str, timeout: float = TIMEOUT_SECONDS, sleep=time.sleep):
+        self.role = role
         self.name = model_name(role)
         self.timeout = timeout
         self.sleep = sleep
@@ -50,7 +106,8 @@ class OpenAIModel:
     def _call(self, system: str, user: str) -> str:
         from openai import OpenAI
 
-        response = OpenAI(timeout=self.timeout, max_retries=0).chat.completions.create(
+        client = traced(OpenAI(timeout=self.timeout, max_retries=0), self.role, self.name)
+        response = client.chat.completions.create(
             model=self.name,
             messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
             response_format={"type": "json_object"},

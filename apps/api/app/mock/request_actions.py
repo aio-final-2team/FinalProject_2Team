@@ -3,6 +3,7 @@
 from datetime import timedelta
 
 from app.core.errors import ApiError
+from app.core.consents import require_complete
 from app.core.constants import CARE_REQUEST_TYPES
 from app.api.labels import parent_label, staff_label
 from app.api.schemas.common import Period
@@ -54,6 +55,7 @@ def detail(user, request_id):
 def message(user, request_id, body, *, background_tasks=None):
     with store._lock:
         req = store.request_in_scope(user, request_id)
+        require_complete(user)
         if req.status in ("completed", "rejected"):
             raise ApiError(409, "INVALID_TRANSITION")
         msg = store.Message(store.state().next_int(), req.id, "user", user.id, body)

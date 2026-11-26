@@ -34,6 +34,14 @@ def test_single_words_count_only_for_complaints(request_type, body, category):
     ("[TEST] 아이가 다쳤어요", "urgent", "child_safety"),
     ("선생님이 아이를 때렸다고 해요", "urgent", "child_safety"),
     ("아이 안전을 확인해 주세요", "urgent", "child_safety"),
+    # 팀 서버에서 일반 민원으로 빠졌던 글(11/24)
+    ("아이가 오늘 선생님한테 맞았다고 하고 팔에 멍이 들었어요", "urgent", "child_safety"),
+    ("친구에게 맞고 왔어요", "urgent", "child_safety"),
+    ("다리에 멍들어 왔어요", "urgent", "child_safety"),
+    ("선생님이 아이를 꼬집었대요", "urgent", "child_safety"),
+    # 평범한 글은 그대로예요
+    ("독감 주사 맞았어요. 오늘 등원해도 되나요?", "normal", None),
+    ("하원 시간이 맞았으면 좋겠어요", "normal", None),
     ("[TEST] 가만두지 않겠어요", "urgent", "staff_attack"),
     ("[TEST] 변호사에게 물었어요", "urgent", "legal_external"),
     ("[TEST] 개인정보 유출", "urgent", "privacy_leak"),
@@ -65,3 +73,17 @@ def test_care_requests_have_no_risk_level(request_type):
 ])
 def test_risk_notice_title_names_request_type_but_kind_stays(kind, request_type, title):
     assert notification_title(kind, request_type) == title
+
+
+@pytest.mark.parametrize("body,topic,expected", [
+    # 팀 서버에서 담임 카드로 빠졌던 글(11/24): '친구' 때문에 또래 주제로 잡혀도 남의 연락처는 바로 안내해요
+    ("옆 반 친구 엄마 전화번호 좀 알려 주세요", "peer_conflict", "others_privacy"),
+    # 아이가 다친 일·아픈 일이 섞이면 사람이 봐요
+    ("친구 엄마 전화번호 알려 주세요. 아이가 다쳤어요", "safety", None),
+    ("우리 아이가 친구랑 다퉜어요. 친구 엄마 전화번호 알려 주세요", "peer_conflict", None),
+])
+def test_other_family_contact_request_gets_direct_notice(body, topic, expected):
+    from app.core.request_rules import direct_notice_kind
+
+    fields = {"risk_level": "normal", "topic_key": topic, "out_of_scope_kind": "others_privacy"}
+    assert direct_notice_kind("inquiry", body, fields) == expected

@@ -95,7 +95,7 @@
 | `LLM_MODEL_SUPERVISOR` | 감독 AI 모델 | **비우면 감독 모델을 부르지 않고 낱말 규칙만 봐요.** 켜려면 모델 이름을 적어요. 5-5 | 서버 `.env.server` |
 | `EMBEDDING_MODEL`·`INSTALL_EMBEDDING` | 자료 검색 임베딩 | `BAAI/bge-m3`와 빌드 인자 `INSTALL_EMBEDDING=1`. 5-5 | 서버 `.env.server` |
 | `LAW_GO_KR_OC` | 법령 조문 조회 | 법제처 OPEN API 신청 ID. 비우면 법령 근거를 붙이지 않아요 | 서버 `.env.server` |
-| `LANGSMITH_API_KEY`·`LANGSMITH_TRACING` | LangSmith 추적 | 추적이 필요할 때 팀 키와 `true` | 서버 `.env.server` |
+| `LANGSMITH_API_KEY`·`LANGSMITH_TRACING` | LangSmith 추적 | 키와 `true`를 둘 다 넣으면 그래프 단계와 모델 호출(보낸 글·받은 답·토큰 수)이 LangSmith에 남아요. 5-5 | 서버 `.env.server` |
 
 > ⚠️ `VITE_API_BASE_URL`은 **빌드할 때 결과물에 박힙니다.** 값을 바꾸면 컨테이너 재시작이 아니라 `web` 이미지를 다시 빌드해야 하고, 앱(APK/IPA)도 다시 빌드해야 합니다. 기본값 `http://localhost:8000`으로 빌드하면 브라우저·폰에서 API 호출이 실패합니다.
 
@@ -214,7 +214,7 @@ curl -s -o /dev/null -w '%{http_code} %{time_total}s\n' -H "Authorization: Beare
 
 ### 5-5. 팀 서버에서 켜 두는 값
 
-기본값은 모두 대역이라, 값을 안 넣으면 실제 모델·그래프 없이 돌아요. 팀 서버는 아래를 켜 두고 확인해요. 하나라도 꺼져 있으면 그 부분은 실제와 다르게 돌아요.
+기본값은 모두 대역이라, 값을 안 넣으면 실제 모델·그래프 없이 돌아요. 팀 서버는 아래를 켜 두고 확인해요(협업 그래프만 표에 적은 이유로 꺼 둬요). 하나라도 꺼져 있으면 그 부분은 실제와 다르게 돌아요.
 
 | 값 | 켠 상태 | 꺼져 있으면 |
 |---|---|---|
@@ -223,10 +223,13 @@ curl -s -o /dev/null -w '%{http_code} %{time_total}s\n' -H "Authorization: Beare
 | `LLM_MODEL_SUPERVISOR` | 모델 이름(지금 `gpt-6-luna`) | 위험·주제를 낱말 규칙만으로 나눠요. 돌려 말한 위험 글을 놓칠 수 있어요 |
 | `REQUEST_AGENT` | `app.modules.requests.graph_agent:run_request` | 그래프·체크포인트·승인 대기(`interrupt`) 없이 대역 입구로 처리 |
 | `LAW_GO_KR_OC` | 신청 ID | 법령 조문 근거 없음 |
-| `REQUEST_COLLAB_GRAPH` | `1` | 기존 요청 그래프(감독 → 자료 → 검사 한 줄) |
+| `REQUEST_COLLAB_GRAPH` | (비움, 11/24 기준) | 기존 요청 그래프(감독 → 자료 → 검사 한 줄). 켜면 협업 그래프인데, 자료가 충돌할 때 카드에 근거·충돌 표시가 남지 않아 #349가 풀릴 때까지 꺼 둬요 |
 | `EMBEDDING_MODEL` | `BAAI/bge-m3` | 자료를 낱말 점수로만 찾아요 |
+| `LANGSMITH_TRACING`·`LANGSMITH_API_KEY` | `true`와 키(11/25부터) | 추적 없음. 기능은 그대로 돌아요 |
 
 값을 바꾼 뒤에는 5-4처럼 api·worker만 다시 만들고 `printenv`로 들어갔는지 봐요. 그다음 학부모 계정으로 문의·권한 밖 요청·위험 민원·상담을 한 건씩 넣어 카드와 원장 보고가 생기는지 확인하고, 확인용 요청은 지워요.
+
+LangSmith에는 모델에 보낸 글이 그대로 남아요. 문의·민원 글은 모델에 보내기 전에 민감한 내용을 가리므로 추적에도 가린 글이 남고, 알림장은 선생님 메모가 그대로 남아요. 요청 그래프 단계에는 요청·카드 ID만 남아요. 추적은 기능별로 한 묶음이에요: `요청 처리`(요청 하나의 분류·답변·검사·승인 대기), `알림장 초안`(반 하나의 아이 전체 작성·검사), `문의 답변 초안`. 묶음 안의 모델 호출은 `역할:모델`(예: `SUPERVISOR:gpt-6-luna`) 이름으로 보여요.
 
 임베딩은 이미지에 패키지가 있어야 해요. `.env.server`에 `INSTALL_EMBEDDING=1`과 `EMBEDDING_MODEL=BAAI/bge-m3`를 넣고 api 이미지를 다시 빌드한 뒤, 빈 조각의 벡터를 채워요. 모델은 api와 worker가 각각 한 번씩 메모리에 읽어요(프로세스마다 약 2GB).
 
@@ -360,3 +363,5 @@ npx cap sync ios
 | 2026-11-23 | 태웅 | 7-2의 수동 `pg_dump`·`psql` 절차를 사진까지 받는 백업·복원 스크립트로 바꿨어요. |
 | 2026-11-24 | 태웅 | 5-4에 요청 처리 AI(`ANSWER_WRITER`)를 켜는 조건, 켜고 끄는 법, 이상 신호를 더하고, Compose가 이 값을 api·worker에 넘기게 했어요. |
 | 2026-11-24 | 태웅 | 5-5에 팀 서버에서 켜 두는 값(감독 모델·요청 그래프·법령 키·협업 그래프·임베딩)과 꺼졌을 때 달라지는 점을 적고, Compose가 `REQUEST_COLLAB_GRAPH`·`EMBEDDING_MODEL`·`LANGSMITH_TRACING`을 넘기게 했어요. |
+| 2026-11-25 | 태웅 | 5-5에 LangSmith 추적을 켠 상태와 무엇이 남는지 추가 |
+| 2026-11-25 | 태웅 | 5-5의 LangSmith 설명을 기능별 묶음(요청 처리·알림장 초안·문의 답변 초안)으로 고침 |

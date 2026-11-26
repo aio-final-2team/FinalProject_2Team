@@ -11,6 +11,12 @@ from app.mock.records import Document, Rule
 def populate():
     from app.mock.documents import add_chunks
     state = store.state()
+    from app.core.consents import required_items
+    from app.core.constants import CONSENT_VERSION
+    agreed_at = store.now()
+    for user in state.users.values():
+        for item in required_items(user.role):
+            state.consents.setdefault((user.org_id, user.id, item, CONSENT_VERSION), agreed_at)
     for doc_id, title, doc_type, status, content in seed.DEMO_DOCUMENTS:
         doc = Document(doc_id, seed.ORG, title, doc_type, "all", sha256(content.encode()).hexdigest(),
                        store.now().date() - timedelta(days=10), store.now(), status=status)

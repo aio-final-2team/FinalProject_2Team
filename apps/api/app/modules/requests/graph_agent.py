@@ -183,7 +183,7 @@ def _invoke(request_id, payload, expected_card_id=None):
             else:
                 graph = graph_builder(checkpointer, _route_request, _prepare_card, _card_status)
             config = {"configurable": {"thread_id": thread_id(request_id)},
-                      "tags": ["request-agent"]}
+                      "tags": ["request-agent"], "run_name": "요청 처리"}
             if expected_card_id is not None:
                 snapshot = graph.get_state(config)
                 if (snapshot.values.get("card_id") != str(expected_card_id)
