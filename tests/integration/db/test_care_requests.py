@@ -1,5 +1,6 @@
 """T46 동시 완료·감사 실패 롤백과 0008 되돌리기를 실제 임시 DB에서 검사해요."""
 
+from alembic.script import ScriptDirectory
 from concurrent.futures import ThreadPoolExecutor
 from threading import Event
 
@@ -96,7 +97,7 @@ def test_0008_round_trip_preserves_request_and_check_records(db_client, seeded_d
         assert connection.scalar(text("SELECT count(*) FROM notifications WHERE request_id=:id"), {"id": rid}) == 0
     command.upgrade(alembic_config, "head")
     with seeded_db.connect() as connection:
-        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0016"
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == ScriptDirectory.from_config(alembic_config).get_current_head()
         assert connection.scalar(text("SELECT status FROM requests WHERE id=:id"), {"id": rid}) == "assigned"
 
 
