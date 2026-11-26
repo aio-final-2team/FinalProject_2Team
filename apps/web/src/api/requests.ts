@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, uuid } from "./client";
+import { ApiError, api, uuid } from "./client";
 
 /** 학부모 요청 (API 3·4·5·7, 3.1·3.2·3.9·3.10) */
 export type RequestType = "inquiry" | "consultation" | "complaint" | "medication" | "pickup";
@@ -28,6 +28,24 @@ export type RequestDetail = {
   /** 투약·귀가 요청일 때만 있다 */
   care?: CareView | null;
 };
+
+/** 교직원 요청 목록 항목(API GET /requests, 교직원). 서버가 아직 열지 않았으면 빈 목록이다 */
+export type StaffRequest = RequestSummary & { child_id: string | null; child_name: string | null; requester_name: string | null; answered_by: "agent" | "staff" | null; classroom_id: string | null };
+/** AI가 카드 없이 바로 답하고 끝낸 요청을 교사(우리 반)·원장(원 전체)이 읽는다 */
+export const useAiAnswered = (enabled: boolean) =>
+  useQuery({
+    queryKey: ["ai-answered"],
+    enabled,
+    retry: false,
+    queryFn: async (): Promise<StaffRequest[]> => {
+      try {
+        return (await api<{ items: StaffRequest[] }>("/api/v1/requests?answered_by=agent&size=50")).items;
+      } catch (e) {
+        if (e instanceof ApiError && (e.status === 403 || e.status === 422)) return [];
+        throw e;
+      }
+    },
+  });
 
 export const TYPE_LABEL: Record<string, string> = { inquiry: "문의", consultation: "상담", complaint: "민원", medication: "투약", pickup: "귀가" };
 

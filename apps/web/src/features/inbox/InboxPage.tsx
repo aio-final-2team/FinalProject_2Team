@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { Link, useParams, useSearchParams } from "react-router";
 import { useCards, type TypeFilter } from "@/api/cards";
+import { TYPE_LABEL as REQ_TYPE, useAiAnswered } from "@/api/requests";
 import { ScreenTop } from "@/components/ScreenTop";
 import { dateLabel, todayKST } from "@/domain/notes";
 import { BackLink as SharedBackLink } from "@/components/BackLink";
@@ -66,6 +67,7 @@ function Row({ c, active, to, role }: { c: Card; active: boolean; to: string; ro
         </span>
         <span className="text-[13px] text-ink2">
           {role === "director" && <span className="mr-1 font-semibold text-ink">{c.className} ·</span>}
+          {c.childName && <span className="mr-1 font-semibold text-ink">{c.childName} ·</span>}
           {c.risk === "judge" ? "판단 필요 · " : ""}{TYPE_LABEL[c.type]}
           {showOriginal && <> · "{c.original}"</>}
         </span>
@@ -92,6 +94,8 @@ export function InboxPage({ role }: { role: Exclude<Role, "parent"> }) {
   const filter = (params.get("filter") as InboxFilter) || "review";
   const type = (params.get("type") as TypeFilter) || "all";
   const { data, isLoading, isError, refetch, dataUpdatedAt } = useCards(filter, type);
+  /* 카드 없이 AI가 끝낸 요청은 끝난 일이므로 "완료" 필터 아래에 둔다 */
+  const aiAnswered = useAiAnswered(filter === "done").data ?? [];
   const counts = data?.counts ?? Object.fromEntries(INBOX_FILTERS.map((f) => [f.key, 0]));
   const list = (data?.items ?? [])
     .sort((a, b) => (filter === "review" ? reviewRank(a) - reviewRank(b) : 0) || +new Date(a.createdAt) - +new Date(b.createdAt));
@@ -156,6 +160,17 @@ export function InboxPage({ role }: { role: Exclude<Role, "parent"> }) {
           <StateView kind="error" audience="staff" title="카드를 불러오지 못했어요" sub={dataUpdatedAt ? `마지막으로 불러온 시각 ${new Date(dataUpdatedAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}` : "연결을 확인해 주세요"} action={{ label: "다시 시도", run: () => refetch() }} />
         )}
         {data && list.length === 0 && <StateView kind="empty" audience="staff" title={EMPTY[filter]} sub="새 카드가 오면 숫자로 알려 드려요" />}
+        {aiAnswered.length > 0 && (
+          <section className="mt-4 grid gap-2" aria-label="AI가 바로 답한 요청">
+            <h3 className="px-1 text-sub font-medium text-ink2">AI가 바로 답한 요청 <span className="tabular-nums">{aiAnswered.length}건</span></h3>
+            {aiAnswered.map((r) => (
+              <Link key={r.id} to={`${base}/ai/${r.id}`} className="grid gap-0.5 rounded-2xl bg-card px-3.5 py-3 transition-colors hover:bg-fill">
+                <b className="text-[14.5px]">{r.title ?? REQ_TYPE[r.type]}</b>
+                <span className="text-[13px] text-ink2">{[REQ_TYPE[r.type], r.child_name, r.requester_name].filter(Boolean).join(" · ")} · AI가 답함</span>
+              </Link>
+            ))}
+          </section>
+        )}
         {list.map((c) => (
           <Row key={c.id} c={c} role={role} active={c.id === cardId} to={`${base}/${c.id}${q}`} />
         ))}

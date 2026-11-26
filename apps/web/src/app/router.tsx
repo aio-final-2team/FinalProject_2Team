@@ -1,6 +1,7 @@
 import { createBrowserRouter, Navigate } from "react-router";
 import { Guard } from "@/features/common/Guard";
 import { InboxPage } from "@/features/inbox/InboxPage";
+import { AiAnsweredPage } from "@/features/inbox/AiAnsweredPage";
 import { LoginPage } from "@/features/login/LoginPage";
 import { NoteDetail } from "@/features/notes/NoteDetail";
 import { TeacherHome } from "@/features/teacher/TeacherHome";
@@ -56,6 +57,7 @@ export const router = createBrowserRouter([
       { path: "memory", element: <MemoryPage /> },
       /* 문의·민원 받은함은 11/27 범위 밖(알림장과 따로). 주소만 남겨 둔다 */
       { path: "inbox", element: <InboxPage role="teacher" /> },
+      { path: "inbox/ai/:requestId", element: <AiAnsweredPage role="teacher" /> },
       { path: "inbox/:cardId", element: <InboxPage role="teacher" /> },
     ],
   },
@@ -74,6 +76,7 @@ export const router = createBrowserRouter([
       { path: "notifications", element: <TeacherNotifications role="director" /> },
       { path: "feed", element: <FeedScreen role="director" /> },
       { path: "inbox", element: <InboxPage role="director" /> },
+      { path: "inbox/ai/:requestId", element: <AiAnsweredPage role="director" /> },
       { path: "inbox/:cardId", element: <InboxPage role="director" /> },
     ],
   },

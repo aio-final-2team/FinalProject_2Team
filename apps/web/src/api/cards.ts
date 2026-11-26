@@ -14,6 +14,8 @@ type CardItem = {
   repeat_count: number | null; check: { passed: boolean; issue_count: number } | null;
   parent_choice_count: number | null; classroom: { id: string; name: string }; assignee: Person | null;
   due_at: string | null; is_delayed: boolean; hold_until: string | null;
+  /** 요청이 있는 카드에서만 온다. 서버가 아직 안 주면 없다 */
+  child_name?: string | null; requester_name?: string | null;
 };
 type CardList = {
   total: number; page: number; size: number; items: CardItem[];
@@ -21,7 +23,7 @@ type CardList = {
 };
 type CardDetail = {
   card: { id: string; kind: string; status: string; version: number; summary: string; draft: Record<string, unknown>; check_result: { passed?: boolean; issues?: unknown[]; note?: string; attempt?: number } | null; check_attempts: number };
-  request: null | { id: string; type: ApiRequestType | "pickup"; title: string | null; body: string; status: Status; risk_level: string | null; risk_category: string | null; repeat_count: number | null; parent_confirmed_at: string | null; classroom_id: string; created_at: string; updated_at: string };
+  request: null | { child_name?: string | null; requester_name?: string | null; id: string; type: ApiRequestType | "pickup"; title: string | null; body: string; status: Status; risk_level: string | null; risk_category: string | null; repeat_count: number | null; parent_confirmed_at: string | null; classroom_id: string; created_at: string; updated_at: string };
   evidence: Array<{ document_title: string; location: string | null; effective_from: string | null; quote: string; is_current: boolean }>;
   warnings: string[];
   messages?: Array<{ id: number; sender_type: string; sender_role?: string | null; body: string; created_at: string }>;
@@ -52,7 +54,7 @@ const statusFromItem = (item: CardItem, filter: InboxFilter): Status => {
 const cardFromItem = (item: CardItem, filter: InboxFilter): Card => ({
   id: item.id, version: item.version, kind: item.kind, inboxFilter: filter,
   requestId: item.request_id ?? "-", type: requestType(item.request_type), status: statusFromItem(item, filter), risk: risk(item.risk_level),
-  urgentReason: riskLabel(item.risk_category), title: item.title || item.status_label, childName: "", guardianName: "보호자",
+  urgentReason: riskLabel(item.risk_category), title: item.title || item.status_label, childName: item.child_name ?? "", guardianName: item.requester_name ?? "보호자", requesterName: item.requester_name ?? undefined,
   className: item.classroom.name, createdAt: item.due_at ?? new Date().toISOString(), original: item.title, sources: [],
   check: item.check ? { passed: item.check.passed, note: item.check.issue_count ? `확인 항목 ${item.check.issue_count}개` : undefined } : undefined,
   repeatCount: item.repeat_count ?? undefined, escalated: item.risk_level === "urgent" || item.kind === "director_report",
@@ -75,8 +77,8 @@ const cardFromDetail = (data: CardDetail): Card => {
   return {
     id: data.card.id, version: data.card.version, kind: data.card.kind, requestId: req?.id ?? "-", type: requestType(req?.type),
     status: req?.status ?? (data.card.status === "done" ? "completed" : "awaiting_review"), risk: risk(req?.risk_level),
-    urgentReason: riskLabel(req?.risk_category), title: req?.title ?? data.card.summary, childName: "", guardianName: "보호자",
-    className: "담당 반", createdAt: req?.created_at ?? new Date().toISOString(), original: req?.body ?? data.card.summary,
+    urgentReason: riskLabel(req?.risk_category), title: req?.title ?? data.card.summary, childName: req?.child_name ?? "", guardianName: req?.requester_name ?? "보호자", requesterName: req?.requester_name ?? undefined,
+    className: "", createdAt: req?.created_at ?? new Date().toISOString(), original: req?.body ?? data.card.summary,
     summary: data.card.summary || undefined, draft: draft || undefined, sources,
     messages: data.messages?.map((m) => ({ id: m.id, fromParent: m.sender_role === "parent", from: m.sender_role === "parent" ? "parent" : m.sender_type === "agent" ? "ai" : m.sender_type === "system" ? "system" : "teacher", body: m.body, at: m.created_at })),
     rule: data.rule ? { id: data.rule.id, reasonCode: data.rule.reason_code, text: data.rule.rule_text, status: data.rule.status } : undefined,

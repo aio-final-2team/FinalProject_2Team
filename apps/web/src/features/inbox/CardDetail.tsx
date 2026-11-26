@@ -170,9 +170,9 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
         <h2 className="text-[22px] font-bold tracking-[-0.02em]">
           {c.title}
         </h2>
-        <p className="text-sub text-ink2">
-          {c.className} · {c.guardianName}
-        </p>
+        {[c.className, c.childName, c.requesterName].filter(Boolean).length > 0 && (
+          <p className="text-sub text-ink2">{[c.className, c.childName, c.requesterName].filter(Boolean).join(" · ")}</p>
+        )}
       </header>
 
       {c.kind !== "rule_proposal" && (c.warnings?.length || (c.check && !c.check.passed && c.check.issues?.length)) ? (
