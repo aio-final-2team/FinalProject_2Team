@@ -17,7 +17,7 @@ const THIRD: Record<string, string> = { consultation: "예약", medication: "처
 /** 요청 상태 → 진행 단계 (디자인 시스템 7.12 가로 점 단계). escalated면 2단계 이름이 '원장님 확인' */
 const STEP_OF: Record<string, number> = { received: 0, classified: 0, needs_info: 1, assigned: 1, awaiting_review: 1, escalated: 1, on_hold: 1, approved: 1, sent_or_booked: 2, completed: 3, rejected: 3 };
 
-/** P-04 요청 상세 (T21 뼈대): 진행 단계, 대화, 답변 출처, 민원 '확인했어요', 이어 쓰기 */
+/** P-04 요청 상세: 대화·추가 요청을 먼저 보여 주고 진행 기록은 맨 아래에 둔다. */
 export function RequestDetailPage() {
   const { requestId } = useParams();
   const q = useRequest(requestId);
@@ -100,25 +100,15 @@ export function RequestDetailPage() {
 
           {r!.type === "consultation" && d!.consultation && <ConsultSlots requestId={requestId ?? ""} status={r!.status} consultation={d!.consultation} />}
 
-          <div className="mb-2 mt-5 px-1 text-footnote font-semibold text-ink2">진행 기록</div>
-          <ol className="grid gap-1.5 rounded-lg bg-card p-3 shadow-card">
-            {d!.timeline.map((t, i) => (
-              <li key={i} className="flex items-center justify-between text-footnote">
-                <span className={i === d!.timeline.length - 1 ? "font-semibold" : "text-ink2"}>{t.label}</span>
-                <time className="text-ink2 tabular-nums">{fmtDateTime(t.at)}</time>
-              </li>
-            ))}
-          </ol>
-
           {!closed && (
             <label className="mt-5 grid gap-1.5">
-              <span className="px-1 text-footnote font-semibold text-ink2">이어서 쓰기</span>
-              <div className="flex gap-2">
-                <input value={text} onChange={(e) => setText(e.target.value)} maxLength={2000} placeholder="추가로 알려 줄 내용" className="h-12 min-w-0 flex-1 rounded-md border-[1.5px] border-line bg-card px-3 text-body outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--tint)]" />
+              <span className="px-1 text-callout font-bold text-ink">{r.type === "consultation" ? "상담 요청 내용" : "추가로 전할 내용"}</span>
+              <div className="flex items-end gap-2">
+                <textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} maxLength={2000} placeholder={r.type === "consultation" ? "선생님과 상담하고 싶은 내용을 적어 주세요" : "선생님에게 추가로 알려 줄 내용을 적어 주세요"} className="min-h-24 min-w-0 flex-1 resize-none rounded-xl border-[1.5px] border-line bg-card px-3 py-2.5 text-body outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--tint)]" />
                 <button
                   disabled={!text.trim() || post.isPending}
                   onClick={() => post.mutate(text.trim(), { onSuccess: () => setText(""), onError: () => toast({ kind: "error", title: "답글을 보내지 못했어요", sub: "쓴 내용은 그대로 남아 있어요.\n잠시 뒤 다시 눌러 주세요" }) })}
-                  className="h-12 shrink-0 rounded-md bg-tint px-4 text-callout font-semibold text-accent-ink disabled:opacity-50"
+                  className="h-12 shrink-0 rounded-lg bg-tint px-4 text-callout font-semibold text-accent-ink transition-transform duration-100 active:scale-[.97] disabled:opacity-50"
                 >
                   보내기
                 </button>
@@ -133,6 +123,16 @@ export function RequestDetailPage() {
               </PrimaryButton>
             </Dock>
           )}
+
+          <div className="mb-2 mt-7 px-1 text-footnote font-semibold text-ink2">진행 기록</div>
+          <ol className="grid gap-1.5 rounded-xl bg-card p-3 shadow-card">
+            {d!.timeline.map((t, i) => (
+              <li key={i} className="flex items-center justify-between text-footnote">
+                <span className={i === d!.timeline.length - 1 ? "font-semibold" : "text-ink2"}>{t.label}</span>
+                <time className="text-ink2 tabular-nums">{fmtDateTime(t.at)}</time>
+              </li>
+            ))}
+          </ol>
         </>
       )}
       </QueryState>
