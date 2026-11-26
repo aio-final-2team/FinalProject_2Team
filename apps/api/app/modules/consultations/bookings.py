@@ -20,7 +20,9 @@ def book_slot(connection, slot, *, request_id, confirmed_by):
         if connection.scalar(text("SELECT :start<=clock_timestamp()"), {"start": slot["period"].lower}):
             raise ApiError(409, "SLOT_PAST")
         if connection.scalar(text("""
-            SELECT EXISTS (SELECT 1 FROM consultation_bookings b
+            SELECT EXISTS (SELECT 1 FROM staff_busy_blocks
+              WHERE org_id=:org AND user_id=:teacher AND period && :period)
+            OR EXISTS (SELECT 1 FROM consultation_bookings b
               WHERE b.org_id=:org AND b.status='confirmed'
                 AND (b.teacher_id=:teacher OR b.room_id=:room)
                 AND tstzrange(lower(b.period),coalesce(b.expected_end_at,upper(b.period)),'[)') && :period)

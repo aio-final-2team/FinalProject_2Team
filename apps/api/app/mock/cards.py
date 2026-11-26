@@ -240,19 +240,16 @@ def book(user, card_id, body):
             raise ApiError(409, "INVALID_TRANSITION")
         if slot.period["start"] <= store.now():
             raise ApiError(409, "SLOT_PAST")
-        for booking in store.state().bookings.values():
-            overlaps = (slot.period["start"] < (booking.expected_end_at or booking.period["end"])
-                        and booking.period["start"] < slot.period["end"])
-            if booking.status == "confirmed" and (booking.request_id == req.id or (overlaps
-                    and (booking.room_id == slot.room_id or booking.teacher_id == slot.teacher_id))):
-                slot.status = "discarded"
-                round_no = max(s.round for s in store.slots_of_request(req.id) if s.card_id == card.id) + 1
-                candidates = store._propose_slots(card, card.assignee_id, round_no)
-                touch(card)
-                store.set_request_status(req, "needs_info", action="slot_conflict_reproposed", card=card,
-                                         actor_type="user", actor_id=user.id, slot_id=slot.id,
-                                         new_slot_ids=[candidate.id for candidate in candidates])
-                raise ApiError(409, "SLOT_TAKEN")
+        if store.slot_conflicts(req.org_id, slot.teacher_id, slot.room_id, slot.period) or any(
+                b.status == "confirmed" and b.request_id == req.id for b in store.state().bookings.values()):
+            slot.status = "discarded"
+            round_no = max(s.round for s in store.slots_of_request(req.id) if s.card_id == card.id) + 1
+            candidates = store._propose_slots(card, card.assignee_id, round_no)
+            touch(card)
+            store.set_request_status(req, "needs_info", action="slot_conflict_reproposed", card=card,
+                                     actor_type="user", actor_id=user.id, slot_id=slot.id,
+                                     new_slot_ids=[candidate.id for candidate in candidates])
+            raise ApiError(409, "SLOT_TAKEN")
         record(card, user, "approve")
         booking = Booking(uuid4(), req.org_id, req.id, slot.id, slot.teacher_id, slot.room_id, dict(slot.period), user.id)
         store.state().bookings[booking.id] = booking

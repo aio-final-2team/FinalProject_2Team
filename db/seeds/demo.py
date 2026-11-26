@@ -72,6 +72,15 @@ def seed_demo(connection, *, refresh_note_requests=False):
         connection.execute(text("""
             INSERT INTO rooms (id, org_id, name) VALUES (:id, :org_id, :name) ON CONFLICT DO NOTHING
         """), {**room, "org_id": seed.ORG})
+    for block in seed.demo_busy_blocks():
+        connection.execute(text("""
+            INSERT INTO staff_busy_blocks(org_id,user_id,period,kind)
+            SELECT :org_id,:user_id,tstzrange(:start,:end,'[)'),:kind
+            WHERE NOT EXISTS (SELECT 1 FROM staff_busy_blocks WHERE org_id=:org_id AND user_id=:user_id
+              AND period=tstzrange(:start,:end,'[)') AND kind=:kind)
+              AND NOT EXISTS (SELECT 1 FROM consultation_bookings WHERE org_id=:org_id AND teacher_id=:user_id
+                AND status='confirmed' AND period && tstzrange(:start,:end,'[)'))
+        """), {**block, **block["period"]})
     for document_id, title, kind, status, content in seed.DEMO_DOCUMENTS:
         connection.execute(text("""
             INSERT INTO documents (id,org_id,title,doc_type,source,status,ingest_status,content_sha256)

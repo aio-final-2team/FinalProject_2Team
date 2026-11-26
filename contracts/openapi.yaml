@@ -3149,6 +3149,155 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
           description: Unprocessable Entity
+  /api/v1/staff/busy-blocks:
+    get:
+      tags:
+      - 바쁜 시간
+      summary: List Busy Blocks
+      operationId: list_busy_blocks_api_v1_staff_busy_blocks_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: from
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date-time
+          title: From
+      - name: to
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date-time
+          title: To
+      - name: user_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: User Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusyBlocksOut'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+    post:
+      tags:
+      - 바쁜 시간
+      summary: Create Busy Block
+      operationId: create_busy_block_api_v1_staff_busy_blocks_post
+      security:
+      - HTTPBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BusyBlockIn'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusyBlockOut'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+  /api/v1/staff/busy-blocks/{id}:
+    delete:
+      tags:
+      - 바쁜 시간
+      summary: Delete Busy Block
+      operationId: delete_busy_block_api_v1_staff_busy_blocks__id__delete
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          title: Id
+      responses:
+        '204':
+          description: Successful Response
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
   /health:
     get:
       tags:
@@ -3293,6 +3442,78 @@ components:
       - request
       - booking
       title: BookingResponse
+    BusyBlockIn:
+      properties:
+        start_at:
+          type: string
+          format: date-time
+          title: Start At
+        end_at:
+          type: string
+          format: date-time
+          title: End At
+        kind:
+          type: string
+          enum:
+          - class
+          - meeting
+          - duty
+          - 'off'
+          - other
+          title: Kind
+      additionalProperties: false
+      type: object
+      required:
+      - start_at
+      - end_at
+      - kind
+      title: BusyBlockIn
+    BusyBlockOut:
+      properties:
+        start_at:
+          type: string
+          format: date-time
+          title: Start At
+        end_at:
+          type: string
+          format: date-time
+          title: End At
+        kind:
+          type: string
+          enum:
+          - class
+          - meeting
+          - duty
+          - 'off'
+          - other
+          title: Kind
+        id:
+          type: integer
+          title: Id
+        user_id:
+          type: string
+          format: uuid
+          title: User Id
+      additionalProperties: false
+      type: object
+      required:
+      - start_at
+      - end_at
+      - kind
+      - id
+      - user_id
+      title: BusyBlockOut
+    BusyBlocksOut:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/BusyBlockOut'
+          type: array
+          title: Items
+      type: object
+      required:
+      - items
+      title: BusyBlocksOut
     CardDetail:
       properties:
         card:
