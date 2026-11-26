@@ -107,6 +107,8 @@ def decide(user, card_id, body, background_tasks=None):
         if decision == "complete" and req.parent_confirmed_at is None and not body.reason_text:
             raise ApiError(409, "REASON_REQUIRED")
         content = body.edited_content if decision == "edit_approve" else card.draft
+        if decision == "edit_approve" and card.draft.get("note_evidence"):
+            content = {**content, "note_evidence": card.draft["note_evidence"]}
         if decision in ("approve", "edit_approve") and not content.get("text", "").strip():
             raise ApiError(409, "INVALID_TRANSITION")
         record(card, user, decision, body.reason_code, body.reason_text, body.edited_content)

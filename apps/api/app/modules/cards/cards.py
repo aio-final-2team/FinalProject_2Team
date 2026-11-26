@@ -188,6 +188,8 @@ def decide(user, card_id, body, background_tasks=None):
             raise ApiError(409, "REASON_REQUIRED")
         content = body.edited_content if choice == "edit_approve" else card["draft"]
         original_card = deepcopy(card)
+        if choice == "edit_approve" and card["draft"].get("note_evidence"):
+            content = {**content, "note_evidence": card["draft"]["note_evidence"]}
         if choice in ("approve", "edit_approve") and (
             not isinstance(content.get("text"), str) or not content["text"].strip()
         ):

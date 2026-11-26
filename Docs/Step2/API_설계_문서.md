@@ -1522,6 +1522,8 @@ API 69 `PATCH /saved-answers/{answer_id}`는 `{status:"off"|"active"}`를 받는
 
 문의 approve·edit_approve 뒤 `EMBEDDING_MODEL`이 켜져 있으면 질문(아이 이름·민감정보 형식 가림)·실제 발송 답·승인자·요청 반·질문 벡터와 근거 문서를 saved_answers·saved_answer_sources에 저장한다. no_evidence·conflict·근거 0개는 직접 쓴 답도 저장하지 않는다. 같은 원의 원 전체 또는 같은 반 답 중 active이고 모든 근거 문서가 현재 유효·공개·반 허용인 답만 코사인 유사도 0.80 이상 상위 하나를 작성 AI의 prior_answer로 넘긴다. 표현 참고용이고 사실·검사는 새 chunks 인용만 따른다. 기존 문서 변경 트리거로 off 답까지 무효화하며 GET /memories에서 본인이 승인한 답의 상태를 본다.
 
+아이 개인의 하루를 묻는 문의는 현재 보호자 관계가 맞는 아이의 최근 3일(오늘 포함) sent 알림장도 chunks 후보로 찾는다. 미발송·다른 아이·지난 날짜는 제외한다. 후보는 `{chunk_id:null,source:"daily_note",note_id,note_date,title:"M월 D일 알림장",quote}`이며 작성 입력에는 content·score도 있다. 인용은 note_id와 원문을 대조하고 검사 AI도 받는다. 개인 기억과 달리 실제 보낸 알림장은 사실 근거다. card_evidence.chunk_id는 NOT NULL이라 카드 상세의 `card.draft.note_evidence[]`에 이 목록을 보이고, 문서 evidence[]는 기존 모양을 유지한다. 수정 승인 뒤에도 목록을 유지한다. 일반 원 자료 질문은 기존 검색 그대로다. 아이 알림장이 들어간 답은 saved_answers에 저장하지 않는다.
+
 ### 3.26 알림장 다시 만들기 — `POST /api/v1/daily-notes/drafts/{input_id}/regenerate`
 
 | 항목 | 내용 |

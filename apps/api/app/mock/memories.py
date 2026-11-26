@@ -15,7 +15,7 @@ from app.modules.documents.embedding import MODEL, VERSION
 
 def remember_answer(user, card, req, content):
     if (os.getenv("EMBEDDING_MODEL", "") != MODEL or req.type != "inquiry"
-            or card.draft.get("no_evidence") or card.draft.get("conflict")):
+            or card.draft.get("no_evidence") or card.draft.get("conflict") or card.draft.get("note_evidence")):
         return
     sources = {store.state().chunks[e.chunk_id].document_id for e in store.state().evidence
                if e.org_id == user.org_id and e.card_id == card.id}
@@ -97,7 +97,8 @@ def save_parent_candidates(req, candidates, names):
         for item in parent_candidates(candidates, req["body"], names):
             child_id = child.id if item["kind"] == "care_note" else None
             if any(m.org_id == req["org_id"] and m.owner_id == req["requester_id"] and m.kind == item["kind"]
-                   and m.child_id == child_id and m.deleted_at is None and m.content == item["content"]
+                   and m.child_id == child_id and m.deleted_at is None
+                   and "".join(c for c in m.content if c.isalnum()) == "".join(c for c in item["content"] if c.isalnum())
                    for m in store.state().memories.values()):
                 continue
             row = Memory(store.state().next_int(), req["org_id"], req["requester_id"], item["kind"], item["content"],
