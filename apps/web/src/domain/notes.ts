@@ -70,6 +70,9 @@ export const CHECK_KIND: Record<CheckKind, { title: string; short: string; fix?:
   return_limit: { title: "AI가 고쳐도 남은 문제가 있어요", short: "남은 문제", keep: "직접 확인했어요" },
 };
 
+/** 서버는 투약 줄과 귀가 줄 이름을 둘 다 "보호자 요청"으로 준다. 무슨 요청인지 알 수 있게 종류로 바꾼다 */
+export const itemLabel = (it: { key: string; label: string }) => (it.key === "medication" ? "투약" : it.key === "pickup" ? "귀가" : it.label);
+
 export const SOURCE_LABEL: Record<SourceType, string> = {
   teacher_input: "선생님 입력",
   document: "원 자료",

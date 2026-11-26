@@ -12,7 +12,7 @@ import { Icon } from "@/components/Icon";
 import { useToast } from "@/components/Toast";
 import { useRecords } from "@/features/records/store";
 import { fmtDateTime } from "@/domain/datetime";
-import { CHECK_KIND, NOTE_STATUS, SOURCE_LABEL, dateLabel, nameI, todayKST, type DailyNote, type NoteItem, type OpenCheck } from "@/domain/notes";
+import { CHECK_KIND, NOTE_STATUS, SOURCE_LABEL, dateLabel, itemLabel, nameI, todayKST, type DailyNote, type NoteItem, type OpenCheck } from "@/domain/notes";
 
 /**
  * 아이별 알림장 (API 25 PATCH). 줄마다 출처, 검사 AI가 짚은 곳(open_checks[].kind),
@@ -203,7 +203,7 @@ function Detail({ note, notes, name, names }: { note: DailyNote; notes: DailyNot
           return (
             <div key={i} className={`py-2.5 ${i ? "border-t border-sep" : ""}`}>
               <div className="flex items-center justify-between gap-2">
-                <span className="text-footnote font-semibold text-ink2">{it.key === "child" ? `${nameI(name)}의 오늘` : it.label}</span>
+                <span className="text-footnote font-semibold text-ink2">{it.key === "child" ? `${nameI(name)}의 오늘` : itemLabel(it)}</span>
                 {!locked && editing !== i && (
                   <button
                     className="text-footnote font-semibold text-accent"
@@ -223,7 +223,7 @@ function Detail({ note, notes, name, names }: { note: DailyNote; notes: DailyNot
                     onChange={(e) => setDraftText(e.target.value)}
                     rows={3}
                     autoFocus
-                    aria-label={`${it.label} 고치기`}
+                    aria-label={`${itemLabel(it)} 고치기`}
                     className="resize-none rounded-md border-[1.5px] border-accent bg-card px-3 py-2 text-body outline-none shadow-[0_0_0_3px_var(--tint)]"
                   />
                   <div className="flex justify-end gap-2">

@@ -13,7 +13,7 @@ import { Dock, PrimaryButton, SubButton } from "@/components/Dock";
 import { Icon } from "@/components/Icon";
 import { Sheet } from "@/components/Sheet";
 import { useToast } from "@/components/Toast";
-import { CHECK_KIND, NOTE_STATUS, dateLabel, nameI, todayKST, type DailyNote, type NoteItem } from "@/domain/notes";
+import { CHECK_KIND, NOTE_STATUS, dateLabel, itemLabel, nameI, todayKST, type DailyNote, type NoteItem } from "@/domain/notes";
 import { RecordSheet } from "@/features/records/RecordSheet";
 import { useRecords } from "@/features/records/store";
 
@@ -515,7 +515,7 @@ function Review({ notes }: { notes: DailyNote[] }) {
             <b className="text-headline">{nameI(names[preview.child_id] ?? "아이")}의 오늘</b>
             {preview.content.items.filter((it) => it.value.trim()).map((it, i) => (
               <span key={i}>
-                <b className="mr-1.5 text-footnote text-ink2">{it.key === "child" ? "아이 이야기" : it.label}</b>
+                <b className="mr-1.5 text-footnote text-ink2">{it.key === "child" ? "아이 이야기" : itemLabel(it)}</b>
                 {it.value}
               </span>
             ))}

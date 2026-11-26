@@ -6,7 +6,7 @@ import { Buddy } from "@/components/Brand";
 import { QueryState } from "@/components/QueryState";
 import { Icon } from "@/components/Icon";
 import wordWhite from "@/assets/brand/wordmark-white.svg";
-import { dateLabel, nameI, todayKST, type DailyNote } from "@/domain/notes";
+import { dateLabel, itemLabel, nameI, todayKST, type DailyNote } from "@/domain/notes";
 
 type Me = { user: { display_name: string }; children: { id: string; display_name: string; classroom_id: string }[] };
 
@@ -93,7 +93,7 @@ export function ParentHome() {
                 .filter((i, k) => (childLine ? i.value !== childLine : k > 0))
                 .map((i, k) => (
                   <p key={k} className="mt-1 text-callout">
-                    {i.source.type === "request" && <span className="mr-1.5 text-footnote font-semibold text-lav">보호자 요청</span>}
+                    {i.source.type === "request" && <span className="mr-1.5 text-footnote font-semibold text-lav">내 요청</span>}
                     {i.value}
                   </p>
                 ))}
@@ -101,8 +101,8 @@ export function ParentHome() {
                 <dl className="mt-3 grid gap-1 border-t border-sep pt-3 text-callout">
                   {facts.map((f, k) => (
                     <div key={k} className="flex gap-2">
-                      <dt className="w-14 shrink-0 text-footnote font-semibold text-ink2">{f.label}</dt>
-                      <dd className="min-w-0">{f.value}</dd>
+                      <dt className="w-14 shrink-0 text-footnote font-semibold text-ink2">{itemLabel(f)}</dt>
+                      <dd className="min-w-0">{f.source.type === "request" && <span className="mr-1.5 text-footnote font-semibold text-lav">내 요청</span>}{f.value}</dd>
                     </div>
                   ))}
                 </dl>

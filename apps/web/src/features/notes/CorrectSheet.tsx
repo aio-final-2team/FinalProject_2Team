@@ -4,7 +4,7 @@ import { useCorrectNote } from "@/api/notes";
 import { PrimaryButton, SubButton } from "@/components/Dock";
 import { Sheet } from "@/components/Sheet";
 import { useToast } from "@/components/Toast";
-import type { DailyNote, NoteItem } from "@/domain/notes";
+import { itemLabel, type DailyNote, type NoteItem } from "@/domain/notes";
 
 /** 보낸 알림장 정정 (API 52). 고친 내용 전체와 사유를 보내고, 보호자에게 정정 알림이 간다 */
 export function CorrectSheet({ note, open, onClose, cid, date }: { note: DailyNote; open: boolean; onClose: () => void; cid?: string; date: string }) {
@@ -31,7 +31,7 @@ export function CorrectSheet({ note, open, onClose, cid, date }: { note: DailyNo
       <div className="grid max-h-[40dvh] gap-3 overflow-y-auto">
         {items.map((it, i) => (
           <label key={`${it.key}-${i}`} className="grid gap-1.5">
-            <span className="text-footnote font-semibold">{it.label}</span>
+            <span className="text-footnote font-semibold">{itemLabel(it)}</span>
             <textarea value={it.value} rows={2} onChange={(e) => setItems((xs) => xs.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)))} className="rounded-md border-[1.5px] border-line bg-card px-3 py-2 text-callout outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--tint)]" />
           </label>
         ))}
