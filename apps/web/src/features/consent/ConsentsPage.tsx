@@ -43,7 +43,7 @@ export function ConsentsPage() {
           </ul>
         </section>
       )}
-      <p className="mt-4 break-keep px-1 text-footnote text-ink2">동의를 거두려면 탈퇴해야 합니다. 탈퇴하면 올린 글, 사진, 얼굴 특징정보를 지웁니다.</p>
+      <p className="mt-4 break-keep px-1 text-footnote text-ink2">탈퇴하면 올린 글, 사진, 얼굴 특징정보를 지웁니다.</p>
       <button type="button" onClick={() => setQuit(true)} className="mt-3 h-11 w-full rounded-md bg-fill text-callout font-semibold text-ink active:scale-[.98]">탈퇴하기</button>
       <Sheet open={quit} onClose={() => setQuit(false)} title="탈퇴는 준비 중입니다">
         <p className="text-footnote text-ink2">탈퇴 기능이 열리면 이 화면에서 할 수 있습니다.</p>

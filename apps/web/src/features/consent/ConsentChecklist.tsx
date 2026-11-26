@@ -9,7 +9,7 @@ export const allAgreed = (list: Consent[], on: string[]) => list.length > 0 && l
  * 동의 항목 목록. 가입 화면과 로그인 뒤 동의 화면이 같이 쓴다.
  * 모두 동의는 별도 칸이 아닌 항목만 고르고, 별도 칸(AI 처리, 건강 정보, 얼굴 찾기)은 항목마다 직접 눌러야 한다.
  */
-export function ConsentChecklist({ role, on, setOn, afterLogin = false, items }: { role: Role; on: string[]; setOn: Dispatch<SetStateAction<string[]>>; afterLogin?: boolean; items?: Consent[] }) {
+export function ConsentChecklist({ role, on, setOn, items }: { role: Role; on: string[]; setOn: Dispatch<SetStateAction<string[]>>; items?: Consent[] }) {
   const list = items ?? consentsFor(role);
   const bulk = list.filter((c) => !c.separate);
   const separate = list.filter((c) => c.separate);
@@ -20,15 +20,15 @@ export function ConsentChecklist({ role, on, setOn, afterLogin = false, items }:
       <button type="button" aria-pressed={bulkOn} onClick={() => setOn((x) => (bulkOn ? x.filter((id) => !bulk.some((c) => c.id === id)) : [...new Set([...x, ...bulk.map((c) => c.id)])]))} className={`mt-4 flex h-12 w-full items-center gap-3 rounded-lg px-3 text-left font-semibold ${bulkOn ? "bg-tint text-accent-ink" : "bg-card shadow-card"}`}>
         <Check on={bulkOn} />모두 동의합니다
       </button>
-      <Cards items={bulk} on={on} toggle={toggle} afterLogin={afterLogin} />
+      <Cards items={bulk} on={on} toggle={toggle} />
       {separate.length > 0 && (
         <section aria-label="직접 선택해야 하는 항목" className="mt-6">
           <h2 className="px-1 text-footnote font-semibold text-ink2">직접 선택해야 하는 항목</h2>
           <p className="mt-0.5 px-1 text-caption text-ink2">위의 “모두 동의합니다”로 선택되지 않습니다. 하나씩 직접 눌러 주십시오.</p>
-          <Cards items={separate} on={on} toggle={toggle} afterLogin={afterLogin} />
+          <Cards items={separate} on={on} toggle={toggle} />
         </section>
       )}
-      <p className="mt-3 px-1 text-caption text-ink2">동의를 거두려면 탈퇴해야 합니다. 탈퇴하면 올린 글, 사진, 얼굴 특징정보를 지웁니다.</p>
+      <p className="mt-3 px-1 text-caption text-ink2">탈퇴하면 올린 글, 사진, 얼굴 특징정보를 지웁니다.</p>
     </>
   );
 }
@@ -41,7 +41,7 @@ function Check({ on }: { on: boolean }) {
   );
 }
 
-function Cards({ items, on, toggle, afterLogin }: { items: Consent[]; on: string[]; toggle: (id: string) => void; afterLogin: boolean }) {
+function Cards({ items, on, toggle }: { items: Consent[]; on: string[]; toggle: (id: string) => void }) {
   return (
     <ul className="mt-3 grid gap-2">
       {items.map((c) => (
@@ -52,7 +52,7 @@ function Cards({ items, on, toggle, afterLogin }: { items: Consent[]; on: string
             <span className="shrink-0 rounded-full bg-fill px-2 py-0.5 text-caption font-semibold text-ink2">필수{c.separate ? " · 직접 선택" : ""}</span>
           </button>
           <p className="mt-1.5 break-keep pl-8 text-footnote text-ink2">{c.summary}</p>
-          <p className="mt-1 pl-8 text-caption text-ink2">동의하지 않으면 {afterLogin ? c.refuse.replace("가입할 수 없습니다", "이용할 수 없습니다") : c.refuse}.</p>
+          {c.refuse && <p className="mt-1 pl-8 text-caption text-ink2">동의하지 않으면 {c.refuse}.</p>}
         </li>
       ))}
     </ul>
