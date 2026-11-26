@@ -11,11 +11,12 @@ depends_on = None
 def upgrade():
     op.execute("""
         CREATE TABLE user_settings (
-            user_id uuid PRIMARY KEY REFERENCES users(id),
-            org_id uuid NOT NULL REFERENCES organizations(id),
+            user_id uuid PRIMARY KEY,
+            org_id uuid NOT NULL,
             quiet_start time,
             quiet_end time,
-            updated_at timestamptz NOT NULL DEFAULT now()
+            updated_at timestamptz NOT NULL DEFAULT now(),
+            FOREIGN KEY (user_id, org_id) REFERENCES users(id, org_id)
         )
     """)
 

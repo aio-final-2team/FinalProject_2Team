@@ -48,7 +48,7 @@ ERD는 피드·앨범 표 3개(맨 끝 절)를 뺀 표 29개를 여섯 영역으
 
 | 영역 | 테이블 | 선 수 |
 | --- | --- | --- |
-| ① 기관·사람 | `organizations` `classrooms` `users` `classroom_staff` `children` `child_guardians` `user_consents` `user_settings` | 11 |
+| ① 기관·사람 | `organizations` `classrooms` `users` `classroom_staff` `children` `child_guardians` `user_consents` `user_settings` | 10 |
 | ② 요청·카드·승인 | `requests` `request_messages` `cards` `approvals` `card_evidence` `events` | 18 |
 | ③ 자료·검색 | `documents` `document_chunks` `document_classrooms` | 6 |
 | ④ 상담 | `rooms` `staff_busy_blocks` `consultation_slots` `consultation_bookings` | 10 |
@@ -80,7 +80,6 @@ erDiagram
     organizations ||--o{ user_consents : "org_id"
     users ||--o{ user_consents : "user_id"
     users ||--o| user_settings : "user_id"
-    organizations ||--o{ user_settings : "org_id"
 ```
 
 **② 요청·카드·승인** (다른 영역 부모: `children`, `classrooms`, `document_chunks`, `organizations`, `users`)
@@ -272,10 +271,9 @@ erDiagram
 | 58 | `daily_notes` | 0..1 : N | `events` | `events.(daily_note_id, org_id)` → `daily_notes.(id, org_id)` |
 | 59 | `organizations` | 1 : N | `user_consents` | `user_consents.org_id` → `organizations.id` |
 | 60 | `users` | 1 : N | `user_consents` | `user_consents.(user_id, org_id)` → `users.(id, org_id)` |
-| 61 | `users` | 1 : 0..1 | `user_settings` | `user_settings.user_id` → `users.id` |
-| 62 | `organizations` | 1 : N | `user_settings` | `user_settings.org_id` → `organizations.id` |
+| 61 | `users` | 1 : 0..1 | `user_settings` | `user_settings.(user_id, org_id)` → `users.(id, org_id)` |
 
-**ERD 선 수 = 표 행 수 = 62.** 같은 부모와 자식 사이에 FK가 둘 이상 있으면(예: `requests`의 `requester_id`·`assignee_id` → `users`) 선과 행을 FK마다 따로 센다. DDL에 있는 FK 제약은 모두 68개인데, 이 중 6개는 맨 끝 피드·앨범 절의 표에 걸려 있어서 이 그림과 표에는 넣지 않았다. FK 제약 수는 DB 카탈로그에서 센다(9장 C3).
+**ERD 선 수 = 표 행 수 = 61.** 같은 부모와 자식 사이에 FK가 둘 이상 있으면(예: `requests`의 `requester_id`·`assignee_id` → `users`) 선과 행을 FK마다 따로 센다. DDL에 있는 FK 제약은 모두 67개인데, 이 중 6개는 맨 끝 피드·앨범 절의 표에 걸려 있어서 이 그림과 표에는 넣지 않았다. FK 제약 수는 DB 카탈로그에서 센다(9장 C3).
 
 
 FK를 걸 수 없는 참조가 두 곳 있다. `cards.subject_id`와 `notifications.subject_id`는 대상 종류(`subject_type`)에 따라 가리키는 표가 달라지므로 FK를 두지 않았다. 대신 저장하기 전에 API가 대상이 같은 기관에 있는지 확인한다.
@@ -346,8 +344,8 @@ FK를 걸 수 없는 참조가 두 곳 있다. `cards.subject_id`와 `notificati
 | `user_consents` | `item` | `text` / NOT NULL, CHECK: terms·privacy·ai_processing·child_info·child_health·child_face | 필수 항목 키 |
 | `user_consents` | `terms_version` | `text` / NOT NULL | 동의한 약관 판 |
 | `user_consents` | `agreed_at` | `timestamptz` / NOT NULL, 기본값 now() | 항목별 최초 동의 시각 |
-| `user_settings` | `user_id` | `uuid` / PK, FK → users.id | 개인 알림 설정 소유자 |
-| `user_settings` | `org_id` | `uuid` / NOT NULL, FK → organizations.id | 소유자 기관 |
+| `user_settings` | `user_id` | `uuid` / PK, FK (user_id, org_id) → users | 개인 알림 설정 소유자 |
+| `user_settings` | `org_id` | `uuid` / NOT NULL, 기관 짝 FK에 들어감 | 소유자 기관(사용자와 같은 기관만 허용) |
 | `user_settings` | `quiet_start` | `time` / NULL 허용 | KST 조용한 시간 시작(포함) |
 | `user_settings` | `quiet_end` | `time` / NULL 허용 | KST 조용한 시간 종료(미포함), 자정 넘김 허용 |
 | `user_settings` | `updated_at` | `timestamptz` / NOT NULL, 기본값 now() | 최초 저장·마지막 변경 시각 |
@@ -379,7 +377,7 @@ FK를 걸 수 없는 참조가 두 곳 있다. `cards.subject_id`와 `notificati
 
 **[제안] 가입 필수 동의(API 3.31).** `user_consents`는 (org_id,user_id,item,terms_version)이 유일하다. 모든 역할은 terms·privacy·ai_processing에, 보호자는 child_info·child_health·child_face에도 전부 동의한다. ai_processing은 쓴 글을 AI 처리를 위해 국외 AI 사업자에게 전송함을 알린다. 현재 판은 코드 상수 CONSENT_VERSION이며, 이전 판도 기록으로 보존한다. 다시 동의해도 최초 agreed_at을 바꾸지 않는다. 현재 판의 역할별 항목이 전부 있어야 완료다. 반 현황은 아이마다 연결된 보호자 수·완료한 수를 세고 한 명 이상 완료하면 complete=true다.
 
-0016은 표와 `consent_agreed` 이력의 CHECK 허용 값만 만든다. 동의 행은 넣지 않는다. 데모 시드는 mock의 모든 계정을 현재 판으로 채우며 기존 기록을 유지한다. 새 동의와 행위자·약관 판·항목 목록·trace_id를 담은 이력 한 줄은 같은 트랜잭션이다. 반복 요청은 이력도 중복하지 않는다. 0015로 내리면 동의 표가 사라지므로 기록 백업이 필요하다. 이미 남긴 consent_agreed 이력은 0012와 같은 NOT VALID 방식으로 보존한다. 최신 head 카탈로그는 표 32·뷰 2·트리거 2·FK 68·컬럼 306이다.
+0016은 표와 `consent_agreed` 이력의 CHECK 허용 값만 만든다. 동의 행은 넣지 않는다. 데모 시드는 mock의 모든 계정을 현재 판으로 채우며 기존 기록을 유지한다. 새 동의와 행위자·약관 판·항목 목록·trace_id를 담은 이력 한 줄은 같은 트랜잭션이다. 반복 요청은 이력도 중복하지 않는다. 0015로 내리면 동의 표가 사라지므로 기록 백업이 필요하다. 이미 남긴 consent_agreed 이력은 0012와 같은 NOT VALID 방식으로 보존한다. 최신 head 카탈로그는 표 32·뷰 2·트리거 2·FK 67·컬럼 306이다.
 
 ### 2.2 요청·카드·승인·이력
 

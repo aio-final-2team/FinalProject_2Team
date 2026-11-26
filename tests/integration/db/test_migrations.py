@@ -21,7 +21,7 @@ from app.mock import seed
 from db.seeds.demo import seed_demo
 
 ROOT = Path(__file__).resolve().parents[3]
-HEAD_CATALOG = {"tables": 32, "views": 2, "triggers": 2, "foreign_keys": 68, "columns": 306}
+HEAD_CATALOG = {"tables": 32, "views": 2, "triggers": 2, "foreign_keys": 67, "columns": 306}
 
 
 def catalog(connection):

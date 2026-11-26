@@ -47,7 +47,9 @@ def deliver_after(start: datetime, role: str, risk_level=None, risk_category=Non
             clock = start.time()
             if (begin < end and begin <= clock < end) or (begin > end and (clock >= begin or clock < end)):
                 day = start.date() + timedelta(days=int(begin > end and clock >= begin))
-                return datetime.combine(day, end, KST)
+                start = datetime.combine(day, end, KST)
+            while not working_day(start.date()):
+                start = datetime.combine(start.date() + timedelta(days=1), end, KST)
             return start
     opening, closing = settings.work_hours
     while not working_day(start.date()) or start.time() >= closing:
