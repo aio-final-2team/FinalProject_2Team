@@ -5,7 +5,7 @@
 | 작업 | T13 API 설계 문서(FastAPI·Function Calling 도구 계약)·모의 API (#170) |
 | 작성 · 검토 | 태웅 · 인혜 |
 | 계약을 쓰는 쪽 | 화면 T12·T32(성주), 알림장 그래프 T32(프롬프트 검토 영민), 요청 처리 에이전트·자료·근거 검색 T29·T20·T33(영민) |
-| 판 | v0.13 · 2026-11-24 (판마다 바뀐 내용은 맨 끝 변경 이력 참고. 계약을 바꾸면 예시·모의 응답·시험도 함께 고친다) |
+| 판 | v0.13.2 · 2026-11-26 (판마다 바뀐 내용은 맨 끝 변경 이력 참고. 계약을 바꾸면 예시·모의 응답·시험도 함께 고친다) |
 | 2차 검토 링크 | `develop` 브랜치의 [API 설계 문서](https://github.com/aio-final-2team/FinalProject_2Team/blob/develop/Docs/Step2/API_설계_문서.md). API별 상태(2장)는 develop `24258f2` 코드로 판정했다. 이 커밋은 2장 상태 칸의 기준이고, 시연에 쓰는 커밋은 다음 줄에 따로 적는다 |
 | 시연 코드 기준 커밋 | 레포 [README](../../README.md#2차-검토-문서)의 '시연 코드 기준 커밋' 한 줄을 본다(11/24 밤 기준 develop `641591f`, 흐름 고치기 #338까지 팀 서버에 배포). 팀 서버를 다시 배포하면 README 그 한 줄만 고친다 |
 | 함께 보는 문서 | 아래 기준 판 표의 문서들, T04 흐름·권한 명세 |
@@ -155,7 +155,7 @@ FastAPI가 기본으로 내는 422 응답은 예외 처리기에서 위 형식�
 | 1 | POST | `/api/v1/auth/login` | 없음 | 로그인, 토큰 발급 | 200 | FR-01 | 3.8 | DB 연결 | ○ | — |
 | 2 | GET | `/api/v1/me` | JWT | 내 정보·내 아이(학부모)·담당 반(교직원) | 200 | FR-01 | 3.8 | DB 연결 | — | — |
 | 3 | POST | `/api/v1/requests` | 학부모 | 요청 만들기(AI 처리 접수) | 202 | FR-02, FR-03 | 3.1 | DB 연결 | — | 영민·성주: 요청 AI·T43 |
-| 4 | GET | `/api/v1/requests` | 학부모(자기 것) | 내 요청 목록 | 200 | FR-02 | 3.9 | DB 연결 | — | — |
+| 4 | GET | `/api/v1/requests` | 학부모(자기 것)·담임(우리 반)·원장(기관 전체) | 요청 목록·답변 주체 조회 | 200 | FR-02 | 3.9 | DB 연결 | — | — |
 | 5 | GET | `/api/v1/requests/{request_id}` | 학부모(자기 것) · 교직원(우리 반) | 요청 상세·대화·진행 기록 | 200 | FR-02, FR-11 | 3.2, 3.7 | DB 연결 | — | 영민·성주: 요청 AI·T43 |
 | 6 | GET | `/api/v1/requests/{request_id}/stream` | 학부모(자기 것) | AI 진행 스트림(SSE) | 200 | NFR-10 | 3.2 | DB 연결 | — | 영민·성주: 요청 AI·T43 |
 | 7 | POST | `/api/v1/requests/{request_id}/messages` | 학부모(자기 것) | 대화 이어 쓰기 | 201 | FR-02 | 3.10 | DB 연결 | — | — |
@@ -641,6 +641,7 @@ T12 화면 지도에 나온 화면들이 조회 응답에서 쓰는 칸을 여�
 | 화면용 필드(`items[]`) | 타입 | 언제 | 설명 | DB |
 | --- | --- | --- | --- | --- |
 | `request_id` | string(UUID) | 요청이 있는 카드 | 알림장 묶음·규칙 제안 카드는 `null` | `cards.request_id` |
+| `child_id`·`child_name`·`requester_name` | UUID·string·string 또는 null | 요청이 있는 카드 | 요청의 아이·보호자 현재 표시 이름이에요. 요청이 없으면 세 칸 모두 null, 아이가 없으면 아이 두 칸은 null이에요. 목록은 조인해서 한꺼번에 읽어요 | `requests.child_id` → `children.display_name`, `requests.requester_id` → `users.display_name` |
 | `risk_category` | string | 긴급 요청만 | 긴급 사유 4가지(`child_safety`·`staff_attack`·`legal_external`·`privacy_leak`) | `requests.risk_category` |
 | `repeat_count` | integer | 민원만 | 같은 반에서 최근 30일 안에 들어온 같은 주제 민원 수. `topic_key = other`면 `null` | 조회 때 셈(`requests_repeat_idx`) |
 | `check { passed, issue_count }` | 객체 | 검사가 끝난 카드 | 검사 AI 결과 요약. 검사를 못 했으면 `null` | `cards.check_result` |
@@ -656,6 +657,7 @@ T12 화면 지도에 나온 화면들이 조회 응답에서 쓰는 칸을 여�
 
 | 화면용 필드 | 타입 | 언제 | 설명 | DB |
 | --- | --- | --- | --- | --- |
+| `request.child_id`·`request.child_name`·`request.requester_name` | UUID·string·string 또는 null | 요청이 있는 카드 | 목록과 같은 아이·보호자 이름이에요. `StaffRequest`를 쓰는 재분류 응답에도 함께 나가요. 요청이 없으면 request 자체가 null이에요 | 위 목록 규칙과 같음 |
 | `messages[] { id, sender_type, sender_role, body, created_at }` | 목록 | 항상(요청 없으면 빈 목록) | 해당 요청의 전체 대화를 메시지 ID 오름차순으로 준다. 사람의 역할은 `parent`·`teacher`·`director`, AI·시스템 역할은 null이다. 카드의 기관·반·담당 권한을 먼저 검사한다 | `request_messages` → `users.role` |
 | `card.note_batch`·`card.status_label` | 객체·string 또는 null | 알림장 묶음 카드 | 목록과 같은 반 아이별 상태·초안 진행/실패 표시 | 위 목록 규칙과 같음 |
 | `card.summary` | string | AI가 만든 카드 | AI 요약(`create_card`의 `summary`) | `cards.draft->>'summary'` |
@@ -743,15 +745,15 @@ HTTP/1.1 200 OK
 | 401 | `UNAUTHENTICATED` | 로그인 실패·비활성 계정, 내 정보의 토큰 문제 |
 | 422 | `VALIDATION_FAILED` | 필수 칸·타입·허용 값·길이가 맞지 않음 |
 
-### 3.9 내 요청 목록 — `GET /api/v1/requests`
+### 3.9 요청 목록 — `GET /api/v1/requests`
 
 | 칸 | 내용 |
 | --- | --- |
-| ① 호출 목적 | 학부모가 자기가 보낸 요청과 다음 할 일을 본다(FR-02). |
+| ① 호출 목적 | 학부모는 자기 요청과 다음 할 일을, 교직원은 담당 범위의 모든 유형 요청과 답변 주체를 봐요(FR-02). |
 | ② 요청 헤더 | `Authorization`(필수), `X-Request-ID`(권장). |
 | ③ 경로·쿼리 | 아래 쿼리 필드. |
 | ④ 요청 본문 | 없음. |
-| ⑤ 검증·권한 | 학부모만 호출할 수 있다. 같은 기관에서 본인이 보낸 요청을 먼저 고르고, 그 안에서 상태 조건을 적용한다. |
+| ⑤ 검증·권한 | 학부모는 같은 기관의 본인 요청을 봐요. 담임은 오늘 유효한 classroom_staff의 반, 원장은 같은 기관 전체를 봐요. 범위 밖 classroom_id는 404예요. |
 | ⑥ 정상 응답 | 200 + `items[]`·`total`·`page`·`size`. 해당 요청이 없으면 빈 목록. |
 | ⑦ 오류 응답 | 아래 오류 표. |
 | ⑧ 실행 규칙 | 조회할 때 보류 만료와 상담 시간 만료를 반영하고, 정렬한 뒤 쪽을 나눈다. |
@@ -761,10 +763,15 @@ HTTP/1.1 200 OK
 | `status` | 쿼리 | string | 선택 | 생략 가능 | 3.2의 요청 상태 11개 | 생략하면 모든 상태 |
 | `page`·`size` | 쿼리 | integer | 선택 | 불가 | 기본 1·20, page ≥ 1, size 1~100 | 쪽 나누기 |
 | `sort` | 쿼리 | string | 선택 | 불가 | `-created_at`(기본)·`created_at`·`-updated_at`·`updated_at` | 생성·변경 시각 순 |
+| `answered_by`·`classroom_id`·`type` | 쿼리 | string·UUID·string | 선택 | 생략 가능 | agent·staff / 담당 범위 반 / 등록 유형 5개 | 교직원 필터예요. 학부모는 유효한 값을 보내도 무시하고, 잘못된 타입·허용 값은 422로 막아요. |
 | `items[].id`·`type`·`title`·`status`·`status_label`·`updated_at` | 응답 | UUID·string·datetime | 항상 | title은 null 가능 | 등록 유형 5개·상태 11개 | 본인 요청의 요약 |
 | `items[].next_action` | 응답 | string | 항상 | null 가능 | 정보 보완·시간 선택·민원 회신 확인 | needs_info면 보완 또는 시간 선택, 확인하지 않은 민원 회신이 있으면 확인 안내 |
 | `items[].hold_until` | 응답 | date | 항상 | null 가능 | 보류 카드의 예정일 | 할 일이나 보류가 없으면 해당 칸은 null |
 | `total`·`page`·`size` | 응답 | integer | 항상 | 불가 | 전체 건수·요청한 쪽·크기 | 목록 공통 칸 |
+
+학부모는 기존 `RequestList` 모양을 그대로 받아요. 교직원은 `StaffRequestList`로 같은 요약 칸에 `classroom_id`·`child_id`·`child_name`·`requester_name`·`answered_by`를 더 받아요. 반·아이가 없는 요청도 원장은 볼 수 있고 classroom_id·아이 두 칸은 null이 될 수 있어요. 이름은 현재 표시 이름이에요. 교직원 `status_label`은 `staff_label`을 써요. `next_action`은 투약·귀가의 received면 confirm, assigned면 complete, 나머지는 null이에요. `hold_until`은 기존 보류 예정일이에요.
+
+`answered_by=agent`는 `out_of_scope_answered` 이력이 있는 요청이에요. 그 밖에 현재 상태나 이력이 `sent_or_booked`·`completed`까지 간 요청은 staff, 아직 답하지 않았으면 null이에요. 답변 뒤 대화가 이어져도 이력을 유지해요. AI 바로 안내는 카드 없이도 이 목록에서 찾아요.
 
 ```http
 GET /api/v1/requests?status=needs_info
@@ -776,6 +783,7 @@ HTTP/1.1 200 OK
 | --- | --- | --- |
 | 401 | `UNAUTHENTICATED` | 토큰 없음·만료·무효 |
 | 403 | `FORBIDDEN_ROLE` | 허용하지 않은 역할 |
+| 404 | `NOT_FOUND` | 교직원이 담당 범위 밖 classroom_id를 보냄 |
 | 422 | `VALIDATION_FAILED` | 필수 칸·타입·허용 값·길이가 맞지 않음 |
 
 ### 3.10 대화 이어 쓰기 — `POST /api/v1/requests/{request_id}/messages`
@@ -2293,3 +2301,4 @@ MVP 설정값은 서버 설정(`.env`)으로 관리한다. `.env.example`에는 
 | v0.12 | 2026-11-24 | 요청 흐름 끝까지 점검(11/24) 반영. 학부모 추가 글을 담당자(없으면 원장)에게 알리고 답을 보낸 회신 카드는 빈 초안으로 다시 엶(3.10·3.3), 카드 상세에 대화 `messages`·이전 답 `previous_text`. AI 실패·시간 초과 인계 때도 위험 등급·담임 배정 유지(6.1). 권한 밖 질문은 고정 문구로 바로 안내(아이 일·위험·다툼은 제외). 상담: 희망 시간을 후보 계산에 반영, 원장 보고 확인(`acknowledge`), 확정 충돌 때 보존+새 후보. 투약·귀가: 반려 사유, 학부모 취소(API 50)·입력 수정(API 51), 값은 `requests.care_detail`. 알림 종류 6개(추가 글·재배정·상담 확정·알림장 정정·취소·반려). 알림장: 한도 초과 확인 `return_limit`, 초안 뒤 들어온 요청을 확인 항목으로, 반 카드 `note_batch`·작업 실패 표시, 보낸 알림장 정정(API 52, 판·정정 시각). 보류 재개·확인 만료는 주기 점검(beat)으로. 머리의 '11/27 시연' 문구를 뺌(시연은 12/08 중간 발표). 리뷰 반영: AI 실패로 넘기는 상담은 회신 카드 대신 시간 후보 카드로, 담임이 원장에게 올린 상담 보고는 확인(`acknowledge`) 대신 지시로만 닫음(6.1). | 태웅 |
 | v0.13 | 2026-11-24 | [제안] 필수 동의 API 53~55·user.consents_complete·미동의자 6개 쓰기 경로 차단·새 오류 코드·현재 판 데모 시드를 추가하고 OpenAPI와 맞춤. | 태웅 |
 | v0.13.1 | 2026-11-24 | 상담 재배정 때 새 담당 일정과 겹치는 후보를 버리고 부족한 만큼 다시 제안하며, 선택한 시간이 사라지면 학부모에게 다시 선택을 안내한다(3.16). 0012·0014를 되돌릴 때 이전 판에서 읽지 못하는 새 알림·이력·결정 행을 정리한다. | 태웅 |
+| v0.13.2 | 2026-11-26 | 카드 목록·상세·재분류에 아이·보호자 이름을 더해요. GET /requests를 담임·원장에게 열고 담당 반·유형·답변 주체로 걸러요. 학부모 응답은 유지해요(3.7·3.9). | 태웅 |

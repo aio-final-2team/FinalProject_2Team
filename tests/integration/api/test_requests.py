@@ -255,7 +255,8 @@ def test_own_list_filters_paginates_and_sorts(client, parent, parent_other, teac
     for page in (10**17, 10**30):
         last = client.get("/api/v1/requests", headers=parent, params={"page": page, "size": 100})
         assert last.status_code == 200 and last.json()["items"] == [] and last.json()["total"] == data["total"]
-    assert client.get("/api/v1/requests", headers=teacher).status_code == 403
+    staff = client.get("/api/v1/requests", headers=teacher)
+    assert staff.status_code == 200 and rid in [r["id"] for r in staff.json()["items"]]
 
 
 @pytest.mark.parametrize("query", [{"status": "unknown"}, {"page": 0}, {"size": 101}, {"sort": "body"}])
@@ -605,3 +606,95 @@ def test_followup_to_cardless_answer_creates_empty_reply(client, parent, teacher
     assert len(notices(request_backend, rid)) == before + 1
     note = notices(request_backend, rid)[-1]
     assert (note["kind"], note["recipient_id"]) == ("new_card", seed.TEACHER if has_teacher else seed.DIRECTOR)
+
+
+def test_staff_request_list_agent_scope_and_names(client, parent, parent_other, teacher, teacher_other, director):
+    ids = [_create(client, actor, type="inquiry", body="[TEST] 원비 결제해 주세요.", child_id=str(child)).json()["request"]["id"]
+           for actor, child in ((parent, seed.CHILD), (parent_other, seed.CHILD_OTHER))]
+    def listed(actor):
+        response = client.get("/api/v1/requests?answered_by=agent&size=100", headers=actor)
+        assert response.status_code == 200, response.text
+        return response.json()["items"]
+    [own] = listed(teacher)
+    assert own["id"] == ids[0] and own["classroom_id"] == str(seed.CLASS_STAR)
+    assert (own["child_id"], own["child_name"], own["requester_name"]) == (str(seed.CHILD), "하늘", "하늘이 보호자")
+    assert own["answered_by"] == "agent" and own["status_label"] == "발송됨" and own["next_action"] is None
+    assert [r["id"] for r in listed(teacher_other)] == [ids[1]]
+    assert {r["id"] for r in listed(director)} == set(ids)
+
+
+def test_staff_request_list_answer_filters_and_all_types(client, parent, teacher, request_backend):
+    baseline = {r["id"] for r in client.get("/api/v1/requests?answered_by=staff&size=100", headers=teacher).json()["items"]}
+    pending = _create(client, parent, type="inquiry").json()["request"]["id"]
+    sent = _create(client, parent).json()["request"]["id"]
+    change_request(request_backend, sent, status="sent_or_booked")
+    finished = _create(client, parent, type="pickup").json()["request"]["id"]
+    change_request(request_backend, finished, status="completed")
+    _create(client, parent, type="medication")
+    _create(client, parent, type="consultation")
+    rows = client.get("/api/v1/requests?size=100", headers=teacher).json()["items"]
+    assert {r["type"] for r in rows} == {"inquiry", "complaint", "consultation", "medication", "pickup"}
+    assert next(r for r in rows if r["id"] == pending)["answered_by"] is None
+    assert next(r for r in rows if r["type"] == "medication")["next_action"] == "confirm"
+    answered = client.get("/api/v1/requests?answered_by=staff&size=100", headers=teacher).json()["items"]
+    assert {r["id"] for r in answered} == baseline | {sent, finished}
+    assert all(r["answered_by"] == "staff" for r in answered)
+    assert client.get("/api/v1/requests?answered_by=agent", headers=teacher).json()["total"] == 0
+
+
+def test_staff_request_list_combines_filters_and_pagination(client, parent, teacher, request_backend):
+    ids = [_create(client, parent, type="inquiry").json()["request"]["id"] for _ in range(3)]
+    for rid in ids:
+        change_request(request_backend, rid, status="sent_or_booked")
+    query = {"classroom_id": str(seed.CLASS_STAR), "type": "inquiry", "status": "sent_or_booked",
+             "answered_by": "staff", "sort": "created_at", "size": 1}
+    pages = [client.get("/api/v1/requests", headers=teacher, params={**query, "page": p}).json() for p in range(1, 5)]
+    assert all(p["total"] == 3 and p["size"] == 1 for p in pages)
+    assert [p["items"][0]["id"] for p in pages[:3]] == ids and pages[3]["items"] == []
+    query.update(sort="-created_at", size=100)
+    assert [r["id"] for r in client.get("/api/v1/requests", headers=teacher, params=query).json()["items"]] == ids[::-1]
+    query["classroom_id"] = str(seed.CLASS_SUN)
+    err(client.get("/api/v1/requests", headers=teacher, params=query), 404, "NOT_FOUND")
+
+
+@pytest.mark.parametrize("period", ["expired", "future", "today"])
+def test_staff_request_list_checks_assignment_dates(client, parent, teacher, director, request_backend, period):
+    from datetime import timedelta
+    today = store.now().date()
+    start, end = {"expired": (None, today-timedelta(days=1)),
+                  "future": (today+timedelta(days=1), None), "today": (today, today)}[period]
+    rid = _create(client, parent, type="inquiry", body="[TEST] 원비 결제해 주세요.").json()["request"]["id"]
+    if request_backend == "mock":
+        assignment = next(s for s in store.state().classroom_staff if s.user_id == seed.TEACHER)
+        assignment.valid_from, assignment.valid_to = start, end
+    else:
+        with transaction() as connection:
+            connection.execute(text("UPDATE classroom_staff SET valid_from=:start,valid_to=:end WHERE user_id=:user"),
+                               {"start": start, "end": end, "user": seed.TEACHER})
+    listed = client.get("/api/v1/requests?answered_by=agent", headers=teacher).json()["items"]
+    assert (rid in [r["id"] for r in listed]) == (period == "today")
+    assert rid in [r["id"] for r in client.get("/api/v1/requests?answered_by=agent", headers=director).json()["items"]]
+
+
+def test_staff_request_list_preserves_parent_bytes_and_validates_queries(client, parent, teacher):
+    _create(client, parent)
+    original = client.get("/api/v1/requests", headers=parent)
+    filtered = client.get("/api/v1/requests", headers=parent,
+                          params={"answered_by": "agent", "classroom_id": str(seed.CLASS_SUN), "type": "pickup"})
+    assert filtered.content == original.content
+    assert set(original.json()["items"][0]) == {"id", "type", "title", "status", "updated_at", "status_label", "next_action", "hold_until"}
+    for query in ({"answered_by": "unknown"}, {"classroom_id": "bad"}, {"type": "unknown"}):
+        for actor in (parent, teacher):
+            err(client.get("/api/v1/requests", headers=actor, params=query), 422, "VALIDATION_FAILED")
+
+
+def test_staff_request_list_keeps_answer_history_when_reopened(client, parent, teacher):
+    agent = _create(client, parent, type="inquiry", body="[TEST] 원비 결제해 주세요.").json()["request"]["id"]
+    staff = _create(client, parent, type="inquiry").json()["request"]["id"]
+    card = next(c for c in client.get("/api/v1/cards?size=100", headers=teacher).json()["items"] if c["request_id"] == staff)
+    assert decision(client, teacher, card["id"]).status_code == 200
+    for rid in (agent, staff):
+        assert client.post(f"/api/v1/requests/{rid}/messages", headers=parent, json={"body": "[TEST] 추가 질문"}).status_code == 201
+    for answer, rid in (("agent", agent), ("staff", staff)):
+        listed = client.get(f"/api/v1/requests?answered_by={answer}&status=awaiting_review", headers=teacher).json()["items"]
+        assert [(r["id"], r["status"]) for r in listed] == [(rid, "awaiting_review")]

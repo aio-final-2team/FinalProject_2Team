@@ -276,7 +276,9 @@ def detail(user, request_id):
                 "care": care_state, "rejection": dict(rejection) if rejection else None}
 
 
-def listing(user, status, page, size, sort):
+def listing(user, status, page, size, sort, answered_by=None, classroom_id=None, type=None):
+    if user.role != "parent":
+        return staff_listing(user, status, page, size, sort, answered_by, classroom_id, type)
     with transaction() as connection:
         # 본인 요청의 만료를 먼저 반영한 뒤 상태·정렬·쪽 나누기를 적용해요.
         rows = connection.execute(text("""
@@ -298,6 +300,50 @@ def listing(user, status, page, size, sort):
                                                        cancelled_by_parent=care.view(connection, req)["cancelled_by_parent"]
                                                        if req["type"] in CARE_REQUEST_TYPES and req["status"] == "rejected" else False),
                           "next_action": action,
+                          "hold_until": _hold_until(connection, req)})
+        return {"items": items, "total": len(requests), "page": page, "size": size}
+
+
+def staff_listing(user, status, page, size, sort, answered_by, classroom_id, type):
+    with transaction() as connection:
+        if classroom_id:
+            scope.classroom_in_scope(user, classroom_id, connection=connection)
+        rows = connection.execute(text("""
+            SELECT r.*,c.display_name AS child_name,u.display_name AS requester_name,
+                CASE WHEN EXISTS (SELECT 1 FROM events e WHERE e.org_id=r.org_id AND e.request_id=r.id
+                    AND e.action='out_of_scope_answered') THEN 'agent'
+                WHEN r.status IN ('sent_or_booked','completed') OR EXISTS (
+                    SELECT 1 FROM events e WHERE e.org_id=r.org_id AND e.request_id=r.id
+                    AND e.to_status IN ('sent_or_booked','completed')) THEN 'staff' END AS answered_by
+            FROM requests r
+            LEFT JOIN children c ON (c.id,c.org_id)=(r.child_id,r.org_id)
+            JOIN users u ON (u.id,u.org_id)=(r.requester_id,r.org_id)
+            WHERE r.org_id=:org
+              AND (CAST(:class AS uuid) IS NULL OR r.classroom_id=CAST(:class AS uuid))
+              AND (CAST(:type AS text) IS NULL OR r.type=:type)
+              AND (:director OR EXISTS (SELECT 1 FROM classroom_staff s
+                WHERE s.org_id=r.org_id AND s.classroom_id=r.classroom_id AND s.user_id=:user
+                  AND (s.valid_from IS NULL OR s.valid_from<=CURRENT_DATE)
+                  AND (s.valid_to IS NULL OR s.valid_to>=CURRENT_DATE)))
+            ORDER BY r.id
+        """), {"org": user.org_id, "class": classroom_id, "type": type,
+               "user": user.id, "director": user.role == "director"}).mappings().all()
+        requests = []
+        for row in rows:
+            req = dict(row)
+            req.update(_expire(connection, req))
+            if (status is None or req["status"] == status) and (answered_by is None or req["answered_by"] == answered_by):
+                requests.append(req)
+        requests.sort(key=lambda r: (r[sort.lstrip("-")], str(r["id"])), reverse=sort.startswith("-"))
+        items = []
+        for req in requests[(page-1)*size:page*size]:
+            is_care = req["type"] in CARE_REQUEST_TYPES
+            cancelled = care.view(connection, req)["cancelled_by_parent"] if is_care and req["status"] == "rejected" else False
+            items.append({**{k: req[k] for k in ("id", "type", "title", "status", "updated_at", "classroom_id",
+                                               "child_id", "child_name", "requester_name", "answered_by")},
+                          "status_label": staff_label(req["status"], req["type"], cancelled_by_parent=cancelled),
+                          "next_action": ("confirm" if req["status"] == "received" else
+                                          "complete" if req["status"] == "assigned" else None) if is_care else None,
                           "hold_until": _hold_until(connection, req)})
         return {"items": items, "total": len(requests), "page": page, "size": size}
 

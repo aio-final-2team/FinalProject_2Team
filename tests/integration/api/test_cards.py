@@ -591,3 +591,46 @@ def test_rule_without_classroom_does_not_break_director_inbox(client, parent, te
     assert detail(client, director, str(card_id))["messages"] == []
     assert detail(client, director, card_id)["rule"]["id"] == str(rule_id)
     assert str(card_id) not in {c["id"] for c in client.get(BASE + "/cards?size=100", headers=teacher).json()["items"]}
+
+
+def test_card_requester_names_in_list_detail_and_reclassify(client, parent, teacher):
+    rid, cid = create(client, parent, teacher, type="inquiry", body="[TEST] 준비물을 알려 주세요")
+    expected = {"child_id": str(seed.CHILD), "child_name": "하늘", "requester_name": "하늘이 보호자"}
+    listed = next(c for c in client.get(BASE + "/cards?size=100", headers=teacher).json()["items"] if c["id"] == cid)
+    request = detail(client, teacher, cid)["request"]
+    response = client.post(f"{BASE}/cards/{cid}/reclassify", headers=teacher,
+                           json={"version": 1, "risk_level": "normal", "reason": "[TEST] 이름 확인"})
+    assert response.status_code == 200, response.text
+    assert request["id"] == rid
+    for row in (listed, request, response.json()["request"]):
+        assert {k: row[k] for k in expected} == expected
+
+
+def test_card_requester_without_child_and_bulk_list_query(client, parent, teacher, director, card_backend):
+    from tests.integration.api.test_requests import change_request
+    rid, cid = create(client, parent, teacher, type="inquiry", body="[TEST] 준비물 문의")
+    create(client, parent, teacher, type="inquiry", body="[TEST] 급식 문의")
+    change_request(card_backend, rid, child_id=None)
+    statements = []
+    if card_backend == "db":
+        from sqlalchemy import event
+        from app.core.db import get_engine
+        def capture(conn, cursor, statement, parameters, context, executemany):
+            statements.append(statement)
+        event.listen(get_engine(), "before_cursor_execute", capture)
+    try:
+        response = client.get(BASE + "/cards?size=100", headers=teacher)
+        assert response.status_code == 200, response.text
+    finally:
+        if card_backend == "db":
+            event.remove(get_engine(), "before_cursor_execute", capture)
+    listed = next(c for c in response.json()["items"] if c["id"] == cid)
+    for row in (listed, detail(client, teacher, cid)["request"]):
+        assert row["child_id"] is row["child_name"] is None and row["requester_name"] == "하늘이 보호자"
+    if card_backend == "db":
+        assert len([s for s in statements if "AS requester_name" in s]) == 2
+        assert not any("FROM users u LEFT JOIN children" in s for s in statements)
+    change_request(card_backend, rid, classroom_id=None)
+    response = client.get(BASE + "/requests?size=100", headers=director)
+    assert response.status_code == 200, response.text
+    assert next(r for r in response.json()["items"] if r["id"] == rid)["classroom_id"] is None

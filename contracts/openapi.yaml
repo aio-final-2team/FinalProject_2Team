@@ -474,13 +474,50 @@ paths:
           type: string
           default: -created_at
           title: Sort
+      - name: answered_by
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - enum:
+            - agent
+            - staff
+            type: string
+          - type: 'null'
+          title: Answered By
+      - name: classroom_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Classroom Id
+      - name: type
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - enum:
+            - inquiry
+            - consultation
+            - complaint
+            - medication
+            - pickup
+            type: string
+          - type: 'null'
+          title: Type
       responses:
         '200':
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RequestList'
+                anyOf:
+                - $ref: '#/components/schemas/RequestList'
+                - $ref: '#/components/schemas/StaffRequestList'
+                title: Response List Requests Api V1 Requests Get
         '401':
           content:
             application/json:
@@ -493,6 +530,12 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
           description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
         '422':
           content:
             application/json:
@@ -3334,6 +3377,22 @@ components:
             format: uuid
           - type: 'null'
           title: Request Id
+        child_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Child Id
+        child_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Child Name
+        requester_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Requester Name
         request_type:
           anyOf:
           - type: string
@@ -3413,6 +3472,9 @@ components:
       - status_label
       - version
       - request_id
+      - child_id
+      - child_name
+      - requester_name
       - request_type
       - title
       - urgency
@@ -6363,6 +6425,22 @@ components:
           type: string
           format: date-time
           title: Updated At
+        child_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Child Id
+        child_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Child Name
+        requester_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Requester Name
         body:
           type: string
           title: Body
@@ -6395,12 +6473,136 @@ components:
       - missing_fields
       - created_at
       - updated_at
+      - child_id
+      - child_name
+      - requester_name
       - body
       - risk_level
       - risk_category
       - repeat_count
       - classroom_id
       title: StaffRequest
+    StaffRequestItem:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        type:
+          type: string
+          enum:
+          - inquiry
+          - consultation
+          - complaint
+          - medication
+          - pickup
+          title: Type
+        title:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Title
+        status:
+          type: string
+          enum:
+          - received
+          - classified
+          - needs_info
+          - assigned
+          - awaiting_review
+          - approved
+          - sent_or_booked
+          - completed
+          - on_hold
+          - escalated
+          - rejected
+          title: Status
+        status_label:
+          type: string
+          title: Status Label
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+        next_action:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Next Action
+        hold_until:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Hold Until
+        classroom_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Classroom Id
+        child_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Child Id
+        child_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Child Name
+        requester_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Requester Name
+        answered_by:
+          anyOf:
+          - type: string
+            enum:
+            - agent
+            - staff
+          - type: 'null'
+          title: Answered By
+      type: object
+      required:
+      - id
+      - type
+      - title
+      - status
+      - status_label
+      - updated_at
+      - next_action
+      - classroom_id
+      - child_id
+      - child_name
+      - requester_name
+      - answered_by
+      title: StaffRequestItem
+    StaffRequestList:
+      properties:
+        total:
+          type: integer
+          title: Total
+        page:
+          type: integer
+          title: Page
+        size:
+          type: integer
+          title: Size
+        items:
+          items:
+            $ref: '#/components/schemas/StaffRequestItem'
+          type: array
+          title: Items
+      type: object
+      required:
+      - total
+      - page
+      - size
+      - items
+      title: StaffRequestList
     TimelineItem:
       properties:
         label:

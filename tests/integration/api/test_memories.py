@@ -70,6 +70,8 @@ def test_third_rejection_proposes_one_card_and_retry_does_not_duplicate(client, 
     proposed = proposals(client, teacher)[0]
     rule_id, proposal_id = proposed["rule"]["id"], proposed["card"]["id"]
     assert proposed["rule"]["status"] == "proposed" and proposed["request"] is None
+    listed = next(c for c in client.get(BASE + "/cards?kind=rule_proposal", headers=teacher).json()["items"] if c["id"] == proposal_id)
+    assert all(listed[k] is None for k in ("child_id", "child_name", "requester_name"))
     assert proposed["timeline"][0]["action"] == "created"
     assert proposed["timeline"][0]["agent_name"] == "memory"
     assert "짧게" not in proposed["rule"]["rule_text"]  # 자유 글에서 새 조건을 추론하지 않아요.
