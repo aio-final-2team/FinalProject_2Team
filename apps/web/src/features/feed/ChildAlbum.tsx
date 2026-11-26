@@ -21,7 +21,7 @@ const dayLabel = (iso: string) => (new Date(iso).toDateString() === new Date().t
 const title = (body: string) => body.split("\n")[0].slice(0, 22);
 
 /**
- * 우리 애 (학부모 앨범). 반 소식 글 중에서 내 아이가 표시된 사진만 행사(글)별로 모아 보여 준다.
+ * 우리 아이 (학부모 앨범). 반 소식 글 중에서 내 아이가 표시된 사진만 행사(글)별로 모아 보여 준다.
  * 아이 표시는 올린 사람이 직접 한다. 사진 AI가 붙기 전이라 '이 아이가 맞나요?'와 성장 앨범은 준비 중 칸으로만 둔다.
  */
 export function ChildAlbum({ embedded = false }: { embedded?: boolean }) {
@@ -68,7 +68,7 @@ export function ChildAlbum({ embedded = false }: { embedded?: boolean }) {
         </div>
       ) : (
       <div className="px-4">
-        <ScreenTop audience="parent" title="우리 애" sub={`반 사진에서 모은 ${name} 기록`} right={actions} />
+        <ScreenTop audience="parent" title="우리 아이" sub={`반 사진에서 모은 ${name} 기록`} right={actions} />
       </div>
       )}
 

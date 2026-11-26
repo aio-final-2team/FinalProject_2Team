@@ -20,7 +20,7 @@ import { ChildAlbum } from "./ChildAlbum";
 
 type TabKey = "class" | "org" | "album" | "mine";
 const TABS: Record<Role, { key: TabKey; label: string }[]> = {
-  parent: [{ key: "class", label: "우리 반" }, { key: "org", label: "원 전체" }, { key: "mine", label: "우리 애" }],
+  parent: [{ key: "class", label: "우리 반" }, { key: "org", label: "원 전체" }, { key: "mine", label: "우리 아이" }],
   teacher: [{ key: "org", label: "원 소식" }, { key: "album", label: "앨범" }],
   director: [{ key: "org", label: "원 소식" }, { key: "album", label: "앨범" }],
 };

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { api, ApiError } from "@/api/client";
@@ -28,14 +28,38 @@ const CARE_FIELDS: Partial<Record<RequestType, { key: keyof CareInput; label: st
   ],
 };
 
+/* 쓰던 요청을 이 기기에 임시 저장한다. 다른 화면에 다녀와도 남고, 보내면 지운다 (서버에 임시 저장 API가 없다) */
+const DRAFT_KEY = "yuchion.newRequest";
+type Draft = { type: RequestType; body: string; care: CareInput };
+const loadDraft = (): Draft | null => {
+  try {
+    const v = JSON.parse(localStorage.getItem(DRAFT_KEY) ?? "null");
+    return v && typeof v.body === "string" && TYPES.some((t) => t[0] === v.type) ? { type: v.type, body: v.body, care: v.care ?? {} } : null;
+  } catch {
+    return null;
+  }
+};
+
 /** P-03 새 요청 쓰기. 문의·상담·민원·투약·귀가 */
 export function NewRequestPage() {
   const nav = useNavigate();
   const me = useQuery({ queryKey: ["me"], queryFn: () => api<{ children: { id: string; display_name: string }[] }>("/api/v1/me") });
   const create = useCreateRequest();
-  const [type, setType] = useState<RequestType>("inquiry");
-  const [body, setBody] = useState("");
-  const [care, setCare] = useState<CareInput>({});
+  const saved = useMemo(loadDraft, []);
+  const [type, setType] = useState<RequestType>(saved?.type ?? "inquiry");
+  const [body, setBody] = useState(saved?.body ?? "");
+  const [care, setCare] = useState<CareInput>(saved?.care ?? {});
+  const sent = useRef(false);
+  const hasText = !!body.trim() || Object.values(care).some((v) => String(v ?? "").trim());
+  useEffect(() => {
+    if (sent.current) return;
+    try {
+      if (hasText) localStorage.setItem(DRAFT_KEY, JSON.stringify({ type, body, care }));
+      else localStorage.removeItem(DRAFT_KEY);
+    } catch {
+      /* 저장이 막혀도 이번 화면에서는 계속 쓸 수 있다 */
+    }
+  }, [type, body, care, hasText]);
     const [err, setErr] = useState("");
   const child = me.data?.children[0]?.id; /* 아이가 여럿이면 고르는 칸을 더한다. 시연 계정은 한 명 */
 
@@ -45,7 +69,7 @@ export function NewRequestPage() {
     setErr("");
     create.mutate(
       { type, body: body.trim(), child_id: child, ...Object.fromEntries(Object.entries(care).filter(([k, v]) => CARE_FIELDS[type]?.some((f) => f.key === k) && String(v ?? "").trim()).map(([k, v]) => [k, String(v).trim()])) },
-      { onSuccess: (r) => nav(`/parent/requests/${r.request.id}`, { replace: true }), onError: (e) => setErr(e instanceof ApiError ? e.message : "보내지 못했어요. 잠시 뒤 다시 눌러 주세요.") },
+      { onSuccess: (r) => { sent.current = true; try { localStorage.removeItem(DRAFT_KEY); } catch { /* 무시 */ } nav(`/parent/requests/${r.request.id}`, { replace: true }); }, onError: (e) => setErr(e instanceof ApiError ? e.message : "보내지 못했어요. 잠시 뒤 다시 눌러 주세요.") },
     );
   };
 
@@ -78,6 +102,7 @@ export function NewRequestPage() {
       <div className="mb-2 mt-5 px-1 text-footnote font-semibold text-ink2">내용</div>
       <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={5} maxLength={2000} placeholder={type === "medication" ? "예: 점심 먹고 시럽 2.5ml 먹여 주세요" : type === "pickup" ? "예: 오늘은 이모가 데리러 가요" : "예: 다음 주 김장 체험에 앞치마가 꼭 있어야 하나요?"} className="w-full resize-none rounded-md border-[1.5px] border-line bg-card px-3 py-2.5 text-body outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--tint)]" />
       {err && <p role="alert" className="mt-1.5 text-footnote font-medium text-danger">{err}</p>}
+      {hasText && <p className="mt-1.5 px-1 text-caption text-ink2">적은 내용은 이 기기에 임시 저장돼요</p>}
       <p className="mt-2 px-1 text-footnote text-ink2">선생님이 확인하기 전에는 답이 나가지 않아요.</p>
       <Dock>
         <PrimaryButton onClick={submit} loading={create.isPending}>보내기</PrimaryButton>
