@@ -4,6 +4,8 @@ from hashlib import sha256
 from uuid import uuid4
 
 from app.core.errors import ApiError
+from app.core.document_text import extract_text
+from app.modules.documents.parsing import DocumentFormatError
 from app.mock import store
 from app.mock.records import Document, Chunk, Evidence
 
@@ -54,7 +56,14 @@ def upload(user, filename, data, doc_type, visibility, classroom_ids, effective_
             return in_scope(user, existing.id), False
         if old and old.status != "active":
             raise ApiError(409, "INVALID_TRANSITION")
-        failed = "[실패]" in filename
+        message = None
+        try:
+            if "[실패]" in filename:
+                raise DocumentFormatError("자료를 읽지 못했어요.")
+            content = extract_text(filename, data)
+        except DocumentFormatError as error:
+            message = str(error)
+        failed = message is not None
         doc = Document(uuid4(), user.org_id, filename, doc_type, visibility, digest, effective_from, store.now(),
                        source="uploaded", supersedes_id=old.id if old and not failed else None, uploaded_by=user.id,
                        ingest_status="failed" if failed else "succeeded")
@@ -64,9 +73,9 @@ def upload(user, filename, data, doc_type, visibility, classroom_ids, effective_
             old.status = "superseded"
         if failed:
             store.add_event(None, "tool_failed", org_id=user.org_id, document_id=doc.id,
-                            code="UPSTREAM_UNAVAILABLE", message="자료를 읽지 못했어요.")
+                            code="UPSTREAM_UNAVAILABLE", message=message)
         else:
-            add_chunks(doc, data.decode("utf-8", errors="replace"))
+            add_chunks(doc, content)
         return doc, True
 
 

@@ -1371,11 +1371,11 @@ HTTP/1.1 200 OK
 | ⑤ 검증·권한 | teacher·director만 호출할 수 있다. 대상 반과 이전 문서가 범위 안에 있는지 검사하고, 새 판으로 올릴 때 이전 문서는 active여야 한다. |
 | ⑥ 정상 응답 | 새 자료면 202 + document, 같은 기관에 바이트까지 같은 자료가 이미 있으면 200 + 기존 document를 돌려준다. 다만 DB 모드에서 그 기존 자료가 적재에 실패한 상태라면, 같은 ID로 다시 적재하고 202를 돌려준다. |
 | ⑦ 오류 응답 | 아래 오류 표. |
-| ⑧ 실행 규칙 | 적재가 성공했는지 실패했는지는 접수한 뒤 GET /documents/{document_id}(3.23)로 확인한다. 두 모드 모두 접수 요청 안에서 적재를 끝내므로, 202 응답의 ingest_status는 succeeded나 failed다. 이전 자료는 새 판이 적재에 성공했을 때만 superseded로 바꾼다. 새 판의 적재가 실패하면 옛 판을 그대로 쓰고 supersedes_id도 비운다. 모의 적재는 UTF-8로 치환 해독한 뒤 500자씩 나눈다(빈 파일도 1조각). 파일명에 [실패]가 들어 있으면 ingest_status=failed·chunk_count=0으로 끝난다. DB 모드 적재에서는 파일 종류와 내용을 읽고 충돌도 검사한다. 그 결과는 아래 'DB 모드 적재 결과' 표에 있다. |
+| ⑧ 실행 규칙 | 적재가 성공했는지 실패했는지는 접수한 뒤 GET /documents/{document_id}(3.23)로 확인한다. 두 모드 모두 접수 요청 안에서 적재를 끝내므로, 202 응답의 ingest_status는 succeeded나 failed다. 이전 자료는 새 판이 적재에 성공했을 때만 superseded로 바꾼다. 새 판의 적재가 실패하면 옛 판을 그대로 쓰고 supersedes_id도 비운다. 두 모드가 같은 함수로 파일의 글을 추출한다. 모의 적재는 추출한 글을 500자씩 나눈다(빈 UTF-8 글 파일도 1조각). 파일명에 [실패]가 들어 있으면 ingest_status=failed·chunk_count=0으로 끝난다. DB 모드는 추출 뒤 기존 파싱·충돌 검사·임베딩 흐름을 따른다. 그 결과는 아래 'DB 모드 적재 결과' 표에 있다. |
 
 | 필드 | 위치 | 타입 | 필수 | 빈값 | 제약 | 설명 |
 | --- | --- | --- | --- | --- | --- | --- |
-| `file` | 폼 | binary | 필수 | 접수는 빈 파일 허용 | 2MiB(2,097,152바이트) 이하. 접수 단계에서는 확장자·형식을 보지 않음 | title은 파일명, 파일명이 없으면 자료. DB 모드는 적재 단계에서 .md·.markdown·.txt UTF-8 글만 읽으며, 빈 파일이나 다른 형식은 failed가 된다 |
+| `file` | 폼 | binary | 필수 | 접수는 빈 파일 허용 | 2MiB(2,097,152바이트) 이하. DOCX·HWPX는 압축 해제 총량도 같은 상한 | title은 파일명, 파일명이 없으면 자료. .md·.markdown·.txt(UTF-8)·.pdf·.docx·.hwpx의 글을 추출한다. HWP·글 없는 PDF·DOCX·HWPX·미지원 형식은 failed가 된다 |
 | `doc_type` | 폼 | string | 필수 | 불가 | notice·schedule·menu·policy·consult_timetable·law·public_data | 자료 유형 |
 | `visibility` | 폼 | string | 필수 | 불가 | staff·parents·all | 공개 범위 |
 | `classroom_ids[]` | 폼 | string[](UUID) | 선택 | 생략 가능 | 기본 [], 담임은 현재 담당 반 | 비우면 원 전체 |
@@ -1403,11 +1403,15 @@ HTTP/1.1 200 OK
 | 413 | `VALIDATION_FAILED` | 파일이 2MiB를 넘음 |
 | 422 | `VALIDATION_FAILED` | 필수 칸·타입·허용 값·길이가 맞지 않음 |
 
-**DB 모드 적재 결과.** DB 모드는 글을 `## ` 제목 단위로 나누고, 그 제목을 근거 위치(location)로 쓴다. 제목이 없는 글은 본문 전체가 한 조각이 되고, 위치는 '본문'이다. 적재에 실패하면 이유와 상관없이 error.code는 `UPSTREAM_UNAVAILABLE`이다. 실패 이유는 error.message로 구분한다. 아래 결과는 2026-11-23 develop `24258f2`를 DB 모드로 띄운 뒤, 파일을 하나씩 직접 올려서 얻은 것이다.
+**DB 모드 적재 결과.** DB 모드는 글을 `## ` 제목 단위로 나누고, 그 제목을 근거 위치(location)로 쓴다. 제목이 없는 글은 본문 전체가 한 조각이 되고, 위치는 '본문'이다. 적재에 실패하면 이유와 상관없이 error.code는 `UPSTREAM_UNAVAILABLE`이다. 실패 이유는 error.message로 구분한다. 기존 동작은 2026-11-23 develop `24258f2`의 직접 업로드로 확인했고, PDF·DOCX·HWPX 확장은 표에 적은 mock·DB 통합 시험으로 확인한다.
 
 | 올린 파일 | 결과 | error.message와 남는 값 | 시험 |
 | --- | --- | --- | --- |
-| 이름이 .md·.markdown·.txt로 끝나지 않음(예: 식단표.hwp) | 202 · failed · chunk_count 0 | "지금은 .md·.txt 글 파일만 읽을 수 있어요" | `test_upload_unreadable_file_fails_with_message` |
+| .pdf·.docx·.hwpx(대소문자 무관) | 202 · succeeded | PDF는 pypdf, DOCX는 python-docx로 본문 문단·표를 순서대로 읽는다. HWPX는 표준 zipfile·XML로 Contents/sectionN.xml의 문단 글자를 번호 순으로 읽는다. 추출 뒤 DB 파싱·충돌 검사·임베딩 흐름은 그대로다 | `test_document_upload_formats_store_text_and_dedupe`, `test_document_upload_formats_reuse_conflict_parsing` |
+| 옛 .hwp, 추출한 글이 없는 PDF·DOCX·HWPX(스캔본 포함) | 202 · failed · chunk_count 0 | "한글에서 hwpx나 PDF로 저장해 올려 주세요". OCR은 하지 않는다. 모의 모드도 같은 안내 | `test_upload_unreadable_file_fails_with_message`, `test_document_upload_formats_failure_events` |
+| 지원하지 않는 다른 확장자 | 202 · failed · chunk_count 0 | "지금은 .md·.txt·.pdf·.docx·.hwpx 글 파일만 읽을 수 있어요" | `test_document_upload_formats_failure_events` |
+| 깨진 PDF·DOCX·HWPX | 202 · failed · chunk_count 0 | "자료를 읽지 못했어요." | `test_document_upload_formats_failure_events` |
+| DOCX·HWPX의 모든 ZIP 항목 압축 해제 크기 합계가 2MiB 초과 | 202 · failed · chunk_count 0 | "자료 파일은 2MiB 이하여야 해요." 글을 읽기 전에 거절하며 모의 모드도 같다 | `test_document_upload_formats_archive_total_limit` |
 | UTF-8로 읽히지 않는 글 | 202 · failed | "UTF-8 글 파일이 아니에요" | 직접 호출로만 확인 |
 | 빈 파일, 공백·빈 줄만 있는 파일 | 202 · failed | "읽을 내용이 없어요". 모의 모드에서는 1조각으로 succeeded가 된다 | 직접 호출로만 확인 |
 | 맨 앞이 `---`로 시작함 | 머리말로 읽어 본문과 떼어 낸다 | 필수 키 6개(title·doc_type·kindergarten_id·effective_from·visibility·source)가 빠지거나 값이 허용 범위 밖이면 failed가 된다("머리말에 필수 값이 없습니다: …", "머리말이 닫히지 않았습니다" 등). 통과해도 자료 이름·유형·공개 범위·적용일은 폼 값을 쓴다 | `test_upload_conflicting_notice_is_pending_with_conflicts`, `test_bad_front_matter_is_rejected`(단위 시험) |

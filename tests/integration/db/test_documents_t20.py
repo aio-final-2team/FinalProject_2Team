@@ -164,7 +164,7 @@ def test_upload_unreadable_file_fails_with_message(db_client, teacher, docs):
     response = upload(db_client, teacher, "식단표.hwp", "binary")
     doc = response.json()["document"]
     assert response.status_code == 202 and doc["ingest_status"] == "failed" and doc["chunk_count"] == 0
-    assert doc["error"] == {"code": "UPSTREAM_UNAVAILABLE", "message": "지금은 .md·.txt 글 파일만 읽을 수 있어요"}
+    assert doc["error"] == {"code": "UPSTREAM_UNAVAILABLE", "message": "한글에서 hwpx나 PDF로 저장해 올려 주세요"}
     listed = db_client.get("/api/v1/documents", headers=teacher).json()["items"]
     assert next(d for d in listed if d["id"] == doc["id"])["error"] == doc["error"]
     retried = upload(db_client, teacher, "식단표.txt", "binary")
