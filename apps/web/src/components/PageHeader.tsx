@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router";
-import { SymbolMark } from "./Brand";
+import { MainLogo } from "./Brand";
 import { Icon } from "./Icon";
 
 export function PageBack({ to, label }: { to: string; label: string }) {
@@ -20,7 +20,7 @@ export function PageHeader({ title, meta, identity, back, backLabel, action }: {
         <PageBack to={back} label={backLabel ?? "뒤로"} />
       ) : (
         <div className="flex min-h-[52px] items-center justify-between pt-2">
-          <SymbolMark className="size-8" />
+          <MainLogo className="h-9" />
           {action ?? <button className="grid size-11 place-items-center rounded-md text-ink" aria-label="알림"><Icon name="bell" className="size-6" /></button>}
         </div>
       )}

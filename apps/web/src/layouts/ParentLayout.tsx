@@ -3,7 +3,7 @@ import { useState } from "react";
 import { MeSheet } from "@/components/MeSheet";
 import { TabBar, tabOn } from "@/components/TabBar";
 import { Icon } from "@/components/Icon";
-import { Buddy, Wordmark } from "@/components/Brand";
+import { MainLogo } from "@/components/Brand";
 import { useSession } from "@/app/session";
 
 /** 학부모 공통 화면 틀. PC는 왼쪽 메뉴, 모바일은 아래 탭을 쓴다. */
@@ -26,9 +26,8 @@ export function ParentLayout() {
   return (
     <div className="min-h-full lg:grid lg:grid-cols-[232px_1fr]">
       <aside className="sticky top-0 hidden h-dvh flex-col gap-6 border-r border-sep bg-card px-4 py-6 lg:flex">
-        <div className="flex items-center gap-2 px-2">
-          <Buddy face="basic" className="size-10" />
-          <Wordmark className="h-[18px]" />
+        <div className="px-2">
+          <MainLogo className="h-10" />
         </div>
         <button type="button" onClick={() => setMe(true)} className="flex items-center gap-2 rounded-xl px-2 py-2 text-left text-sub text-ink2 hover:bg-fill">
           <Icon name="profile" className="size-5" />
