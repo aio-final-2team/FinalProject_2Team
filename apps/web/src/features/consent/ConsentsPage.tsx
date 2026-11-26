@@ -28,7 +28,7 @@ export function ConsentsPage() {
                   <span className={`shrink-0 rounded-full px-2 py-0.5 text-caption font-semibold ${it.agreed_at ? "bg-ok-tint text-ok" : "bg-fill text-ink2"}`}>{it.agreed_at ? "동의함" : "동의 전"}</span>
                 </div>
                 {c && <p className="mt-1 break-keep text-footnote text-ink2">{c.summary}</p>}
-                {it.agreed_at && <p className="mt-0.5 text-caption text-ink2">{day(it.agreed_at)}에 동의했어요</p>}
+                {it.agreed_at && <p className="mt-0.5 text-caption text-ink2">{day(it.agreed_at)}에 동의했습니다</p>}
               </li>
             );
           })}
@@ -43,7 +43,7 @@ export function ConsentsPage() {
           </ul>
         </section>
       )}
-      <p className="mt-4 break-keep px-1 text-footnote text-ink2">동의를 거두려면 탈퇴해야 해요. 탈퇴하면 올린 글, 사진, 얼굴 특징정보를 지워요.</p>
+      <p className="mt-4 break-keep px-1 text-footnote text-ink2">동의를 거두려면 탈퇴해야 합니다. 탈퇴하면 올린 글, 사진, 얼굴 특징정보를 지웁니다.</p>
       <button type="button" onClick={() => setQuit(true)} className="mt-3 h-11 w-full rounded-md bg-fill text-callout font-semibold text-ink active:scale-[.98]">탈퇴하기</button>
       <Sheet open={quit} onClose={() => setQuit(false)} title="탈퇴는 준비 중이에요">
         <p className="text-footnote text-ink2">탈퇴 기능이 열리면 이 화면에서 할 수 있어요.</p>

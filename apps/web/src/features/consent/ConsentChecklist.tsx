@@ -30,11 +30,11 @@ export function ConsentChecklist({ role, on, setOn, afterLogin = false, items }:
               <span className="shrink-0 rounded-full bg-fill px-2 py-0.5 text-caption font-semibold text-ink2">필수{c.separate ? " · 별도" : ""}</span>
             </button>
             <p className="mt-1.5 break-keep pl-8 text-footnote text-ink2">{c.summary}</p>
-            <p className="mt-1 pl-8 text-caption text-ink2">동의하지 않으면 {afterLogin ? c.refuse.replace("가입할 수 없어요", "이용할 수 없어요") : c.refuse}.</p>
+            <p className="mt-1 pl-8 text-caption text-ink2">동의하지 않으면 {afterLogin ? c.refuse.replace("가입할 수 없습니다", "이용할 수 없습니다") : c.refuse}.</p>
           </li>
         ))}
       </ul>
-      <p className="mt-3 px-1 text-caption text-ink2">동의를 거두려면 탈퇴해야 해요. 탈퇴하면 올린 글, 사진, 얼굴 특징정보를 지워요.</p>
+      <p className="mt-3 px-1 text-caption text-ink2">동의를 거두려면 탈퇴해야 합니다. 탈퇴하면 올린 글, 사진, 얼굴 특징정보를 지웁니다.</p>
     </>
   );
 }
