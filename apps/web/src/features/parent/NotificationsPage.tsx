@@ -22,7 +22,7 @@ export function NotificationsPage() {
   };
 
   return (
-    <div className="px-4 pb-8">
+    <div className="mx-auto max-w-[680px] px-4 pb-8">
       <ScreenTop audience="parent" back={{ to: "/parent/home", label: "홈" }} title="알림" sub={`${items.filter((n) => !n.read_at).length}개 안 읽음`} />
       <div className="mb-4" />
       <QueryState queries={[list]} skeleton={3} errorTitle="알림을 불러오지 못했어요">

@@ -74,7 +74,7 @@ export function NewRequestPage() {
   };
 
   return (
-    <div className="px-4 pb-48">
+    <div className="mx-auto max-w-[680px] px-4 pb-48">
       <ScreenTop audience="parent" back={{ to: "/parent/requests", label: "요청" }} title="새 요청" />
       <div className="mb-2 mt-5 px-1 text-footnote font-semibold text-ink2">무엇을 도와 드릴까요?</div>
       <div role="radiogroup" className="grid gap-2">

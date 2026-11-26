@@ -38,7 +38,7 @@ export function RequestDetailPage() {
   const canConfirm = r?.type === "complaint" && r.status === "sent_or_booked" && !r.parent_confirmed_at;
 
   return (
-    <div className="px-4 pb-48">
+    <div className="mx-auto max-w-[680px] px-4 pb-48">
       <ScreenTop audience="parent" back={{ to: "/parent/requests", label: "요청" }} title={r?.title ?? "요청"} sub={r ? <>{TYPE_LABEL[r.type] ?? r.type} · <span className="font-bold text-lav">{r.status_label}</span></> : undefined} />
       <QueryState queries={[q]} skeleton={3} errorTitle="이 요청을 불러오지 못했어요">
       {r && (
