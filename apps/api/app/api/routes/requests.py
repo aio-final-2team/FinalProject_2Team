@@ -6,7 +6,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response, stat
 
 from app.api.schemas.common import errors
 from app.api.schemas.requests import (RequestAccepted, RequestAcceptedOut,
-                                      RequestCreateIn, RequestDetailOut)
+                                      RequestCreateIn, RequestDetailOut, MemoryCandidateOut)
 from app.core.auth import CurrentUser, current_user, require_roles
 from app.core.errors import trace_id_of
 from app.core.schedule import KST
@@ -80,7 +80,9 @@ def create_request(body: RequestCreateIn, request: Request, response: Response, 
 @router.get("/requests/{request_id}", response_model=RequestDetailOut, responses=errors(401, 404, 422),
             summary="요청 상세·대화·진행 기록 (FR-02, FR-11)")
 def get_request(request_id: UUID, user: CurrentUser = Depends(current_user)) -> RequestDetailOut:
-    return backend.request_actions.detail(user, request_id)
+    result = RequestDetailOut.model_validate(backend.request_actions.detail(user, request_id))
+    result.memory_candidates = [MemoryCandidateOut.model_validate(row) for row in backend.memories.candidates_for_request(user, request_id)]
+    return result
 
 
 @router.get("/requests", response_model=RequestList | StaffRequestList, responses=errors(401, 403, 404, 422))

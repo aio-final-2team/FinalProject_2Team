@@ -85,3 +85,21 @@ def mask_child_names(content, names):
     suffix = r"(?:이?(?:가|은|는|을|를|의|에게|한테|랑|와|과|도|만|아|야|님)|이네|이)?"
     pattern = r"(?<![가-힣])(?:" + "|".join(map(re.escape, names)) + r")(?=" + suffix + r"(?:\W|$))"
     return re.sub(pattern, "○○", content)
+
+
+def memory_page(items, saved, rules, kind, page, size, sort):
+    """두 저장소가 같은 한 목록과 기존 종류별 칸을 돌려줘요."""
+    items = [dict(row, title=(row.get("child_name") or "아이")+" 돌봄 메모" if row["kind"] == "care_note"
+                  else {"tone": "말투", "preference": "선호", "rejection_reason": "거절 이유"}[row["kind"]],
+                  source="memory") for row in items]
+    for row in saved:
+        items.append(dict(id=row["id"], kind="saved_answer", title=row["question"], content=row["answer"],
+                          reason_code=None, structured={"status": row["status"]}, created_at=row["approved_at"], source="saved_answer"))
+    for row in rules:
+        items.append(dict(id=row["id"], kind="rule", title="상담·답변 규칙", content=row["rule_text"],
+                          reason_code=row["reason_code"], structured={"status": row["status"], **row["rule_json"]},
+                          created_at=row["created_at"], source="rule"))
+    items = [row for row in items if kind is None or row["kind"] == kind]
+    items.sort(key=lambda row: (row["created_at"], (0, row["id"]) if isinstance(row["id"], int) else (1, str(row["id"]))), reverse=sort.startswith("-"))
+    return {"items": items[(page-1)*size:page*size], "total": len(items), "page": page, "size": size,
+            "saved_answers": saved if kind in (None, "saved_answer") else [], "rules": rules if kind in (None, "rule") else []}

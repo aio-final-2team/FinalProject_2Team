@@ -1752,6 +1752,9 @@ paths:
             - rejection_reason
             - preference
             - tone
+            - care_note
+            - saved_answer
+            - rule
             type: string
           - type: 'null'
           title: Kind
@@ -1844,6 +1847,124 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
           description: Not Found
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+  /api/v1/memories/{memory_id}/confirm:
+    post:
+      tags:
+      - 알림장·자료
+      summary: Confirm Memory
+      operationId: confirm_memory_api_v1_memories__memory_id__confirm_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: memory_id
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+          title: Memory Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MemoryConfirmIn'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemoryConfirmation'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+  /api/v1/saved-answers/{answer_id}:
+    patch:
+      tags:
+      - 알림장·자료
+      summary: Saved Answer Status
+      operationId: saved_answer_status_api_v1_saved_answers__answer_id__patch
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: answer_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Answer Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SavedAnswerStatusIn'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SavedAnswerResponse'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
         '422':
           content:
             application/json:
@@ -4760,6 +4881,58 @@ components:
       required:
       - user
       title: MeOut
+    MemoryCandidateOut:
+      properties:
+        id:
+          type: integer
+          title: Id
+        child_name:
+          type: string
+          title: Child Name
+        content:
+          type: string
+          title: Content
+      type: object
+      required:
+      - id
+      - child_name
+      - content
+      title: MemoryCandidateOut
+    MemoryConfirmIn:
+      properties:
+        decision:
+          type: string
+          enum:
+          - remember
+          - discard
+          title: Decision
+      type: object
+      required:
+      - decision
+      title: MemoryConfirmIn
+    MemoryConfirmation:
+      properties:
+        id:
+          type: integer
+          title: Id
+        confirm_status:
+          type: string
+          enum:
+          - confirmed
+          - discarded
+          title: Confirm Status
+        confirmed_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Confirmed At
+      type: object
+      required:
+      - id
+      - confirm_status
+      - confirmed_at
+      title: MemoryConfirmation
     MemoryList:
       properties:
         total:
@@ -4776,6 +4949,16 @@ components:
             $ref: '#/components/schemas/MemoryView'
           type: array
           title: Items
+        saved_answers:
+          items:
+            $ref: '#/components/schemas/SavedAnswerView'
+          type: array
+          title: Saved Answers
+        rules:
+          items:
+            $ref: '#/components/schemas/RuleView'
+          type: array
+          title: Rules
       type: object
       required:
       - total
@@ -4786,7 +4969,10 @@ components:
     MemoryView:
       properties:
         id:
-          type: integer
+          anyOf:
+          - type: integer
+          - type: string
+            format: uuid
           title: Id
         kind:
           type: string
@@ -4794,6 +4980,9 @@ components:
           - rejection_reason
           - preference
           - tone
+          - care_note
+          - saved_answer
+          - rule
           title: Kind
         reason_code:
           anyOf:
@@ -4811,6 +5000,41 @@ components:
           type: string
           format: date-time
           title: Created At
+        title:
+          type: string
+          title: Title
+        child_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Child Id
+        child_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Child Name
+        confirm_status:
+          type: string
+          enum:
+          - pending
+          - confirmed
+          - discarded
+          title: Confirm Status
+          default: confirmed
+        confirmed_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Confirmed At
+        source:
+          type: string
+          enum:
+          - memory
+          - saved_answer
+          - rule
+          title: Source
       type: object
       required:
       - id
@@ -4819,6 +5043,8 @@ components:
       - content
       - structured
       - created_at
+      - title
+      - source
       title: MemoryView
     MessageIn:
       properties:
@@ -5984,6 +6210,11 @@ components:
           anyOf:
           - $ref: '#/components/schemas/CareOut'
           - type: 'null'
+        memory_candidates:
+          items:
+            $ref: '#/components/schemas/MemoryCandidateOut'
+          type: array
+          title: Memory Candidates
       type: object
       required:
       - request
@@ -6239,6 +6470,57 @@ components:
       - rule_text
       - status
       title: RuleView
+    SavedAnswerResponse:
+      properties:
+        saved_answer:
+          $ref: '#/components/schemas/SavedAnswerView'
+      type: object
+      required:
+      - saved_answer
+      title: SavedAnswerResponse
+    SavedAnswerStatusIn:
+      properties:
+        status:
+          type: string
+          enum:
+          - 'off'
+          - active
+          title: Status
+      type: object
+      required:
+      - status
+      title: SavedAnswerStatusIn
+    SavedAnswerView:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        question:
+          type: string
+          title: Question
+        answer:
+          type: string
+          title: Answer
+        status:
+          type: string
+          enum:
+          - active
+          - 'off'
+          - invalidated
+          title: Status
+        approved_at:
+          type: string
+          format: date-time
+          title: Approved At
+      type: object
+      required:
+      - id
+      - question
+      - answer
+      - status
+      - approved_at
+      title: SavedAnswerView
     ScopePatch:
       properties:
         photo_scope:

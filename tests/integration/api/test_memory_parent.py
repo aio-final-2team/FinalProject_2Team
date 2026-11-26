@@ -87,3 +87,63 @@ def test_memory_child_reader_scope_and_deleted(memory_backend):
         for m in store.state().memories.values():
             m.deleted_at=store.now()
     assert not load(memory_backend, req['child_id'], seed.TEACHER)
+
+
+def test_memory_parent_get_scope_and_candidate_detail(client,parent,parent_other,teacher,director,memory_backend):
+    req=save(memory_backend,[CARE,PREF])
+    own=client.get('/api/v1/memories',headers=parent)
+    assert own.status_code==200
+    items=own.json()['items']
+    assert {m['kind'] for m in items}=={'care_note','preference'}
+    care=next(m for m in items if m['kind']=='care_note')
+    assert care['child_name']==seed.CHILDREN[0]['display_name'] and care['confirm_status']=='pending'
+    assert care['confirmed_at'] is None and care['title'] and care['source']=='memory'
+    for headers in (parent_other,teacher,director):
+        result=client.get('/api/v1/memories?kind=care_note',headers=headers)
+        assert result.status_code==200 and result.json()['items']==[]
+    detail=client.get(f"/api/v1/requests/{req['id']}",headers=parent)
+    assert detail.status_code==200 and detail.json()['memory_candidates'][0]['id']==care['id']
+
+
+def test_memory_parent_confirmation_discard_delete(client,parent,parent_other,teacher,memory_backend):
+    req=save(memory_backend,[CARE])
+    mid=client.get('/api/v1/memories?kind=care_note',headers=parent).json()['items'][0]['id']
+    path=f'/api/v1/memories/{mid}/confirm'
+    assert client.post(path,headers=parent_other,json={'decision':'remember'}).status_code==404
+    assert client.post(path,headers=teacher,json={'decision':'remember'}).status_code==403
+    confirmed=client.post(path,headers=parent,json={'decision':'remember'})
+    assert confirmed.status_code==200 and confirmed.json()['confirmed_at']
+    assert load(memory_backend,req['child_id'],seed.TEACHER)==[CARE]
+    assert client.post(path,headers=parent,json={'decision':'discard'}).status_code==409
+    assert client.delete(f'/api/v1/memories/{mid}',headers=parent).status_code==204
+    assert not load(memory_backend,req['child_id'],seed.TEACHER)
+    assert client.post(path,headers=parent,json={'decision':'remember'}).status_code==404
+    save(memory_backend,[CARE])
+    mid=client.get('/api/v1/memories?kind=care_note',headers=parent).json()['items'][0]['id']
+    path=f'/api/v1/memories/{mid}/confirm'
+    assert client.post(path,headers=parent,json={'decision':'discard'}).json()['confirm_status']=='discarded'
+    row=client.get('/api/v1/memories?kind=care_note',headers=parent).json()['items'][0]
+    assert row['content']=='' and row['structured']=={} and row['confirmed_at'] is None
+    assert client.post(path,headers=parent,json={'decision':'remember'}).status_code==409
+    assert not load(memory_backend,req['child_id'],seed.PARENT)
+
+
+from tests.integration.api.test_memory_learning import saved_case, find, change
+
+
+def test_memory_saved_answer_toggle_scope_and_invalidation(client,teacher,teacher_other,director,parent,saved_case):
+    from tests.integration.api.helpers import decision
+    assert decision(client,teacher,saved_case.cid).status_code==200
+    listed=client.get('/api/v1/memories?kind=saved_answer',headers=teacher).json()
+    assert len(listed['saved_answers'])==1 and listed['items'][0]['source']=='saved_answer'
+    assert listed['items'][0]['kind']=='saved_answer'
+    path='/api/v1/saved-answers/'+listed['saved_answers'][0]['id']
+    assert client.patch(path,headers=teacher_other,json={'status':'off'}).status_code==404
+    assert client.patch(path,headers=parent,json={'status':'off'}).status_code==403
+    assert client.patch(path,headers=teacher,json={'status':'off'}).status_code==200
+    assert find(saved_case) is None
+    assert client.patch(path,headers=director,json={'status':'active'}).status_code==200
+    assert find(saved_case)
+    change(saved_case,'documents' if saved_case.mode=='db' else 'saved_answers',
+           'status','superseded' if saved_case.mode=='db' else 'invalidated')
+    assert client.patch(path,headers=teacher,json={'status':'active'}).status_code==409

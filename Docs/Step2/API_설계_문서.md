@@ -184,8 +184,8 @@ FastAPI가 기본으로 내는 422 응답은 예외 처리기에서 위 형식�
 | 28 | GET | `/api/v1/documents` | 교직원 | 자료 목록 | 200 | FR-13 | 3.23 | DB 연결 | — | — |
 | 29 | GET | `/api/v1/documents/{document_id}` | 교직원 | 자료 상세·적재 상태 | 200 | FR-13 | 3.23 | DB 연결 | — | — |
 | 30 | GET | `/api/v1/classrooms/{classroom_id}/children` | 담임(우리 반)·원장(같은 기관) | 반 아이 목록(이름순) | 200 | FR-10 | 3.24 | DB 연결 | ○ | 성주: 화면 연결 |
-| 31 | GET | `/api/v1/memories` | 담임(본인) | 내 AI 기억 보기 | 200 | FR-06 | 3.25 | DB 연결 | — | — |
-| 32 | DELETE | `/api/v1/memories/{memory_id}` | 담임(본인) | 내 AI 기억 지우기 | 204 | FR-06 | 3.25 | DB 연결 | — | — |
+| 31 | GET | `/api/v1/memories` | 학부모·담임·원장(본인·자기 아이) | 내 AI 기억 보기 | 200 | FR-06 | 3.25 | DB 연결 | — | — |
+| 32 | DELETE | `/api/v1/memories/{memory_id}` | 학부모·담임·원장(본인·자기 아이) | 내 AI 기억 지우기 | 204 | FR-06 | 3.25 | DB 연결 | — | — |
 | 33 | POST | `/api/v1/daily-notes/drafts/{input_id}/regenerate` | 담임(우리 반) | 미확인 알림장 다시 만들기 | 202 | FR-10 | 3.26 | DB 연결 | — | 성주: 화면 연결 |
 | 34 | GET | `/api/v1/children/{child_id}/pickup-guardians` | 자기 아이 보호자·담임·원장 | 등록된 인계자 목록 | 200 | FR-16 | 3.27 | 제안 | — | 팀: 제안 계약 |
 | 35 | GET | `/api/v1/care-requests` | 담임·원장 | 교직원용 투약·귀가 요청 목록 | 200 | FR-16 | 3.27 | 제안 | — | 팀: 제안 계약 |
@@ -209,6 +209,9 @@ FastAPI가 기본으로 내는 422 응답은 예외 처리기에서 위 형식�
 | 53 | GET | `/api/v1/consents` | 로그인한 사용자 | [제안] 내 필수 동의 조회 | 200 | FR-01 | 3.31 | 제안 | — | 팀: 제안 계약 |
 | 54 | POST | `/api/v1/consents` | 로그인한 사용자 | [제안] 전 항목 필수 동의 저장 | 200 | FR-01 | 3.31 | 제안 | — | 팀: 제안 계약 |
 | 55 | GET | `/api/v1/classrooms/{classroom_id}/consents` | 같은 기관 원장·현재 담당 반 담임 | [제안] 반 아이별 보호자 동의 현황 | 200 | FR-01 | 3.31 | 제안 | — | 팀: 제안 계약 |
+
+| 67 | POST | `/api/v1/memories/{memory_id}/confirm` | 그 아이 보호자 | 돌봄 메모 기억·버림 | 200 | FR-20 | 3.25 | DB 연결 | — | 화면 연결 필요 |
+| 69 | PATCH | `/api/v1/saved-answers/{answer_id}` | 승인한 담임·같은 기관 원장 | 승인 답 끄기·켜기 | 200 | FR-20 | 3.25 | DB 연결 | — | 화면 연결 필요 |
 
 알림장 MVP의 ○는 `origin/taewoong-fb020-rehearsal:tools/rehearse_daily_note.py`의 실제 호출이다. `/me`·알림 읽음·다시 만들기는 그 리허설이 부르지 않아 ○를 붙이지 않는다. 팀 확인 남음은 코드 기본값(`LLM_MODEL_SUPERVISOR` 비움, `ANSWER_WRITER=stub`, `DAILY_NOTE_WRITER=app.modules.daily_notes.stub_writer:write`)과 WBS T43(할일), 2.1의 화면 미확인 범위를 뜻한다. 권한 밖 문의의 고정 안내는 DB·모의 두 모드에서 학부모 대화에 바로 남긴다(3.1·5.7). 이 표시가 API 미구현이나 팀 서버의 현재 스위치 값을 뜻하지는 않는다.
 
@@ -1494,23 +1497,30 @@ HTTP/1.1 200 OK
 
 ### 3.25 내 AI 기억 보기·지우기 — `GET /api/v1/memories`, `DELETE …/memories/{memory_id}`
 
-이 API는 담임만 쓴다. 담임은 자기 소유이면서 `deleted_at`이 비어 있는 기억만 읽고 지울 수 있고, 원장·학부모가 부르면 403 `FORBIDDEN_ROLE`이다. 다른 사람의 기억, 다른 기관의 기억, 없는 기억, 이미 지운 기억을 지우려 하면 모두 404 `NOT_FOUND`를 돌려주고 거부 이력을 남긴다.
+내가 알려 준 내용을 직접 보고 지워 다음 처리부터 쓰지 않게 하는 API예요. 세 역할이 자기 기억을 보고, 학부모는 자기 선호와 현재 보호자 관계가 있는 아이의 돌봄 메모(pending 포함)를 본다. 담임은 본인 기억과 본인이 승인한 답·본인 규칙을 본다. 원장은 본인 기억만 본다. 다른 가정·기관의 기억과 삭제한 기억은 보이지 않으며, 범위 밖 삭제·확인은 404와 거부 이력을 남긴다.
 
 | 필드 | 위치 | 타입·규칙 | 뜻 |
 | --- | --- | --- | --- |
-| `kind` | 쿼리, 선택 | rejection_reason·preference·tone | 생략하면 본인 기억 전체 |
-| `page`·`size`·`sort` | 쿼리 | 공통 목록 규칙. 정렬은 created_at·-created_at | 같은 시각이면 id로 정렬 |
-| `items[].id` | 응답 | 양의 정수 | 기억 ID |
-| `items[].kind`·`reason_code` | 응답 | 위 kind 세 값·string 또는 null | 기억 종류·거절 이유 코드 |
-| `items[].content`·`structured`·`created_at` | 응답 | string·object·date-time | 기억 내용·구조화 값·생성 시각 |
-| `total`·`page`·`size` | 응답 | 정수 | 소유권·kind·삭제 여부로 거른 뒤 쪽 나누기 |
-| `memory_id` | 삭제 경로 | 양의 정수 | 본인 기억만. 성공은 204, 본문 없음 |
+| `kind` | 쿼리, 선택 | rejection_reason·preference·tone·care_note·saved_answer·rule | 생략하면 볼 수 있는 모든 종류 |
+| `page`·`size`·`sort` | 쿼리 | 공통 목록 규칙, created_at·-created_at | 종류를 합친 뒤 쪽 나누기 |
+| `items[].id` | 응답 | 기억은 양의 정수, 승인 답·규칙은 UUID | 원 항목 ID 유지 |
+| `items[].kind`·`title`·`content`·`reason_code`·`structured`·`created_at` | 응답 | 종류·한 줄 제목·내용·이유 코드(null 가능)·구조화 값·생성 시각 | 기존 칸에 title만 추가 |
+| `items[].child_id`·`child_name` | 응답 | UUID·string 또는 null | 돌봄 메모의 아이 |
+| `items[].confirm_status`·`confirmed_at` | 응답 | pending·confirmed·discarded, date-time 또는 null | 보호자가 기억해 달라고 한 시각 |
+| `items[].source` | 응답 | memory·saved_answer·rule | 원 종류 |
+| `saved_answers[]` | 응답 | id·question·answer·status·approved_at | 담임 본인이 승인한 답, 다른 역할은 빈 목록 |
+| `rules[]` | 응답 | id·reason_code·rule_text·status | 담임 본인의 proposed·active·off·declined 규칙, 다른 역할은 빈 목록 |
+| `total`·`page`·`size` | 응답 | 정수 | 범위·종류로 거른 뒤 쪽 나누기 |
 
-삭제하면 `deleted_at`을 채우고 content는 빈 문자열, structured는 빈 객체로 바꾼다. 행과 출처 연결은 이력으로 남겨 두되, 이후 조회와 기억 AI 입력에서는 빼고 제안 횟수에도 세지 않는다. 기억을 만들고 말투를 뽑는 일은 기억 AI가 맡는다. 이 API는 학습하지 않고 새 규칙도 만들지 않으며, 가상 말투 기억도 미리 넣어 두지 않는다.
+DELETE는 본인 기억과 학부모의 자기 아이 돌봄 메모만 지우며 성공은 204다. content와 structured를 비우고 deleted_at을 남겨 이후 모든 작성 입력에서 제외한다. 승인 답과 규칙의 UUID는 이 삭제 주소에 보내지 않는다.
+
+API 67 `POST /memories/{memory_id}/confirm`은 `{decision:"remember"|"discard"}`를 받는다. 그 아이 보호자만 pending 후보를 결정하며 다른 상태는 409 INVALID_TRANSITION이다. remember는 confirmed와 confirmed_at, discard는 discarded와 빈 content·structured를 남긴다. 응답은 `{id,confirm_status,confirmed_at}`다. 학부모 요청 상세 `GET /requests/{id}`의 `memory_candidates:[{id,child_name,content}]`에는 그 요청에서 생긴 pending만 들어간다(없거나 교직원이면 빈 목록). memory_candidate 앱 알림은 후보마다 한 번이고 원문은 알림에 싣지 않는다.
+
+API 69 `PATCH /saved-answers/{answer_id}`는 `{status:"off"|"active"}`를 받는다. 승인한 담임 본인과 같은 기관 원장만 가능하다. 응답은 `{saved_answer:{id,question,answer,status,approved_at}}`다. off 답은 재사용하지 않아서 다음 문의도 새 근거와 카드로 확인한다. invalidated 답은 다시 켤 수 없고 409 INVALID_TRANSITION이다.
 
 담임의 회신 카드 `edit_approve`가 커밋되면 API 백그라운드에서 원 초안·발송문을 비교한다. `LLM_MODEL_MEMORY`가 켜져 있을 때만 tone 후보 0~2개를 검사해 저장하며(80자 이하 한 문장, 이름 가림, 민감정보 형식·숫자 제외), 본인 tone은 최대 12개이고 같은 문장은 중복 저장하지 않는다. structured는 `{source: edit_approve, card_version: 승인 전 판}`이다. 실패는 memory/tool_failed 이력만 남기고 승인·발송 응답은 성공한다. 다음 문의·알림장 작성에 같은 원·담임의 최신 tone 8개를 표현 지침으로만 넘기며 목록·삭제 계약은 같다.
 
-문의 approve·edit_approve 뒤 `EMBEDDING_MODEL`이 켜져 있으면 질문(아이 이름·민감정보 형식 가림)·실제 발송 답·승인자·요청 반·질문 벡터와 근거 문서를 saved_answers·saved_answer_sources에 저장한다. no_evidence·conflict·근거 0개는 직접 쓴 답도 저장하지 않는다. 같은 원의 원 전체 또는 같은 반 답 중 active이고 모든 근거 문서가 현재 유효·공개·반 허용인 답만 코사인 유사도 0.80 이상 상위 하나를 작성 AI의 prior_answer로 넘긴다. 표현 참고용이고 사실·검사는 새 chunks 인용만 따른다. 기존 문서 변경 트리거로 off 답까지 무효화하며 GET /memories에는 아직 포함하지 않는다.
+문의 approve·edit_approve 뒤 `EMBEDDING_MODEL`이 켜져 있으면 질문(아이 이름·민감정보 형식 가림)·실제 발송 답·승인자·요청 반·질문 벡터와 근거 문서를 saved_answers·saved_answer_sources에 저장한다. no_evidence·conflict·근거 0개는 직접 쓴 답도 저장하지 않는다. 같은 원의 원 전체 또는 같은 반 답 중 active이고 모든 근거 문서가 현재 유효·공개·반 허용인 답만 코사인 유사도 0.80 이상 상위 하나를 작성 AI의 prior_answer로 넘긴다. 표현 참고용이고 사실·검사는 새 chunks 인용만 따른다. 기존 문서 변경 트리거로 off 답까지 무효화하며 GET /memories에서 본인이 승인한 답의 상태를 본다.
 
 ### 3.26 알림장 다시 만들기 — `POST /api/v1/daily-notes/drafts/{input_id}/regenerate`
 

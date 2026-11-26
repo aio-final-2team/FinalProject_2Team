@@ -102,6 +102,7 @@ class Rule:
     rule_json: dict
     status: str = "proposed"
     decided_at: datetime | None = None
+    created_at: datetime = field(default_factory=lambda: datetime.now(KST))
 
 
 @dataclass

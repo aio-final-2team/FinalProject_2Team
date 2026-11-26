@@ -96,6 +96,14 @@ class RuleDecisionIn(BaseModel):
     decision: Literal["activate", "decline"]
 
 
+class MemoryConfirmIn(BaseModel):
+    decision: Literal["remember", "discard"]
+
+
+class SavedAnswerStatusIn(BaseModel):
+    status: Literal["off", "active"]
+
+
 class NoteBatchIn(BaseModel):
     classroom_id: UUID
     note_date: date

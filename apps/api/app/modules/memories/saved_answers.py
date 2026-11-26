@@ -99,3 +99,19 @@ def find_saved_answer(req):
     except Exception:
         log.warning("승인 답 검색 실패. 이번 자료만으로 작성해요.")
         return None
+
+
+def set_status(user, answer_id, status):
+    from app.core import scope
+    from app.core.errors import ApiError
+    with transaction() as connection:
+        row = connection.execute(text("""
+            SELECT * FROM saved_answers WHERE id=:id AND org_id=:org AND (approved_by=:owner OR :director) FOR UPDATE
+        """), {"id": answer_id, "org": user.org_id, "owner": user.id, "director": user.role == "director"}).mappings().one_or_none()
+        scope._checked(user, row, row is not None, "saved_answer", answer_id)
+        if row["status"] == "invalidated":
+            raise ApiError(409, "INVALID_TRANSITION")
+        return {"saved_answer": dict(connection.execute(text("""
+            UPDATE saved_answers SET status=:status WHERE id=:id
+            RETURNING id,question,answer,status,created_at AS approved_at
+        """), {"id": answer_id, "status": status}).mappings().one())}

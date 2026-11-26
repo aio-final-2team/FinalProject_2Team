@@ -12,13 +12,19 @@ from app.core.constants import REJECTION_RULE_TEXTS, REJECTION_RULE_THRESHOLD, T
 from app.core.db import transaction
 from app.core.schedule import KST
 from app.core.errors import ApiError
-from app.core.memory_rules import mask_child_names, validate_rule_json, tone_contents, parent_candidates
+from app.core.memory_rules import mask_child_names, validate_rule_json, tone_contents, parent_candidates, memory_page
 from agents.llm import OpenAIModel, feature
 from agents.guardrails.sensitive import mask_sensitive
 from app.modules.requests import events
 from app.modules.requests.events import record
 
+from app.modules.memories.saved_answers import set_status as set_saved_status
+
 log = logging.getLogger(__name__)
+VISIBLE_MEMORY = """m.org_id=:org AND m.deleted_at IS NULL AND (
+    (m.owner_id=:owner AND m.child_id IS NULL AND (NOT :parent OR m.kind='preference'))
+    OR (:parent AND m.kind='care_note' AND EXISTS (SELECT 1 FROM child_guardians g
+        WHERE (g.child_id,g.org_id,g.user_id)=(m.child_id,m.org_id,:owner))))"""
 
 
 def load_tones(connection, org_id, owner_id):
@@ -237,26 +243,58 @@ def remember_rejection(connection, user, card, decision, reason_code, reason_tex
 
 
 def list_memories(user, kind, page, size, sort):
-    condition = "org_id=:org AND owner_id=:owner AND deleted_at IS NULL"
-    if kind is not None:
-        condition += " AND kind=:kind"
-    values = {"org": user.org_id, "owner": user.id, "kind": kind, "limit": size, "offset": (page-1)*size}
-    direction = "DESC" if sort.startswith("-") else "ASC"
+    values = {"org": user.org_id, "owner": user.id, "parent": user.role == "parent"}
     with transaction() as connection:
-        total = connection.scalar(text("SELECT count(*) FROM memories WHERE " + condition), values)
-        if values["offset"] >= total:
-            return {"items": [], "total": total, "page": page, "size": size}
-        items = connection.execute(text("""
-            SELECT id, kind, reason_code, content, structured, created_at FROM memories WHERE
-        """ + condition + f" ORDER BY created_at {direction}, id {direction} LIMIT :limit OFFSET :offset"),
-                                   values).mappings().all()
-    return {"items": [dict(row) for row in items], "total": total, "page": page, "size": size}
+        items = [dict(row) for row in connection.execute(text("""
+            SELECT m.id,m.kind,m.reason_code,m.content,m.structured,m.created_at,m.child_id,
+                   c.display_name AS child_name,m.confirm_status,m.confirmed_at
+            FROM memories m LEFT JOIN children c ON (c.id,c.org_id)=(m.child_id,m.org_id) WHERE
+        """ + VISIBLE_MEMORY), values).mappings()]
+        saved, rules = [], []
+        if user.role == "teacher":
+            saved = [dict(row) for row in connection.execute(text("""
+                SELECT id,question,answer,status,created_at AS approved_at FROM saved_answers
+                WHERE org_id=:org AND approved_by=:owner ORDER BY created_at DESC,id
+            """), values).mappings()]
+            rules = [dict(row) for row in connection.execute(text("""
+                SELECT id,reason_code,rule_text,rule_json,status,created_at FROM memory_rules
+                WHERE org_id=:org AND owner_id=:owner ORDER BY created_at DESC,id
+            """), values).mappings()]
+    return memory_page(items, saved, rules, kind, page, size, sort)
 
 
 def delete(user, memory_id):
     with transaction() as connection:
         row = connection.execute(text("""
-            UPDATE memories SET deleted_at=now(),content='',structured='{}'::jsonb
-            WHERE id=:id AND org_id=:org AND owner_id=:owner AND deleted_at IS NULL RETURNING id
-        """), {"id": memory_id, "org": user.org_id, "owner": user.id}).mappings().one_or_none()
-    scope._checked(user, row, row is not None, "memory", memory_id)
+            UPDATE memories m SET deleted_at=now(),content='',structured='{}'::jsonb
+            WHERE m.id=:id AND """ + VISIBLE_MEMORY + " RETURNING id"),
+            {"id": memory_id, "org": user.org_id, "owner": user.id, "parent": user.role == "parent"}).one_or_none()
+        scope._checked(user, row, row is not None, "memory", memory_id)
+
+
+def confirm(user, memory_id, decision):
+    with transaction() as connection:
+        row = connection.execute(text("SELECT m.* FROM memories m WHERE m.id=:id AND " + VISIBLE_MEMORY + " FOR UPDATE"),
+                                 {"id": memory_id, "org": user.org_id, "owner": user.id, "parent": user.role == "parent"}).mappings().one_or_none()
+        scope._checked(user, row, row is not None and row["kind"] == "care_note" and user.role == "parent",
+                       "memory", memory_id)
+        if row["confirm_status"] != "pending":
+            raise ApiError(409, "INVALID_TRANSITION")
+        return dict(connection.execute(text("""
+            UPDATE memories SET confirm_status=:status,confirmed_at=CASE WHEN :remember THEN now() END,
+                content=CASE WHEN :remember THEN content ELSE '' END,
+                structured=CASE WHEN :remember THEN structured ELSE '{}'::jsonb END
+            WHERE id=:id RETURNING id,confirm_status,confirmed_at
+        """), {"id": memory_id, "status": "confirmed" if decision == "remember" else "discarded",
+               "remember": decision == "remember"}).mappings().one())
+
+
+def candidates_for_request(user, request_id):
+    if user.role != "parent":
+        return []
+    with transaction() as connection:
+        return [dict(row) for row in connection.execute(text("""
+            SELECT m.id,c.display_name AS child_name,m.content FROM memories m
+            JOIN children c ON (c.id,c.org_id)=(m.child_id,m.org_id)
+            WHERE m.kind='care_note' AND m.confirm_status='pending' AND m.structured->>'request_id'=:request
+              AND """ + VISIBLE_MEMORY), {"request": str(request_id), "org": user.org_id, "owner": user.id, "parent": True}).mappings()]

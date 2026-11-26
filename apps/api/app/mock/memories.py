@@ -6,7 +6,7 @@ from math import sqrt
 from app.core.constants import (REJECTION_RULE_TEXTS, REJECTION_RULE_THRESHOLD, TONE_LIMIT, TONE_READ_LIMIT,
                                 SAVED_ANSWER_MIN_SIMILARITY)
 from app.core.errors import ApiError
-from app.core.memory_rules import mask_child_names, validate_rule_json, tone_contents, parent_candidates
+from app.core.memory_rules import mask_child_names, validate_rule_json, tone_contents, parent_candidates, memory_page
 from app.mock import store
 from app.mock.records import Memory, Rule
 from agents.guardrails.sensitive import mask_sensitive
@@ -183,20 +183,59 @@ def remember_rejection(user, card, decision, reason_code, reason_text):
                         break
 
 
+def _visible(user, memory):
+    child = store.state().children.get(memory.child_id)
+    return memory.org_id == user.org_id and memory.deleted_at is None and (
+        (memory.child_id is None and memory.owner_id == user.id and (user.role != "parent" or memory.kind == "preference"))
+        or (user.role == "parent" and memory.kind == "care_note" and child and child.org_id == user.org_id and user.id in child.guardian_ids))
+
+
 def list_memories(user, kind, page, size, sort):
     with store._lock:
-        items = [m for m in store.state().memories.values() if m.org_id == user.org_id and m.owner_id == user.id
-                 and m.deleted_at is None and (kind is None or m.kind == kind)]
-        items.sort(key=lambda m: (m.created_at, m.id), reverse=sort.startswith("-"))
-        return {"items": [{key: deepcopy(getattr(m, key)) for key in
-                           ("id", "kind", "reason_code", "content", "structured", "created_at")}
-                          for m in items[(page-1)*size:page*size]], "total": len(items), "page": page, "size": size}
+        items = [{**deepcopy(m.__dict__), "child_name": store.state().children[m.child_id].display_name if m.child_id else None}
+                 for m in store.state().memories.values() if _visible(user, m)]
+        saved = [{**deepcopy(row), "approved_at": row["created_at"]} for row in store.state().saved_answers.values()
+                 if user.role == "teacher" and row["org_id"] == user.org_id and row["approved_by"] == user.id]
+        rules = [deepcopy(r.__dict__) for r in store.state().rules.values()
+                 if user.role == "teacher" and r.org_id == user.org_id and r.owner_id == user.id]
+        return memory_page(items, saved, rules, kind, page, size, sort)
 
 
 def delete(user, memory_id):
     with store._lock:
         memory = store.state().memories.get(memory_id)
-        if memory is None or memory.org_id != user.org_id or memory.owner_id != user.id or memory.deleted_at is not None:
+        if memory is None or not _visible(user, memory):
             store.deny(user)
         memory.deleted_at = store.now()
         memory.content, memory.structured = "", {}
+
+
+def confirm(user, memory_id, decision):
+    with store._lock:
+        memory = store.state().memories.get(memory_id)
+        if not memory or not _visible(user, memory) or user.role != "parent" or memory.kind != "care_note":
+            store.deny(user)
+        if memory.confirm_status != "pending":
+            raise ApiError(409, "INVALID_TRANSITION")
+        memory.confirm_status = "confirmed" if decision == "remember" else "discarded"
+        memory.confirmed_at = store.now() if decision == "remember" else None
+        if decision == "discard":
+            memory.content, memory.structured = "", {}
+        return {key: getattr(memory, key) for key in ("id", "confirm_status", "confirmed_at")}
+
+
+def set_saved_status(user, answer_id, status):
+    with store._lock:
+        row = store.state().saved_answers.get(answer_id)
+        if not row or row["org_id"] != user.org_id or (user.role != "director" and row["approved_by"] != user.id):
+            store.deny(user)
+        if row["status"] == "invalidated":
+            raise ApiError(409, "INVALID_TRANSITION")
+        row["status"] = status
+        return {"saved_answer": {**row, "approved_at": row["created_at"]}}
+
+
+def candidates_for_request(user, request_id):
+    return [{"id": m.id, "child_name": store.state().children[m.child_id].display_name, "content": m.content}
+            for m in store.state().memories.values() if user.role == "parent" and _visible(user, m)
+            and m.kind == "care_note" and m.confirm_status == "pending" and m.structured.get("request_id") == str(request_id)]
