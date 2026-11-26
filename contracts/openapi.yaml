@@ -6421,6 +6421,7 @@ components:
           enum:
           - activate
           - decline
+          - 'off'
           title: Decision
       type: object
       required:
