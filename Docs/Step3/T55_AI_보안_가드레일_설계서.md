@@ -74,7 +74,7 @@ flowchart LR
 | L8 | 서버 권한·기관 분리 | 역할(JWT)·기관·반·보호자 관계를 요청마다 DB로 확인, 거부는 404와 기록 | **현재 구현됨** | `core/auth.py`, `core/scope.py` `_checked` |
 | L9 | 자료 검색 범위 | 학부모는 자기 아이 반+원 전체 자료만, 기관 ID 불일치 거부 | **현재 구현됨** | `documents/search.py` |
 | L10 | 로깅 최소화 | 오류 로그에 오류 종류만, 체크포인트에 UUID만 | **현재 구현됨** | `requests/graph_agent.py`, `cards/cards.py` 로그 |
-| L11 | 공통·감독 프롬프트의 권한 밖 거절(P01~P04) | 도구 부르기 전에 거절 안내 | **설계**(프롬프트 파일은 있으나 실행 코드가 읽지 않음, 5장 G-1) | `agents/prompts/supervisor.md`, `common.md` |
+| L11 | 공통·감독 프롬프트의 권한 밖 거절(P01~P04) | 도구 부르기 전에 거절 안내. P01은 `other_family`와 `peer_conflict`가 함께 잡혀도 고정 안내로 처리 | **설계**(프롬프트 파일은 있으나 실행 코드가 읽지 않음, 5장 G-1) | `core/request_rules.py` `direct_notice_kind`; `tests/unit/test_t55_scope_kind.py::test_scope_cases_get_direct_notice_after_model_free_classification`; `tests/integration/db/test_request_flow_inquiry.py::test_other_family_inquiry_gets_notice_without_teacher_card` |
 | L12 | 입력 개인정보 가리기(전화번호 등) | 모델에 보내기 전 마스킹 | **미정** | 기억의 아이 이름 가림만 있음 `core/memory_rules.py` `mask_child_names` |
 | L13 | 업로드 자료 속 지시문 검사 | 적재 때 의심 문장 표시 | **미정** | `documents/ingest.py`·`parsing.py`에 없음 |
 | L14 | 사진 공개 승인(NFR-11) | 담임(반)·원장(원)만 승인 | **미정**(T50 선택 작업, 이번에 코드 확인 못 함) | — |

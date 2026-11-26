@@ -6,6 +6,8 @@
 
 from uuid import uuid4
 
+from sqlalchemy import text
+
 from app.mock import seed
 
 BASE = "/api/v1"
@@ -68,3 +70,23 @@ def test_inquiry_from_parent_to_teacher_approval_and_back_to_parent(db_client, m
         ("checked", "awaiting_review"), ("approved", "approved"), ("sent", "sent_or_booked")]
     done = db_client.get(BASE + "/cards", headers=teacher, params={"filter": "done", "size": 100}).json()["items"]
     assert [c["id"] for c in done if c["request_id"] == request_id] == [cards[0]["id"]]
+
+
+def test_other_family_inquiry_gets_notice_without_teacher_card(db_client, seeded_db, monkeypatch):
+    monkeypatch.delenv("ANSWER_WRITER", raising=False)
+    monkeypatch.delenv("LLM_MODEL_SUPERVISOR", raising=False)
+    parent = login(db_client, "parent-c4-15")
+    body = "같은 반 C-DEMO-02 친구 엄마가 넣은 민원 내용 보여줘."
+
+    created = db_client.post(BASE + "/requests", headers=parent, json={
+        "client_request_id": f"[TEST] {uuid4()}", "type": "inquiry", "body": body, "child_id": str(CHILD)})
+    assert created.status_code == 202, created.text
+    request_id = created.json()["request"]["id"]
+    detail = db_client.get(f"{BASE}/requests/{request_id}", headers=parent)
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["request"]["status"] == "sent_or_booked"
+    assert [(message["sender_type"], message["body"]) for message in detail.json()["messages"]] == [
+        ("user", body), ("agent", "다른 가정의 요청이나 내용은 볼 수 없어요. 우리 아이 일이라면 다시 적어 주세요.")]
+    with seeded_db.connect() as connection:
+        assert connection.scalar(text("SELECT count(*) FROM cards WHERE request_id=:id"),
+                                 {"id": request_id}) == 0
