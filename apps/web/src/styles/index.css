@@ -107,7 +107,20 @@
 @layer base {
   h1,
   h2,
-  h3 {
+  h3,
+  h4,
+  /* 아이 이름·항목 이름 */
+  b.text-callout,
+  b.text-headline:not(.truncate), /* 요청 제목처럼 사용자가 쓴 한 줄은 본문 서체 */
+  /* 주 버튼(채움·연한 파랑) */
+  button[class*="bg-brand-fill"],
+  a[class*="bg-brand-fill"],
+  button[class*="bg-tint"],
+  /* 아래 탭 이름 */
+  nav a > span:not([class*="size-"]),
+  /* 상태 알약·칩·짧은 태그 */
+  span[class*="rounded-full"],
+  span[class*="text-caption"]:not(.tabular-nums) {
     font-family: var(--font-display);
   }
   html,
