@@ -397,3 +397,20 @@ def test_simultaneous_parent_checks_only_hold_one_overlapping_candidate(db_clien
     assert next(r for r in responses if r.status_code == 409).json()["error"]["code"] == "SLOT_TAKEN"
     with seeded_db.connect() as connection:
         assert connection.scalar(text("SELECT count(*) FROM consultation_slots WHERE status='chosen_by_parent'")) == 1
+
+
+def test_first_candidates_follow_preference_written_in_request_body(db_client, seeded_db):
+    """'다음 주 오후 4시 이후'라고 쓴 상담 요청은 첫 후보부터 그 시간대로 나온다(T04 4.1 선호 시간)."""
+    response = db_client.post(BASE + "/requests", headers=auth(seed.PARENT), json={
+        "client_request_id": str(uuid4()), "type": "consultation", "child_id": str(seed.CHILD),
+        "body": "[TEST] 다음 주에 대면으로 상담하고 싶어요. 평일 오후 4시 이후가 좋아요."})
+    assert response.status_code == 202, response.text
+    rid = response.json()["request"]["id"]
+    today = datetime.now(KST).date()
+    next_monday = today + timedelta(days=7 - today.weekday())
+    with seeded_db.connect() as connection:
+        starts = [s.astimezone(KST) for s in connection.scalars(text("""
+            SELECT lower(s.period) FROM consultation_slots s JOIN cards c ON c.id=s.card_id WHERE c.request_id=:id
+        """), {"id": rid}).all()]
+    assert len(starts) == 3
+    assert all(s.hour >= 16 and next_monday <= s.date() < next_monday + timedelta(days=7) for s in starts)

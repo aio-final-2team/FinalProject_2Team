@@ -148,6 +148,10 @@ def propose_slots(connection, req, card, teacher, round_no=None, *, preferred_ti
             SELECT detail->>'preferred_times' FROM events WHERE request_id=:id AND detail ? 'preferred_times'
             ORDER BY id DESC LIMIT 1
         """), {"id": req["id"]})
+    if preferred_times is None:
+        # 첫 후보는 상담 요청 글의 희망(예: '다음 주 오후 4시 이후')을 읽어요(T04 4.1 주제·방식·선호 시간).
+        # 해석하지 못한 글이면 preference_key가 빠른 순서를 써요.
+        preferred_times = req.get("body")
     now = datetime.now(KST)
     candidates = []
     for offset in range(1, 15):

@@ -431,6 +431,8 @@ def _propose_slots(card: Card, teacher: UUID | None, round_no: int = 1, *, prefe
     if preferred_times is None:
         preferred_times = next((e.detail["preferred_times"] for e in reversed(events_of(card.request_id))
                                 if "preferred_times" in e.detail), None)
+    if preferred_times is None and card.request_id in _state.requests:
+        preferred_times = _state.requests[card.request_id].body  # 첫 후보는 요청 글의 희망을 읽어요(DB판과 같음)
     first = _next_weekday(now().date())
     room = next(iter(_state.rooms))
     teacher = teacher or seed.TEACHER
