@@ -6,6 +6,7 @@ import { useNotes } from "@/api/notes";
 import { useSession } from "@/app/session";
 import { Icon } from "@/components/Icon";
 import { QueryState } from "@/components/QueryState";
+import { MealRepresentative } from "@/components/MealRepresentative";
 import { UploadSheet } from "./UploadSheet";
 import { dateLabel, todayKST } from "@/domain/notes";
 
@@ -39,6 +40,7 @@ export function ClassPage() {
               <span className="text-caption font-bold text-accent-ink">오늘 식단</span>
               <b className="mt-0.5 block text-callout">{meal.value}</b>
               <span className="text-caption text-ink2">{meal.source.document_title ?? "식단표"}에서 가져왔어요</span>
+              <MealRepresentative date={date} mealText={meal.value} />
             </li>
           )}
           {(moreMenu ? menus : menus.slice(0, FOLD)).map((d) => <DocRow key={d.id} d={d} />)}

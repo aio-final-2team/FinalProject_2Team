@@ -6,6 +6,7 @@ import { Buddy, MainLogo } from "@/components/Brand";
 import { QueryState } from "@/components/QueryState";
 import { Icon } from "@/components/Icon";
 import { ChildAvatar, type ProfilePhoto } from "@/components/ChildAvatar";
+import { MealRepresentative } from "@/components/MealRepresentative";
 import { dateLabel, itemLabel, nameI, todayKST, type DailyNote } from "@/domain/notes";
 import { term } from "@/domain/wording";
 
@@ -108,7 +109,7 @@ export function ParentHome() {
                   ))}
               </div>}
               {facts.length > 0 && (
-                <dl className="mt-3 grid gap-2 text-callout sm:grid-cols-2">
+                <><dl className="mt-3 grid gap-2 text-callout sm:grid-cols-2">
                   {facts.map((f, k) => (
                     <div key={k} className="rounded-xl bg-tint px-3.5 py-3">
                       <dt className="text-footnote font-bold text-accent-ink">{itemLabel(f)}</dt>
@@ -116,6 +117,8 @@ export function ParentHome() {
                     </div>
                   ))}
                 </dl>
+                {facts.find((fact) => fact.key === "meal") && <MealRepresentative date={date} mealText={facts.find((fact) => fact.key === "meal")!.value} />}
+                </>
               )}
             </div>
           </article>
