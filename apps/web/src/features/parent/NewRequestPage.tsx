@@ -105,7 +105,7 @@ export function NewRequestPage() {
       {hasText && <p className="mt-1.5 px-1 text-caption text-ink2">적은 내용은 이 기기에 임시 저장돼요</p>}
       <p className="mt-2 px-1 text-footnote text-ink2">선생님이 확인하기 전에는 답이 나가지 않아요.</p>
       <Dock>
-        <PrimaryButton onClick={submit} loading={create.isPending}>보내기</PrimaryButton>
+        <PrimaryButton tone="warm" onClick={submit} loading={create.isPending}>보내기</PrimaryButton>
       </Dock>
     </div>
   );
