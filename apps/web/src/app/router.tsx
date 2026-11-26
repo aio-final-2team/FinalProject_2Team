@@ -1,5 +1,6 @@
 import { createBrowserRouter, Navigate } from "react-router";
 import { Guard } from "@/features/common/Guard";
+import { RoleLayout } from "@/layouts/RoleLayout";
 import { InboxPage } from "@/features/inbox/InboxPage";
 import { AiAnsweredPage } from "@/features/inbox/AiAnsweredPage";
 import { LoginPage } from "@/features/login/LoginPage";
@@ -33,7 +34,15 @@ export const router = createBrowserRouter([
   { path: "/login", element: <LoginPage />, errorElement: <RouteError /> },
   { path: "/signup", element: <SignupPage />, errorElement: <RouteError /> },
   { path: "/consents/agree", element: <Guard allow={["teacher", "director", "parent"]} skipConsent><ConsentAgreePage /></Guard>, errorElement: <RouteError /> },
-  { path: "/consents", element: <Guard allow={["teacher", "director", "parent"]}><ConsentsPage /></Guard>, errorElement: <RouteError /> },
+  {
+    element: (
+      <Guard allow={["teacher", "director", "parent"]}>
+        <RoleLayout />
+      </Guard>
+    ),
+    errorElement: <RouteError />,
+    children: [{ path: "/consents", element: <ConsentsPage /> }],
+  },
   {
     path: "/teacher",
     errorElement: <RouteError />,
