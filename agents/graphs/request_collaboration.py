@@ -121,9 +121,15 @@ def build_graph(checkpointer, route_request, prepare_card, card_status,
         return {}
 
     def handoff(state):
-        work["answer"] = {"text": "", "evidence": [], "no_evidence": True,
-                          "handoff": True, "conflict": False,
-                          "check_result": {"passed": False, "issues": work["issues"],
+        draft = work["draft"]
+        issues = work["issues"]
+        if draft and (state.get("draft_no_evidence") or state.get("draft_conflict")):
+            problem = "자료끼리 내용이 달라요." if state.get("draft_conflict") else "자료에서 근거를 찾지 못했어요."
+            issues = [{"field": "출처", "problem": problem}]
+        work["answer"] = {"text": "", "evidence": draft.get("evidence", []),
+                          "no_evidence": draft.get("no_evidence", True),
+                          "handoff": True, "conflict": draft.get("conflict", False),
+                          "check_result": {"passed": False, "issues": issues,
                                            "attempt": state.get("attempt", 0) + 1,
                                            **({"memory_unavailable": True}
                                               if state.get("parallel", {}).get("memory_failed") else {})}}

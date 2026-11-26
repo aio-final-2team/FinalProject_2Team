@@ -1,5 +1,7 @@
 """협업 그래프의 인계·합치기·돌려보내기 시험."""
 
+import pytest
+
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
 
@@ -117,3 +119,48 @@ def test_memory_failure_keeps_draft_and_marks_warning():
     graph.invoke({"request_id": "request-1"}, {"configurable": {"thread_id": "memory-warning"}})
     assert answers[0]["text"] == "확인된 답"
     assert answers[0]["check_result"]["memory_unavailable"] is True
+
+
+@pytest.mark.parametrize("question, reply, expected_count", [
+    ("겨울방학은 언제부터 언제까지예요?", {"text": "날짜가 달라요", "no_evidence": False,
+      "conflict": True, "evidence": [{"chunk_id": 1, "quote": "12월 24일"},
+                                      {"chunk_id": 2, "quote": "12월 26일"}]}, 2),
+    ("소풍 준비물이 뭐예요?", {"text": "확인 필요", "no_evidence": True,
+      "conflict": False, "evidence": [{"chunk_id": 1, "quote": "12월 24일"},
+                                       {"chunk_id": 2, "quote": "12월 26일"}]}, 2),
+    ("김장 준비물이 뭐예요?", {"text": "앞치마와 팔토시", "no_evidence": False,
+      "conflict": False, "evidence": [{"chunk_id": 1, "quote": "12월 24일"}]}, 1),
+])
+def test_handoff_matches_original_answer_with_fake_model(question, reply, expected_count):
+    from agents.graphs.answer import _verify, draft_answer
+
+    chunks = [{"chunk_id": 1, "content": "12월 24일 앞치마와 팔토시", "score": 0.9},
+              {"chunk_id": 2, "content": "12월 26일", "score": 0.8}]
+
+    class FakeModel:
+        def json(self, *_):
+            return reply
+
+    class FakeChecker:
+        def json(self, *_):
+            return {"passed": True, "issues": []}
+
+    original = draft_answer(question, lambda kind, _: chunks if kind == "notice" else [],
+                            FakeModel(), FakeChecker())
+    captured = []
+    graph = build_graph(InMemorySaver(), lambda _: "inquiry",
+                        lambda _id, _route, answer, _fields: captured.append(answer) or "card-1",
+                        lambda _: "done", search=lambda _: chunks,
+                        write=lambda _: {"draft": _verify(reply, chunks, [])},
+                        check=lambda _: {"passed": True, "issues": []})
+    config = {"configurable": {"thread_id": question}}
+    state = graph.invoke({"request_id": "request-1"}, config)
+    answer = captured[0]
+    assert state["__interrupt__"]
+    assert len(answer["evidence"]) == expected_count
+    assert answer["evidence"] == original["evidence"]
+    assert answer["no_evidence"] == original["no_evidence"]
+    assert answer["conflict"] == original["conflict"]
+    assert answer["check_result"] == original["check_result"]
+    assert answer["text"] == ("" if answer.get("handoff") else original["text"])
+    assert "evidence" not in graph.get_state(config).values

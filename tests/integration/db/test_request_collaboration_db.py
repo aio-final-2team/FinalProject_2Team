@@ -2,10 +2,59 @@
 
 from dataclasses import replace
 
+import pytest
 from sqlalchemy import text
 
 from app.modules.requests import runner
 from tests.integration.db.test_request_lock_timeout import cards_of, submit, use_model
+
+
+@pytest.mark.parametrize("body, citations, no_evidence, conflict, expected_problem", [
+    ("겨울방학은 언제부터 언제까지예요?",
+     [("겨울방학 안내", "12월 24일"), ("2학기 학사 일정표", "2026-12-26")],
+     False, True, "자료끼리 내용이 달라요."),
+    ("소풍 준비물이 뭐예요?",
+     [("10월 가정통신문 — 가을 소풍과 건강검진", "가을 소풍"),
+      ("2학기 학사 일정표", "가을 소풍")],
+     True, False, "자료에서 근거를 찾지 못했어요."),
+    ("김장 준비물이 뭐예요?",
+     [("김장 체험 안내 (만 4·5세반)", "앞치마")],
+     False, False, None),
+])
+def test_collaboration_matches_original_card_on_conflict_and_missing_evidence(
+        db_client, seeded_db, monkeypatch, body, citations, no_evidence, conflict, expected_problem):
+    from db.seeds.documents import seed_documents
+    from tests.integration.db.test_answer_t33 import Writer, create_card, setup_graph
+
+    with seeded_db.begin() as connection:
+        seed_documents(connection)
+        evidence = []
+        for title, quote in citations:
+            chunk_id = connection.scalar(text("""
+                SELECT ch.id FROM document_chunks ch JOIN documents d ON d.id=ch.document_id
+                WHERE d.title=:title AND ch.content LIKE :quote ORDER BY ch.id LIMIT 1
+            """), {"title": title, "quote": f"%{quote}%"})
+            assert chunk_id is not None
+            evidence.append({"chunk_id": chunk_id, "quote": quote})
+    setup_graph(seeded_db, monkeypatch, {"text": "[TEST] 모델 초안", "evidence": evidence,
+        "no_evidence": no_evidence, "conflict": conflict})
+    monkeypatch.setattr(runner, "settings", replace(runner.settings,
+        request_agent="app.modules.requests.graph_agent:run_request"))
+    old_card, old_evidence, _ = create_card(db_client, body)
+    assert [role for role, _ in Writer.calls] == (["DOCUMENT"] if expected_problem else ["DOCUMENT", "CHECKER"])
+    enable_graph(monkeypatch)
+    Writer.calls = []
+    new_card, new_evidence, _ = create_card(db_client, body)
+    assert [role for role, _ in Writer.calls] == (["DOCUMENT"] if expected_problem else ["DOCUMENT", "CHECKER"])
+    assert len(old_evidence) == len(new_evidence) == len(citations)
+    assert [(item["quote"], item["score"]) for item in old_evidence] == [
+        (item["quote"], item["score"]) for item in new_evidence]
+    assert old_card["draft"] == new_card["draft"]
+    assert old_card["check_result"] == new_card["check_result"]
+    assert old_card["draft"].get("conflict") is conflict
+    if expected_problem:
+        assert old_card["draft"]["text"] == new_card["draft"]["text"] == ""
+        assert old_card["check_result"]["issues"] == [{"field": "출처", "problem": expected_problem}]
 
 
 def enable_graph(monkeypatch):
