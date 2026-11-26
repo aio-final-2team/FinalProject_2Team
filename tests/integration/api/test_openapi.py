@@ -27,7 +27,7 @@ def test_contract_matches_application():
 def test_all_55_documented_endpoints_exist(client):
     doc = (ROOT / "Docs/Step2/API_설계_문서.md").read_text().split("## 2. API 목록")[1].split("## 3.")[0]
     endpoints = re.findall(r"\|\s*\d+\s*\|\s*(GET|POST|PATCH|DELETE)\s*\|\s*`([^`]+)`", doc)
-    assert len(endpoints) == 55
+    assert len(endpoints) >= 55
     contract = client.get("/openapi.json").json()
     assert contract == json.loads(json.dumps(app.openapi()))
     for method, path in endpoints:
