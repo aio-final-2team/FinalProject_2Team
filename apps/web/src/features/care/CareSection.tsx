@@ -45,7 +45,7 @@ export function CareSection({ classroomId, all }: { classroomId?: string; all?: 
     const what = c.next_action === "confirm" ? "확인" : "완료";
     setBusyId(c.id);
     decide.mutate(
-      { id: c.id, decision: c.next_action, version: c.version },
+      { id: c.id, decision: c.next_action, version: c.version, type: c.type },
       {
         onSuccess: () => toast({ kind: "ok", title: c.next_action === "confirm" ? "요청을 확인했어요" : "완료로 기록했어요", sub: c.next_action === "confirm" ? "보호자에게 확인했다는 알림이 가요" : "보호자에게 완료 알림이 가요" }),
         onError: (e) => fail(e, c, what, () => run(c)),

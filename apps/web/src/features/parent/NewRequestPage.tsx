@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { api, ApiError } from "@/api/client";
-import { useCreateRequest, type CareInput, type RequestType } from "@/api/requests";
+import { useCreateRequest, usePickupGuardians, type CareInput, type RequestType } from "@/api/requests";
 import { Dock, PrimaryButton } from "@/components/Dock";
 import { Icon } from "@/components/Icon";
 import { ScreenTop } from "@/components/ScreenTop";
@@ -62,13 +62,14 @@ export function NewRequestPage() {
   }, [type, body, care, hasText]);
     const [err, setErr] = useState("");
   const child = me.data?.children[0]?.id; /* 아이가 여럿이면 고르는 칸을 더한다. 시연 계정은 한 명 */
+  const guardians = usePickupGuardians(type === "pickup" ? child : undefined).data ?? [];
 
   const submit = () => {
     if (!body.trim()) return setErr("어떤 내용인지 한 줄 이상 적어 주세요.");
     if (!child) return setErr("아이 정보를 불러오지 못했어요. 잠시 뒤 다시 눌러 주세요.");
     setErr("");
     create.mutate(
-      { type, body: body.trim(), child_id: child, ...Object.fromEntries(Object.entries(care).filter(([k, v]) => CARE_FIELDS[type]?.some((f) => f.key === k) && String(v ?? "").trim()).map(([k, v]) => [k, String(v).trim()])) },
+      { type, body: body.trim(), child_id: child, ...Object.fromEntries(Object.entries(care).filter(([k, v]) => (CARE_FIELDS[type]?.some((f) => f.key === k) || (type === "pickup" && k === "pickup_guardian_id")) && String(v ?? "").trim()).map(([k, v]) => [k, String(v).trim()])) },
       { onSuccess: (r) => { sent.current = true; try { localStorage.removeItem(DRAFT_KEY); } catch { /* 무시 */ } nav(`/parent/requests/${r.request.id}`, { replace: true }); }, onError: (e) => setErr(e instanceof ApiError ? e.message : "보내지 못했어요. 잠시 뒤 다시 눌러 주세요.") },
     );
   };
@@ -88,13 +89,28 @@ export function NewRequestPage() {
           </button>
         ))}
       </div>
+      {type === "pickup" && guardians.length > 0 && (
+        <div className="mt-5 grid gap-2">
+          <div className="px-1 text-footnote font-semibold text-ink2">등록된 인계자 <span className="font-normal">(등록되지 않은 분이 오시면 선생님이 한 번 더 확인해요)</span></div>
+          <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="등록된 인계자">
+            {guardians.map((g) => (
+              <button key={g.id} type="button" role="radio" aria-checked={care.pickup_guardian_id === g.id} onClick={() => setCare((c) => ({ ...c, pickup_guardian_id: g.id, pickup_name: g.display_name }))} className={`h-11 rounded-full px-4 text-callout font-semibold ${care.pickup_guardian_id === g.id ? "bg-brand-fill text-on-brand" : "bg-card text-ink shadow-card"}`}>
+                {g.display_name}
+              </button>
+            ))}
+            <button type="button" role="radio" aria-checked={!care.pickup_guardian_id} onClick={() => setCare((c) => ({ ...c, pickup_guardian_id: undefined, pickup_name: c.pickup_guardian_id ? "" : c.pickup_name }))} className={`h-11 rounded-full px-4 text-callout font-semibold ${!care.pickup_guardian_id ? "bg-brand-fill text-on-brand" : "bg-card text-ink shadow-card"}`}>
+              다른 분이 와요
+            </button>
+          </div>
+        </div>
+      )}
       {CARE_FIELDS[type] && (
         <div className="mt-5 grid gap-3">
           <div className="px-1 text-footnote font-semibold text-ink2">자세한 내용 <span className="font-normal">(비워도 보낼 수 있어요. 빠진 건 선생님이 다시 물어봐요)</span></div>
           {CARE_FIELDS[type]!.map((f) => (
             <label key={f.key} className="grid gap-1.5">
               <span className="px-1 text-footnote font-semibold">{f.label}</span>
-              <input value={care[f.key] ?? ""} onChange={(e) => setCare((c) => ({ ...c, [f.key]: e.target.value }))} maxLength={100} placeholder={f.placeholder} className="h-12 rounded-md border-[1.5px] border-line bg-card px-3 text-body outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--tint)]" />
+              <input value={care[f.key] ?? ""} readOnly={f.key === "pickup_name" && !!care.pickup_guardian_id} onChange={(e) => setCare((c) => ({ ...c, [f.key]: e.target.value }))} maxLength={100} placeholder={f.placeholder} className="h-12 rounded-md border-[1.5px] border-line bg-card px-3 text-body outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--tint)]" />
             </label>
           ))}
         </div>

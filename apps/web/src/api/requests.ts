@@ -4,7 +4,11 @@ import { ApiError, api, uuid } from "./client";
 /** 학부모 요청 (API 3·4·5·7, 3.1·3.2·3.9·3.10) */
 export type RequestType = "inquiry" | "consultation" | "complaint" | "medication" | "pickup";
 /** 투약·귀가 구조화 입력 (문서 3.27). 빠진 칸은 막지 않고 선생님이 다시 물어본다 */
-export type CareInput = { medication_name?: string; medication_dose?: string; medication_time?: string; pickup_name?: string; pickup_relation?: string };
+export type CareInput = { medication_name?: string; medication_dose?: string; medication_time?: string; pickup_name?: string; pickup_relation?: string; pickup_guardian_id?: string };
+
+/** 등록된 인계자 목록 (API 34): 그 아이에 연결된 보호자 계정. 연락처는 오지 않는다 */
+export const usePickupGuardians = (childId?: string) =>
+  useQuery({ queryKey: ["pickup-guardians", childId], enabled: !!childId, queryFn: () => api<{ items: { id: string; display_name: string }[] }>(`/api/v1/children/${childId}/pickup-guardians`).then((r) => r.items) });
 export type CareView = CareInput & { version: number; unregistered_pickup: boolean; missing_fields: string[]; confirmed_at: string | null; completed_at: string | null };
 export type RequestSummary = {
   id: string;
