@@ -39,9 +39,12 @@ def care_requests(classroom_id: UUID | None = None,
 
 @router.post("/requests/{request_id}/care-decisions", response_model=CareDecisionOut,
              responses=errors(401, 403, 404, 409, 422), summary="투약·인계 실제 확인·완료·반려 기록 (T46 팀 확인 전 초안)")
-def care_decision(request_id: UUID, body: CareDecisionIn,
+def care_decision(request_id: UUID, body: CareDecisionIn, background_tasks: BackgroundTasks,
                   user: CurrentUser = Depends(require_roles("teacher", "director"))):
-    return backend.request_actions.care.decision(user, request_id, body)
+    result = backend.request_actions.care.decision(user, request_id, body)
+    if body.decision == "complete":
+        background_tasks.add_task(backend.memories.after_request, request_id)
+    return result
 
 
 @router.post("/requests/{request_id}/cancel", response_model=CareDecisionOut,

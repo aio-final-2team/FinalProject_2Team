@@ -37,12 +37,12 @@ def plan(connection, child_id, lock=False):
             "SELECT user_id FROM child_guardians WHERE child_id=:child AND org_id=:org ORDER BY user_id"), key)),
         "solo_photos": [{"id": p["id"], "storage_path": p["storage_path"]} for p in photos if p["tags"] == 1],
         "shared_photo_ids": [p["id"] for p in photos if p["tags"] > 1],
-        # 기억은 카드 → 요청 → 아이로만 이어진다(DB 설계서 '기억').
+        # 돌봄 메모는 아이에 직접, 담임 기억은 카드 → 요청 → 아이로 이어져요.
         "memory_ids": list(connection.scalars(text("""
             SELECT m.id FROM memories m
-            JOIN cards c ON (c.id,c.org_id)=(m.source_card_id,m.org_id)
-            JOIN requests r ON (r.id,r.org_id)=(c.request_id,c.org_id)
-            WHERE r.child_id=:child AND m.org_id=:org AND m.deleted_at IS NULL ORDER BY m.id
+            LEFT JOIN cards c ON (c.id,c.org_id)=(m.source_card_id,m.org_id)
+            LEFT JOIN requests r ON (r.id,r.org_id)=(c.request_id,c.org_id)
+            WHERE (r.child_id=:child OR m.child_id=:child) AND m.org_id=:org AND m.deleted_at IS NULL ORDER BY m.id
         """), key)),
     }
 

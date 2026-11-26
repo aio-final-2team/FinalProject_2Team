@@ -109,7 +109,7 @@ def _check_result(passed, issues, attempt):
 
 
 @feature("문의 답변 초안")
-def draft_answer(question: str, search, writer=None, checker=None, *, memories=(), prior_answer=None) -> dict:
+def draft_answer(question: str, search, writer=None, checker=None, *, memories=(), prior_answer=None, preferences=(), child_notes=()) -> dict:
     trace = []
     candidates = []
     for doc_type in ("notice", "schedule", "menu", "policy"):
@@ -133,9 +133,9 @@ def draft_answer(question: str, search, writer=None, checker=None, *, memories=(
     for attempt in range(MAX_REWRITES + 1):
         answer = _ask_writer(writer, write_prompt, {"question": mask_sensitive(question), "chunks": candidates,
                                                     "memories": list(memories),
-                                                    "prior_answer": prior_answer,
+                                                    "prior_answer": prior_answer, "preferences": list(preferences), "child_notes": list(child_notes),
                                                     "review_issues": issues,
-                                                    "untrusted_data_fields": ["question", "chunks", "memories", "prior_answer"]}, trace)
+                                                    "untrusted_data_fields": ["question", "chunks", "memories", "prior_answer", "preferences", "child_notes"]}, trace)
         if answer is None:
             return fallback(trace)
         draft = _verify(answer, candidates, trace)

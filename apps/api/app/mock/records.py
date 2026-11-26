@@ -152,3 +152,6 @@ class Memory:
     created_at: datetime = field(default_factory=lambda: datetime.now(KST))
     deleted_at: datetime | None = None
     source_card_id: UUID | None = None
+    child_id: UUID | None = None
+    confirm_status: str = "confirmed"
+    confirmed_at: datetime | None = None

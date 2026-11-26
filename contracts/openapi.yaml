@@ -5371,6 +5371,7 @@ components:
           - parent_message
           - reassigned
           - consultation_booked
+          - memory_candidate
           title: Kind
         title:
           type: string

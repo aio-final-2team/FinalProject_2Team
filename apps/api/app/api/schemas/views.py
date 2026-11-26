@@ -282,7 +282,7 @@ class NotificationView(BaseModel):
     kind: Literal["needs_info", "new_card", "urgent_complaint", "uncertain_complaint", "director_report",
                   "on_hold", "sent_or_booked", "parent_confirmed", "completed", "rejected", "note_sent", "note_corrected",
                   "slot_hold_expired", "hold_resumed", "consultation_ending", "consultation_delayed", "care_requested", "care_confirmed",
-                  "care_rejected", "cancelled", "parent_message", "reassigned", "consultation_booked"]
+                  "care_rejected", "cancelled", "parent_message", "reassigned", "consultation_booked", "memory_candidate"]
     title: str
     body: str | None
     request_id: UUID | None
