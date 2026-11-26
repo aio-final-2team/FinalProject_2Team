@@ -3,6 +3,22 @@
 import re
 
 from app.core.errors import ApiError
+from app.core.constants import TONE_MAX_LENGTH
+from agents.guardrails.sensitive import SENSITIVE
+
+
+def tone_contents(candidates, names):
+    for candidate in candidates:
+        if not isinstance(candidate, dict) or candidate.get("kind") != "tone":
+            continue
+        content = candidate.get("content")
+        if not isinstance(content, str):
+            continue
+        content = mask_child_names(content.strip(), names)
+        if (not content or len(content) > TONE_MAX_LENGTH or SENSITIVE.search(content)
+                or re.search(r"\d|[\r\n]|[.!?。！？].*\S", content)):
+            continue
+        yield content
 
 
 def validate_rule_json(rule_json):

@@ -1,14 +1,79 @@
 import json
+import logging
+import os
+from pathlib import Path
 
 from sqlalchemy import text
 
 from app.core import scope
-from app.core.constants import REJECTION_RULE_TEXTS, REJECTION_RULE_THRESHOLD
+from app.core.constants import REJECTION_RULE_TEXTS, REJECTION_RULE_THRESHOLD, TONE_LIMIT, TONE_READ_LIMIT
 from app.core.db import transaction
 from app.core.errors import ApiError
-from app.core.memory_rules import mask_child_names, validate_rule_json
+from app.core.memory_rules import mask_child_names, validate_rule_json, tone_contents
+from agents.llm import OpenAIModel, feature
+from agents.guardrails.sensitive import mask_sensitive
 from app.modules.requests import events
 from app.modules.requests.events import record
+
+log = logging.getLogger(__name__)
+
+
+def load_tones(connection, org_id, owner_id):
+    return [dict(row) for row in connection.execute(text("""
+        SELECT kind,content FROM memories WHERE org_id=:org AND owner_id=:owner
+          AND kind='tone' AND deleted_at IS NULL ORDER BY created_at DESC,id DESC LIMIT :limit
+    """), {"org": org_id, "owner": owner_id, "limit": TONE_READ_LIMIT}).mappings()]
+
+
+def save_tones(connection, user, card, candidates, names):
+    connection.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))"),
+                       {"key": f"tone:{user.org_id}:{user.id}"})
+    for content in tone_contents(candidates, names):
+        connection.execute(text("""
+            INSERT INTO memories(org_id,owner_id,kind,content,structured,source_card_id)
+            SELECT :org,:owner,'tone',:content,CAST(:data AS jsonb),:card
+            WHERE NOT EXISTS (SELECT 1 FROM memories WHERE org_id=:org AND owner_id=:owner
+                              AND kind='tone' AND deleted_at IS NULL AND content=:content)
+        """), {"org": user.org_id, "owner": user.id, "content": content, "card": card["id"],
+               "data": json.dumps({"source": "edit_approve", "card_version": card["version"]})})
+    connection.execute(text("""
+        UPDATE memories SET deleted_at=now() WHERE org_id=:org AND owner_id=:owner AND id IN (
+            SELECT id FROM memories WHERE org_id=:org AND owner_id=:owner AND kind='tone'
+              AND deleted_at IS NULL ORDER BY created_at DESC,id DESC OFFSET :limit)
+    """), {"org": user.org_id, "owner": user.id, "limit": TONE_LIMIT})
+
+
+def memory_failed(card, tool):
+    try:
+        with transaction() as connection:
+            record(connection, None, "tool_failed", card=card, actor_type="agent", agent_name="memory",
+                   tool=tool, code="SAVE_FAILED")
+    except Exception:
+        log.warning("기억 실패 이력 저장 실패 tool=%s", tool)
+
+
+@feature("담임 말투 기억")
+def after_approval(user, card, req, decision, content):
+    # API 백그라운드: 승인 커밋 뒤, 덮어쓰기 전 초안 스냅샷과 실제 발송문을 비교해요.
+    if decision != "edit_approve" or user.role != "teacher" or not os.getenv("LLM_MODEL_MEMORY", "").strip():
+        return
+    try:
+        with transaction() as connection:
+            names = list(connection.scalars(text("SELECT display_name FROM children WHERE org_id=:org"),
+                                            {"org": user.org_id}))
+        prompt = (Path(__file__).resolve().parents[5] / "agents/prompts/memory.md").read_text()
+        payload = {"original": mask_sensitive(mask_child_names(card["draft"].get("text", ""), names)),
+                   "edited": mask_sensitive(mask_child_names(content["text"], names))}
+        result = OpenAIModel("MEMORY").json(prompt, json.dumps(payload, ensure_ascii=False))
+        if (not isinstance(result, dict) or not isinstance(result.get("tones"), list)
+                or len(result["tones"]) > 2 or any(not isinstance(item, dict)
+                    or item.get("kind") != "tone" or not isinstance(item.get("content"), str)
+                    for item in result["tones"])):
+            raise ValueError("말투 후보 형식 오류")
+        with transaction() as connection:
+            save_tones(connection, user, card, result["tones"], names)
+    except Exception:
+        memory_failed(card, "extract_tone")
 
 
 def propose_rule(connection, owner_id, reason_code, rule_text, rule_json, *, org_id):

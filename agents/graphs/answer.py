@@ -109,7 +109,7 @@ def _check_result(passed, issues, attempt):
 
 
 @feature("문의 답변 초안")
-def draft_answer(question: str, search, writer=None, checker=None) -> dict:
+def draft_answer(question: str, search, writer=None, checker=None, *, memories=()) -> dict:
     trace = []
     candidates = []
     for doc_type in ("notice", "schedule", "menu", "policy"):
@@ -132,6 +132,7 @@ def draft_answer(question: str, search, writer=None, checker=None) -> dict:
     issues = []
     for attempt in range(MAX_REWRITES + 1):
         answer = _ask_writer(writer, write_prompt, {"question": mask_sensitive(question), "chunks": candidates,
+                                                    "memories": list(memories),
                                                     "review_issues": issues,
                                                     "untrusted_data_fields": ["question", "chunks"]}, trace)
         if answer is None:

@@ -1,11 +1,33 @@
 from copy import deepcopy
 from uuid import uuid4
 
-from app.core.constants import REJECTION_RULE_TEXTS, REJECTION_RULE_THRESHOLD
+from app.core.constants import REJECTION_RULE_TEXTS, REJECTION_RULE_THRESHOLD, TONE_LIMIT, TONE_READ_LIMIT
 from app.core.errors import ApiError
-from app.core.memory_rules import mask_child_names, validate_rule_json
+from app.core.memory_rules import mask_child_names, validate_rule_json, tone_contents
 from app.mock import store
 from app.mock.records import Memory, Rule
+
+
+def load_tones(org_id, owner_id):
+    rows = sorted((m for m in store.state().memories.values() if m.org_id == org_id and m.owner_id == owner_id
+                   and m.kind == "tone" and m.deleted_at is None), key=lambda m: (m.created_at, m.id), reverse=True)
+    return [{"kind": m.kind, "content": m.content} for m in rows[:TONE_READ_LIMIT]]
+
+
+def save_tones(user, card, candidates, names):
+    # 모의는 저장만 흉내 내고 모델로 후보를 만들지 않아요.
+    with store._lock:
+        for content in tone_contents(candidates, names):
+            if any(m.org_id == user.org_id and m.owner_id == user.id and m.kind == "tone"
+                   and m.deleted_at is None and m.content == content for m in store.state().memories.values()):
+                continue
+            row = Memory(store.state().next_int(), user.org_id, user.id, "tone", content,
+                         structured={"source": "edit_approve", "card_version": card["version"]}, source_card_id=card["id"])
+            store.state().memories[row.id] = row
+        rows = sorted((m for m in store.state().memories.values() if m.org_id == user.org_id and m.owner_id == user.id
+                       and m.kind == "tone" and m.deleted_at is None), key=lambda m: (m.created_at, m.id), reverse=True)
+        for row in rows[TONE_LIMIT:]:
+            row.deleted_at = store.now()
 
 
 def propose_rule(owner_id, reason_code, rule_text, rule_json, *, org_id):

@@ -558,6 +558,7 @@ def test_refresh_requests_preserves_fixture_offsets_and_daily_input(seeded_db, m
         for day in (today, today - timedelta(days=1)):
             # 오늘 초안에는 최신 fixture의 GR-02·10·19만, 전날 요청은 전날에 남아요.
             payload = _payload(connection, {"id": uuid4(), "org_id": seed.ORG,
+                               "author_id": seed.TEACHER,
                                "classroom_id": seed.CLASS_STAR, "note_date": day,
                                "activities": "[TEST] 날짜 이동", "supplies": "", "child_memos": []})
             observed = {r["request_id"] for child in payload["children"] for r in child["requests"]}

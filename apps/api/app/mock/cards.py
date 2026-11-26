@@ -67,7 +67,7 @@ def result(card, req, next_card=None):
             "request": request_state(req) if req else None, "next_card_id": next_card.id if next_card else None}
 
 
-def decide(user, card_id, body):
+def decide(user, card_id, body, background_tasks=None):
     with store._lock:
         card = in_scope(user, card_id)
         if card.kind == "director_report" and user.role != "director":

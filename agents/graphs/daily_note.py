@@ -178,6 +178,7 @@ def write(model: JsonModel, payload, child, issues) -> list[dict]:
         "menu": (payload.get("menu") or {}).get("text"),
         "child_name": child["display_name"], "child_memo": masked(child.get("memo") or ""),
         "requests": masked_requests(child), "review_issues": issues,
+        "memories": payload.get("memories", []),
         "untrusted_data_fields": ["child_memo", "requests", "menu"],
     }, ensure_ascii=False)
     answer = model.json(section("common.md", "# 공통 규칙") + section("documents.md", "## 알림장 초안 쓰기") + WRITE_FORMAT, user)

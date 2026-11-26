@@ -106,14 +106,12 @@ def _search_request(request_id):
 
 
 def _load_request_memory(request_id):
+    from app.modules.memories.memories import load_tones
     req = _request_context(request_id)
     if req["teacher_id"] is None:
         return []
     with transaction() as connection:
-        return [dict(row) for row in connection.execute(text("""
-            SELECT kind,content FROM memories WHERE org_id=:org AND owner_id=:owner
-              AND kind='tone' AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 8
-        """), {"org": req["org_id"], "owner": req["teacher_id"]}).mappings()]
+        return load_tones(connection, req["org_id"], req["teacher_id"])
 
 
 def _write_request(state):

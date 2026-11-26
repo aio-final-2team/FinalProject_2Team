@@ -62,6 +62,9 @@ UNREGISTERED_PICKUP_CHECK = "미등록 인계자 확인"
 CARE_MESSAGE_NOTICE = "보호자가 내용을 추가했어요. 다시 확인해 주세요."
 CARE_UPDATED_NOTICE = "보호자가 입력을 수정했어요. 다시 확인해 주세요."
 REJECTION_RULE_THRESHOLD = 3
+TONE_LIMIT = 12
+TONE_READ_LIMIT = 8
+TONE_MAX_LENGTH = 80
 
 # 자유 글에서 시간·선호를 추측하지 않는 기억 대역이에요. 구체적인 조건 추출은 기억 AI가 맡아요.
 REJECTION_RULE_TEXTS = {
