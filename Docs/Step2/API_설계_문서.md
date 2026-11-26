@@ -210,7 +210,7 @@ FastAPI가 기본으로 내는 422 응답은 예외 처리기에서 위 형식�
 | 63 | GET | `/api/v1/calendar` | 학부모·담임·원장(자기 기관·볼 수 있는 반) | [제안] 원 일정 조회 | 200 | FR-21 | 3.35 | 제안 | — | 팀: 제안 계약 |
 | 64 | GET | `/api/v1/me/notification-settings` | 담임·원장 본인 | [제안] 개인 알림 시간 조회 | 200 | FR-21 | 3.36 | 제안 | — | 팀: 제안 계약 |
 | 65 | PATCH | `/api/v1/me/notification-settings` | 담임·원장 본인 | [제안] 개인 알림 시간 저장·해제 | 200 | FR-21 | 3.36 | 제안 | — | 팀: 제안 계약 |
-| 66 | POST | `/api/v1/staff/ask` | 담임·원장 | [제안] 원 자료로 교직원 질문에 답변 | 200 | FR-21 | 3.37 | 제안 | — | 팀: 제안 계약 |
+| 66 | POST | `/api/v1/staff/ask` | 담임·원장 | [제안] 원 자료로 교직원 질문에 답변(모델 장애: 503 UPSTREAM_UNAVAILABLE) | 200 | FR-21 | 3.37 | 제안 | — | 팀: 제안 계약 |
 
 알림장 MVP의 ○는 `origin/taewoong-fb020-rehearsal:tools/rehearse_daily_note.py`의 실제 호출이다. `/me`·알림 읽음·다시 만들기는 그 리허설이 부르지 않아 ○를 붙이지 않는다. 팀 확인 남음은 코드 기본값(`LLM_MODEL_SUPERVISOR` 비움, `ANSWER_WRITER=stub`, `DAILY_NOTE_WRITER=app.modules.daily_notes.stub_writer:write`)과 WBS T43(할일), 2.1의 화면 미확인 범위를 뜻한다. 권한 밖 문의의 고정 안내는 DB·모의 두 모드에서 학부모 대화에 바로 남긴다(3.1·5.7). 이 표시가 API 미구현이나 팀 서버의 현재 스위치 값을 뜻하지는 않는다.
 
@@ -1744,22 +1744,27 @@ GET `/api/v1/me`와 로그인 응답의 user.consents_complete도 같은 판·�
 | ③ 경로·쿼리 | 경로 변수·쿼리 없음. 기관·반은 현재 로그인과 담당 관계로 판별한다. |
 | ④ 요청 본문 | `{"question":"준비물은 무엇인가요?"}`. 기존 요청 본문처럼 최대 2,000자이며 앞뒤 공백을 뺀 뒤 빈 질문과 추가 키는 거부한다. |
 | ⑤ 검증·권한 | 담임·원장만. 담임은 같은 기관의 원 전체 자료와 현재 담당 반 자료, 원장은 같은 기관 전체 자료. 범위 밖 자료는 검색에서 제외한다. |
-| ⑥ 정상 응답 | 200 `{answer,evidence:[{document_id,title,location,effective_date}]}`. 검증된 인용만 출처로 돌려준다. |
-| ⑦ 오류 응답 | 401 UNAUTHENTICATED, 학부모 403 FORBIDDEN_ROLE, 질문 형식 오류 422 VALIDATION_FAILED. 공통 오류 형식 유지. |
-| ⑧ 실행 규칙 | 기존 search_documents와 문의 답변 흐름(인용 확인·검사·재작성)을 재사용한다. notice·schedule·menu·policy의 active·적재 성공·기간 미종료 자료만 검색하며 시행 전 안내도 포함한다. 요청·카드·알림을 만들지 않고 events에 tool_called·agent_name=document·호출자·trace_id·근거 수만 남긴다. 질문·답변 원문은 이력에 저장하지 않는다. |
+| ⑥ 정상 응답 | 200 `{answer,evidence:[{document_id,title,location,effective_date}],conflict}`. 검증된 인용만 출처로 돌려준다. |
+| ⑦ 오류 응답 | 401 UNAUTHENTICATED, 학부모 403 FORBIDDEN_ROLE, 질문 형식 오류 422 VALIDATION_FAILED, 모델 호출 실패 503 UPSTREAM_UNAVAILABLE. 공통 오류 형식(1.4) 유지. |
+| ⑧ 실행 규칙 | 기존 search_documents와 문의 답변 흐름(인용 확인·검사·재작성)을 재사용한다. notice·schedule·menu·policy의 active·적재 성공·기간 미종료 자료만 검색하며 시행 전 안내도 포함한다. 요청·카드·알림을 만들지 않고 events에 tool_called·agent_name=document·호출자·trace_id·근거 수만 남긴다. 모델 실패도 tool_failed·code=UPSTREAM_UNAVAILABLE 이력을 남긴다. 질문·답변 원문과 예외 원문은 이력에 저장하지 않는다. |
 
 | 필드 | 위치 | 타입 | 필수·빈값 | 설명 |
 | --- | --- | --- | --- | --- |
 | question | 입력 본문 | string | 필수, 공백만 불가 | 앞뒤 공백 제거 후 1~2,000자 |
-| answer | 응답 | string | 항상 | 근거 없음·인용 검증 실패·모델 실패는 `자료에서 못 찾았어요` |
+| answer | 응답 | string | 200에서 항상 | 검증된 답변. 근거 없음·인용 검증 실패는 `자료에서 못 찾았어요` |
 | evidence | 응답 | object[] | 항상, 빈 배열 가능 | 답변에서 인용 검증을 통과한 자료 조각 순서 |
+| conflict | 응답 | boolean | 항상 | 평소 false, 답변 흐름이 자료 충돌을 판별하면 true |
 | evidence[].document_id·title·location | 응답 | UUID·string·string | 항상 | 문서 ID·제목·원문 위치. 위치가 없으면 본문 |
 | evidence[].effective_date | 응답 | date 또는 null | 항상, null 가능 | 문서 effective_from |
+
+- 자료 충돌: 200, answer=`자료마다 내용이 달라요. 아래 두 자료를 확인해 주세요.`, conflict=true, 충돌한 양쪽 자료의 검증된 evidence를 반환한다(겨울방학 12/24·12/26 둘 다). 검색·인용에 없는 출처는 만들지 않는다.
+- 모델 호출 실패(작성·검사 예외): 503 `UPSTREAM_UNAVAILABLE`, 1.4의 `{error:{code,message,trace_id,details}}` 형식을 반환한다.
+- 근거 없음: 200, answer=`자료에서 못 찾았어요`, evidence=[], conflict=false. 인용·검사 검증에서 근거를 확정하지 못해도 같은 안전 응답을 쓴다.
 
 모델에 보내는 질문·자료 제목·위치·본문·검사 입력은 기존 mask_sensitive를 통과한다. 지시문이 섞인 조각은 기존 guardrails로 제외한다. 근거가 없으면 모델을 호출하지 않는다. mock·DB 계약은 같으며 시험에는 가짜 작성·검사 모델을 주입한다. 새 표·마이그레이션은 없다.
 
 ```json
-{"answer":"준비물은 수건이에요.","evidence":[{"document_id":"00000000-0000-4000-8000-000000000066","title":"가상 준비 안내","location":"1쪽 준비물","effective_date":"2026-12-01"}]}
+{"answer":"준비물은 수건이에요.","evidence":[{"document_id":"00000000-0000-4000-8000-000000000066","title":"가상 준비 안내","location":"1쪽 준비물","effective_date":"2026-12-01"}],"conflict":false}
 ```
 
 ## 4. 검증과 권한 규칙

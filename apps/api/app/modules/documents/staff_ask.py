@@ -26,12 +26,17 @@ def ask(user, question, writer=None, checker=None):
     def search(kind, query):
         return search_documents(user, str(user.org_id), kind, query, top_k=8, allowed_chunk_ids=sources)["chunks"]
 
-    result = respond(question, search, sources, writer, checker)
-    with transaction() as connection:
-        connection.execute(text("""
-            INSERT INTO events(org_id,actor_type,actor_id,agent_name,action,detail)
-            VALUES (:org,'user',:actor,'document','tool_called',CAST(:detail AS jsonb))
-        """), {"org": user.org_id, "actor": user.id,
-               "detail": json.dumps({"tool": "staff_ask", "evidence_count": len(result["evidence"]),
-                                     "trace_id": active_trace_id.get()})})
-    return result
+    result = None
+    try:
+        result = respond(question, search, sources, writer, checker)
+        return result
+    finally:
+        with transaction() as connection:
+            connection.execute(text("""
+                INSERT INTO events(org_id,actor_type,actor_id,agent_name,action,detail)
+                VALUES (:org,'user',:actor,'document',:action,CAST(:detail AS jsonb))
+            """), {"org": user.org_id, "actor": user.id,
+                   "action": "tool_called" if result is not None else "tool_failed",
+                   "detail": json.dumps({"tool": "staff_ask", "evidence_count": len(result["evidence"]) if result else 0,
+                                         "trace_id": active_trace_id.get(),
+                                         **({"code": "UPSTREAM_UNAVAILABLE"} if result is None else {})})})

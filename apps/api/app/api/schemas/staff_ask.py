@@ -22,3 +22,4 @@ class StaffEvidence(BaseModel):
 class StaffAskOut(BaseModel):
     answer: str
     evidence: list[StaffEvidence]
+    conflict: bool = False

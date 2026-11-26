@@ -26,7 +26,12 @@ def ask(user, question, writer=None, checker=None):
                                   "effective_from": doc.effective_from, "content": c.content, "score": value})
             return sorted(found, key=lambda c: (-c["score"], c["chunk_id"]))[:8]
 
-        result = respond(question, search, sources, writer, checker)
-        store.add_event(None, "tool_called", org_id=user.org_id, actor_type="user", actor_id=user.id,
-                        agent_name="document", tool="staff_ask", evidence_count=len(result["evidence"]))
-        return result
+        result = None
+        try:
+            result = respond(question, search, sources, writer, checker)
+            return result
+        finally:
+            store.add_event(None, "tool_called" if result is not None else "tool_failed",
+                            org_id=user.org_id, actor_type="user", actor_id=user.id,
+                            agent_name="document", tool="staff_ask", evidence_count=len(result["evidence"]) if result else 0,
+                            **({"code": "UPSTREAM_UNAVAILABLE"} if result is None else {}))

@@ -3293,6 +3293,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Service Unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
       security:
       - HTTPBearer: []
   /health:
@@ -6595,6 +6601,10 @@ components:
             $ref: '#/components/schemas/StaffEvidence'
           type: array
           title: Evidence
+        conflict:
+          type: boolean
+          title: Conflict
+          default: false
       type: object
       required:
       - answer
