@@ -7,9 +7,9 @@ import { TabBar } from "@/components/TabBar";
 export function ParentLayout() {
   const [me, setMe] = useState(false);
   const items = [
-    { to: "/parent/home", icon: "home", label: "홈" },
+    { to: "/parent/home", icon: "home", label: "홈", also: ["/parent/notifications"] },
     { to: "/parent/feed", icon: "class", label: "사진" },
-    { to: "/parent/requests", icon: "inquiry", label: "요청" },
+    { to: "/parent/requests", icon: "inquiry", label: "요청", not: ["/parent/requests/new"] },
   ];
   return (
     <div className="mx-auto min-h-full max-w-[480px] bg-g pb-[calc(76px+env(safe-area-inset-bottom))] lg:my-6 lg:min-h-[calc(100dvh-48px)] lg:rounded-[28px] lg:shadow-[0_20px_60px_-30px_rgba(11,31,58,.35)]">

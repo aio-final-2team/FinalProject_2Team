@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { NavLink, Outlet, useNavigate } from "react-router";
+import { Link, Outlet, useLocation, useNavigate } from "react-router";
 import { MeSheet } from "@/components/MeSheet";
-import { TabBar } from "@/components/TabBar";
+import { TabBar, tabOn } from "@/components/TabBar";
 import { useCards } from "@/api/cards";
 import { useNotes } from "@/api/notes";
 import { todayKST } from "@/domain/notes";
@@ -26,16 +26,17 @@ export function StaffLayout({ role }: { role: Exclude<Role, "parent"> }) {
   const items =
     role === "teacher"
       ? [
-          { to: `${base}/home`, icon: "home", label: "홈", count: 0 },
+          { to: `${base}/home`, icon: "home", label: "홈", count: 0, also: [`${base}/care`, `${base}/class`, `${base}/feed`, `${base}/memory`, `${base}/notifications`, `${base}/soon`] },
           { to: `${base}/notes`, icon: "document", label: "알림장", count: noteLeft },
           { to: `${base}/inbox`, icon: "inbox", label: "받은함", count: review },
         ]
       : [
-          { to: `${base}/overview`, icon: "home", label: "현황", count: 0 },
+          { to: `${base}/overview`, icon: "home", label: "현황", count: 0, also: [`${base}/care`, `${base}/notifications`] },
           { to: `${base}/inbox`, icon: "inbox", label: "받은함", count: review },
           { to: `${base}/feed`, icon: "class", label: "원 소식", count: 0 },
         ];
   const [me, setMe] = useState(false);
+  const { pathname } = useLocation();
 
   return (
     <div className="min-h-full lg:grid lg:grid-cols-[232px_1fr]">
@@ -47,17 +48,16 @@ export function StaffLayout({ role }: { role: Exclude<Role, "parent"> }) {
         <div className="px-2 text-sub text-ink2">{user?.display_name ?? (role === "teacher" ? "선생님" : "원장")}</div>
         <nav className="grid gap-1" aria-label="주 메뉴">
           {items.map((it) => (
-            <NavLink
+            <Link
               key={it.to}
               to={it.to}
-              className={({ isActive }) =>
-                `flex items-center gap-3 rounded-xl px-3 py-2.5 text-body font-semibold transition-colors ${isActive ? "bg-tint text-accent-ink" : "text-ink hover:bg-fill"}`
-              }
+              aria-current={tabOn(pathname, it) ? "page" : undefined}
+              className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-body font-semibold transition-colors ${tabOn(pathname, it) ? "bg-tint text-accent-ink" : "text-ink hover:bg-fill"}`}
             >
               <Icon name={it.icon} className="size-5" />
               <span className="flex-1">{it.label}</span>
               {it.count > 0 && <span className="rounded-full bg-accent px-2 text-cap font-bold text-on-accent tabular-nums">{it.count}</span>}
-            </NavLink>
+            </Link>
           ))}
         </nav>
         <button
@@ -77,7 +77,7 @@ export function StaffLayout({ role }: { role: Exclude<Role, "parent"> }) {
       </main>
 
       <MeSheet open={me} onClose={() => setMe(false)} />
-      <TabBar className="max-w-none lg:hidden" items={items.map((it) => ({ to: it.to, icon: it.icon, label: it.label, count: it.count }))} extra={{ icon: "profile", label: "내 정보", onClick: () => setMe(true) }} />
+      <TabBar className="max-w-none lg:hidden" items={items.map((it) => ({ to: it.to, icon: it.icon, label: it.label, count: it.count, also: it.also }))} extra={{ icon: "profile", label: "내 정보", onClick: () => setMe(true) }} />
     </div>
   );
 }
