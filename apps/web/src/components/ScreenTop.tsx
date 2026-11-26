@@ -12,7 +12,10 @@ export function ScreenTop({ title, sub, back, right, audience = "staff" }: { tit
   return (
     <header>
       {back ? (
-        <BackLink to={back.to} label={back.label} className="mt-2" />
+        <div className="flex items-center justify-between">
+          <BackLink to={back.to} label={back.label} className="mt-2" />
+          {right && <div className="mt-2 flex items-center">{right}</div>}
+        </div>
       ) : (
         <div className="flex min-h-[52px] items-center justify-between pt-2">
           {audience === "parent" ? <Buddy face="basic" small className="size-8" /> : <SymbolMark className="size-8" />}
