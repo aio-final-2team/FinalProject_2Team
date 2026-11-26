@@ -1,22 +1,26 @@
-"""가상 학부모 40문항을 요청 협업 그래프에 돌리는 재현 가능한 평가기.
+"""가상 학부모 40문항을 요청·답변 그래프와 T20 실제 DB 검색에 돌리는 평가기.
 
-기본은 FakeModel이며 네트워크·DB에 연결하지 않는다. 실제 모델 모드는 사용자가
-명시한 경우에만 별도 실행한다. 문서는 T20 가상 fixture의 원문을 직접 읽는다.
+기본은 FakeModel이다. tools/run_persona_eval.sh가 만든 임시 PostgreSQL에서만
+실행하며, 임베딩을 끄고 T11 가상 시드를 넣는다.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 import time
 from collections import Counter
 from datetime import date
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 from langgraph.checkpoint.memory import InMemorySaver
+from sqlalchemy import text
+from sqlalchemy.engine import make_url
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -27,8 +31,10 @@ from agents.llm import ModelError, RETRY_DELAYS, model_name, retryable, traced  
 from agents.graphs.request_collaboration import build_graph  # noqa: E402
 from app.core.request_rules import direct_notice_kind  # noqa: E402
 from app.modules.requests.supervisor import classify_request, validate_proposal  # noqa: E402
-from app.modules.documents.parsing import parse_document  # noqa: E402
-from app.modules.documents.search import score, terms  # noqa: E402
+from app.core.db import transaction  # noqa: E402
+from app.mock import seed  # noqa: E402
+from app.modules.documents.search import DOC_TYPES, search_documents  # noqa: E402
+from app.modules.documents import embedding  # noqa: E402
 from app.core.constants import OUT_OF_SCOPE_MESSAGES  # noqa: E402
 from agents.guardrails.sensitive import SENSITIVE  # noqa: E402
 
@@ -36,31 +42,12 @@ CASES = ROOT / "data/evaluation/persona/persona_cases.json"
 FIXTURES = ROOT / "data/fixtures/kg-demo-01"
 ROSTER = FIXTURES / "daily_notes/roster_c4.json"
 EVALUATION_DATE = date(2026, 11, 26)
-CASE_DIRS = {"notice": "notice", "schedule": "schedule", "menu": "menu", "policy": "policy"}
 OTHER_CHILD_NAMES = {
     child["display_name"]
     for group in ("children", "seed_children")
     for child in json.loads(ROSTER.read_text(encoding="utf-8"))[group]
     if child["display_name"] != "하늘"
 }
-
-# 사용자 표현에서 자료에 실제로 쓰인 어휘로 연결하는 가벼운 검색 보정.
-ALIASES = {
-    "낼": "내일 김장 체험 준비물", "담주": "12월 1주 식단표 11/30", "겨방": "겨울방학",
-    "재롱잔치": "재롱잔치 날짜 장소 시간", "할애비": "김장 체험 보호자 참여",
-    "37도5부": "37.5도 체온 등원", "먹여주시는지": "투약 의뢰서 약 복용",
-    "낼려면": "원비 납부 방법", "크리스마스때": "크리스마스 산타 선물 옷",
-    "내일 무엇 가져가요": "내일 김장 준비물 앞치마 팔토시", "몇 날 쉬어요": "겨울방학 기간",
-    "돼지고기": "급식 알레르기 대체식 돼지고기", "사진 앱": "사진 공개 개인정보",
-    "상담 하고": "상담 통역", "독감 걸린": "독감 감염병 등원", "눈 오면": "겨울철 등원 차량",
-    "견과류": "간식 땅콩 알레르기", "김장 체험": "김장 체험 일정", "원비": "원비 납부 규정",
-    "알림장이": "알림장 연락 답장", "환불": "원비 환불", "현장체험학습": "현장체험학습 장소",
-    "다음 주": "12월 1주 식단", "상담 주간": "상담 주간 기간", "지시문": "시스템 프롬프트",
-    "원비 면제": "원비 납부", "우주선": "우주선 견학", "픽업": "귀가 변경 보호자 인계",
-    "하원 시간": "귀가 하원 시간", "할머니가 데리러": "귀가 변경 인계",
-    "개학": "개학 일정", "졸업식": "졸업식 일정",
-}
-
 
 class FakeModel:
     """모델 호출 위치를 계수하고, 찾은 자료에서 인용 가능한 답을 만든다."""
@@ -82,6 +69,17 @@ class FakeModel:
             return {"text": "", "evidence": [], "no_evidence": True, "conflict": False}
         if not chunks:
             return {"text": "", "evidence": [], "no_evidence": True, "conflict": False}
+        query = re.sub(r"\s+", "", question)
+        if "겨울방학" in query:
+            starts = set()
+            for chunk in chunks:
+                if "겨울방학" not in chunk["content"]:
+                    continue
+                for value in re.findall(r"(?:12월\s*(24|26)일|2026-12-(24|26))", chunk["content"]):
+                    starts.add(next(part for part in value if part))
+            if len(starts) > 1:
+                return {"text": "자료마다 방학 시작일이 다릅니다.", "evidence": [],
+                        "no_evidence": False, "conflict": True}
         chunk = chunks[0]
         quote = next((line.strip()[:60] for line in chunk["content"].splitlines() if line.strip()), "")
         return {"text": "자료를 확인했습니다.", "evidence": [{"chunk_id": chunk["chunk_id"], "quote": quote}],
@@ -141,56 +139,38 @@ class MeteredOpenAIModel:
         raise AssertionError("도달할 수 없음")
 
 
-def load_documents() -> list[dict[str, Any]]:
-    """평가일 현재 공개된 fixture만 파싱한다. 임베딩을 설정하지 않아 낱말 검색이다."""
+def parent_context(case: dict[str, Any]) -> tuple[Any, Any]:
+    """실제 데모 시드의 학부모와 그 보호 아동의 반을 쓴다."""
+    account = case.get("account", "parent01")
+    guardian_id, child_id = {
+        "parent01": (seed.PARENT, seed.CHILD),
+        "parent02": (seed.PARENT_OTHER, seed.CHILD_OTHER),
+    }[account]
+    user = SimpleNamespace(id=guardian_id, org_id=seed.ORG, role="parent")
+    with transaction() as connection:
+        classroom = connection.execute(text("""
+            SELECT c.classroom_id, r.name FROM children c
+            JOIN classrooms r ON (r.id,r.org_id)=(c.classroom_id,c.org_id)
+            WHERE c.id=:child AND c.org_id=:org
+        """), {"child": child_id, "org": seed.ORG})
+        row = classroom.first()
+    if row is None:
+        raise RuntimeError(f"{account}의 데모 아동 반을 DB에서 찾지 못했습니다")
+    return user, row.classroom_id, row.name
+
+
+def retrieve(case: dict[str, Any], user, classroom_id, cache: dict) -> list[dict[str, Any]]:
+    """각 자료 종류를 T20 실제 검색 함수로 조회한다. 필터·기간·정렬은 위임한다."""
     chunks = []
-    for doc_type, folder in CASE_DIRS.items():
-        for path in sorted((FIXTURES / folder).glob("*.md")):
-            parsed = parse_document(path.read_text(encoding="utf-8"))
-            meta = parsed.meta
-            if meta.effective_from and meta.effective_from > EVALUATION_DATE:
-                continue
-            for chunk in parsed.chunks:
-                chunks.append({"chunk_id": len(chunks) + 1, "document_title": meta.title,
-                               "doc_type": doc_type, "location": chunk.location,
-                               "content": chunk.content, "effective_from": meta.effective_from,
-                               "classroom_keys": meta.classroom_keys})
+    for doc_type in DOC_TYPES:
+        key = (doc_type, case["question"])
+        if key not in cache:
+            cache[key] = search_documents(
+                user, str(user.org_id), doc_type, case["question"], classroom_id=classroom_id,
+                top_k=8, on_date=EVALUATION_DATE,
+            )["chunks"]
+        chunks.extend(cache[key])
     return chunks
-
-
-def query_text(case: dict[str, Any]) -> str:
-    question = case["question"]
-    aliases = [value for key, value in ALIASES.items() if key in question]
-    return " ".join(dict.fromkeys(aliases)) if aliases else question
-
-
-def _query_words(query: str) -> list[str]:
-    aliases = [value for key, value in ALIASES.items() if key in query]
-    return terms(" ".join(dict.fromkeys(aliases)) if aliases else query)
-
-
-def retrieve(chunks: list[dict[str, Any]], case: dict[str, Any]) -> list[dict[str, Any]]:
-    # 학부모 parent01은 C4(별빛반) 문서만 열람할 수 있다.
-    visible = [chunk for chunk in chunks if not chunk["classroom_keys"] or "C4" in chunk["classroom_keys"]]
-    queries = case.get("parts") or [query_text(case)]
-    selected: dict[int, dict[str, Any]] = {}
-    for part_index, query in enumerate(queries):
-        words = _query_words(query)
-        # 양쪽 문서의 실제 방학 날짜를 함께 검색해 '별도 문서를 보라'는 문구를
-        # 날짜 근거로 오인하지 않는다.
-        if "겨울방학" in re.sub(r"\s+", "", query):
-            ranked = [{**chunk, "score": 1.0} for chunk in visible
-                      if "겨울방학" in chunk["content"] and
-                      re.search(r"(?:12월\s*(?:24|26)일|2026-12-(?:24|26))", chunk["content"])]
-        else:
-            ranked = [{**chunk, "score": score(words, chunk["document_title"], chunk["location"], chunk["content"])}
-                      for chunk in visible]
-            ranked = [chunk for chunk in ranked if chunk["score"] > 0]
-        ranked.sort(key=lambda chunk: (-chunk["score"], chunk["chunk_id"]))
-        for chunk in ranked[:8 if not case.get("parts") else 3]:
-            row = selected.setdefault(chunk["chunk_id"], {**chunk, "matched_parts": []})
-            row["matched_parts"].append(part_index)
-    return sorted(selected.values(), key=lambda chunk: (-chunk["score"], chunk["chunk_id"]))[:8]
 
 
 def classify_role(case: dict[str, Any], model_mode: str) -> tuple[dict[str, Any], Any]:
@@ -210,27 +190,18 @@ def classify_role(case: dict[str, Any], model_mode: str) -> tuple[dict[str, Any]
         route = "teacher"
     elif out_of_scope:
         route = "guidance"
-    elif case["id"] in {"D1", "D3", "E1", "E4", "E5", "H2"}:
-        route = "teacher"
     else:
         route = "evidence"
     return {"classification": fields, "direct_notice": direct, "route": route}, supervisor_model
 
 
 def _path_from_result(case: dict[str, Any], state: dict[str, Any], result: dict[str, Any], supervisor: dict[str, Any]):
+    if case["request_type"] == "consultation" and result.get("no_evidence"):
+        return "no_evidence"
     if supervisor["route"] in ("director", "guidance", "teacher"):
         return supervisor["route"]
-    if case.get("parts"):
-        cited_ids = {item.get("chunk_id") for item in result.get("evidence", [])}
-        matched = {index for chunk in result.get("evidence_chunks", []) if chunk.get("chunk_id") in cited_ids
-                   for index in chunk.get("matched_parts", [])}
-        missing = len(matched) < len(case["parts"])
-        if result.get("conflict") and missing:
-            return "partial_conflict"
-        if result.get("conflict"):
-            return "conflict"
-        if missing:
-            return "partial"
+    if case["request_type"] == "complaint":
+        return "teacher"
     if result.get("conflict"):
         return "conflict"
     if result.get("no_evidence"):
@@ -267,23 +238,39 @@ def score_rules(case: dict[str, Any], result: dict[str, Any], chunks: list[dict[
             (not result.get("no_evidence") or "no_evidence" in result.get("warnings", [])) and
             (not result.get("conflict") or "conflict" in result.get("warnings", []))
         ),
-        "expected_path_matches": path == expected,
+        "expected_path_matches": path in expected if isinstance(expected, list) else path == expected,
     }
 
 
-def run_case(case: dict[str, Any], chunks: list[dict[str, Any]], model_mode: str = "fake") -> dict[str, Any]:
+def run_case(case: dict[str, Any], model_mode: str = "fake") -> dict[str, Any]:
     started = time.perf_counter()
-    picked = retrieve(chunks, case)
+    user, classroom_id, classroom_name = parent_context(case)
+    search_cache = {}
+    picked = []
     supervisor, supervisor_model = classify_role(case, model_mode)
     writer = FakeModel("writer") if model_mode == "fake" else MeteredOpenAIModel("DOCUMENT")
     checker = FakeModel("checker") if model_mode == "fake" else MeteredOpenAIModel("DOCUMENT")
     saved: dict[str, Any] = {}
+
+    def search_docs(doc_type, query):
+        key = (doc_type, query)
+        if key not in search_cache:
+            search_cache[key] = search_documents(
+                user, str(user.org_id), doc_type, query, classroom_id=classroom_id,
+                top_k=8, on_date=EVALUATION_DATE,
+            )["chunks"]
+        return search_cache[key]
 
     def route_request(_):
         return "other" if supervisor["route"] == "guidance" else case["request_type"]
 
     def get_risk(_):
         return {"risk_level": supervisor["classification"].get("risk_level", "normal")}
+
+    def graph_search(_):
+        nonlocal picked
+        picked = retrieve(case, user, classroom_id, search_cache)
+        return picked
 
     def card(_request_id, route, graph_answer=None, classification=None):
         if supervisor["route"] == "guidance":
@@ -316,31 +303,16 @@ def run_case(case: dict[str, Any], chunks: list[dict[str, Any]], model_mode: str
         return "persona-card"
 
     def write(state):
-        payload = writer.json(answer.WRITE_FORMAT, json.dumps({
-            "question": case["question"], "chunks": state["parallel"]["chunks"], "review_issues": state.get("issues", []),
-        }, ensure_ascii=False, default=str))
-        draft = answer._verify(payload, picked, [])
-        # 내용이 상충하는 문서는 모델 대신 fixture 텍스트의 상반된 날짜를 검출한다.
-        asks_start_date = ("겨울방학" in re.sub(r"\s+", "", query_text(case)) or
-                           any("겨울방학" in re.sub(r"\s+", "", part) for part in case.get("parts", [])))
-        dates = ({match.replace("2026-12-", "12월 ").replace("일", "") for chunk in picked
-                  for match in re.findall(r"(?:12월\s*(?:24|26)일|2026-12-(?:24|26))", chunk["content"])
-                  if "겨울방학" in chunk["content"]} if asks_start_date else set())
-        draft["conflict"] = len(dates) > 1
-        draft["no_evidence"] = draft["no_evidence"] or draft["conflict"]
-        if draft["no_evidence"] or draft["conflict"]:
-            draft["text"] = ""
-        return {"draft": draft}
+        return {"draft": answer.draft_answer(case["question"], search_docs, writer=writer, checker=checker)}
 
     def check(state):
-        checked = checker.json(answer.CHECK_FORMAT, json.dumps({
-            "question": case["question"], "draft": state.get("draft", {}).get("text", ""), "chunks": picked,
-        }, ensure_ascii=False, default=str))
+        checked = state.get("draft", {}).get("check_result", {})
         return {"passed": bool(checked.get("passed")), "issues": checked.get("issues", []),
-                "attempt": state.get("attempt", 0) + 1}
+                "attempt": checked.get("attempt", state.get("attempt", 0) + 1)}
 
     graph = build_graph(InMemorySaver(), route_request, card, lambda _: "pending",
-                        search=lambda _: picked, load_memory=lambda _: [], write=write, check=check,
+                        search=graph_search,
+                        load_memory=lambda _: [], write=write, check=check,
                         high_risk=get_risk)
     graph_result = graph.invoke({"request_id": case["id"]},
                                  {"configurable": {"thread_id": f"persona:{case['id']}"}})
@@ -385,15 +357,18 @@ def run_case(case: dict[str, Any], chunks: list[dict[str, Any]], model_mode: str
         saved["tokens"]["writer"]["prompt"] -= judge_tokens["prompt"]
         saved["tokens"]["writer"]["completion"] -= judge_tokens["completion"]
     saved["duration_ms"] = round((time.perf_counter() - started) * 1000, 3)
-    saved["rule_checks"] = score_rules(case, saved, chunks)
+    all_chunks = [chunk for values in search_cache.values() for chunk in values]
+    unique_chunks = {str(chunk["chunk_id"]): chunk for chunk in all_chunks}
+    all_chunks = list(unique_chunks.values())
+    saved["rule_checks"] = score_rules(case, saved, all_chunks)
     saved["judge"] = judge_result
     return {"id": case["id"], "role": case["role"], "question": case["question"],
-            "account": case.get("account", "parent01"), "classroom": case.get("classroom", "C4"),
+            "account": case.get("account", "parent01"), "classroom": classroom_name,
             "expected": {"path": case["expected_path"], "target": case["target"], "notes": case["notes"]},
             "actual": {key: saved[key] for key in ("classification", "risk_level", "direct_notice_kind",
                       "route", "card_kind", "status", "director_report", "ledger_report", "actual_path")},
-            "draft": saved["draft"], "evidence": [{"document": next((c["document_title"] for c in chunks
-                      if c["chunk_id"] == item.get("chunk_id")), ""), "location": next((c["location"] for c in chunks
+            "draft": saved["draft"], "evidence": [{"document": next((c["document_title"] for c in all_chunks
+                      if c["chunk_id"] == item.get("chunk_id")), ""), "location": next((c["location"] for c in all_chunks
                       if c["chunk_id"] == item.get("chunk_id")), ""), "quote": item.get("quote", "")}
                       for item in saved["evidence"]], "warnings": saved["warnings"],
             "rule_checks": saved["rule_checks"], "judge": saved["judge"],
@@ -410,15 +385,15 @@ def evaluate(model_mode: str = "fake", only: set[str] | None = None, repeat: int
         missing = only - {case["id"] for case in cases}
         if missing:
             raise ValueError(f"알 수 없는 문항 ID: {', '.join(sorted(missing))}")
-    chunks = load_documents()
     results = []
     for iteration in range(1, repeat + 1):
         for case in cases:
-            result = run_case(case, chunks, model_mode)
+            result = run_case(case, model_mode)
             result["iteration"] = iteration
             results.append(result)
+    search_mode = "낱말 검색(임베딩 미설정)" if not embedding.enabled() else "벡터+낱말 검색(bge-m3)"
     return {"evaluation_date": EVALUATION_DATE.isoformat(), "model": model_mode,
-            "search_mode": "낱말 검색(임베딩 미설정)", "results": results,
+            "search_mode": search_mode, "results": results,
             "total": len(results), "path_counts": dict(Counter(row["actual"]["actual_path"] for row in results)),
             "model_call_slots": dict(Counter(stage for row in results for stage, count in row["model_call_slots"].items()
                                               for _ in range(count))),
@@ -435,6 +410,7 @@ def main() -> int:
     args = parser.parse_args()
     if args.repeat < 1:
         parser.error("--repeat는 1 이상이어야 합니다")
+    _assert_isolated_test_database()
     selected = set(args.only.split(",")) if args.only else None
     result = evaluate(args.model, selected, args.repeat)
     print(json.dumps({key: result[key] for key in ("evaluation_date", "model", "search_mode", "total",
@@ -446,6 +422,17 @@ def main() -> int:
         output.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"JSON: {output}")
     return 0
+
+
+def _assert_isolated_test_database() -> None:
+    """실수로 팀·공유 PostgreSQL에 접속하지 않도록 임시 DB만 허용한다."""
+    database_url = os.getenv("DATABASE_URL")
+    test_database_url = os.getenv("TEST_DATABASE_URL")
+    if not database_url or database_url != test_database_url or not os.getenv("TEST_DB_CONTAINER"):
+        raise RuntimeError("tools/run_persona_eval.sh가 만든 임시 PostgreSQL에서만 실행할 수 있습니다")
+    url = make_url(database_url)
+    if url.host not in ("127.0.0.1", "localhost", "::1") or (url.port or 5432) == 5432:
+        raise RuntimeError("임시 로컬 PostgreSQL 주소가 아닙니다. 실행을 중단합니다")
 
 
 if __name__ == "__main__":

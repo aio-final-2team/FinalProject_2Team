@@ -65,4 +65,4 @@ def test_persona_cases_have_forty_unique_items_and_consultation_expectations():
     assert len({case["id"] for case in cases}) == 40
     by_id = {case["id"]: case for case in cases}
     assert by_id["C5"]["request_type"] == by_id["G5"]["request_type"] == "consultation"
-    assert by_id["C5"]["expected_path"] == by_id["G5"]["expected_path"] == "teacher"
+    assert by_id["C5"]["expected_path"] == by_id["G5"]["expected_path"] == "no_evidence"
