@@ -324,7 +324,9 @@ def staff_listing(user, status, page, size, sort, answered_by, classroom_id, typ
               AND (:director OR EXISTS (SELECT 1 FROM classroom_staff s
                 WHERE s.org_id=r.org_id AND s.classroom_id=r.classroom_id AND s.user_id=:user
                   AND (s.valid_from IS NULL OR s.valid_from<=CURRENT_DATE)
-                  AND (s.valid_to IS NULL OR s.valid_to>=CURRENT_DATE)))
+                  AND (s.valid_to IS NULL OR s.valid_to>=CURRENT_DATE))
+                -- 다른 반 요청도 카드를 재배정받았으면 보여요(상세 request_in_scope와 같은 예외, 기획서 2.4).
+                OR EXISTS (SELECT 1 FROM cards k WHERE k.org_id=r.org_id AND k.request_id=r.id AND k.assignee_id=:user))
             ORDER BY r.id
         """), {"org": user.org_id, "class": classroom_id, "type": type,
                "user": user.id, "director": user.role == "director"}).mappings().all()

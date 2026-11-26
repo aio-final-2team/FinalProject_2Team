@@ -182,9 +182,12 @@ def staff_listing(user, status, page, size, sort, answered_by, classroom_id, typ
         # 답변 뒤 대화가 이어져도 한 번 답한 이력을 유지해요.
         agents = {e.request_id for e in store.state().events if e.org_id == user.org_id and e.action == "out_of_scope_answered"}
         staff = {e.request_id for e in store.state().events if e.org_id == user.org_id and e.to_status in ("sent_or_booked", "completed")}
+        # 다른 반 요청도 카드를 재배정받았으면 보여요(상세 request_in_scope와 같은 예외, 기획서 2.4).
+        mine = {c.request_id for c in store.state().cards.values() if c.assignee_id == user.id}
         rows = []
         for req in store.state().requests.values():
-            if (req.org_id != user.org_id or (user.role == "teacher" and req.classroom_id not in classes)
+            if (req.org_id != user.org_id
+                    or (user.role == "teacher" and req.classroom_id not in classes and req.id not in mine)
                     or (classroom_id is not None and req.classroom_id != classroom_id)
                     or (type is not None and req.type != type) or (status is not None and req.status != status)):
                 continue

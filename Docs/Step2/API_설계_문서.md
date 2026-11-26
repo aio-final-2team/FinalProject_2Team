@@ -753,7 +753,7 @@ HTTP/1.1 200 OK
 | ② 요청 헤더 | `Authorization`(필수), `X-Request-ID`(권장). |
 | ③ 경로·쿼리 | 아래 쿼리 필드. |
 | ④ 요청 본문 | 없음. |
-| ⑤ 검증·권한 | 학부모는 같은 기관의 본인 요청을 봐요. 담임은 오늘 유효한 classroom_staff의 반, 원장은 같은 기관 전체를 봐요. 범위 밖 classroom_id는 404예요. |
+| ⑤ 검증·권한 | 학부모는 같은 기관의 본인 요청을 봐요. 담임은 오늘 유효한 classroom_staff의 반 요청과 재배정받은 카드의 요청(상세 5번과 같은 예외), 원장은 같은 기관 전체를 봐요. 범위 밖 classroom_id는 404예요. |
 | ⑥ 정상 응답 | 200 + `items[]`·`total`·`page`·`size`. 해당 요청이 없으면 빈 목록. |
 | ⑦ 오류 응답 | 아래 오류 표. |
 | ⑧ 실행 규칙 | 조회할 때 보류 만료와 상담 시간 만료를 반영하고, 정렬한 뒤 쪽을 나눈다. |
@@ -771,7 +771,7 @@ HTTP/1.1 200 OK
 
 학부모는 기존 `RequestList` 모양을 그대로 받아요. 교직원은 `StaffRequestList`로 같은 요약 칸에 `classroom_id`·`child_id`·`child_name`·`requester_name`·`answered_by`를 더 받아요. 반·아이가 없는 요청도 원장은 볼 수 있고 classroom_id·아이 두 칸은 null이 될 수 있어요. 이름은 현재 표시 이름이에요. 교직원 `status_label`은 `staff_label`을 써요. `next_action`은 투약·귀가의 received면 confirm, assigned면 complete, 나머지는 null이에요. `hold_until`은 기존 보류 예정일이에요.
 
-`answered_by=agent`는 `out_of_scope_answered` 이력이 있는 요청이에요. 그 밖에 현재 상태나 이력이 `sent_or_booked`·`completed`까지 간 요청은 staff, 아직 답하지 않았으면 null이에요. 답변 뒤 대화가 이어져도 이력을 유지해요. AI 바로 안내는 카드 없이도 이 목록에서 찾아요.
+`answered_by=agent`는 `out_of_scope_answered` 이력이 있는 요청이에요. 서비스가 할 수 없는 질문에 정해진 문구로 바로 안내한 건이고 AI가 쓴 답은 아니에요(화면에는 '바로 안내'처럼 보여 줘요). 그 밖에 현재 상태나 이력이 `sent_or_booked`·`completed`까지 간 요청은 staff, 아직 답하지 않았으면 null이에요. 답변 뒤 대화가 이어져도 이력을 유지해요. AI 바로 안내는 카드 없이도 이 목록에서 찾아요.
 
 ```http
 GET /api/v1/requests?status=needs_info

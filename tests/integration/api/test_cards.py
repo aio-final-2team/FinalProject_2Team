@@ -209,6 +209,9 @@ def test_escalation_instruction_reassignment_then_edit_approval(client, parent, 
         str(seed.TEACHER_OTHER), cid, "요청이 배정됐어요")
     assert detail(client, teacher_other, cid)["request"]["id"] == rid
     assert client.get(f"{BASE}/requests/{rid}", headers=teacher_other).status_code == 200
+    # 재배정받은 다른 반 요청은 교직원 요청 목록에도 나온다(기획서 2.4). 원래 담임 목록에도 그대로 남는다.
+    for actor in (teacher_other, teacher):
+        assert rid in [r["id"] for r in client.get(BASE + "/requests?size=100", headers=actor).json()["items"]]
     assert cid in [c["id"] for c in client.get(BASE + "/cards?assignee=me", headers=teacher_other).json()["items"]]
     reassignment = client.get(BASE + "/overview", headers=director).json()["reassignments"][-1]
     assert (reassignment["from"], reassignment["to"]) == (str(seed.TEACHER), str(seed.TEACHER_OTHER))
