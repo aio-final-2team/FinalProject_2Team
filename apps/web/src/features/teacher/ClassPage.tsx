@@ -27,7 +27,7 @@ export function ClassPage() {
   const meal = notes.data?.[0]?.content.items.find((i) => i.key === "meal");
 
   return (
-    <div className="mx-auto max-w-[680px] px-4 pb-10 pt-2">
+    <div className="mx-auto max-w-[680px] px-4 pb-10">
       <ScreenTop back={{ to: "/teacher/home", label: "홈" }} title="오늘 우리 반" sub={`${dateLabel(date)} · 식단표와 가정통신문이에요`} />
       <button type="button" onClick={() => setUp(true)} className="mt-3 inline-flex h-10 items-center rounded-md bg-tint px-4 text-callout font-semibold text-accent-ink active:scale-[.97]">자료 올리기</button>
       <UploadSheet open={up} onClose={() => setUp(false)} classroomId={cid} />

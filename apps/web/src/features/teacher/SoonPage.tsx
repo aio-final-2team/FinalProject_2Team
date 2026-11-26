@@ -13,7 +13,7 @@ export function SoonPage() {
   if (!key || !(key in SOON)) return <Navigate to="/teacher/home" replace />;
   const s = SOON[key as SoonKey];
   return (
-    <div className="mx-auto max-w-[680px] px-4 pb-10 pt-2">
+    <div className="mx-auto max-w-[680px] px-4 pb-10">
       <ScreenTop back={{ to: "/teacher/home", label: "홈" }} title={s.title} sub={s.sub} />
       <div className="mt-6 grid place-items-center">
         <StateView kind="empty" audience="staff" title="준비 중이에요" sub={s.note} />

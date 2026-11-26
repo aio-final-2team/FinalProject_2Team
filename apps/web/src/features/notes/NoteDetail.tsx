@@ -125,7 +125,7 @@ function Detail({ note, notes, name, names }: { note: DailyNote; notes: DailyNot
 
   const st = NOTE_STATUS[note.status];
   return (
-    <div className="mx-auto max-w-[680px] px-4 pb-48 pt-2 lg:pb-10 lg:pt-6">
+    <div className="mx-auto max-w-[680px] px-4 pb-48 lg:pb-10 lg:pt-6">
       <ScreenTop back={{ to: "/teacher/notes?tab=notes", label: "오늘 알림장" }} title={`${nameI(name)} 알림장`} sub={<>{user?.display_name} · {dateLabel(note.note_date)} · <span className={`font-bold ${st.cls}`}>{st.label}</span></>} />
       <div className="mb-4" />
 

@@ -1,6 +1,6 @@
 import { useParams } from "react-router";
 import { TYPE_LABEL, useAiAnswered, useRequest } from "@/api/requests";
-import { BackLink } from "@/components/BackLink";
+import { ScreenTop } from "@/components/ScreenTop";
 import { SkeletonRows, StateView } from "@/components/StateView";
 import { fmtDateTime } from "@/domain/datetime";
 import type { Role } from "@/domain/types";
@@ -15,14 +15,13 @@ export function AiAnsweredPage({ role }: { role: Role }) {
   const who = [item?.child_name, item?.requester_name].filter(Boolean).join(" · ");
   return (
     <div className="mx-auto max-w-[680px] px-4 pb-10">
-      <BackLink to={`/${role}/inbox`} label="받은함" className="mt-2" />
-      <h1 className="mt-1 text-large-title font-bold tracking-[-0.025em]">AI가 바로 답한 요청</h1>
+      <ScreenTop back={{ to: `/${role}/inbox`, label: "받은함" }} title="AI가 바로 답한 요청" />
       {detail.isLoading && <SkeletonRows />}
       {detail.isError && <StateView kind="error" audience="staff" title="요청을 불러오지 못했어요" sub="잠시 뒤 다시 열어 주세요" />}
       {d && (
         <div className="mt-3 grid gap-4">
           <header className="grid gap-1">
-            <h2 className="text-[20px] font-bold tracking-[-0.02em]">{d.request.title ?? TYPE_LABEL[d.request.type]}</h2>
+            <h2 className="text-headline font-bold tracking-[-0.02em]">{d.request.title ?? TYPE_LABEL[d.request.type]}</h2>
             <p className="text-sub text-ink2">{[TYPE_LABEL[d.request.type], who, fmtDateTime(d.request.created_at)].filter(Boolean).join(" · ")}</p>
           </header>
           <p className="rounded-2xl bg-tint px-4 py-3 text-callout text-accent-ink">

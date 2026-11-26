@@ -12,9 +12,9 @@ export function ScreenTop({ title, sub, back, right, audience = "staff" }: { tit
   return (
     <header>
       {back ? (
-        <div className="flex items-center justify-between">
-          <BackLink to={back.to} label={back.label} className="mt-2" />
-          {right && <div className="mt-2 flex items-center">{right}</div>}
+        <div className="flex min-h-[52px] items-center justify-between pt-2">
+          <BackLink to={back.to} label={back.label} />
+          {right && <div className="flex items-center">{right}</div>}
         </div>
       ) : (
         <div className="flex min-h-[52px] items-center justify-between pt-2">

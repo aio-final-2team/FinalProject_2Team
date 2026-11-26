@@ -154,8 +154,9 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
   });
 
   return (
-    <article className="mx-auto grid max-w-[720px] gap-5 px-4 pb-40 pt-[max(8px,env(safe-area-inset-top))] lg:px-8 lg:pt-8">
-      <BackLink to={backTo} />
+    <article className="mx-auto grid max-w-[720px] gap-5 px-4 pb-40 pt-[max(8px,env(safe-area-inset-top))] lg:px-8 lg:pt-4">
+      <div>
+        <div className="flex min-h-[52px] items-center"><BackLink to={backTo} /></div>
       <header className="grid gap-2">
         <div className="flex flex-wrap items-center gap-1.5">
           <TypeTag type={c.type} />
@@ -169,13 +170,12 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
           {c.check && !c.check.passed && <Pill tone="action">검사 확인 필요</Pill>}
           {c.noEvidence && !c.warnings?.length && <Pill tone="action">근거 없음</Pill>}
         </div>
-        <h2 className="text-[22px] font-bold tracking-[-0.02em]">
-          {c.title}
-        </h2>
+        <h1 className="text-large-title font-bold tracking-[-0.025em]">{c.title}</h1>
         {[c.className, c.childName, c.requesterName].filter(Boolean).length > 0 && (
           <p className="text-sub text-ink2">{[c.className, c.childName, c.requesterName].filter(Boolean).join(" · ")}</p>
         )}
       </header>
+      </div>
 
       {reportOnly && (
         <p className="rounded-2xl bg-lav-tint px-4 py-3 text-callout text-ink">원장님께 보고한 카드예요. 원장님이 확인한 뒤 이어서 처리돼요. 보호자에게 보낼 답은 같은 요청의 답장 카드에서 써 주세요.</p>
