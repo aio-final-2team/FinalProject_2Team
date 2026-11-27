@@ -40,6 +40,8 @@ def install_memory(monkeypatch, result):
             assert role == "MEMORY"
         def json(self, system, user):
             value = json.loads(user)
+            if "parent_body" in value:
+                return {"candidates": []}  # 같은 기억 모델이 보호자 기억도 판단해요. 이 시험은 말투만 봐요.
             self.inputs.append(value)
             # 새 연결로 봐도 이미 승인과 발송이 커밋돼 있어야 해요.
             with transaction() as connection:
@@ -191,3 +193,19 @@ def test_embedding_failure_keeps_approval_and_lookup_falls_back(db_client, seede
         assert connection.scalar(text("SELECT count(*) FROM events WHERE agent_name='memory' AND action='tool_failed'")) == 1
         req = dict(connection.execute(text("SELECT * FROM requests WHERE id=:id"), {"id": card["request_id"]}).mappings().one())
     assert find_saved_answer(req) is None
+
+
+def test_active_answer_rule_reaches_answer_writer_but_slot_rule_does_not(db_client, monkeypatch):
+    """[TEST] 담임이 켠 답변 규칙은 답변 AI 기억으로 가고, 상담 시간 규칙과 아직 안 켠 규칙은 안 가요."""
+    with transaction() as connection:
+        for code, rule_text, status in (("tone", "[TEST] 답 끝에 연락 방법을 붙여요", "active"),
+                                        ("slot_unavailable", "[TEST] 상담은 14시 이후", "active"),
+                                        ("privacy", "[TEST] 아직 안 켠 규칙", "proposed")):
+            connection.execute(text("""
+                INSERT INTO memory_rules (org_id,owner_id,reason_code,rule_text,rule_json,status)
+                VALUES (:org,:owner,:code,:text,CAST(:json AS jsonb),:status)
+            """), {"org": seed.ORG, "owner": seed.TEACHER, "code": code, "text": rule_text,
+                   "json": json.dumps({"reason_code": code}), "status": status})
+    card, _, _ = create_card(db_client, "[TEST] 준비물 알려 주세요")
+    assert graph_agent._load_request_memory(card["request_id"]) == [
+        {"kind": "rule", "content": "[TEST] 답 끝에 연락 방법을 붙여요"}]

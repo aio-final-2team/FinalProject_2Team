@@ -105,9 +105,54 @@ def test_invalid_schedule_settings(monkeypatch, name, value):
     ("[TEST] 다른 시간", ["2026-12-01T09:00:00", "2026-12-01T15:30:00", "2026-12-02T16:00:00"]),
     ("[TEST] 2026-99-99 25:00", ["2026-12-01T09:00:00", "2026-12-01T15:30:00", "2026-12-02T16:00:00"]),
 ])
-def test_consultation_preferences_rank_overlap_then_nearest_without_changing_candidates(preferred, expected):
-    from app.modules.consultations.slots import preference_key
-    candidates = [{"start": at(value), "end": at(value)+timedelta(minutes=30)}
-                  for value in ("2026-12-01T09:00:00", "2026-12-01T15:30:00", "2026-12-02T16:00:00")]
-    result = sorted(candidates, key=preference_key(preferred, at("2026-11-30T09:00:00")))
+def test_model_absent_fallback_preferences_rank_overlap_then_nearest_without_changing_candidates(preferred, expected):
+    """[TEST] 모델 없음 대역: 정규식이 읽은 희망 구조값으로 겹침 → 거리 → 시각 순이에요."""
+    from app.modules.consultations.slots import fallback_preference, preference_key
+    now = at("2026-11-30T09:00:00")
+    result = sorted(slot_candidates(), key=preference_key(fallback_preference(preferred, now), now))
     assert [s["start"] for s in result] == [at(value) for value in expected]
+
+
+def slot_candidates():
+    return [{"start": at(value), "end": at(value)+timedelta(minutes=30)}
+            for value in ("2026-12-01T09:00:00", "2026-12-01T15:30:00", "2026-12-02T16:00:00")]
+
+
+def test_ai_preference_is_used_and_model_failure_falls_back(monkeypatch):
+    """[TEST] 감독 모델이 켜져 있으면 AI 구조값을 쓰고, 계약 밖 값·실패는 정규식 대역으로 넘겨요."""
+    from types import SimpleNamespace
+    from app.modules.consultations import slots
+    now, seen = at("2026-11-30T09:00:00"), []
+    monkeypatch.setenv("LLM_MODEL_SUPERVISOR", "fake-model")
+
+    def model(reply):
+        return lambda role, timeout=None, retry_delays=None: SimpleNamespace(json=lambda system, user: seen.append(user) or (
+            reply() if callable(reply) else reply))
+    monkeypatch.setattr(slots, "OpenAIModel", model({"date_from": "2026-12-02", "date_to": "2026-12-02",
+                                                      "weekdays": [], "part_of_day": None, "after": "16:00", "before": None}))
+    value = slots.read_preference("[TEST] 셋째 날 느지막이 010-1234-5678", now)
+    assert value == {"date_from": "2026-12-02", "date_to": "2026-12-02", "after": "16:00"}
+    assert '"today": "2026-11-30 (월)"' in seen[-1] and "010-1234-5678" not in seen[-1]
+    assert sorted(slot_candidates(), key=slots.preference_key(value, now))[0]["start"] == at("2026-12-02T16:00:00")
+    monkeypatch.setattr(slots, "OpenAIModel", model({"weekdays": [], "after": None}))
+    assert slots.read_preference("[TEST] 내일 오전", now) is None  # AI가 희망이 없다고 하면 정규식이 덮지 않아요.
+    for broken in ({"after": "4pm"}, {"weekdays": [9]}, {"date_from": "2026-12-03", "date_to": "2026-12-01"}, ["x"]):
+        monkeypatch.setattr(slots, "OpenAIModel", model(broken))
+        assert slots.read_preference("[TEST] 내일 오전", now) == {"date_from": "2026-12-01", "date_to": "2026-12-01",
+                                                                   "part_of_day": "am"}
+    monkeypatch.setattr(slots, "OpenAIModel", model(lambda: (_ for _ in ()).throw(RuntimeError("[TEST] 실패"))))
+    assert slots.read_preference("[TEST] 수요일 오후", now) == {"weekdays": [2], "part_of_day": "pm"}
+    monkeypatch.delenv("LLM_MODEL_SUPERVISOR")
+    monkeypatch.setattr(slots, "OpenAIModel", lambda *a, **k: pytest.fail("[TEST] 모델 없음인데 불렀어요"))
+    assert slots.read_preference("[TEST] 16:00 이후", now) == {"after": "16:00"}
+
+
+def test_rule_bounds_apply_weekdays_only_on_listed_days():
+    """[TEST] 켠 규칙의 weekdays는 그 요일에만 after·before를 적용해요."""
+    from app.modules.consultations.slots import rule_bounds
+    rules = [{"weekdays": [1], "after": "12:00"}, {"before": "17:00"}, {"weekdays": "x", "after": "10:00"}]
+    tuesday, wednesday = at("2026-12-01T00:00:00").date(), at("2026-12-02T00:00:00").date()
+    assert rule_bounds(rules, tuesday, at("2026-12-01T09:00:00"), at("2026-12-01T18:00:00")) == (
+        at("2026-12-01T12:00:00"), at("2026-12-01T17:00:00"))
+    assert rule_bounds(rules, wednesday, at("2026-12-02T09:00:00"), at("2026-12-02T18:00:00")) == (
+        at("2026-12-02T10:00:00"), at("2026-12-02T17:00:00"))

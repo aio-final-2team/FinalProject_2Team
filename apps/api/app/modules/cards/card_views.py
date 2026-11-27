@@ -7,6 +7,7 @@ from sqlalchemy import text
 
 from app.api.labels import note_batch_label, staff_label
 from app.core import scope
+from app.core.care import request_intent
 from app.core.db import transaction
 from app.core.schedule import KST
 from app.modules.requests.complaints import repeat_count
@@ -44,6 +45,7 @@ def staff_request(connection, req, card_kind=None):
         )
     } | {
         **requester_fields(connection, req),
+        "intent": request_intent(req["type"], req["intent"]),
         "repeat_count": repeat_count(connection, req),
         "status_label": staff_label(req["status"], req["type"], card_kind=card_kind),
         "hold_until": _hold_until(connection, req),
@@ -123,6 +125,7 @@ def _item(connection, card):
         if card["status"] == "pending"
         else "완료",
         "request_type": req["type"] if req else None,
+        "intent": request_intent(req["type"], req["intent"]) if req else None,
         "title": (req["title"] or req["body"].split("\n")[0][:40]) if req else card["draft"].get("summary", ""),
         "urgency": req["urgency"] if req else None,
         "risk_level": req["risk_level"] if req else None,
@@ -213,7 +216,8 @@ def detail(user, card_id):
         warnings = []
         if any(not e["is_current"] for e in evidence):
             warnings.append("stale_evidence")
-        personal = card["draft"].get("note_evidence") or card["draft"].get("record_evidence")
+        personal = (card["draft"].get("note_evidence") or card["draft"].get("record_evidence")
+                    or card["draft"].get("care_evidence"))
         if (not evidence and not personal) or card["draft"].get("no_evidence"):
             warnings.append("no_evidence")
         if card["draft"].get("law_unchecked"):

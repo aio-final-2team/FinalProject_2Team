@@ -251,7 +251,7 @@ def test_info_is_public_allowlisted_and_reports_deployment(client, qa_db, monkey
     response = client.get(BASE + "/qa/info")
     assert response.status_code == 200
     info = response.json()
-    assert info["commit"] == "[TEST] abc123" and info["migration"] == "0021"
+    assert info["commit"] == "[TEST] abc123" and info["migration"] == "0022"
     assert info["deployed_at"] == "2026-11-27T12:00:00+09:00" and info["data_backend"] == "db"
     assert info["qa_orgs"] == list(QA_ORGS)
     assert not any(word in response.text.lower() for word in ("password", "secret", "key", "postgresql"))

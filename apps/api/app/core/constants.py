@@ -46,6 +46,7 @@ def rejection_body(reason_code, reason_text):
     return f"{label} · {reason_text}" if reason_text else label
 
 
+# 선: 권한 밖 고정 안내. 권한 밖인지·어떤 종류인지는 감독 AI가 정하고, 문장은 승인 없이 나가는 예외라 고정해 둬요.
 OUT_OF_SCOPE_MESSAGES = {
     "payment": "유치온에서는 원비 결제를 하지 않아요. 원비는 원에서 안내한 기존 방법으로 문의해 주세요.",
     "others_privacy": "다른 가정의 연락처 같은 개인정보는 알려 드릴 수 없어요.",
@@ -68,7 +69,9 @@ TONE_READ_LIMIT = 8
 TONE_MAX_LENGTH = 80
 SAVED_ANSWER_MIN_SIMILARITY = 0.80
 
-# 자유 글에서 시간·선호를 추측하지 않는 기억 대역이에요. 구체적인 조건 추출은 기억 AI가 맡아요.
+# 기억 모델이 없거나 실패했을 때만 쓰는 규칙 제안 대역이에요. 모델이 있으면 기억 AI가 쌓인 거절 글로
+# 규칙 문장과 rule_json을 제안해요. 대역은 자유 글에서 조건을 추측하지 않고, other는 제안하지 않아요.
+RULE_TEXT_MAX_LENGTH = 80
 REJECTION_RULE_TEXTS = {
     "wrong_fact": "담임이 지적한 사실을 확인한 뒤 초안을 제안해 주세요.",
     "tone": "담임이 남긴 말투 관련 거절 이유를 확인해 초안을 제안해 주세요.",

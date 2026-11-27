@@ -704,3 +704,24 @@ def test_unassigned_consultation_notifies_director_allows_choices_and_recovers_o
         with transaction() as connection:
             assert connection.execute(text("SELECT teacher_id,confirmed_by FROM consultation_bookings WHERE request_id=:id"),
                                       {"id": rid}).one() == (seed.TEACHER_OTHER, seed.TEACHER_OTHER)
+
+
+def test_active_time_rule_limits_candidates_in_both_backends(client, parent, teacher, consultation_backend):
+    """[TEST] 켠 slot_unavailable 규칙의 after가 모의·DB 후보에 똑같이 들어가요. 끈 규칙·다른 이유는 읽지 않아요."""
+    from uuid import uuid4
+    rules = [("slot_unavailable", "active", {"after": "16:00"}), ("slot_unavailable", "off", {"before": "10:00"}),
+             ("tone", "active", {"before": "10:00"})]
+    if consultation_backend == "db":
+        import json
+        with transaction() as connection:
+            for code, status, rule in rules:
+                connection.execute(text("""INSERT INTO memory_rules (org_id,owner_id,reason_code,rule_text,rule_json,status)
+                    VALUES (:org,:owner,:code,'[TEST] 시간 규칙',CAST(:rule AS jsonb),:status)"""),
+                    {"org": seed.ORG, "owner": seed.TEACHER, "code": code, "rule": json.dumps(rule), "status": status})
+    else:
+        from app.mock.records import Rule
+        for code, status, rule in rules:
+            row = Rule(uuid4(), seed.ORG, seed.TEACHER, code, "[TEST] 시간 규칙", rule, status=status)
+            store.state().rules[row.id] = row
+    _, _, slots = prepare(client, parent, teacher)
+    assert all(datetime.fromisoformat(s["period"]["start"]).astimezone(store.KST).hour >= 16 for s in slots)

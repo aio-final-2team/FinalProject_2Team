@@ -5,6 +5,7 @@ import sys
 import pytest
 
 from app.core import db
+from tests import fake_supervisor
 from tools import eval_daily_note, eval_request
 
 
@@ -17,6 +18,8 @@ def test_eval_without_record_never_connects_to_database(tool, monkeypatch, capsy
         pytest.fail("[TEST] --record 없는 평가는 DB에 접근하면 안 된다")
 
     monkeypatch.setattr(db, "get_engine", forbidden)
+    # 요청 평가의 RQ-20(판단 필요)은 낱말 대역이 아니라 가짜 감독 AI 답으로 판단 필요가 돼요.
+    monkeypatch.setattr(eval_request, "classify", fake_supervisor.judged)
     assert tool.main() == (0 if tool is eval_request else None)
     output = capsys.readouterr()
     assert output.err == ""

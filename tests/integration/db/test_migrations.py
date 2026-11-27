@@ -21,7 +21,7 @@ from app.mock import seed
 from db.seeds.demo import seed_demo
 
 ROOT = Path(__file__).resolve().parents[3]
-HEAD_CATALOG = {"tables": 34, "views": 2, "triggers": 2, "foreign_keys": 74, "columns": 328}
+HEAD_CATALOG = {"tables": 34, "views": 2, "triggers": 2, "foreign_keys": 74, "columns": 329}
 
 
 def catalog(connection):
@@ -80,7 +80,7 @@ def test_upgrade_downgrade_upgrade(db_engine, alembic_config):
     command.upgrade(alembic_config, "head")
     with db_engine.connect() as connection:
         assert dict(catalog(connection)) == first_catalog
-        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0021"
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0022"
     assert schema_dump() == first_dump
 
     # 최신 설계를 직접 적용한 스키마도 마이그레이션 head와 같아야 한다.
@@ -141,7 +141,7 @@ def test_child_memos_backfill_constraints_and_revision_round_trip(db_engine, ale
     command.upgrade(alembic_config, "head")
     with db_engine.begin() as connection:
         assert dict(catalog(connection)) == HEAD_CATALOG
-        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0021"
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0022"
         assert dict(connection.execute(text("SELECT * FROM daily_note_inputs WHERE id=:id"),
                                        {"id": before["id"]}).mappings().one()) == {**before, "child_memos": []}
         connection.execute(text("DELETE FROM daily_note_inputs"))
@@ -164,6 +164,7 @@ def test_requeue_action_upgrade_downgrade_preserves_requests_and_old_events(seed
     seeded_db.dispose()
     request_before.pop("care_detail")  # 0012보다 이전 판에는 없는 칸이에요.
     assert request_before.pop("source_note_id") is None  # 0019보다 이전 판에는 없는 칸이에요.
+    assert request_before.pop("intent") is None  # 0022보다 이전 판에는 없는 칸이에요.
     with seeded_db.begin() as connection:
         assert connection.scalar(text("SELECT count(*) FROM events WHERE id=:id"), {"id": original}) == 1
         assert connection.scalar(text("SELECT count(*) FROM events WHERE action='agent_requeued'")) == 0
@@ -587,3 +588,25 @@ def test_transaction_commits_and_rolls_back(db_engine, alembic_config):
     with db.transaction() as connection:
         assert connection.scalar(text("SELECT name FROM organizations WHERE id=:id"), {"id": org_id}) == "[TEST] rollback"
         connection.execute(text("DELETE FROM organizations WHERE id=:id"), {"id": org_id})
+
+
+def test_0022_intent_round_trip_keeps_requests_and_checks_values(seeded_db, alembic_config):
+    with seeded_db.begin() as connection:
+        connection.execute(text("UPDATE requests SET intent='notice' WHERE id=:id"), {"id": seed.REQUEST_COUGH})
+        with pytest.raises(IntegrityError) as error, connection.begin_nested():
+            connection.execute(text("UPDATE requests SET intent='[TEST] 모름' WHERE id=:id"), {"id": seed.REQUEST_COUGH})
+        assert error.value.orig.diag.constraint_name == "requests_intent_check"
+        before = dict(connection.execute(text("SELECT * FROM requests WHERE id=:id"),
+                                         {"id": seed.REQUEST_COUGH}).mappings().one())
+    command.downgrade(alembic_config, "0021")
+    seeded_db.dispose()  # 없어진 칸을 포함하는 SELECT * 준비 구문이 풀 연결에 남지 않게 해요.
+    assert before.pop("intent") == "notice"
+    with seeded_db.begin() as connection:
+        assert dict(connection.execute(text("SELECT * FROM requests WHERE id=:id"),
+                                       {"id": seed.REQUEST_COUGH}).mappings().one()) == before
+    command.upgrade(alembic_config, "head")
+    seeded_db.dispose()
+    with seeded_db.begin() as connection:
+        # 다시 올려도 지운 분류는 복원하지 않아요(NULL = 분류 없음).
+        assert connection.scalar(text("SELECT intent FROM requests WHERE id=:id"), {"id": seed.REQUEST_COUGH}) is None
+        assert dict(catalog(connection)) == HEAD_CATALOG

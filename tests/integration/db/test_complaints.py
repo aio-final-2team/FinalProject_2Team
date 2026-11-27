@@ -16,6 +16,7 @@ from app.mock import seed
 from app.modules.requests.complaints import repeat_count
 from app.modules.notifications.notifications import notify_event
 from app.modules.requests import agent_stub
+from tests import fake_supervisor
 
 
 def save(connection, *, body="[TEST] 가방 분실", created_at=None, topic=None):
@@ -99,6 +100,7 @@ def test_concurrent_second_and_third_complaints_cannot_miss_report(seeded_db, mo
 def test_persisted_deadlines_skip_holidays_only_for_normal_and_overdue_does_not_escalate(
     db_client, seeded_db, monkeypatch, body, risk, expected
 ):
+    fake_supervisor.install(monkeypatch)  # 판단 필요는 가짜 감독 AI가 정해요
     auth = {"Authorization": "Bearer " + issue_token(get_user(seed.DIRECTOR))}
     baseline_delayed = db_client.get("/api/v1/overview", headers=auth).json()["delayed"]
     with seeded_db.connect() as connection:
@@ -134,6 +136,8 @@ def test_high_risk_notifications_persist_configured_after_hours_delivery_without
     seeded_db, monkeypatch, body, categories, kind, immediate
 ):
     from app.core import config
+
+    fake_supervisor.install(monkeypatch)  # 판단 필요는 가짜 감독 AI가 정해요
 
     monkeypatch.setenv("IMMEDIATE_RISK_CATEGORIES", ",".join(categories))
     monkeypatch.setenv("HOLIDAYS", "2026-12-25")

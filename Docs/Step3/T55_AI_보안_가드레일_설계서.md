@@ -110,7 +110,7 @@ flowchart LR
 | GRD-02 | 모델이 없는 문장을 인용으로 지어냄 | 줄 단위로 대조하고, 불일치 이유를 전달해 다시 쓰게 해요. 두 번 재작성해도 실패하면 근거 없는 답변으로 사람에게 넘겨요. | L4 | **시험 확인**(`test_misquote_is_asked_again_with_the_reason_then_accepted`, `test_misquote_every_time_ends_as_no_evidence`). 실제 모델 미검증. | A |
 | GRD-03 | 두 문서의 날짜가 서로 다름 | 충돌로 표시, 안전 문장 | L4·L5 | **확인됨**(시험 `test_conflict_uses_safe_text`) | A |
 | GRD-04 | 검사 AI가 두 번 고장 | 통과로 보지 않고 담임에게 | L5 | **확인됨**(시험 `test_checker_model_error_goes_to_teacher`, `test_repeated_checker_failure_goes_to_teacher`) | A |
-| GRD-05 | 문의: "알레르기 있는 우리 아이가 급식 먹어도 돼요?" | 건강 문의에서 모델이 `uncertain`만 제안하고 위험 종류를 특정하지 않으면 문의를 위험으로 올리지 않아요. 답변은 자료 근거와 검사 결과를 따르며, 의학적으로 안전한지 실제 모델로 검증하지 않았어요. | L1·L5 | **코드·시험 확인**. `supervisor.py:82-86`의 예외 및 `test_inquiry_model_uncertain_without_known_category_stays_normal`; 의학적 답변 안전성은 **실제 모델 미검증**. | A |
+| GRD-05 | 문의: "알레르기 있는 우리 아이가 급식 먹어도 돼요?" | 위험 종류와 상관없는 건강 문의는 `normal`로 두라는 판단 필요 기준을 `supervisor.md` 원칙으로 모델에게 줘요. 모델이 `uncertain`을 내면 코드가 내리지 않고 사람이 다시 분류해요. 답변은 자료 근거와 검사 결과를 따르며, 의학적으로 안전한지 실제 모델로 검증하지 않았어요. | L1·L5 | **코드·시험 확인**. `test_inquiry_model_uncertain_without_known_category_is_kept`; 프롬프트 기준의 효과와 의학적 답변 안전성은 **실제 모델 미검증**. | A |
 | MIX-01 | 다른 반 대상 통신문이 학부모 문의 근거로 검색됨 | 자기 반+원 전체 자료만 | L9 | **확인됨**(`search.py` 반 허용 목록, 시험 `test_search_scope_for_parent_class_and_other_org`) | A |
 | TOOL-01 | 모델이 다른 기관 ID로 자료 검색 | 거부 | L8·L9 | **확인됨**(`search.py` 59줄 기관 ID 불일치 거부) | A |
 | TOOL-02 | 승인 전에 답변·알림장을 보내라는 지시 | 보내지 않음 | L7 | 승인 전 발송은 그래프 `interrupt`가 아니라 `cards.decide`에서 막아요. 승인 기록 뒤에만 `request_messages`에 저장해요(`cards.py`). 그래프는 기본 꺼짐이고, 켜도 승인 결과만 기록해요. | A |
@@ -124,7 +124,7 @@ flowchart LR
 | G-1 | **구현됨** 감독 호출에 공통·감독 프롬프트 연결 | `apps/api/app/modules/requests/supervisor.py:43-53`; `agents/prompts/common.md`, `supervisor.md` | 분류 결과를 만들어요. 프롬프트에 적힌 거절 문장을 실제 모델이 따르는지는 **실제 모델 미검증**이에요. 고정 안내는 코드 경로가 따로 있어요. |
 | G-2 | **구현됨** 입력을 신뢰하지 않을 데이터로 표시 | 감독·답변·검사·알림장 입력 JSON에 `untrusted_data_fields`가 있어요. `supervisor.py:47-53`, `agents/graphs/answer.py:78-82,128-136`, `agents/graphs/daily_note.py` | 모델이 악성 지시를 따르지 않는다는 점은 **실제 모델 미검증**이에요. |
 | G-3 | **구현됨** 세 유형 위험 분류 및 재분류 범위 | `request_rules.py:3-6,27-39`; `migrations/versions/0011_request_risk_all_types.py:12-17`; `modules/cards/cards.py:368-380` | 위험 분류는 문의·상담·민원, 담임 재분류는 회신 카드가 있는 문의·민원이에요. 상담은 시간 확정 흐름으로 재분류 대상이 아니에요. 기존 빈틈은 해소됐어요. |
-| G-4 | **구현됨** 코드가 특정한 주제와 다른 모델 제안을 거부·기록 | `apps/api/app/modules/requests/supervisor.py:59-68,96-100`; `modules/requests/agent_stub.py` `topic_conflict` 호출 | 코드 주제가 `other`가 아니면 다른 주제 제안은 적용하지 않고 충돌을 기록해요. |
+| G-4 | **구현됨** 모델 분류 값을 계약 목록으로만 검사 | `apps/api/app/modules/requests/supervisor.py` `validate_proposal` | 주제·위험·권한 밖은 모델 값이 목록 안이면 그대로 써요. 목록 밖이거나 빠진 칸만 낱말 대역으로 채우고, 낱말이 모델 값을 덮지 않아요. 주제 충돌 기록(`topic_conflict`)은 없앴어요. |
 | G-5 | **구현됨** 감독·답변·검사 입력의 개인정보 형식 가리기 | `agents/guardrails/sensitive.py:5-20`; `supervisor.py:51-53`; `agents/graphs/answer.py:134-150`; 알림장 쓰기·검사 `agents/graphs/daily_note.py`; 요청 그래프 글쓰기·검사 `apps/api/app/modules/requests/graph_agent.py` | 전화·주민등록번호·계좌·이메일 패턴을 모델 입력에서 가려요. 저장 원문은 유지해요. 알림장은 `request_id`를 지키려고 글 칸만 가려요. 시험: `tests/unit/test_t55_guardrails.py`의 `test_daily_note_model_input_masks_sensitive_but_keeps_request_id`·`test_request_graph_writer_and_checker_mask_guardian_body` |
 | G-6 | **구현됨** 의심 자료 조각 표시와 검색·답변 제외 | `apps/api/app/modules/documents/ingest.py:189-212`, `search.py:105-114`, `agents/graphs/answer.py:123-125`; `agents/guardrails/injection.py:5-14` | 표현 목록 밖의 우회 문장은 놓칠 수 있어요. 이력에 조각 번호를 남기며, 자료 화면에 별도 표시한다는 뜻은 아니에요. |
 | G-7 | **구현됨** 답변 초안의 개인정보 형식 검사 | `agents/graphs/answer.py:90-105`; `agents/guardrails/sensitive.py:5-20` | 모델 검사와 별도로 코드가 민감정보 문제를 추가해 교사 확인으로 넘겨요. |
@@ -151,7 +151,7 @@ flowchart LR
 | --- | --- | --- |
 | 권한 밖 질문(P01~P04)은 어디서 막나요? | **현재 구현:** 감독 프롬프트에 분류를 연결했고, 일부 문의·상담은 코드 고정 안내를 해요. 위험·아이 사안은 사람에게 남겨요. 분류 프롬프트의 실제 모델 동작은 미검증이에요. | 2026-11-23 영민 결정. 기존 1·2안 비교는 현재 동작 설명으로 정리했어요. |
 | 전화번호 같은 개인정보는? | **현재 구현:** 모델 입력의 네 가지 형식을 가려요. 원문 요청 저장·교사 확인은 유지돼요. | 2026-11-24 G-5 구현. |
-| 위험 규칙을 문의·상담에도 적용할까요? | **구현됨:** 문의·상담·민원에 위험 분류를 적용해요. 문의·민원은 사람이 재분류할 수 있고 상담은 별도 시간 확정 경로예요. 건강 문의에서 종류 없는 `uncertain`만으로는 위험을 올리지 않아요. | 기존 결정을 반영했어요. 이제 미구현 제안으로 남기지 않아요. |
+| 위험 규칙을 문의·상담에도 적용할까요? | **구현됨:** 문의·상담·민원에 위험 분류를 적용해요. 문의·민원은 사람이 재분류할 수 있고 상담은 별도 시간 확정 경로예요. 판단 필요 기준은 감독 지침 원칙으로 두고, 모델이 낸 `uncertain`을 코드가 내리지 않아요. | 기존 결정을 반영했어요. 이제 미구현 제안으로 남기지 않아요. |
 
 **변경 이력**
 

@@ -710,3 +710,82 @@ def test_unassigned_care_changes_notify_director(client, parent, care_backend):
     rows = notices(care_backend, rid)
     assert len(rows) == 3 and all(str(n["recipient_id"]) == str(seed.DIRECTOR) for n in rows)
     assert [n["kind"] for n in rows] == ["care_requested", "care_requested", "cancelled"]
+
+
+def note_input(client, teacher, care_backend, monkeypatch):
+    """[TEST] 초안을 만들며 작성기에 들어간 기준 아이의 요청 입력을 받아요."""
+    captured = {}
+    if care_backend == "db":
+        from app.modules.daily_notes import stub_writer
+        original = stub_writer.write
+        monkeypatch.setattr(stub_writer, "write", lambda payload: captured.update(
+            {str(c["child_id"]): c["requests"] for c in payload["children"]}) or original(payload))
+    else:
+        original = notes.requests_for_child
+
+        def capture(child, day):
+            captured[str(child.id)] = result = original(child, day)
+            return result
+
+        monkeypatch.setattr(notes, "requests_for_child", capture)
+    response = client.post(BASE + "/daily-notes/drafts", headers=teacher, json={
+        "classroom_id": str(seed.CLASS_STAR), "note_date": store.now().date().isoformat(),
+        "activities": "[TEST] 놀이", "supplies": "수건"})
+    if response.status_code == 200:  # 이미 있는 입력이면 다시 만들기로 작성기를 다시 불러요
+        response = client.post(f"{BASE}/daily-notes/drafts/{response.json()['input_id']}/regenerate", headers=teacher)
+    assert response.status_code == 202, response.text
+    return {str(r["request_id"]): r for r in captured[str(seed.CHILD)]}
+
+
+@pytest.mark.parametrize("kind,written,shown,pattern", [
+    ("medication", None, None, r"^\d{1,2}시( \d{1,2}분)?에 약 먹였어요$"),
+    ("pickup", "  [TEST] 이모(010-1234-5678)께 인계했어요 ", "[TEST] 이모([전화번호])께 인계했어요", None),
+])
+def test_completion_result_line_reaches_care_views_and_note_input(
+        client, parent, teacher, care_backend, monkeypatch, kind, written, shown, pattern):
+    import re
+
+    rid = create(client, parent, kind).json()["request"]["id"]
+    pickup = {"pickup_guardian_id": str(seed.PARENT)} if kind == "pickup" else {}
+    assert note_input(client, teacher, care_backend, monkeypatch)[rid]["result_line"] is None  # 완료 전에는 결과가 없어요
+    # 처리 결과는 완료할 때만 받아요.
+    err(decide(client, teacher, rid, result_line="[TEST] 미리 쓴 결과", **pickup), 422, "VALIDATION_FAILED")
+    assert decide(client, teacher, rid, **pickup).status_code == 200
+    done = decide(client, teacher, rid, "complete", **pickup, **({"result_line": written} if written else {}))
+    assert done.status_code == 200, done.text
+    line = done.json()["care"]["result_line"]
+    assert re.match(pattern, line) if pattern else line == written.strip()
+    assert client.get(f"{BASE}/requests/{rid}", headers=parent).json()["care"]["result_line"] == line
+    item = next(r for r in client.get(BASE + "/care-requests?size=100", headers=teacher).json()["items"] if r["id"] == rid)
+    assert (item["result_line"], item["intent"]) == (line, "ask")
+    staff = next(r for r in client.get(BASE + "/requests?size=100", headers=teacher).json()["items"] if r["id"] == rid)
+    assert staff["intent"] == "ask"  # 투약·귀가는 감독 AI를 거치지 않고 늘 부탁이에요
+    # 다시 만든 알림장 입력에는 (민감정보를 가린) 그 한 줄이 그 요청 자리에 들어가요. 저장 원문은 그대로예요.
+    assert note_input(client, teacher, care_backend, monkeypatch)[rid]["result_line"] == (shown or line)
+
+
+def test_pending_medication_is_counted_for_staff_but_never_blocks_sending(client, parent, teacher, care_backend):
+    day = store.now().date().isoformat()
+
+    def pending(headers=teacher):
+        params = {"date": day, **({} if headers is parent else {"classroom_id": str(seed.CLASS_STAR)})}
+        response = client.get(BASE + "/daily-notes", headers=headers, params=params)
+        assert response.status_code == 200, response.text
+        return response.json()["pending_medication_count"]
+
+    before = pending()
+    rid = create(client, parent).json()["request"]["id"]
+    create(client, parent, "pickup")  # 귀가는 세지 않아요
+    assert pending() == before + 1 and pending(parent) is None
+    assert client.post(BASE + "/daily-notes/drafts", headers=teacher, json={
+        "classroom_id": str(seed.CLASS_STAR), "note_date": day, "activities": "[TEST] 놀이", "supplies": "수건"}).status_code == 202
+    listed = client.get(BASE + "/daily-notes", headers=teacher, params={"date": day, "classroom_id": str(seed.CLASS_STAR)})
+    for note in listed.json()["items"]:
+        assert client.patch(f"{BASE}/daily-notes/{note['id']}", headers=teacher, json={
+            "confirm": True, "resolved_checks": [c["id"] for c in note["open_checks"]]}).status_code == 200
+    sent = client.post(BASE + "/daily-notes/send", headers=teacher, json={"classroom_id": str(seed.CLASS_STAR), "note_date": day})
+    assert sent.status_code == 200, sent.text
+    assert sent.json()["sent_count"] == len(listed.json()["items"]) and pending() == before + 1
+    for action in ("confirm", "complete"):
+        assert decide(client, teacher, rid, action).status_code == 200
+    assert pending() == before

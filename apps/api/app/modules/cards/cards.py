@@ -188,16 +188,17 @@ def decide(user, card_id, body, background_tasks=None):
             raise ApiError(409, "REASON_REQUIRED")
         content = body.edited_content if choice == "edit_approve" else card["draft"]
         original_card = deepcopy(card)
-        if choice == "edit_approve":  # 수정 승인 뒤에도 알림장·관찰 기록 근거를 유지해요
-            content = {**content, **{key: card["draft"][key] for key in ("note_evidence", "record_evidence")
+        if choice == "edit_approve":  # 수정 승인 뒤에도 알림장·관찰 기록·투약·귀가 근거를 유지해요
+            content = {**content, **{key: card["draft"][key] for key in ("note_evidence", "record_evidence", "care_evidence")
                                      if card["draft"].get(key)}}
         if choice in ("approve", "edit_approve") and (
             not isinstance(content.get("text"), str) or not content["text"].strip()
         ):
             raise ApiError(409, "INVALID_TRANSITION")
         approval(connection, card, user, choice, body.reason_code, body.reason_text, body.edited_content)
+        rule_after_commit = None
         if choice in ("reject", "dismiss"):
-            remember_rejection(connection, user, card, choice, body.reason_code, body.reason_text)
+            rule_after_commit = remember_rejection(connection, user, card, choice, body.reason_code, body.reason_text)
         actor = {"card": card, "actor_type": "user", "actor_id": user.id}
         next_card = None
         if consultation_report:
@@ -283,6 +284,11 @@ def decide(user, card_id, body, background_tasks=None):
             else:
                 set_status(connection, req, "awaiting_review", action="drafted", card=next_card)
         response = result(card, req, next_card)
+    if rule_after_commit is not None:  # 거절 규칙 제안 AI는 잠금을 푼 뒤에 불러요
+        if background_tasks is not None:
+            background_tasks.add_task(rule_after_commit)
+        else:
+            rule_after_commit()
     if choice in ("approve", "edit_approve"):
         from app.modules.memories.memories import after_approval
         if background_tasks is not None:

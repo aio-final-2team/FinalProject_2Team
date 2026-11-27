@@ -7,8 +7,11 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from app.api.schemas.common import Page, Period
-from app.api.schemas.requests import MessageOut, RequestStatus, RequestType, SourceOut, BookingOut, RequestView
+from app.api.schemas.requests import (MessageOut, RequestIntent, RequestStatus, RequestType, SourceOut, BookingOut,
+                                      RequestView)
 from app.api.schemas.actions import CardKind, NoteLine
+
+INTENT_NOTE = "감독 AI의 알림/부탁 분류. 투약·귀가는 늘 ask, 분류가 없으면 null"
 
 
 class RequestItem(BaseModel):
@@ -32,6 +35,7 @@ class StaffRequestItem(RequestItem):
     child_name: str | None
     requester_name: str | None
     answered_by: Literal["agent", "staff"] | None
+    intent: RequestIntent | None = Field(default=None, description=INTENT_NOTE)
 
 
 class StaffRequestList(Page):
@@ -44,6 +48,8 @@ class CareRequestItem(RequestItem):
     version: int
     unregistered_pickup: bool
     missing_fields: list[str]
+    result_line: str | None = None
+    intent: RequestIntent | None = Field(default=None, description=INTENT_NOTE)
 
 
 class CareRequestList(Page):
@@ -133,6 +139,7 @@ class CardItem(BaseModel):
     child_name: str | None
     requester_name: str | None
     request_type: Literal["inquiry", "consultation", "complaint"] | None
+    intent: RequestIntent | None = Field(default=None, description=INTENT_NOTE)
     title: str
     urgency: str | None
     risk_level: str | None
@@ -200,6 +207,7 @@ class StaffRequest(RequestView):
     risk_category: str | None
     repeat_count: int | None
     classroom_id: UUID
+    intent: RequestIntent | None = Field(default=None, description=INTENT_NOTE)
 
 
 class EventView(BaseModel):
@@ -318,8 +326,10 @@ class RegenerateResponse(DraftResponse):
 class OpenCheck(BaseModel):
     id: str
     item_key: str
-    kind: Literal["not_in_memo", "sensitive", "other_child", "date_check", "absent", "draft_failed", "check_failed", "request_missed", "return_limit"]
-    problem: str
+    kind: Literal["not_in_memo", "sensitive", "other_child", "date_check", "absent", "draft_failed", "check_failed", "request_missed", "return_limit"] = Field(
+        description="화면에 띄울 행동 버튼 종류. 무엇이 문제인지는 problem이 말해요")
+    problem: str = Field(description="무엇이 문제인지 한 줄. 화면 제목으로 그대로 보여요")
+    action: str | None = Field(default=None, description="선생님이 할 일 한 줄(검사 AI나 코드가 써요, 없으면 null)")
     sentence: str | None = None
     request_id: UUID | None = None
 
@@ -367,6 +377,8 @@ class NoteListItem(NoteView):
 
 class NoteList(Page):
     items: list[NoteListItem]
+    pending_medication_count: int | None = Field(
+        default=None, ge=0, description="그날 아직 완료하지 않은 투약 요청 수(교직원만). 알림장 발송은 막지 않아요")
 
 
 class NoteResponse(BaseModel):

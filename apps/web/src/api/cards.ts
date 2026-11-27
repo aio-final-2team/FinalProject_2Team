@@ -1,6 +1,6 @@
 import { useLiveStream } from "./stream";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { InboxFilter, RequestType, Status } from "@/domain/status";
+import type { InboxFilter, RequestIntent, RequestType, Status } from "@/domain/status";
 import type { Card, CardAction, HistoryItem, Role, Slot, Source } from "@/domain/types";
 import { useSession } from "@/app/session";
 import { api, uuid } from "./client";
@@ -19,6 +19,8 @@ type CardItem = {
   due_at: string | null; is_delayed: boolean; hold_until: string | null;
   /** 요청이 있는 카드에서만 온다. 서버가 아직 안 주면 없다 */
   child_name?: string | null; requester_name?: string | null;
+  /** 감독 AI가 정한 요청 의도(알림 notice·부탁 ask). 투약·귀가는 늘 ask, 값이 없으면 표시 안 함 */
+  intent?: RequestIntent | null;
 };
 type CardList = {
   total: number; page: number; size: number; items: CardItem[];
@@ -63,6 +65,7 @@ const cardFromItem = (item: CardItem, filter: InboxFilter): Card => ({
   repeatCount: item.repeat_count ?? undefined, escalated: item.risk_level === "urgent" || item.kind === "director_report",
   assignee: item.assignee ? { id: item.assignee.id, name: item.assignee.display_name } : undefined,
   assigned: !!item.assignee, slots: item.parent_choice_count ? [] : undefined, history: [],
+  intent: item.intent ?? undefined,
 });
 
 const formatPeriod = (period: Period) => new Date(period.start).toLocaleString("ko-KR", { month: "numeric", day: "numeric", weekday: "short", hour: "2-digit", minute: "2-digit" });
@@ -75,7 +78,10 @@ const actorName = (actor: string, agent: string | null, action: string) =>
 const ACTION_LABEL: Record<string, string> = { created: "접수", classified: "분류", assigned: "담당 배정", drafted: "초안 작성", checked: "검사", approved: "승인", sent: "보내기", rejected: "거절", dismissed: "거절", held: "보류", resumed: "재개", escalated: "원장 보고", completed: "처리 완료", risk_reclassified: "위험 분류 변경", message_added: "글 추가", cancelled: "취소", care_updated: "입력 수정" };
 const actionLabel = (a: string) => ACTION_LABEL[a] ?? "처리 기록";
 
-const cardFromDetail = (data: CardDetail): Card => {
+/** 판단 필요 카드에는 감독 AI가 쓴 이유 한 줄(card.draft.risk_reason)이 올 수 있다. 없으면 화면이 기본 문구를 쓴다 */
+export type CardWithReason = Card & { riskReason?: string };
+
+const cardFromDetail = (data: CardDetail): CardWithReason => {
   const req = data.request;
   const sources: Source[] = data.evidence.map((e) => ({ doc: e.document_title, where: e.location ?? "", effective: e.effective_from ?? "", old: !e.is_current }));
   const slots: Slot[] | undefined = data.parent_choices.length ? data.parent_choices.map((s) => ({ id: String(s.slot_id), at: formatPeriod(s.period), mode: "대면", picked: true })) : undefined;
@@ -92,6 +98,7 @@ const cardFromDetail = (data: CardDetail): Card => {
     previousText: typeof data.card.draft.previous_text === "string" && data.card.draft.previous_text ? data.card.draft.previous_text : undefined,
     check: data.card.check_result ? { passed: !!data.card.check_result.passed, note: data.card.check_result.note, issues: (data.card.check_result.issues ?? []).map(issueText).filter(Boolean), attempt: data.card.check_result.attempt } : undefined,
     warnings: data.warnings ?? [], noEvidence: !!data.card.draft?.no_evidence,
+    riskReason: typeof data.card.draft.risk_reason === "string" && data.card.draft.risk_reason.trim() ? data.card.draft.risk_reason.trim() : undefined,
     repeatCount: req?.repeat_count ?? undefined, escalated: req?.status === "escalated" || data.card.kind === "director_report",
     assigned: true, parentConfirmedAt: req?.parent_confirmed_at ?? undefined, slots, directorNote: data.director_instruction?.text, history,
   };
@@ -156,7 +163,7 @@ function issueText(i: unknown): string {
 }
 
 /** 반려 이유 칩 → API 이유 코드 (문서 4.1). 칩에 없는 이유는 other + reason_text */
-const REASON_CODE: Record<string, string> = { "개인정보 요청": "privacy", "원 운영 범위 밖": "policy" };
+const REASON_CODE: Record<string, string> = { "개인정보 요청": "privacy", "원 운영 범위 밖": "policy", "연장반 당번": "slot_unavailable" };
 type ActionResponse = { card?: { id?: string; status?: string; version?: number } };
 
 /** 카드 행동을 API 계약의 기능별 엔드포인트와 요청 본문으로 변환한다. */

@@ -6,6 +6,7 @@
 채점(data/evaluation/daily_note/README.md 3장)
 - 금지어: AI가 쓴 줄(아이 메모·보호자 요청)에 must_not_include 낱말이 없어야 한다. 반 공통 줄은 보지 않는다.
 - 확인 항목: expect_flag면 flag_kind가 open_checks에 있어야 하고, 아니면 메모로 시험하는 종류가 없어야 한다.
+  kind는 화면 행동 버튼 종류(검사 AI가 고르는 MODEL_KINDS)이고, 무엇이 문제인지는 problem·action 문장이라 사람이 본다.
 - 꼭 들어갈 사실(must_include)은 뜻으로 봐야 해서 자동 채점하지 않고 결과 파일에 함께 적어 사람이 본다.
 - 보호자 요청(guardian_requests.json expect): 그 요청을 다룬 줄(source.request_id)이 있고, 줄 key가 line_key와 같고,
   그 줄에 must_not_include가 없고, teacher_check가 있으면 그 kind가 open_checks에 있어야 한다.
@@ -21,12 +22,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from agents.graphs.daily_note import draft_daily_notes  # noqa: E402
+from agents.graphs.daily_note import LEFT_OUT_REASONS, MODEL_KINDS, draft_daily_notes  # noqa: E402
 
 DATA = ROOT / "data/fixtures/kg-demo-01"
 CASES = ROOT / "data/evaluation/daily_note/daily_note_trap_cases.json"
 REQUESTS = DATA / "daily_notes/guardian_requests.json"
-MEMO_KINDS = {"not_in_memo", "sensitive", "other_child", "date_check", "absent"}
+MEMO_KINDS = MODEL_KINDS  # 그래프 계약과 같은 집합을 쓴다(따로 적으면 계약이 바뀔 때 어긋난다)
 AI_KEYS = {"child", "medication", "pickup"}
 
 
@@ -86,7 +87,7 @@ def score(case: dict, note: dict, allowed: set[str] = frozenset()) -> dict:
     if case["id"] == "ND-04":  # 빈 메모: 아이 메모 줄이 없어야 한다
         hits += ["(child 줄 있음)"] if any(line["key"] == "child" for line in note["content"]["items"]) else []
     elif (case.get("memo") or "").strip() and not any(line["key"] == "child" for line in note["content"]["items"]):
-        if not kinds & {"sensitive", "other_child", "date_check", "absent"}:
+        if not kinds & LEFT_OUT_REASONS:
             hits.append("(child 줄 없음)")
     return {"id": case["id"], "category": case["category"], "pass": not hits and flag_ok,
             "banned_hits": hits, "flag_ok": flag_ok, "kinds": sorted(kinds),

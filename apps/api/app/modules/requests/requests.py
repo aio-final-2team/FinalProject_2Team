@@ -7,7 +7,7 @@ from sqlalchemy import text
 from app.api.labels import parent_label, staff_label
 from app.core import scope
 from app.core.constants import CARE_REQUEST_TYPES, MEDICATION_FIELDS
-from app.core.care import input_detail
+from app.core.care import input_detail, request_intent
 from app.core.db import transaction
 from app.core.errors import ApiError
 from app.core.consents import require_complete
@@ -43,10 +43,11 @@ def create(user, *, background_tasks, client_request_id, type, body, child_id, p
                 raise ApiError(409, "INVALID_TRANSITION")
         require_complete(user)
         row = connection.execute(text("""
-            INSERT INTO requests (org_id,classroom_id,child_id,requester_id,client_request_id,type,body,title,previous_request_id,missing_fields,care_detail,source_note_id)
-            VALUES (:org,:class,:child,:user,:key,:type,:body,:title,:previous,CAST(:missing AS jsonb),CAST(:care AS jsonb),:note)
+            INSERT INTO requests (org_id,classroom_id,child_id,requester_id,client_request_id,type,body,title,previous_request_id,missing_fields,care_detail,source_note_id,intent)
+            VALUES (:org,:class,:child,:user,:key,:type,:body,:title,:previous,CAST(:missing AS jsonb),CAST(:care AS jsonb),:note,:intent)
             ON CONFLICT (requester_id,client_request_id) DO NOTHING RETURNING *
         """), {**values, "class": child["classroom_id"], "child": child_id, "type": type, "body": body,
+               "intent": request_intent(type, None),  # 투약·귀가는 감독 AI를 거치지 않아요. 나머지는 분류 때 저장해요
                "title": body.split("\n")[0][:40], "previous": previous_request_id, "care": json.dumps(detail), "note": source_note_id,
                "missing": json.dumps([k for k in MEDICATION_FIELDS if not (detail.get(k) or "").strip()]
                                      if type == "medication" else [])}).mappings().one_or_none()
@@ -370,6 +371,7 @@ def staff_listing(user, status, page, size, sort, answered_by, classroom_id, typ
             cancelled = care.view(connection, req)["cancelled_by_parent"] if is_care and req["status"] == "rejected" else False
             items.append({**{k: req[k] for k in ("id", "type", "title", "status", "updated_at", "classroom_id",
                                                "child_id", "child_name", "requester_name", "answered_by")},
+                          "intent": request_intent(req["type"], req["intent"]),
                           "status_label": staff_label(req["status"], req["type"], cancelled_by_parent=cancelled),
                           "next_action": ("confirm" if req["status"] == "received" else
                                           "complete" if req["status"] == "assigned" else None) if is_care else None,
@@ -378,6 +380,7 @@ def staff_listing(user, status, page, size, sort, answered_by, classroom_id, typ
 
 
 def message(user, request_id, body, *, background_tasks):
+    reopened = False
     with transaction() as connection:
         scope.request_in_scope(user, request_id, connection=connection)
         require_complete(user)
@@ -413,9 +416,12 @@ def message(user, request_id, body, *, background_tasks):
                         closed_at=NULL,hold_until=NULL,version=version+1,updated_at=clock_timestamp(),
                         draft=CAST(:draft AS jsonb),check_result=NULL WHERE id=:id RETURNING *
                 """), {"id": row["id"], "draft": json.dumps(draft)}).mappings().one())
+                reopened = True
             req["parent_confirmed_at"] = None
             connection.execute(text("UPDATE requests SET parent_confirmed_at=NULL WHERE id=:id"), {"id": request_id})
             set_status(connection, req, "awaiting_review", action="returned", card=card, actor_type="user", actor_id=user.id)
+    if reopened:  # 커밋한 뒤 처음 초안과 같은 일꾼이 새 글까지 넣은 대화로 다시 써요. 실패하면 빈 초안 그대로예요
+        dispatch("redraft", request_id, background_tasks)
     return {"message": msg}
 
 

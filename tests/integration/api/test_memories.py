@@ -57,6 +57,7 @@ def decide_rule(client, teacher, rule_id, choice):
 
 
 def test_third_rejection_proposes_one_card_and_retry_does_not_duplicate(client, parent, teacher, memory_backend):
+    """[TEST] 모델 없음 대역: 기억 모델이 꺼져 있으면 코드별 고정 문장과 reason_code만 제안해요."""
     source_cards = []
     for index in range(3):
         _, cid, response = reject(client, parent, teacher, reason_text="[TEST] 짧게 안내해 주세요")
@@ -182,6 +183,7 @@ def test_dismiss_saves_reason_but_approve_and_director_do_not_train_teacher(clie
 
 
 def test_other_text_is_saved_verbatim_but_not_copied_to_automatic_rule(client, parent, teacher):
+    """[TEST] 모델 없음 대역: other 자유 글은 같은 이유인지 몰라 제안하지 않아요. 모델이 있으면 AI가 정해요."""
     for _ in range(3):
         reject(client, parent, teacher, code="other", reason_text="[TEST] 일회성 사정")
     assert len(memories(client, teacher)) == 3
@@ -348,7 +350,8 @@ def test_deleted_memory_erases_content_and_structured_but_keeps_audit_row(
 
 
 @pytest.mark.parametrize("rule_json", [[], {"after": "3pm"}, {"before": "24:00"}, {"after": None},
-                                       {"before": "09:00:00"}])
+                                       {"before": "09:00:00"}, {"after": "15:00", "before": "14:00"},
+                                       {"weekdays": []}, {"weekdays": [7]}, {"weekdays": "화"}])
 def test_rule_tool_rejects_invalid_time_bounds(memory_backend, rule_json):
     from app.core.errors import ApiError
     if memory_backend == "mock":

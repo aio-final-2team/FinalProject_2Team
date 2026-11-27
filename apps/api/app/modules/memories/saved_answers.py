@@ -29,7 +29,7 @@ def masked_question(req):
 
 def remember_answer(user, card, req, content):
     if (req["type"] != "inquiry" or card["draft"].get("no_evidence") or card["draft"].get("conflict") or card["draft"].get("note_evidence")
-            or card["draft"].get("record_evidence") or not embedding.enabled()):
+            or card["draft"].get("record_evidence") or card["draft"].get("care_evidence") or not embedding.enabled()):
         return
     with transaction() as connection:
         sources = list(connection.scalars(text("""

@@ -555,7 +555,7 @@ X-Request-ID: 0e7d4a51-2c3b-4f6e-9a18-5b7c9d0e1f23
 최종 확정은 담임 → 상담실 순서로 거는 자문 잠금과 DB 배제 제약으로 한 건만 받는다(DB 설계서 9.1 F1-7).
 확정하면 학부모에게 `consultation_booked` 알림을 한 번 남긴다. 제목은 "상담 예약 확정", 본문은 예약한 한국 날짜·시간(`YYYY-MM-DD HH:MM~HH:MM`)이다. 문의·민원 회신 알림은 기존 `sent_or_booked`("답변 도착")를 쓴다.
 
-`none_fit`은 기존 후보를 버리고 희망 시간과 겹치는 빈 후보를 먼저, 겹침이 없으면 시간 거리가 가까운 순으로 최대 3개 다시 제안한다. `preferred_times`의 명시 날짜(YYYY-MM-DD), 오늘·내일·모레·다음 주·요일, HH:MM·오전/오후 시각·범위·이후/이전·오전/오후를 코드가 읽고, 해석하지 못한 문장은 원문을 이력에 보존한 채 빠른 시간 순서를 쓴다. 담임(없으면 원장)에게 원문을 담은 `parent_message` 알림을 남긴다. 다음 재제안·재배정에도 마지막 희망 시간을 반영한다.
+`none_fit`은 기존 후보를 버리고 희망 시간과 겹치는 빈 후보를 먼저, 겹침이 없으면 시간 거리가 가까운 순으로 최대 3개 다시 제안한다. `preferred_times`(첫 후보는 상담 요청 글)는 후보를 만들 때 작은 AI 호출(감독 모델)이 `{date_from, date_to, weekdays, part_of_day, after, before}` 구조값으로 옮기고, 코드는 값이 계약 안에 있는지만 본다. 감독 모델이 없거나 실패하면 명시 날짜·오늘/내일/모레·다음 주·요일·시각·범위·이후/이전·오전/오후 정규식 대역을 쓴다. 희망이 없으면 확인된 보호자 선호의 시각·요일을, 그것도 없으면 빠른 시간 순서를 쓰고, 원문은 이력에 보존한다. 담임(없으면 원장)에게 원문을 담은 `parent_message` 알림을 남긴다. 다음 재제안·재배정에도 마지막 희망 시간을 반영한다.
 담임 없는 반은 `unassigned` 상담 카드의 생성 때 원장에게 `new_card`를 보낸다. 후보가 있으면 학부모 체크를 허용하고, 후보가 없으면 원장 재배정으로 새 담당 기준 후보를 계산한다.
 확정 순간 충돌은 해당 후보만 `discarded`, 나머지 후보·체크는 보존하고 새 회차 후보를 최대 3개 더 만든다. 카드 판을 1 올리고 요청을 `needs_info`로 돌려 `slot_conflict_reproposed`(detail.slot_id·new_slot_ids)와 학부모 `needs_info` 알림을 같은 트랜잭션에 저장한다. 그 뒤 409 `SLOT_TAKEN`을 반환하므로 요청·카드를 새로 읽고 다시 선택한다. 충돌 때 승인·예약은 만들지 않는다. 재체크는 살아 있는 이전 후보도 받으며 최종 체크 목록을 교체한다. 알림 저장 실패는 재제안도 함께 롤백한다.
 
@@ -692,6 +692,7 @@ T12 화면 지도에 나온 화면들이 조회 응답에서 쓰는 칸을 여�
 | `messages[] { id, sender_type, sender_role, body, created_at }` | 목록 | 항상(요청 없으면 빈 목록) | 해당 요청의 전체 대화를 메시지 ID 오름차순으로 준다. 사람의 역할은 `parent`·`teacher`·`director`, AI·시스템 역할은 null이다. 카드의 기관·반·담당 권한을 먼저 검사한다 | `request_messages` → `users.role` |
 | `card.note_batch`·`card.status_label` | 객체·string 또는 null | 알림장 묶음 카드 | 목록과 같은 반 아이별 상태·초안 진행/실패 표시 | 위 목록 규칙과 같음 |
 | `card.summary` | string | AI가 만든 카드 | AI 요약(`create_card`의 `summary`) | `cards.draft->>'summary'` |
+| `card.draft.risk_reason` | string 또는 없음 | 판단 필요 요청의 카드 | 감독 AI가 쓴 판단 필요 이유 한 줄(최대 80자, 민감정보 가림). 화면은 값이 없으면 기본 문구를 쓴다. 마이그레이션 없이 회신·원장 보고·상담 후보 카드 초안에 남긴다 | `cards.draft->>'risk_reason'` |
 | `card.check_result { passed, issues, attempt }` | 객체 또는 null | 검사 결과가 있을 때 | passed는 boolean, attempt는 검사 횟수(integer), issues는 아래 모양의 목록이며 없으면 []. 요청 백엔드는 그래프가 준 검사 결과와 부가 칸(memory_unavailable 등)을 그대로 저장한다 | `cards.check_result` |
 | `card.check_result.issues[] { field, problem }` | object[] | 검사 지적이 있을 때 | field는 검사 항목(string: 출처·날짜·대상·누락·민감정보), problem은 사람이 읽는 설명(string). 예: `[{"field":"출처","problem":"자료 답변을 확인하지 못했어요."}]` | `cards.check_result->'issues'` |
 | `evidence[].is_current` | boolean | 근거가 있을 때 | 근거 문서가 지금 판이면 참. 옛 판(`superseded`)이거나 충돌 확인 대기(`conflict_pending`)이거나 적용 기간이 지난 문서면 거짓. 초안 근거의 같은 chunk_id는 저장 전에 첫 인용·점수만 남기고 순서대로 rank를 매긴다 | `documents.status`·`effective_to` |
@@ -728,14 +729,14 @@ T12 화면 지도에 나온 화면들이 조회 응답에서 쓰는 칸을 여�
 
 | 필드 | 값 | 설명 |
 | --- | --- | --- |
-| `items[].key` | `day`·`meal`·`medication`·`pickup`·`supplies`·`child`·`inquiry` | 줄 종류. `child`는 아이별 메모를 풀어 쓴 줄로 출처는 `teacher_input`이며, 메모가 없거나 공백뿐이면 이 줄도 없다. 보호자 문의는 반 공통 `day`와 따로 `inquiry` 줄로, 투약·귀가는 `medication`·`pickup` 줄로 잇고, 이 줄들의 출처는 `request`다. 투약·귀가를 실제로 확인하는 일은 3.27에서 다루고, 현재 상태는 응답의 request_status로 보여 준다 |
-| `items[].source.type` | `teacher_input`·`document`·`request` | 순서대로 담임 입력(`daily_note_inputs`), 원 자료(식단·일정), 학부모 요청(문의·투약·귀가) |
+| `items[].key` | `day`·`meal`·`medication`·`pickup`·`supplies`·`child`·`inquiry` | 줄 종류. `child`는 아이별 메모를 풀어 쓴 줄로 출처는 `teacher_input`이며, 메모가 없거나 공백뿐이면 이 줄도 없다. 투약·귀가는 `medication`·`pickup` 줄로 잇고, 이 줄들의 출처는 `request`다. 문의는 #406부터 알림장에 넣지 않고 받은함에서만 다루므로 새 초안에는 `inquiry` 줄이 생기지 않는다. `inquiry`는 그 전에 저장한 알림장을 고칠 수 있게 남긴 값이다. 투약·귀가를 실제로 확인하는 일은 3.27에서 다루고, 현재 상태는 응답의 request_status로 보여 준다 |
+| `items[].source.type` | `teacher_input`·`document`·`request` | 순서대로 담임 입력(`daily_note_inputs`), 원 자료(식단·일정), 학부모 투약·귀가 요청 |
 | `items[].source.document_id`·`document_title` | — | `document`일 때 |
 | `items[].source.request_id` | — | `request`일 때 |
-| `open_checks[] { id, item_key, kind, problem, sentence, request_id? }` | — | 확인할 항목. `id`·`item_key`·`kind`·`problem`은 필수이고, 그중 `problem`은 선생님이 읽는 설명이다. `sentence`는 문제가 걸린 초안 문장이며 없으면 null이다. `request_id`는 선택 칸(UUID)이라 생략하거나 null로 둘 수 있고, 보호자 요청 누락일 때 해당 요청 ID를 넣는다. `resolved_checks[]`에는 `id`만 보낸다 |
-| `open_checks[].kind` | `not_in_memo`·`sensitive`·`other_child`·`date_check`·`absent`·`draft_failed`·`check_failed`·`request_missed`·`return_limit` | 순서대로 메모에 없음·민감 정보·다른 아이·날짜 확인·결석·아이 초안 실패·검사 실패·보호자 요청 누락·AI 수정 한도 초과 |
+| `open_checks[] { id, item_key, kind, problem, action?, sentence, request_id? }` | — | 확인할 항목. `id`·`item_key`·`kind`·`problem`은 필수이고, 그중 `problem`은 무엇이 문제인지 한 줄로, 화면 제목으로 그대로 보인다. `action`은 선생님이 할 일 한 줄(선택, 없으면 null)이다. 둘 다 검사 AI가 자기 말로 쓰고, 코드가 만드는 확인은 코드 문구를 쓴다. `sentence`는 문제가 걸린 초안 문장이며 없으면 null이다. `request_id`는 선택 칸(UUID)이라 생략하거나 null로 둘 수 있고, 보호자 요청 누락일 때 해당 요청 ID를 넣는다. `resolved_checks[]`에는 `id`만 보낸다 |
+| `open_checks[].kind` | `not_in_memo`·`sensitive`·`other_child`·`date_check`·`absent`·`draft_failed`·`check_failed`·`request_missed`·`return_limit` | 화면에 띄울 행동 버튼 종류. 순서대로 메모에 없음·보내기 전 선생님 확인(일반)·다른 아이·날짜 확인·결석·아이 초안 실패·검사 실패·보호자 요청 누락·AI 수정 한도 초과. 무엇이 문제인지는 `problem`이 말한다 |
 
-`return_limit`의 `problem` 예시는 "AI가 두 번 고쳐도 남은 문제가 있어요. 직접 확인해 주세요"다. 다른 확인 항목과 함께 해결해야 `ready`로 확인하고 발송할 수 있다. 그래프가 백엔드에서 아직 지원하지 않는 문자열 종류를 주면 백엔드는 초안을 보존하고 그 항목의 `kind`만 `check_failed`로 바꾼다. 원래 종류 이름은 로그에만 남기고 `problem`에 붙이지 않는다. 나머지 형식·출처 검증은 그대로 적용하며 `end`·`handoff_reason`은 저장하지 않는다.
+`return_limit`의 `problem` 예시는 "AI가 두 번 고쳐도 남은 문제가 있어요", `action`은 "직접 확인해 주세요"다. 다른 확인 항목과 함께 해결해야 `ready`로 확인하고 발송할 수 있다. 그래프가 백엔드에서 아직 지원하지 않는 문자열 종류를 주면 백엔드는 초안을 보존하고 그 항목의 `kind`만 일반 확인인 `sensitive`로 바꾼다. `problem`·`action`은 그대로 살리고, 원래 종류 이름은 로그에만 남긴다. 나머지 형식·출처 검증은 그대로 적용하며 `end`·`handoff_reason`은 저장하지 않는다.
 
 학부모가 받는 알림장(`sent`)의 `open_checks`는 늘 빈 목록이다(DB 제약).
 
@@ -800,7 +801,7 @@ HTTP/1.1 200 OK
 | `items[].hold_until` | 응답 | date | 항상 | null 가능 | 보류 카드의 예정일 | 할 일이나 보류가 없으면 해당 칸은 null |
 | `total`·`page`·`size` | 응답 | integer | 항상 | 불가 | 전체 건수·요청한 쪽·크기 | 목록 공통 칸 |
 
-학부모는 기존 `RequestList` 모양을 그대로 받아요. 교직원은 `StaffRequestList`로 같은 요약 칸에 `classroom_id`·`child_id`·`child_name`·`requester_name`·`answered_by`를 더 받아요. 반·아이가 없는 요청도 원장은 볼 수 있고 classroom_id·아이 두 칸은 null이 될 수 있어요. 이름은 현재 표시 이름이에요. 교직원 `status_label`은 `staff_label`을 써요. `next_action`은 투약·귀가의 received면 confirm, assigned면 complete, 나머지는 null이에요. `hold_until`은 기존 보류 예정일이에요.
+학부모는 기존 `RequestList` 모양을 그대로 받아요. 교직원은 `StaffRequestList`로 같은 요약 칸에 `classroom_id`·`child_id`·`child_name`·`requester_name`·`answered_by`·`intent`를 더 받아요. `intent`는 감독 AI가 분류 때 정한 알림(notice)/부탁(ask)이고, 투약·귀가는 늘 ask, 분류 전·모델 실패 인계는 null이에요. 카드 목록 항목과 카드 상세 request에도 같은 칸이 있고, 학부모 응답에는 넣지 않아요. 반·아이가 없는 요청도 원장은 볼 수 있고 classroom_id·아이 두 칸은 null이 될 수 있어요. 이름은 현재 표시 이름이에요. 교직원 `status_label`은 `staff_label`을 써요. `next_action`은 투약·귀가의 received면 confirm, assigned면 complete, 나머지는 null이에요. `hold_until`은 기존 보류 예정일이에요.
 
 `answered_by=agent`는 `out_of_scope_answered` 이력이 있는 요청이에요. 서비스가 할 수 없는 질문에 정해진 문구로 바로 안내한 건이고 AI가 쓴 답은 아니에요(화면에는 '바로 안내'처럼 보여 줘요). 그 밖에 현재 상태나 이력이 `sent_or_booked`·`completed`까지 간 요청은 staff, 아직 답하지 않았으면 null이에요. 답변 뒤 대화가 이어져도 이력을 유지해요. AI 바로 안내는 카드 없이도 이 목록에서 찾아요.
 
@@ -835,7 +836,7 @@ HTTP/1.1 200 OK
 | `received`·`classified`·`assigned` | 추가 알림 없음. AI가 만든 카드 상세의 `messages[]`에서 대화를 읽는다. |
 | `awaiting_review`·`on_hold`·`escalated`·상담 아닌 `needs_info` | 같은 요청의 열린 카드(`done`·`rejected` 제외) 담당자마다 `parent_message` 알림을 하나씩 보낸다. 담당자가 없으면 원장에게 보낸다. 상태는 그대로다. |
 | 상담 `needs_info`·`sent_or_booked` | 담임(없으면 원장)에게 `parent_message`만 보낸다. 상담 후보·예약과 카드 상태는 그대로다. |
-| 문의·민원 `sent_or_booked` | 최신 `reply_draft`를 다시 열어 판을 1 올리고 닫힌 시각·보류 예정일을 지운다. `draft.text`는 빈 문자열, `check_result`는 null, 직전 발송 글은 `draft.previous_text`로 남긴다. 카드가 없으면 현재 유효한 담임에게 초안 없는 회신 카드를 새로 만들고, 담임이 없으면 `unassigned`다. 학부모 확인을 지우고 요청을 `awaiting_review`로 돌려 `new_card` 알림을 보낸다(담당 없으면 원장). |
+| 문의·민원 `sent_or_booked` | 최신 `reply_draft`를 다시 열어 판을 1 올리고 닫힌 시각·보류 예정일을 지운다. `draft.text`는 빈 문자열, `check_result`는 null, 직전 발송 글은 `draft.previous_text`로 남긴다. 커밋 뒤 처음 초안과 같은 일꾼이 새 글까지 넣은 대화로 답변 AI 초안을 다시 써 `draft.text`·`check_result`·근거를 채우고 판을 1 더 올린다(답변 AI가 꺼져 있거나 근거 없음·충돌·실패, 그새 담임이 손댄 카드는 빈 초안 그대로). 카드가 없으면 현재 유효한 담임에게 초안 없는 회신 카드를 새로 만들고, 담임이 없으면 `unassigned`다. 학부모 확인을 지우고 요청을 `awaiting_review`로 돌려 `new_card` 알림을 보낸다(담당 없으면 원장). |
 
 `parent_message` 제목은 “학부모가 글을 더 남겼어요”다. 다시 연 카드의 빈 초안을 그대로 `approve`하면 기존 규칙대로 409 `INVALID_TRANSITION`이다. 담임은 `edit_approve`에 직접 쓴 `edited_content.text`를 넣어야 보낼 수 있다. 이전 발송 글은 요청 대화에도 그대로 남는다.
 
@@ -1113,7 +1114,7 @@ HTTP/1.1 200 OK
 | ⑦ 오류 응답 | 아래 오류 표. |
 | ⑧ 실행 규칙 | 연결된 제안 카드를 done으로 바꾸고 판을 1 올린다. 켜면 approve, 거절하면 reject로 결정과 이력을 남긴다. 같은 규칙을 다시 요청하면 409다. 모의 상담 후보에는 규칙을 적용하지 않는다. |
 
-DB 모드도 같은 결정 계약을 쓴다. 카드를 거절하거나 반려한 이유는 결정한 담임의 기억에 저장하는데, 이때 출처 요청이 속한 반의 아이 이름을 가린다. 반이 없으면 같은 기관 전체의 아이 이름을 본다. 이름은 앞에 한글이 없고 뒤에 글 끝·공백·문장부호나 조사·호칭이 올 때만 가리며, 다른 낱말 안에 섞인 글자는 그대로 둔다. 지우지 않은 기억 가운데 같은 코드가 세 건 이상이면 제안 카드 하나를 만든다. 같은 주인·같은 코드에 decline 결정이 있었다면, 마지막 decline 뒤로 새 기억이 세 건 쌓여야 다시 제안한다. 개인 규칙 제안은 재배정하지 않고, 주인에게 근무 시간을 기준으로 new_card 알림을 남긴다. 자동 대역은 코드별 안내만 제안하며, `other` 자유 글로는 자동 규칙을 만들지 않는다. 구체적인 조건은 기억 AI가 뽑아내고, DB의 상담 계산은 `active` 상태인 `slot_unavailable` 규칙의 시간 조건만 읽는다.
+DB 모드도 같은 결정 계약을 쓴다. 카드를 거절하거나 반려한 이유는 결정한 담임의 기억에 저장하는데, 이때 출처 요청이 속한 반의 아이 이름을 가린다. 반이 없으면 같은 기관 전체의 아이 이름을 본다. 이름은 앞에 한글이 없고 뒤에 글 끝·공백·문장부호나 조사·호칭이 올 때만 가리며, 다른 낱말 안에 섞인 글자는 그대로 둔다. 지우지 않은 기억 가운데 같은 코드가 세 건 이상이면 제안 카드 하나를 만든다. 같은 주인·같은 코드에 decline 결정이 있었다면, 마지막 decline 뒤로 새 기억이 세 건 쌓여야 다시 제안한다. 개인 규칙 제안은 재배정하지 않고, 주인에게 근무 시간을 기준으로 new_card 알림을 남긴다. 세 건이 쌓이면 기억 AI가 그 거절 글들을 읽고 공통된 바람이 있을 때만 규칙 문장과 `rule_json`(상담 시간 조건 `after`·`before`·`weekdays`)을 제안한다. `other`도 AI가 같은 바람인지 판단한다. 코드는 규칙 문장의 길이·아이 이름·민감정보·진단·가정사와 `rule_json` 형식만 검사한다. 기억 모델이 없거나 실패하면 대역으로 코드별 고정 안내와 `{reason_code}`만 제안하며, 이때 `other`는 제안하지 않는다. 상담 계산은 `active` 상태인 `slot_unavailable` 규칙의 시간 조건만 읽고, `weekdays`가 있으면 그 요일에만 적용한다.
 
 | 필드 | 위치 | 타입 | 필수 | 빈값 | 제약 | 설명 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -1196,7 +1197,7 @@ HTTP/1.1 200 OK
 
 초안을 만드는 입구 함수의 전체 입력은 `{ input_id, note_date, classroom, activities, supplies, children, roster_names, menu }`이고, 이 중 `menu`는 `{ document_id, title, text }` 또는 null이다. `roster_names`는 반 전체 아이 이름이며, 부분 재생성으로 `children`을 걸러도 유지한다(3.26). 아이별 입력은 `{ child_id, display_name, memo, requests: [{ request_id, type, text }] }`다. `requests`는 클라이언트가 보내지 않고 서버가 모은다. 같은 기관·반·아이의 보호자가 보낸 `medication`·`pickup` 요청 가운데 `created_at`의 한국 날짜가 `note_date`인 것을 모으며, 해당 요청이 없으면 빈 목록이다. 문의·상담·민원은 답이 있어야 끝나는 일이라 알림장에 넣지 않고 받은함에서만 다룬다(알림장은 아이의 하루·식사·투약·귀가·준비물, 기획서 FR-14). 각 항목의 `text`에는 보호자 요청 본문이 들어간다. DB 모드의 실행기(runner)도 이 입구를 같은 모양으로 부른다.
 
-모의 초안은 요청 원문을 `source: { type: request, request_id }` 줄에 넣는다. 하늘의 "기침해요"와 다른 귀가 요청은 반영하지만, 노을의 고정 귀가 요청(…70a) 하나만은 일부러 빼서 `request_missed`를 보여 준다. 이 항목은 `item_key: pickup`, `sentence: null`, `request_id: …70a`다. 교사는 요청을 확인한 뒤 기존 PATCH의 `resolved_checks`로 해결한다. 미해결 항목이 남아 있으면 확인·발송을 막는 규칙도 기존과 같다.
+모의 초안은 요청 원문을 `source: { type: request, request_id }` 줄에 넣는다. 그날 접수한 투약·귀가 요청은 반영하지만(하늘의 문의 "기침해요"는 받은함에서만 다룬다), 노을의 고정 귀가 요청(…70a) 하나만은 일부러 빼서 `request_missed`를 보여 준다. 이 항목은 `item_key: pickup`, `sentence: null`, `request_id: …70a`다. 교사는 요청을 확인한 뒤 기존 PATCH의 `resolved_checks`로 해결한다. 미해결 항목이 남아 있으면 확인·발송을 막는 규칙도 기존과 같다.
 
 ```http
 POST /api/v1/daily-notes/drafts
@@ -1365,7 +1366,7 @@ HTTP/1.1 200 OK
 | --- | --- | --- | --- | --- | --- | --- |
 | `note_id` | 경로 | string(UUID) | 필수 | 불가 | 현재 담당 반 알림장 | 3.20 응답에서 받은 ID |
 | `content` | 본문 | object | 선택 | null 가능 | items[]의 key·label·value·source는 3.7; 빈 items도 허용 | 생략·null이면 내용 유지 |
-| `content.items[].key` | 본문 | string | 줄마다 필수 | 불가 | day·meal·medication·pickup·supplies·child·inquiry | 줄 종류. child의 출처는 teacher_input, inquiry는 request만 허용 |
+| `content.items[].key` | 본문 | string | 줄마다 필수 | 불가 | day·meal·medication·pickup·supplies·child·inquiry | 줄 종류. child의 출처는 teacher_input, inquiry는 request만 허용(#406 전에 저장한 알림장용. 새 초안에는 없음) |
 | `content.items[].label`·`value` | 본문 | string | 줄마다 필수 | value만 빈 문자열 가능 | label은 1자 이상, value 길이 제한 없음 | 줄 이름과 내용 |
 | `content.items[].source` | 본문 | object | 줄마다 필수 | 불가 | document면 document_id·document_title, request면 request_id 필수 | 출처 종류는 teacher_input·document·request |
 | `note.open_checks[].kind` | 응답 | string | 항목마다 | 불가 | not_in_memo·sensitive·other_child·date_check·absent·draft_failed·check_failed·request_missed·return_limit | `return_limit`도 남아 있으면 `confirm=true`는 409 |
@@ -1551,7 +1552,7 @@ DELETE는 본인 기억과 학부모의 자기 아이 돌봄 메모만 지우며
 | `saved_answer` | 끄기·다시 켜기 | API 69 `PATCH /saved-answers/{id}` `{status:"off"\|"active"}` |
 | `rule` | 끄기 | 3.17 `POST /memory-rules/{id}/decision` `{decision:"off"}`. 끈 규칙은 목록에 status off로 남고, 같은 이유 거절이 끈 뒤로 3번 더 쌓이면 새 제안 카드로 다시 묻는다(FR-20). 끈 규칙을 그대로 다시 켜는 주소는 없다 |
 
-보호자 기억 후보(선호·돌봄 메모)는 보호자의 현재 약관 판 동의를 다시 확인한 뒤 만든다. `ai_processing`이 없으면 기억 추출 모델에 글을 보내지 않고, 돌봄 메모는 `child_info`·`child_health`까지 있어야 저장한다.
+보호자 기억 후보(선호·돌봄 메모)는 보호자의 현재 약관 판 동의를 다시 확인한 뒤 만든다. `ai_processing`이 없으면 기억 추출 모델에 글을 보내지 않고, 돌봄 메모는 `child_info`·`child_health`까지 있어야 저장한다. 동의가 있으면 낱말과 상관없이 기억 AI에 묻고, 반복 선호인지·돌봄인지·일회성인지는 AI가 정한다(0개도 가능). 코드는 원문 그대로 한 문장, 아이 이름·민감정보·진단·질환·가정사, 돌봄 낱말이 든 선호(확인 우회)만 막는다. 기억 모델이 없거나 실패하면 낱말 대역으로 후보를 골라 같은 검사를 거친다.
 
 API 67 `POST /memories/{memory_id}/confirm`은 `{decision:"remember"|"discard"}`를 받는다. 그 아이 보호자만 pending 후보를 결정하며 다른 상태는 409 INVALID_TRANSITION이다. remember는 confirmed와 confirmed_at, discard는 discarded와 빈 content·structured를 남긴다. 응답은 `{id,confirm_status,confirmed_at}`다. 학부모 요청 상세 `GET /requests/{id}`의 `memory_candidates:[{id,child_name,content}]`에는 그 요청에서 생긴 pending만 들어간다(없거나 교직원이면 빈 목록). memory_candidate 앱 알림은 후보마다 한 번이고 원문은 알림에 싣지 않는다.
 
@@ -1564,6 +1565,8 @@ API 69 `PATCH /saved-answers/{answer_id}`는 `{status:"off"|"active"}`를 받는
 아이 개인의 하루를 묻는 문의는 현재 보호자 관계가 맞는 아이의 최근 3일(오늘 포함) sent 알림장도 chunks 후보로 찾는다. 미발송·다른 아이·지난 날짜는 제외한다. 후보는 `{chunk_id:null,source:"daily_note",note_id,note_date,title:"M월 D일 알림장",quote}`이며 작성 입력에는 content·score도 있다. 인용은 note_id와 원문을 대조하고 검사 AI도 받는다. 개인 기억과 달리 실제 보낸 알림장은 사실 근거다. card_evidence.chunk_id는 NOT NULL이라 카드 상세의 `card.draft.note_evidence[]`에 이 목록을 보이고, 문서 evidence[]는 기존 모양을 유지한다. 수정 승인 뒤에도 목록을 유지한다. 일반 원 자료 질문은 기존 검색 그대로다. 아이 알림장이 들어간 답은 saved_answers에 저장하지 않는다.
 
 아이의 몸·마음·친구·식사·낮잠을 묻는 문의는 같은 보호자 확인으로 질문이 가리키는 날(오늘·어제·그제, 날짜 말이 없으면 질문 받은 날)의 담임 관찰 기록(daily_records, 삭제 제외, 날마다 최근 3개)도 후보로 넣는다. 후보는 `{chunk_id:null,source:"daily_record",record_id,record_date,title:"M월 D일 관찰 기록",quote}`(민감정보 형식 가림)이고 카드 상세의 `card.draft.record_evidence[]`에 같은 방식으로 보인다. 관찰 기록은 보호자에게 바로 보이지 않는 메모라 담임 검토 초안에만 쓰고, 학부모 sources에는 넣지 않으며 saved_answers에도 저장하지 않는다.
+
+근거 후보는 `ANSWER_GATHER`로 모은다. 기본 `agent`이면 서버가 질문 문장으로 문서 4종을 고정 검색하는 대신, 자료 찾는 AI(`agents/graphs/gather.py`, 지침 `agents/prompts/gather.md`)가 범위가 정해진 도구를 골라 불러 모은다. 도구는 `documents(doc_type, query)`(위 문서 검색과 같은 원·반 범위, top_k 8, 민원은 notice·policy만)와, 아이를 정한 문의에만 여는 `child_records(date)`(그날 관찰 기록)·`daily_notes(date)`(그날 보낸 알림장)·`care(date)`(그날 접수한 투약·귀가 요청과 처리 상태) 4종이다. 날짜는 질문 받은 날 기준 14일 전~1일 뒤의 하루만 받고, 도구 인자에 기관·아이·보호자는 없다. 범위는 요청 행(기관·반·아이·요청한 보호자의 보호자 관계)에서만 온다. care 후보는 `{chunk_id:null,source:"care_request",request_id,request_date,title:"M월 D일 투약 요청|귀가 요청",quote}`(민감정보 형식·다른 아이 이름 가림, content에 처리 상태)이고 카드 상세의 `card.draft.care_evidence[]`에 관찰 기록과 같은 방식으로 보이며 학부모 sources·saved_answers에는 넣지 않는다. 한 차례에 도구 4개, 최대 3차례 부르고 후보는 12개까지다. 작성·검사·인용 대조·카드 저장은 그대로이고, 자료 찾는 AI가 실패하거나 후보가 하나도 없으면 고정 검색으로 돌아간다. 위 두 단락의 질문 낱말 조건(아이 하루·몸·마음 질문, 오늘·어제·그제)은 고정 검색(`fixed`) 경로에만 쓰인다. 받은함 기본 경로·협업 그래프 검색 노드·AI에게 묻기(documents 도구만)가 같은 방식이다.
 
 ### 3.26 알림장 다시 만들기 — `POST /api/v1/daily-notes/drafts/{input_id}/regenerate`
 
@@ -1590,8 +1593,8 @@ DB 그래프 실행은 writer·checker를 부르기 직전마다 입력 행의 `
 | --- | --- | --- |
 | 기존 3 `POST /requests` | type에 medication·pickup도 받는다. body·child_id·client_request_id는 기존과 같다. pickup이면 pickup_guardian_id 또는 pickup_name·pickup_relation을, medication이면 medication_name·medication_dose·medication_time을 선택으로 보낸다. 문자열은 각각 100자 이하다. | 202 received. 같은 키로 다시 보내면 기존 요청과 현재 상태를 200으로 돌려준다. 자기 아이의 보호자만 등록할 수 있다. |
 | 34 `GET /children/{child_id}/pickup-guardians` | 아이 UUID | 200 `{items:[{id,display_name}]}`, 이름순이다. 자기 아이의 보호자, 배정 기간 안의 담임, 같은 기관 원장만 읽을 수 있다. 연락처·로그인 ID는 보내지 않는다. |
-| 35 `GET /care-requests` | classroom_id·status(received·assigned·completed·rejected)는 선택이다. page=1·size=20(최대 100)이고, sort는 -created_at(기본)·created_at·-updated_at·updated_at이다. | CareRequestList. 기존 RequestList 항목에 child_id(UUID)·child_name(string)·version·unregistered_pickup·missing_fields를 더한다. child_name은 children.display_name의 현재 이름이며 두 아이를 구분할 때 쓴다. 담임은 현재 반, 원장은 기관 전체를 본다. next_action은 confirm·complete·null 중 하나다. |
-| 36 `POST /requests/{request_id}/care-decisions` | `{decision:"confirm"|"complete"|"reject", version:1, pickup_guardian_id?:UUID, reason_text?:string}` 형식이다. version은 필수이며 양의 정수다. | 200 `{request:{id,status},care:CareOut}`. 배정 기간 안의 담임과 같은 기관 원장만 실제 확인을 기록할 수 있다. |
+| 35 `GET /care-requests` | classroom_id·status(received·assigned·completed·rejected)는 선택이다. page=1·size=20(최대 100)이고, sort는 -created_at(기본)·created_at·-updated_at·updated_at이다. | CareRequestList. 기존 RequestList 항목에 child_id(UUID)·child_name(string)·version·unregistered_pickup·missing_fields·result_line·intent를 더한다. 투약·귀가의 intent는 늘 ask다. child_name은 children.display_name의 현재 이름이며 두 아이를 구분할 때 쓴다. 담임은 현재 반, 원장은 기관 전체를 본다. next_action은 confirm·complete·null 중 하나다. |
+| 36 `POST /requests/{request_id}/care-decisions` | `{decision:"confirm"|"complete"|"reject", version:1, pickup_guardian_id?:UUID, reason_text?:string, result_line?:string}` 형식이다. version은 필수이며 양의 정수다. result_line(200자 이하)은 complete에만 받는다. | 200 `{request:{id,status},care:CareOut}`. 배정 기간 안의 담임과 같은 기관 원장만 실제 확인을 기록할 수 있다. |
 | 50 `POST /requests/{request_id}/cancel` | 본문 없이 호출한다. | 200 `{request:{id,status},care:CareOut}`. 자기 투약·귀가 요청만 가능하며 completed·rejected면 409다. |
 | 51 `PATCH /requests/{request_id}/care` | version(양의 정수)과 고칠 투약/인계자 칸을 하나 이상 보낸다. 생략한 칸은 유지하고 null은 비운다. | 200 `{request:{id,status},care:CareOut}`. 자기 요청의 received·assigned에서만 가능하다. |
 
@@ -1614,15 +1617,15 @@ care.version은 입력 판이다. 처음은 1이고 **보호자 새 글이나 �
 
 API 51은 requests.care_detail을 부분 수정하고 missing_fields를 다시 계산한다. 투약 요청에는 투약 세 칸만, 귀가 요청에는 인계자 세 칸만 허용한다. 등록 인계자는 현재 활성·아이 연결을 다시 검사하고 이름·관계를 갱신한다. UUID를 다른 사람으로 바꾸거나 null로 비우면 이전 사람의 이름·관계를 지우고 이번 입력이나 등록 정보로 채운다. 구조화 입력을 바꾸면 received로 돌아가고 confirmed_at을 지우며 입력 판을 1 올린다. care_updated 이력에는 fields·version만 남기고 값은 care_detail에 둔다. 담당자(없으면 원장)에게 care_requested("보호자가 입력을 수정했어요. 다시 확인해 주세요.")를 보낸다. 미등록 인계자로 바뀌면 checked 이력의 pickup_snapshot과 원장 경고를 바로 남긴다. 같은 이름·관계의 경고 중복 제거는 confirm과 공유한다. 원래 본문·대화는 바꾸지 않고 AI를 부르지 않는다. 수정·취소·반려도 확인·완료와 같은 요청 행 잠금으로 직렬화한다.
 
-CareOut은 version·pickup_guardian_id·pickup_name·pickup_relation·unregistered_pickup, medication_name·medication_dose·medication_time·missing_fields·confirmed_at·completed_at으로 이뤄진다. 다른 요청 유형이면 care는 null이다. 확인·완료 시각은 한국 시각으로 주고, 교직원 신원은 응답에 넣지 않는다. 학부모는 기존 목록·상세·대화·SSE에서도 자기 요청을 볼 수 있다. 이때 SSE는 AI 단계 없이 현재 상태를 담은 done 하나로 끝난다. 민원용 POST /confirm과 상담 시간 선택은 409 INVALID_TRANSITION이다.
+CareOut은 version·pickup_guardian_id·pickup_name·pickup_relation·unregistered_pickup, medication_name·medication_dose·medication_time·missing_fields·confirmed_at·completed_at·result_line으로 이뤄진다. result_line은 complete 때 교직원이 남긴 처리 결과 한 줄이고, 비우면 처리 시각(한국 시각)과 종류로 "13시에 약 먹였어요"·"16시 30분에 귀가했어요" 같은 기본 문장을 만든다. 완료 전에는 null이다. 다른 요청 유형이면 care는 null이다. 확인·완료 시각은 한국 시각으로 주고, 교직원 신원은 응답에 넣지 않는다. 학부모는 기존 목록·상세·대화·SSE에서도 자기 요청을 볼 수 있다. 이때 SSE는 AI 단계 없이 현재 상태를 담은 done 하나로 끝난다. 민원용 POST /confirm과 상담 시간 선택은 409 INVALID_TRANSITION이다.
 
 알림 종류는 접수·입력 수정 때 담당자에게 가는 care_requested, confirm하면 신청 학부모에게 가는 care_confirmed, 완료하면 학부모에게 가는 completed, 반려하면 학부모에게 가는 care_rejected, 학부모 취소 때 담당자에게 가는 cancelled다. 정정과 미등록 인계자 경고에는 기존 care_requested를 고정 본문과 함께 쓰며, 알림에 투약 지시나 추가 대화 원문은 싣지 않는다. 귀가 알림은 아이 안전 때문에 18시 뒤나 주말에도 즉시 보내고, 발송에 실패해 재시도할 때도 근무일로 미루지 않는다. 반면 투약의 교직원 알림은 기존 근무 시간 규칙을 유지한다. 같은 이벤트·같은 수신자 알림은 한 번만 만든다.
 
-알림장 초안은 같은 날 요청의 원문과 request 출처를 medication·pickup 줄로 연결한다. content.items[].request_status는 읽기 전용이며, 연결된 요청의 현재 상태(received·assigned·completed·rejected)를 보여 준다. 보호자가 정정한 뒤에는 received로 보인다. 이 값은 PATCH에 담아 보내도 저장하지 않고, content·ai_original·발송 시점 본문도 고쳐 쓰지 않는다. 알림장을 확인하거나 발송해도 투약·인계가 완료되지는 않는다. 출처는 같은 아이·같은 유형의 request만 허용하며, 다른 출처는 422다. 목록은 한 연결에서 연결된 요청 상태를 한 번에 읽는다.
+알림장 초안은 같은 날 요청의 원문과 request 출처를 medication·pickup 줄로 연결한다. content.items[].request_status는 읽기 전용이며, 연결된 요청의 현재 상태(received·assigned·completed·rejected)를 보여 준다. 보호자가 정정한 뒤에는 received로 보인다. 이 값은 PATCH에 담아 보내도 저장하지 않고, content·ai_original·발송 시점 본문도 고쳐 쓰지 않는다. 알림장을 확인하거나 발송해도 투약·인계가 완료되지는 않고, 거꾸로 투약·인계가 완료되지 않았어도 알림장 발송을 막지 않는다. 대신 API 24 목록의 pending_medication_count(교직원만, 학부모는 null)에 그날 그 반(반을 고르지 않은 원장은 기관 전체)의 received·assigned 투약 요청 수를 준다. 알림장 작성기 입력의 children[].requests[]에는 request_id·type·text와 함께 result_line(완료 때 남긴 처리 결과, 민감정보는 가림, 완료 전 null)이 들어간다. 출처는 같은 아이·같은 유형의 request만 허용하며, 다른 출처는 422다. 목록은 한 연결에서 연결된 요청 상태를 한 번에 읽는다.
 
 오류는 기존 공통 형식을 따른다. 인증이 없으면 401, 학부모가 교직원 기능을 부르면 403 FORBIDDEN_ROLE, 범위 밖이면 404 NOT_FOUND, 단계·유형이 맞지 않으면 409 INVALID_TRANSITION, 옛 입력 판으로 보내면 409 CARD_VERSION_CONFLICT다. 명시한 인계자 UUID가 맞지 않거나 형식이 틀리면 422 VALIDATION_FAILED이고, 이때 details.field는 pickup_guardian_id다. 다만 미등록 인계자와 투약 누락 자체는 422 사유가 아니다.
 
-저장에는 requests·request_messages·events·notifications를 쓴다. 투약·귀가 구조화 입력은 requests.care_detail(jsonb)에 저장하며, 접수 이벤트 detail에는 값 대신 fields(구조화 입력의 칸 이름 목록)와 trace_id만 남긴다. 상세 care와 missing_fields는 care_detail에서 읽고, 보호자 원문을 옮기는 알림장 줄은 기존처럼 requests.body를 쓴다. confirm에는 pickup_snapshot·version·care_decision을, 추가 대화의 message_added에는 care_message·message_id·version을 남긴다. 입력 수정은 care_updated(fields·version), 취소는 cancelled(cancelled_by_parent·version), 반려는 dismissed(care_decision=reject·reason_text·version)다. 시각과 입력 판은 이 순서 있는 이력에서 읽는다. 0012가 care_detail을 추가하고 기존 접수 이력의 입력 값을 이관한다. 알림 종류 care_requested·care_confirmed는 0008에서, 피드·앨범(3.29)의 새 표·칸은 0010에서 더한다.
+저장에는 requests·request_messages·events·notifications를 쓴다. 투약·귀가 구조화 입력은 requests.care_detail(jsonb)에 저장하며, 접수 이벤트 detail에는 값 대신 fields(구조화 입력의 칸 이름 목록)와 trace_id만 남긴다. 상세 care와 missing_fields는 care_detail에서 읽고, 보호자 원문을 옮기는 알림장 줄은 기존처럼 requests.body를 쓴다. confirm에는 pickup_snapshot·version·care_decision을, complete에는 version·care_decision·result_line을, 추가 대화의 message_added에는 care_message·message_id·version을 남긴다. 입력 수정은 care_updated(fields·version), 취소는 cancelled(cancelled_by_parent·version), 반려는 dismissed(care_decision=reject·reason_text·version)다. 시각과 입력 판은 이 순서 있는 이력에서 읽는다. 0012가 care_detail을 추가하고 기존 접수 이력의 입력 값을 이관한다. 알림 종류 care_requested·care_confirmed는 0008에서, 피드·앨범(3.29)의 새 표·칸은 0010에서 더한다.
 
 ### 3.28 [제안] 상담 지연 입력
 
@@ -1877,7 +1880,7 @@ GET `/api/v1/me`와 로그인 응답의 user.consents_complete도 같은 판·�
 | evidence[].document_id·title·location | 응답 | UUID·string·string | 항상 | 문서 ID·제목·원문 위치. 위치가 없으면 본문 |
 | evidence[].effective_date | 응답 | date 또는 null | 항상, null 가능 | 문서 effective_from |
 
-- 자료 충돌: 200, answer=`자료마다 내용이 달라요. 아래 두 자료를 확인해 주세요.`, conflict=true, 충돌한 양쪽 자료의 검증된 evidence를 반환한다(겨울방학 12/24·12/26 둘 다). 검색·인용에 없는 출처는 만들지 않는다.
+- 자료 충돌: 200, answer=AI가 두 자료가 어떻게 다른지 인용과 함께 쓴 설명(검사 AI를 통과했을 때). 설명이 비었거나 검사를 통과 못 하면 `자료마다 내용이 달라요. 아래 두 자료를 확인해 주세요.`, conflict=true, 충돌한 양쪽 자료의 검증된 evidence를 반환한다(겨울방학 12/24·12/26 둘 다). 검색·인용에 없는 출처는 만들지 않는다.
 - 모델 호출 실패: 기존 답변 흐름의 모양 오류·검사 재시도를 유지하며, 재시도 뒤에도 모델 오류로 답변을 못 만들면 503 `UPSTREAM_UNAVAILABLE`, 1.4의 `{error:{code,message,trace_id,details}}` 형식을 반환한다. 재시도에 성공하면 정상 200이다. ModelError 이외의 예외도 503이다.
 - 근거 없음: 200, answer=`자료에서 못 찾았어요`, evidence=[], conflict=false. 인용·검사 검증에서 근거를 확정하지 못해도 같은 안전 응답을 쓴다.
 
@@ -2166,7 +2169,7 @@ def decide(card_id: UUID, body: CardDecision, user: User = Depends(current_staff
 | `search_documents` | 자료 | 요청한 기관의 자료만, 학부모면 원 전체 + 아이 반 자료 | `chunks[]` | `TOOL_TIMEOUT`·`UPSTREAM_UNAVAILABLE`(참), `VALIDATION_FAILED`·`NOT_FOUND`(거짓) | 1번 다시 → 실패하거나 근거가 없으면 추측하지 않고 담임 카드로 넘김(`no_evidence`) |
 | `get_law_article` | 자료 | 법령 이름·조문이 있음 | `text`, `source_url`, `fetched_at` | `UPSTREAM_UNAVAILABLE`(참), `NOT_FOUND`(거짓) | 1번 다시 → 실패면 법령 인용 없이 초안을 쓰고, 카드에 '법령 확인 못 함' 표시 |
 | `get_memory` | 기억 | 기억의 주인이 요청 담당자 | `memories[]`, `active_rules[]` | `SAVE_FAILED`(참) | 1번 다시 → 실패면 기억 없이 진행 |
-| `propose_rule` | 기억 | 같은 주인·같은 이유 코드가 3번(마지막 decline 뒤에 쌓인 새 기억만 셈). rule_json은 객체, after·before는 HH:MM | `rule_id`(이미 있으면 기존 ID) | `SAVE_FAILED`(참), `VALIDATION_FAILED`(거짓) | 1번 다시 → 실패면 제안만 되돌리고 tool_failed 기록(카드 거절·기억은 유지하고, 다음에 다시 셈) |
+| `propose_rule` | 기억 | 같은 주인·같은 이유 코드가 3번(마지막 decline 뒤에 쌓인 새 기억만 셈). rule_json은 객체, after·before는 HH:MM(after < before), weekdays는 0(월)~6(일) 목록 | `rule_id`(이미 있으면 기존 ID) | `SAVE_FAILED`(참), `VALIDATION_FAILED`(거짓) | 1번 다시 → 실패면 제안만 되돌리고 tool_failed 기록(카드 거절·기억은 유지하고, 다음에 다시 셈) |
 | `check_draft` | 검사 | 초안이 있는 카드·알림장 | 검사 결과를 저장 | `TOOL_TIMEOUT`·`UPSTREAM_UNAVAILABLE`(참) | 1번 다시 → 실패면 '검사 못 함'을 표시하고 사람 카드로 넘김 |
 | `return_to_step` | 검사 | `check_attempts` < 2 | `attempt` | `INVALID_TRANSITION`(거짓, 3번째) | 3번째에는 오류를 내는 대신 사람 카드로 넘김(FR-08) |
 | `find_consult_slots` | 코드 | 상담 요청이고 담임 일정이 있음 | `slots[]`(회차마다 최대 3개) | `TOOL_TIMEOUT`·`SAVE_FAILED`(참), `NOT_FOUND`(거짓) | 1번 다시 → 실패면 시간을 지어내지 않고 '지금 확인할 수 없음' 안내(30문항 YC-F01). 빈 목록이면 다른 날을 묻거나 담임 카드로 넘김 |
@@ -2191,7 +2194,7 @@ def decide(card_id: UUID, body: CardDecision, user: User = Depends(current_staff
 
 #### 5.5.1 알림장 아이 줄 쓰기 — 자료 AI(`write()`)
 
-프롬프트는 `agents/prompts/documents.md`의 '알림장 초안 쓰기' 절이다. 아이 메모나 그날 보호자 요청이 있는 아이마다 부른다. 둘 다 없는 아이는 모델을 부르지 않고 반 공통 줄만 둔다. 그래프의 `draft_daily_notes()`는 `ThreadPoolExecutor`로 아이별 쓰기·검사를 동시에 처리하고, `NOTE_DRAFT_CONCURRENCY`로 최대 동시 아이 수를 정한다(기본값 5, 최솟값 1). 한 아이 안에서는 쓰기→코드 검사→검사 AI→필요하면 다시 쓰기 순서로 진행하며, 결과 목록은 입력 아이 순서를 유지한다.
+프롬프트는 `agents/prompts/documents.md`의 '알림장 초안 쓰기' 절이다. 아이 메모나 그날 보호자 투약·귀가 요청이 있는 아이마다 부른다. 둘 다 없는 아이는 모델을 부르지 않고 반 공통 줄만 둔다. 그래프의 `draft_daily_notes()`는 `ThreadPoolExecutor`로 아이별 쓰기·검사를 동시에 처리하고, `NOTE_DRAFT_CONCURRENCY`로 최대 동시 아이 수를 정한다(기본값 5, 최솟값 1). 한 아이 안에서는 쓰기→코드 검사→검사 AI→필요하면 다시 쓰기 순서로 진행하며, 결과 목록은 입력 아이 순서를 유지한다.
 
 | 입력 | 타입 | 필수 | 허용값·설명 |
 | --- | --- | --- | --- |
@@ -2226,18 +2229,18 @@ def decide(card_id: UUID, body: CardDecision, user: User = Depends(current_staff
 | `requests[]` | object[] | 필수 | 5.5.1과 같다 |
 | `draft[]` | object[] | 필수 | 5.5.1이 쓴 줄 `{ key, label, value, source }` |
 
-모델의 결과는 `{"checks": [{"item_key", "kind", "problem", "sentence"}]}`이고, `kind`는 `not_in_memo`·`sensitive`·`other_child`·`date_check`·`absent` 다섯 값만 받는다. 여기에 코드가 다른 아이 이름(`other_child`), 보호자 요청 누락(`request_missed`), 투약 요청·옮기지 않은 메모·답하지 못한 문의(`sensitive`)를 더한다. 이렇게 합친 항목을 `open_checks[] { id, item_key, kind, problem, sentence, request_id? }`로 저장한다. 결과 ID는 확인 항목 ID(`open_checks[].id`, 저장할 때 UUID로 바꾼다)이고, 항목이 하나라도 있으면 알림장 상태는 `needs_check`다. 업무상으로는 담임이 보내기 전에 꼭 봐야 할 곳이라는 뜻이다. 항목이 남아 있으면 발송이 잠긴다(3.19.1).
+모델의 결과는 `{"checks": [{"item_key", "kind", "problem", "action", "sentence"}]}`이다. `problem`(무엇이 문제인지)과 `action`(선생님이 할 일)은 검사 AI가 한 줄씩 자기 말로 쓰고, `kind`는 화면에 띄울 행동 버튼 종류로 `not_in_memo`·`sensitive`·`other_child`·`date_check`·`absent` 중에서 고른다. 여기에 코드가 다른 아이 이름(`other_child`), 보호자 요청 누락(`request_missed`), 투약 요청 사람 확인(`sensitive`, 제목은 투약 문장)을 더한다. 이렇게 합친 항목을 `open_checks[] { id, item_key, kind, problem, action?, sentence, request_id? }`로 저장한다. 결과 ID는 확인 항목 ID(`open_checks[].id`, 저장할 때 UUID로 바꾼다)이고, 항목이 하나라도 있으면 알림장 상태는 `needs_check`다. 업무상으로는 담임이 보내기 전에 꼭 봐야 할 곳이라는 뜻이다. 항목이 남아 있으면 발송이 잠긴다(3.19.1).
 
-`not_in_memo`는 검사 AI가 아이 메모 줄을 메모·반 공통·식단과 대조해 근거 없는 사실·이유·평가나 반 활동을 그 아이가 했다는 서술을 찾은 결과다. 병명·"괜찮아요" 같은 낱말을 고정 금지어 목록과 대조하는 코드는 없다. `code_checks()`는 메모·아이별 초안에 있는 다른 아이 이름과 요청별 출처 누락을 검사하고, 초안에 옮긴 투약 요청에는 `sensitive`를 남긴다. 메모 줄 누락과 답하지 못한 문의는 각각 `memo_left_out()`·`unanswered()`가 `sensitive`로 넘긴다. 쓰기·검사 실패는 `draft_failed`·`check_failed`이며, 백엔드는 작성기가 준 `return_limit`도 확인 항목으로 보존한다(3.7·3.20·3.21).
+`not_in_memo`는 검사 AI가 아이 메모 줄을 메모·반 공통·식단과 대조해 근거 없는 사실·이유·평가나 반 활동을 그 아이가 했다는 서술을 찾은 결과다. 병명·"괜찮아요" 같은 낱말을 고정 금지어 목록과 대조하는 코드는 없다. `code_checks()`는 메모·아이별 초안에 있는 다른 아이 이름과 요청별 출처 누락을 검사하고, 초안에 옮긴 투약 요청에는 `sensitive`를 남긴다. 메모 줄이 빠졌는데 빠질 이유(`sensitive`·`other_child`·`date_check`·`absent`)가 없거나, 요청 줄이 아이 메모 줄과 같은 문장이면 코드가 고쳐 쓰지 않고 내부 신호로 자료 AI에 돌려보낸다(최대 2번, 그 뒤 `return_limit`). 내부 신호는 `open_checks`에 넣지 않는다. 쓰기·검사 실패는 `draft_failed`·`check_failed`이며, 백엔드는 작성기가 준 `return_limit`도 확인 항목으로 보존한다(3.7·3.20·3.21).
 
 | 실패 구분 | 언제 | 다시 하나 | 최대 횟수 | 그 뒤 | 담임 화면 문구 |
 | --- | --- | --- | --- | --- | --- |
-| 일시 오류·요청 오류 | 5.5.1과 같다 | 5.5.1과 같다 | 5.5.1과 같다 | 검사를 통과로 치지 않고 `check_failed`를 남긴 채 담임에게 넘긴다. 이미 쓴 초안은 지우지 않는다 | "메모와 대조하는 검사가 끝나지 않았어요. 직접 읽고 확인해 주세요." |
+| 일시 오류·요청 오류 | 5.5.1과 같다 | 5.5.1과 같다 | 5.5.1과 같다 | 검사를 통과로 치지 않고 `check_failed`를 남긴 채 담임에게 넘긴다. 이미 쓴 초안은 지우지 않는다 | `problem` "메모와 대조하는 검사가 끝나지 않았어요." · `action` "직접 읽고 확인해 주세요." |
 | 형식 오류 | JSON이 아니거나 `checks` 목록이 없음 | 예 | 1번 더 묻는다 | 위와 같다 | 위와 같다 |
-| 허용 밖 값 | `kind`가 다섯 값 밖 | 아니요 | 0 | 그 항목만 버린다 | 없음 |
-| 고칠 수 있는 문제 | `not_in_memo`·`request_missed`가 나옴 | 예. 5.5.1로 돌려보낸다(5.4의 `return_to_step`) | 2번 | 그래도 남으면 확인 항목을 그대로 둔 채 넘긴다 | 항목마다 `problem` 문장 |
+| 허용 밖 값 | `kind`가 다섯 값 밖 | 아니요 | 0 | `problem`이 있으면 일반 확인(`sensitive`)으로 살리고, 없거나 코드 몫 종류(`request_missed`·실패·한도)면 그 항목만 버린다 | 검사 AI의 `problem` |
+| 고칠 수 있는 문제 | `not_in_memo`·`request_missed`가 나옴, 메모 줄이 이유 없이 빠짐, 요청 줄이 메모 줄과 같음 | 예. 5.5.1로 돌려보낸다(`review_issues`) | 2번 | 그래도 남으면 확인 항목에 `return_limit`을 더해 넘긴다 | 항목마다 `problem`·`action` 문장 |
 
-시험은 `test_checker_fails_twice_gives_check_failed_and_keeps_draft`, `test_returns_stop_after_two_and_leave_check`, `test_missing_request_is_returned_then_fixed`, `test_unknown_kind_from_checker_is_ignored`(`tests/unit/test_daily_note_graph.py`)다.
+시험은 `test_checker_fails_twice_gives_check_failed_and_keeps_draft`, `test_returns_stop_after_two_and_leave_check`, `test_missing_request_is_returned_then_fixed`, `test_unknown_kind_from_checker_keeps_problem_as_general_check`, `test_request_line_repeating_child_line_goes_back_to_writer_not_overwritten`(`tests/unit/test_daily_note_graph.py`)다.
 
 #### 5.5.3 사람 인계 카드 — `create_card`
 
@@ -2302,9 +2305,9 @@ def decide(card_id: UUID, body: CardDecision, user: User = Depends(current_staff
 
 ### 5.7 업무 흐름 세 개 — 경로·도구·권한·DB 상태
 
-**사람에게 넘기고 자동 답변하지 않는 기준.** 다음 경우에는 학부모에게 답을 보내지 않고, 초안 없는 사람 카드로 넘긴다. 긴급(`risk_level = urgent`)이거나 판단 필요(`uncertain`)인 문의·민원, 근거 없음(`no_evidence`), 문서 충돌, 검사 AI가 2번 돌려보낸 뒤에도 통과하지 못한 경우(3번째, FR-08)다. 권한 밖 요청은 아래 고정 안내 조건을 먼저 확인하고, 조건에 맞지 않으면 평소 담임 흐름을 따른다. 권한 밖 자료는 읽지 않으며, 카드도 현재 사용자의 범위 안에서만 만든다. 내용에 대한 답은 담임 결정 API가 승인 기록(`approvals`)을 남긴 뒤에만 나간다(5.3 ④). 못 하는 일에 대한 고정 안내는 아래 조건에서 승인 없이 남긴다. 접수 안내와 정보 되묻기는 여기서 말하는 답변 발송과 구분한다. **원에 남은 답도 예외가 아니다.** 원에 남은 답은 담임이 이미 승인해 저장해 둔 문의 답이다(FR-20). 감독 AI가 `find_saved_answer`로 찾은 답의 `similarity`가 기준 이상이고 `sources_current = true`이며 요청이 긴급·판단 필요가 아니면, 그 답과 출처를 담임 카드의 답변 초안으로 쓴다. 학부모에게는 담임이 승인한 뒤에 나가고, 어느 답을 썼는지는 이력에 `saved_answer_id`로 남긴다. `similarity` 기준값은 평가 뒤에 정한다.
+**사람에게 넘기고 자동 답변하지 않는 기준.** 다음 경우에는 학부모에게 답을 보내지 않고, 초안 없는 사람 카드로 넘긴다. 긴급(`risk_level = urgent`)인 문의·민원, 근거 없음(`no_evidence`), 문서 충돌, 검사 AI가 2번 돌려보낸 뒤에도 통과하지 못한 경우(3번째, FR-08)다. 판단 필요(`uncertain`)는 초안을 미리 써 두지만, 담임·원장이 일반이나 긴급으로 다시 분류하기 전에는 승인할 수 없다(3.3). 권한 밖 요청은 아래 고정 안내 조건을 먼저 확인하고, 조건에 맞지 않으면 평소 담임 흐름을 따른다. 권한 밖 자료는 읽지 않으며, 카드도 현재 사용자의 범위 안에서만 만든다. 내용에 대한 답은 담임 결정 API가 승인 기록(`approvals`)을 남긴 뒤에만 나간다(5.3 ④). 못 하는 일에 대한 고정 안내는 아래 조건에서 승인 없이 남긴다. 접수 안내와 정보 되묻기는 여기서 말하는 답변 발송과 구분한다. **원에 남은 답도 예외가 아니다.** 원에 남은 답은 담임이 이미 승인해 저장해 둔 문의 답이다(FR-20). 감독 AI가 `find_saved_answer`로 찾은 답의 `similarity`가 기준 이상이고 `sources_current = true`이며 요청이 긴급·판단 필요가 아니면, 그 답과 출처를 담임 카드의 답변 초안으로 쓴다. 학부모에게는 담임이 승인한 뒤에 나가고, 어느 답을 썼는지는 이력에 `saved_answer_id`로 남긴다. `similarity` 기준값은 평가 뒤에 정한다.
 
-**권한 밖 고정 안내(Y-098).** 감독 AI 제안을 검증한 `out_of_scope_kind`는 `payment`·`others_privacy`·`other_family`·`other_teacher` 또는 null이다. 긴급·판단 필요를 먼저 거르고, 주제(`topic_key`)가 `peer_conflict`·`safety`·`health_hygiene`이거나 본문에 “우리 아이”·“우리 애”·“저희 아이”가 있으면 바로 안내하지 않는다. 예를 들어 “다른 아이랑 다퉜다는데 무슨 일인지 알려주세요”는 갈등 주제로 담임에게 간다. 코드 분류도 “다퉜”을 갈등 표현으로 본다. 조건을 통과한 문의만 아래 고정 문구를 `request_messages(sender_type='agent', sender_id=null)`로 남기고 `sent_or_booked`로 둔다. 담임 승인 카드·승인 기록은 만들지 않고 `out_of_scope_answered` 이력의 `detail.kind`에 종류를 남기며, 학부모에게 `sent_or_booked` 알림을 보낸다. DB 기본 입구에서는 자료·검사 AI와 공공 자료 조회를 건너뛴다. 응답 메시지는 `sender_role=null`이다.
+**권한 밖 고정 안내(Y-098).** 감독 AI 제안을 검증한 `out_of_scope_kind`는 `payment`·`others_privacy`·`other_family`·`other_teacher` 또는 null이다. 권한 밖인지와 종류는 감독 AI가 정하고(우리 아이 일이나 안전·건강이 섞이면 `null`로 두라는 원칙을 지침에 준다), 코드는 값이 목록 안인지만 본다. 긴급·판단 필요면 바로 안내하지 않는다. 모델이 없거나 실패했을 때만 낱말 대역(`request_rules.scope_kind`)이 정규식으로 종류를 잡고, 이때 주제(`topic_key`)가 `peer_conflict`·`safety`·`health_hygiene`이거나 본문에 “우리 아이”·“우리 애”·“저희 아이”가 있으면 종류를 두지 않는다. 예를 들어 “다른 아이랑 다퉜다는데 무슨 일인지 알려주세요”는 갈등 주제로 담임에게 간다. 조건을 통과한 문의만 아래 고정 문구를 `request_messages(sender_type='agent', sender_id=null)`로 남기고 `sent_or_booked`로 둔다. 담임 승인 카드·승인 기록은 만들지 않고 `out_of_scope_answered` 이력의 `detail.kind`에 종류를 남기며, 학부모에게 `sent_or_booked` 알림을 보낸다. DB 기본 입구에서는 자료·검사 AI와 공공 자료 조회를 건너뛴다. 응답 메시지는 `sender_role=null`이다.
 
 | `out_of_scope_kind` | 학부모 대화에 남기는 고정 문구 |
 | --- | --- |
@@ -2315,7 +2318,7 @@ def decide(card_id: UUID, body: CardDecision, user: User = Depends(current_staff
 
 상담은 같은 보호 조건을 통과한 `other_teacher`일 때만 안내 메시지를 더하고, 담임 `consult_slots`·시간 선택·예약 확정은 그대로 둔다. 그 밖의 상담과 모든 민원은 이 종류를 바로 안내에 쓰지 않는다. 안내 뒤 학부모가 글을 더 남기면 3.10 규칙에 따라 초안 없는 담임 회신 카드가 생긴다(담임이 없으면 미배정·원장 알림). 교직원은 요청 이력·대화를 볼 수 있다. 공용 HTTP 시험은 `test_out_of_scope_*`와 `test_followup_to_cardless_answer_creates_empty_reply`, DB 중복 실행·트랜잭션 시험은 `tests/integration/db/test_requests.py`의 `test_out_of_scope_*`다.
 
-**위험 등급은 문의·상담·민원에 함께 붙는다.** 보호자 글을 받는 이 세 유형에는 같은 규칙으로 위험 등급(일반·긴급·판단 필요)을 매기고, 투약·귀가에는 붙이지 않는다(기획서 FR-03). 규칙이 같으니 문의도 긴급이나 판단 필요로 나오면 민원과 같은 길로 간다. 자료·검사 AI를 부르지 않고, 초안 없는 담임 카드와 원장 보고 카드를 만든 뒤 요청을 `escalated`로 둔다. 상담은 다르다. 시간 고르기(`consult_slots`, 요청 `needs_info`)와 담임 확정은 그대로 두고, 원장 보고 카드와 위험 알림만 더한다. 위험 알림은 민원 때와 마찬가지로 담임과 원장이 받고, 원장 보고 카드는 담임이 예약을 확정하거나 상담을 반려할 때 함께 닫힌다(3.4). 지금은 낱말 대역(`apps/api/app/core/request_rules.py`)으로 위험을 판정하는데, 낱말 하나가 아니라 짧은 구를 본다. '안전'·'신고'·'개인정보'만 보면 '현장체험 안전 수칙'·'결석 신고'·'개인정보 동의서' 같은 평범한 문의까지 걸리기 때문이다. 그래서 '안전을 확인'·'신고하겠'·'경찰에'·'유출' 같은 구를 찾는다. 다만 민원은 예전처럼 '안전'·'신고'·'개인정보' 낱말 하나도 본다. '구청에 신고합니다' 같은 민원을 놓치지 않기 위해서다. 시험은 `test_risk_words_by_phrase_for_every_guardian_request_type`·`test_single_words_count_only_for_complaints`(`tests/unit/test_request_rules.py`), `test_high_risk_handoff_has_two_cards_no_draft_or_automatic_reply`·`test_risky_consultation_keeps_slot_flow_and_adds_director_report`(`tests/integration/api/test_complaints.py`), `test_risky_inquiry_skips_answer_model_and_saves_risk`(`tests/integration/db/test_request_risk_types.py`)다.
+**위험 등급은 문의·상담·민원에 함께 붙는다.** 보호자 글을 받는 이 세 유형에는 같은 규칙으로 위험 등급(일반·긴급·판단 필요)을 매기고, 투약·귀가에는 붙이지 않는다(기획서 FR-03). 규칙이 같으니 문의도 긴급이나 판단 필요로 나오면 민원과 같은 길로 간다. 담임 카드와 원장 보고 카드를 만든 뒤 요청을 `escalated`로 둔다. 긴급은 자료·검사 AI를 부르지 않고 초안 없이 넘기고, 판단 필요는 초안을 써 두되 다시 분류하기 전에는 승인을 막는다. 상담은 다르다. 시간 고르기(`consult_slots`, 요청 `needs_info`)와 담임 확정은 그대로 두고, 원장 보고 카드와 위험 알림만 더한다. 위험 알림은 민원 때와 마찬가지로 담임과 원장이 받고, 원장 보고 카드는 담임이 예약을 확정하거나 상담을 반려할 때 함께 닫힌다(3.4). 위험 등급은 감독 AI가 정하고(판단 필요면 이유 한 줄 `risk_reason`도 쓴다), 코드는 값이 목록 안인지만 본다. 코드가 지키는 선은 둘이다. 아이 몸에 해가 간 명백한 표현(다침·피·때림·학대 등, `request_rules.child_harm`)은 AI가 뭐라 해도 긴급으로 올리고, AI가 올린 위험은 낱말로 내리지 않는다. 낱말 대역(`apps/api/app/core/request_rules.py`)은 모델이 없거나 실패했을 때와 모의 API에서만 쓰며, 낱말 하나가 아니라 '안전을 확인'·'신고하겠'·'경찰에'·'유출' 같은 짧은 구를 본다. 민원을 '안전'·'신고'·'개인정보' 낱말 하나로 긴급으로 올리던 규칙과, 본문의 '판단 필요' 글자로 등급을 정하던 규칙은 없앴다. 대역은 판단 필요를 만들지 않는다. 시험은 `test_risk_words_by_phrase_for_every_guardian_request_type`·`test_single_words_do_not_raise_risk_in_fallback`(`tests/unit/test_request_rules.py`), `test_child_harm_line_raises_model_risk`(`tests/unit/test_request_supervisor.py`), `test_high_risk_handoff_has_two_cards_and_no_automatic_reply`·`test_risky_consultation_keeps_slot_flow_and_adds_director_report`(`tests/integration/api/test_complaints.py`), `test_risky_inquiry_skips_answer_model_and_saves_risk`(`tests/integration/db/test_request_risk_types.py`)다.
 
 아래 표의 API 경로 앞에는 모두 `/api/v1`을 붙인다. 도구의 전체 입력·출력은 계약표 4장을, 실행 조건과 실패 코드는 5.4를 따른다. 표의 도구 호출은 설계상의 계약이고, 모의 API는 같은 흐름을 메모리 안에서 흉내 낸다. DB 제약은 DB 스키마 설계서(T09)를 기준으로 한다.
 
@@ -2623,7 +2626,7 @@ MVP 설정값은 서버 설정(`.env`)으로 관리한다. `.env.example`에는 
 별빛반(`…0101`, 만 4세, teacher01)은 하늘·노을에 `roster_c4.json` 명단의 18명을 더해 20명이다. 명단의 `C4-NN`은 `demo_id("54NN")`으로 바꿔 쓰며, 명단 아이에게는 보호자가 없다. 햇님반(`…0102`, 만 5세, teacher02)에는 바다 1명뿐이다. 반 이름, 교사 표시 이름, 아이 이름과 순서는 `apps/api/app/mock/seed.py`에 있다.
 
 
-알림장에 연결하는 두 요청은 모의 저장소를 초기화하는 날짜에 접수 상태로 넣는다. 문의·귀가를 처리할 카드는 아직 만들지 않는다.
+`R-DEMO-08`·`R-DEMO-10` 두 요청은 모의 저장소를 초기화하는 날짜에 접수 상태로 넣는다. 알림장에는 귀가 요청(…70a)만 잇고, 문의(…708)는 받은함에서만 다룬다(#406). 두 요청을 처리할 카드는 아직 만들지 않는다.
 
 그 밖의 데모 요청(…703~707), 문서(…b01~b03), 규칙(…d01)은 `apps/api/app/mock/seed.py`를 참고한다.
 

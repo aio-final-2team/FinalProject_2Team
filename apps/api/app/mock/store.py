@@ -98,6 +98,7 @@ class Request:
     created_at: datetime = field(default_factory=lambda: now())
     updated_at: datetime = field(default_factory=lambda: now())
     closed_at: datetime | None = None
+    intent: str | None = None  # 감독 AI의 알림/부탁 분류(0022). 투약·귀가는 접수 때 'ask'
 
 
 @dataclass
@@ -355,7 +356,7 @@ def create_request(user, *, client_request_id: str, type: str, body: str, child_
         _state.messages.append(Message(id=_state.next_int(), request_id=req.id, sender_type="user",
                                        sender_id=user.id, body=body))
         if type in CARE_REQUEST_TYPES:
-            req.assignee_id = homeroom_teacher(req.classroom_id)
+            req.assignee_id, req.intent = homeroom_teacher(req.classroom_id), "ask"
         event = add_event(req, "created", actor_type="user", actor_id=user.id, to_status="received", trace_id=trace_id,
                   **({"fields": list(detail)} if type in CARE_REQUEST_TYPES else {}))
         from app.mock.notes import request_received
@@ -365,11 +366,21 @@ def create_request(user, *, client_request_id: str, type: str, body: str, child_
         return req, True
 
 
-# 모의 AI 분류 규칙. 실제 분류는 감독 AI(T14)가 한다. 화면 시연용으로 낱말만 본다.
+# mock엔 감독 AI가 없어요. 빈 제안이면 실제 백엔드가 모델 없이 쓰는 낱말 대역과 같은 규칙으로 분류해요.
+# 낱말 대역은 판단 필요를 만들지 않아서, 시연 시드의 판단 필요 사례만 정해 둔 감독 결과를 줘요.
+# 시험은 이 함수를 가짜 감독 결과로 바꿔 끼워요(tests/fake_supervisor.py).
+_DEMO_JUDGMENTS = {seed.demo_id("704"): {"risk_level": "uncertain", "risk_category": None,
+                                         "risk_reason": "급식을 맡은 교직원을 탓하는 글인지 확신이 낮아요"}}
+
+
+def _mock_proposal(req: Request) -> dict:
+    return _DEMO_JUDGMENTS.get(req.id, {})
+
+
 def _classify(req: Request) -> dict:
     from app.modules.requests.supervisor import validate_proposal
-    fields = validate_proposal(req.type, req.body, {})
-    for key in ("topic_key", "urgency", "risk_level", "risk_category"):
+    fields = validate_proposal(req.type, req.body, _mock_proposal(req))
+    for key in ("topic_key", "urgency", "risk_level", "risk_category", "intent"):
         setattr(req, key, fields.get(key))
     return fields
 
@@ -378,6 +389,7 @@ def _run_mock_ai(req: Request, trace_id: str | None) -> None:
     if req.type in CARE_REQUEST_TYPES:
         return
     from app.core.request_rules import direct_notice_kind
+    from app.modules.requests.complaints import REPEAT_REPORT_AT
     fields = _classify(req)
     set_request_status(req, "classified", action="classified", actor_type="agent", agent_name="supervisor",
                        trace_id=trace_id)
@@ -395,28 +407,31 @@ def _run_mock_ai(req: Request, trace_id: str | None) -> None:
             return
     summary = req.body[:60]
     high_risk = req.risk_level in ("urgent", "uncertain")
+    reason = {"risk_reason": fields["risk_reason"]} if fields.get("risk_reason") else {}
     if req.type == "consultation":
-        card = _new_card(req, "consult_slots", teacher)
+        card = _new_card(req, "consult_slots", teacher, draft=reason)
         _propose_slots(card, teacher)
         set_request_status(req, "needs_info", action="info_requested", card=card, actor_type="agent",
                            agent_name="code", trace_id=trace_id)
         director = director_of(req.org_id)
         if high_risk and director:
             # DB 백엔드와 같이 상담 흐름은 두고 원장 보고 카드와 알림만 더해요.
-            report = _new_card(req, "director_report", director, draft={"summary": summary})
+            report = _new_card(req, "director_report", director, draft={"summary": summary, **reason})
             add_event(req, "escalated", card=report, actor_type="agent", agent_name="supervisor", trace_id=trace_id, reason="risk")
         return
+    # 판단 필요도 초안을 써 두고(승인은 재분류 전까지 막혀요), 긴급만 초안 없이 넘겨요. DB 백엔드와 같아요.
+    urgent = req.risk_level == "urgent"
     card = _new_card(req, "reply_draft", teacher, draft={
-        "summary": summary,
-        **({} if high_risk else {"text": "(모의 초안) 말씀해 주셔서 감사합니다. 확인해서 다시 안내드릴게요."}),
+        "summary": summary, **reason,
+        **({} if urgent else {"text": "(모의 초안) 말씀해 주셔서 감사합니다. 확인해서 다시 안내드릴게요."}),
     })
-    if not high_risk:
+    if not urgent:
         from app.mock.documents import attach_evidence
         attach_evidence(card)
         card.check_result = {"passed": True, "issues": [], "attempt": 1}
     add_event(req, "drafted", card=card, actor_type="agent", agent_name="document", trace_id=trace_id)
-    if high_risk or (req.type == "complaint" and (repeat_count(req) or 0) >= 3):
-        report = _new_card(req, "director_report", director_of(req.org_id), draft={"summary": summary})
+    if high_risk or (req.type == "complaint" and (repeat_count(req) or 0) >= REPEAT_REPORT_AT):
+        report = _new_card(req, "director_report", director_of(req.org_id), draft={"summary": summary, **reason})
         set_request_status(req, "escalated", action="escalated", card=report, actor_type="agent",
                            agent_name="supervisor", trace_id=trace_id, reason="risk" if high_risk else "repeat")
         return
@@ -451,24 +466,27 @@ def slot_conflicts(org_id, teacher, room, period):
 
 
 def _propose_slots(card: Card, teacher: UUID | None, round_no: int = 1, *, preferred_times=None, count=3) -> list[Slot]:
-    """평일 15:00·16:00 중 확정·살아 있는 체크와 겹치지 않는 세 칸을 골라요."""
-    from app.modules.consultations.slots import preference_key
+    """평일 15:00·16:00 중 확정·살아 있는 체크·켠 상담 시간 규칙과 맞지 않는 칸을 빼고 세 칸을 골라요."""
+    from app.mock.memories import active_rules
+    from app.modules.consultations.slots import fallback_preference, preference_key, preferred_or_memory, rule_bounds
     if preferred_times is None:
         preferred_times = next((e.detail["preferred_times"] for e in reversed(events_of(card.request_id))
                                 if "preferred_times" in e.detail), None)
     if preferred_times is None and card.request_id in _state.requests:
         preferred_times = _state.requests[card.request_id].body  # 첫 후보는 요청 글의 희망을 읽어요(DB판과 같음)
+    preference = fallback_preference(preferred_times, now())  # 모의엔 AI가 없어 정규식 대역만 써요.
     if _state.memories and card.request_id in _state.requests:
         from app.mock.memories import load_preferences
-        from app.modules.consultations.slots import preferred_or_memory
         req = _state.requests[card.request_id]
-        preferred_times = preferred_or_memory(preferred_times, load_preferences(req.org_id, req.requester_id))
+        preference = preferred_or_memory(preference, load_preferences(req.org_id, req.requester_id))
     first = _next_weekday(now().date())
     room = next(iter(_state.rooms))
     teacher = teacher or seed.TEACHER
+    rules = [rule["rule_json"] for rule in active_rules(card.org_id, teacher, ("slot_unavailable",))]
     candidates = []
     day = first
     while day <= now().date()+timedelta(days=14):
+        lower, upper = rule_bounds(rules, day, datetime.combine(day, time(), KST), datetime.combine(day, time.max, KST))
         for hour in (15, 16):
             start = datetime.combine(day, time(hour), KST)
             end = start + timedelta(minutes=30)
@@ -476,7 +494,7 @@ def _propose_slots(card: Card, teacher: UUID | None, round_no: int = 1, *, prefe
             def overlaps(period):
                 return start < period["end"] and period["start"] < end
 
-            if slot_conflicts(card.org_id, teacher, room, {"start": start, "end": end}):
+            if start < lower or end > upper or slot_conflicts(card.org_id, teacher, room, {"start": start, "end": end}):
                 continue
             if any(s.org_id == card.org_id and overlaps(s.period) and (
                     _state.cards[s.card_id].request_id == card.request_id
@@ -486,7 +504,7 @@ def _propose_slots(card: Card, teacher: UUID | None, round_no: int = 1, *, prefe
             candidates.append({"start": start, "end": end})
         day = _next_weekday(day)
     out = []
-    for rank, period in enumerate(sorted(candidates, key=preference_key(preferred_times, now()))[:count], 1):
+    for rank, period in enumerate(sorted(candidates, key=preference_key(preference, now()))[:count], 1):
         slot = Slot(id=_state.next_int(), card_id=card.id, org_id=card.org_id, teacher_id=teacher,
                     room_id=room, period=period, round=round_no, rank=rank)
         _state.slots[slot.id] = slot

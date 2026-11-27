@@ -1,6 +1,7 @@
 """문의 자료를 찾고, 인용과 답변을 검사한 뒤 담임에게 초안을 넘긴다."""
 
 import json
+import os
 import re
 from datetime import date, datetime
 from pathlib import Path
@@ -15,13 +16,15 @@ PROMPTS = Path(__file__).resolve().parents[1] / "prompts"
 WRITE_FORMAT = "\nJSON 하나로 답한다: {\"text\": str, \"evidence\": [{\"chunk_id\": int, \"quote\": str}], \"facts\": [{\"text\": str, \"evidence\": [{\"chunk_id\": int, \"quote\": str}]}], \"no_evidence\": bool, \"conflict\": bool, \"partial\": bool, \"unanswered\": [str]}"
 WRITE_FORMAT += '\n보낸 알림장 인용은 {"chunk_id": null, "source": "daily_note", "note_id": "입력의 UUID", "quote": "원문 구절"}로 적는다. 기억은 사실 근거가 아니다.'
 WRITE_FORMAT += '\n담임 관찰 기록 인용은 {"chunk_id": null, "source": "daily_record", "record_id": "입력의 UUID", "quote": "원문 구절"}로 적는다. quote는 원문 그대로, text는 담임 메모 말투 대신 보호자에게 보낼 말로 쓴다.'
+WRITE_FORMAT += '\n투약·귀가 요청 인용은 {"chunk_id": null, "source": "care_request", "request_id": "입력의 UUID", "quote": "원문 구절"}로 적는다. quote는 원문 그대로 적는다.'
 CHECK_FORMAT = "\nJSON 하나로 답한다: {\"passed\": bool, \"issues\": [{\"field\": \"출처|날짜|대상|누락|민감정보\", \"problem\": str}]}"
 CHECK_FIELDS = {"출처", "날짜", "대상", "누락", "민감정보"}
 MAX_REWRITES = 2
 KST = ZoneInfo("Asia/Seoul")
 WEEKDAYS = "월화수목금토일"
 # 문서 조각이 아닌 아이 개인 근거. card_evidence 대신 카드 초안에 남기고 이 칸들로 원 후보와 대조해요.
-PERSONAL = {"daily_note": ("note_id", "note_date"), "daily_record": ("record_id", "record_date")}
+PERSONAL = {"daily_note": ("note_id", "note_date"), "daily_record": ("record_id", "record_date"),
+            "care_request": ("request_id", "request_date")}
 WRITE_FORMAT += "\n입력의 today는 이 질문을 받은 날이다. 질문과 자료에 나오는 오늘·내일·이번 주는 today 기준 날짜로 바꿔 읽는다."
 
 
@@ -54,6 +57,11 @@ def record_chunk(record_id, record_date, body):
             "title": f"{day.month}월 {day.day}일 관찰 기록", "quote": quote, "content": quote, "score": 1.0}
 
 
+def gather_on():
+    """ANSWER_GATHER=agent(기본)면 자료 찾는 AI가 근거를 모으고, fixed면 질문 문장으로 고정 검색한다."""
+    return os.getenv("ANSWER_GATHER", "agent") == "agent"
+
+
 def _evidence_key(item):
     source = item.get("source")
     if source in PERSONAL and item.get("chunk_id") is None:
@@ -79,9 +87,15 @@ def day_label(day=None):
     return f"{day.isoformat()}({WEEKDAYS[day.weekday()]})"
 
 
-def _common(today=None):
-    """공통 규칙의 '오늘' 칸을 채운다. 비워 두면 모델이 '내일'을 자료 문구 그대로 믿는다."""
-    return _prompt("common.md", "# 공통 규칙").replace("{today}", day_label(today))
+def _common(today=None, who=None):
+    """공통 규칙의 '지금 상황'을 채운다. 오늘을 비워 두면 모델이 '내일'을 자료 문구 그대로 믿는다.
+    who는 {"role": 질문한 사람, "child": 이 요청의 아이 이름}이고 없는 칸은 줄째 뺀다. 범위는 도구가 지킨다."""
+    lines = [f"- 오늘: {day_label(today)}"]
+    if (who or {}).get("role"):
+        lines.append(f"- 질문한 사람: {who['role']}")
+    if (who or {}).get("child"):
+        lines.append(f"- 이 요청의 아이: {who['child']} (요청한 보호자의 아이 1명)")
+    return _prompt("common.md", "# 공통 규칙").replace("- 오늘: {today}", "\n".join(lines))
 
 
 def _ask_writer(model, prompt, payload, trace):
@@ -178,6 +192,8 @@ def _verify(answer, candidates, trace, question=None):
     partial = (bool(answer.get("partial")) and facts_valid and bool(evidence) and bool(unanswered)
                and (no_evidence or conflict))
     trace.append("verify")
+    # 자료끼리 다르면 답으로 쓰지 않는다. 다만 두 자료가 어떻게 다른지 쓴 AI 글은 인용이 맞을 때 따로 돌려준다(교직원 질문).
+    conflict_text = answer["text"].strip() if conflict and evidence else ""
     # 모델은 근거가 있다고 했는데 인용문이 하나도 글자 그대로가 아니면, 근거 없음으로 끝내지 않고 다시 쓰게 한다.
     misquoted = (bool(answer["evidence"]) and not evidence and not conflict
                  or bool(answer.get("partial")) and isinstance(raw_facts, list) and bool(raw_facts) and not facts_valid)
@@ -190,20 +206,25 @@ def _verify(answer, candidates, trace, question=None):
         )
     return {"text": NO_ANSWER if conflict else text, "evidence": evidence,
             "no_evidence": no_evidence, "conflict": conflict, "partial": partial,
-            "facts": facts if partial else [], "unanswered": unanswered if partial else [], "misquoted": misquoted}
+            "facts": facts if partial else [], "unanswered": unanswered if partial else [], "misquoted": misquoted,
+            **({"conflict_text": conflict_text} if conflict_text else {})}
 
 
-def _review(model, question, draft, candidates, attempt, trace, today=None):
-    prompt = _common(today) + _prompt("checker.md", "## 입력", "## 알림장: 메모와 대조한다") + CHECK_FORMAT
+def _review(model, question, draft, candidates, attempt, trace, today=None, who=None):
+    prompt = _common(today, who) + _prompt("checker.md", "## 입력", "## 알림장: 메모와 대조한다") + CHECK_FORMAT
     prompt += "\nsource=daily_note는 요청 아이에게 실제 보낸 알림장 근거다. note_id와 note_date·quote를 대조하고 다른 날짜의 일을 오늘 일로 단정하지 않는다."
     prompt += "\nsource=daily_record는 담임이 그 아이에 대해 남긴 관찰 기록이다. record_id와 record_date·quote를 대조하고 기록에 없는 일을 초안이 덧붙였는지 본다."
+    prompt += "\nsource=care_request는 그 아이 보호자가 낸 투약·귀가 요청과 처리 상태다. request_id와 request_date·quote를 대조하고 요청·처리 상태에 없는 일을 초안이 덧붙였는지 본다."
     if draft.get("partial"):
         prompt += ("\n부분 답변에서는 unanswered에 든 질문 항목이 고정 담임 확인 문구와 함께 남아 있으면 그 항목의 미답 자체는 누락 오류로 돌려보내지 않는다. "
                    "facts의 각 사실 문장을 같은 facts 항목의 evidence 인용과 따로 대조하고, 인용이 없거나 실제 조각이 뒷받침하지 않는 사실은 통과시키지 않는다. "
                    "질문한 항목과 관련된 자료끼리 날짜·숫자·사실이 서로 다르면 부분 답을 통과시키지 말고 날짜 또는 출처 문제로 돌려보낸다. "
                    "고정 문구 형식은 ‘질문하신 …에 대해서는 자료에서 확인하지 못했어요. 선생님이 확인한 뒤 알려 드릴게요.’이다.")
+    if draft.get("conflict"):
+        prompt += "\nconflict=true인 draft는 질문의 답이 아니라 자료끼리 어떻게 다른지 쓴 설명이다. 자료마다 적힌 내용을 인용 그대로 옮겼는지 대조한다."
     payload = {"question": question, "today": day_label(today), "draft": draft["text"], "evidence": draft["evidence"],
                "chunks": candidates, "attempt": attempt, "partial": draft.get("partial", False),
+               "conflict": bool(draft.get("conflict")),
                "facts": draft.get("facts", []),
                "unanswered": draft.get("unanswered", []),
                "untrusted_data_fields": ["question", "chunks", "draft"]}
@@ -237,23 +258,37 @@ def _check_result(passed, issues, attempt):
 
 @feature("문의 답변 초안")
 def draft_answer(question: str, search, writer=None, checker=None, *, memories=(), prior_answer=None, preferences=(), child_notes=(),
-                 today: date | None = None) -> dict:
+                 today: date | None = None, gather_tools=None, who=None, explain_conflict=False) -> dict:
+    """gather_tools가 있고 ANSWER_GATHER가 agent(기본)면 자료 찾는 AI가 도구로 근거를 모은다.
+    못 모았거나(None) 하나도 없으면([]) 아래 고정 검색 그대로 간다. 자료 찾는 AI가 모았으면 결과에 gathered가 붙는다.
+    explain_conflict면 자료끼리 다를 때 AI가 쓴 차이 설명도 검사 AI를 거쳐 text로 돌려준다(교직원 질문)."""
     trace = []
-    candidates = []
-    for doc_type in ("notice", "schedule", "menu", "policy"):
-        for attempt in range(2):
-            try:
-                candidates.extend(search(doc_type, question))
-                break
-            except Exception:  # 검색 도구 오류는 한 번 다시 시도한다
-                if attempt:
-                    return fallback([*trace, "search"])
-    trace.append("search")
-    candidates = sorted((item for item in candidates if not suspicious_chunk(item["content"])),
-                        key=lambda item: (item.get("source") in PERSONAL, item["score"]), reverse=True)[:8]
+    candidates = None
+    if gather_tools is not None and gather_on():
+        from agents.graphs.gather import gather
+        candidates = gather(question, gather_tools, OpenAIModel("GATHER"), today=today, trace=trace, who=who) or None
+    meta = {} if candidates is None else {
+        "gathered": True, **({"law_unchecked": True} if getattr(gather_tools, "law_unchecked", False) else {})}
+
+    def done(result):
+        return {**result, **meta}
+
+    if candidates is None:
+        candidates = []
+        for doc_type in ("notice", "schedule", "menu", "policy"):
+            for attempt in range(2):
+                try:
+                    candidates.extend(search(doc_type, question))
+                    break
+                except Exception:  # 검색 도구 오류는 한 번 다시 시도한다
+                    if attempt:
+                        return fallback([*trace, "search"])
+        trace.append("search")
+        candidates = sorted((item for item in candidates if not suspicious_chunk(item["content"])),
+                            key=lambda item: (item.get("source") in PERSONAL, item["score"]), reverse=True)[:8]
     if not candidates:
         return fallback(trace)
-    common = _common(today)
+    common = _common(today, who)
     write_prompt = common + _prompt("documents.md", "## 입력", "## 알림장 초안 쓰기") + WRITE_FORMAT
     writer = writer if writer is not None else OpenAIModel("DOCUMENT")
     checker = checker if checker is not None else OpenAIModel("CHECKER")
@@ -265,7 +300,7 @@ def draft_answer(question: str, search, writer=None, checker=None, *, memories=(
                                                     "review_issues": issues,
                                                     "untrusted_data_fields": ["question", "chunks", "memories", "prior_answer", "preferences", "child_notes"]}, trace)
         if answer is None:
-            return fallback(trace)
+            return done(fallback(trace))
         draft = _verify(answer, candidates, trace, question)
         misquoted = draft.pop("misquoted")
         if misquoted and attempt < MAX_REWRITES:
@@ -275,13 +310,18 @@ def draft_answer(question: str, search, writer=None, checker=None, *, memories=(
             continue
         if (draft["no_evidence"] and not draft["partial"]) or draft["conflict"]:
             problem = "자료끼리 내용이 달라요." if draft["conflict"] else "자료에서 근거를 찾지 못했어요."
-            return {**draft, "check_result": _check_result(False, [{"field": "출처", "problem": problem}], attempt + 1),
-                    "trace": [*trace, "end"]}
-        issues = _review(checker, mask_sensitive(question), draft, candidates, attempt + 1, trace, today)
+            if explain_conflict and draft.get("conflict_text"):
+                # 차이 설명도 검사 AI를 한 번 거친다. 못 거치면 설명 없이 고정 안내(부른 쪽)로 간다.
+                explained = {**draft, "text": draft["conflict_text"]}
+                if _review(checker, mask_sensitive(question), explained, candidates, attempt + 1, trace, today, who) == []:
+                    return done({**explained, "check_result": _check_result(True, [], attempt + 1), "trace": [*trace, "end"]})
+            return done({**draft, "check_result": _check_result(False, [{"field": "출처", "problem": problem}], attempt + 1),
+                         "trace": [*trace, "end"]})
+        issues = _review(checker, mask_sensitive(question), draft, candidates, attempt + 1, trace, today, who)
         if issues is None:
-            return fallback(trace)
+            return done(fallback(trace))
         if not issues:
-            return {**draft, "check_result": _check_result(True, [], attempt + 1),
-                    "trace": [*trace, "end"]}
+            return done({**draft, "check_result": _check_result(True, [], attempt + 1),
+                         "trace": [*trace, "end"]})
         last_check = _check_result(False, issues, attempt + 1)
-    return {**fallback(trace), "check_result": last_check}
+    return done({**fallback(trace), "check_result": last_check})

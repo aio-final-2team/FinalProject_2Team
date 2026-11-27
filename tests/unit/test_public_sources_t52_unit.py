@@ -75,7 +75,9 @@ def test_forecast_line_reads_naturally():
 
 
 def test_prefetch_only_fetches_what_the_request_needs(monkeypatch):
+    """고정 검색 대역(ANSWER_GATHER=fixed): 예보를 질문 낱말로 미리 가져와요."""
     from app.modules.documents import public_sources
+    monkeypatch.setenv("ANSWER_GATHER", "fixed")
     calls = []
     monkeypatch.setattr(public_sources, "fetch_law", lambda topic: calls.append(("law", topic)) or {"unchecked": True})
     monkeypatch.setattr(public_sources, "fetch_forecast", lambda day: calls.append(("forecast", day)) or {"x": 1})
@@ -89,6 +91,10 @@ def test_prefetch_only_fetches_what_the_request_needs(monkeypatch):
     assert prefetch_public("inquiry", "내일 비 오나요?", "other", TODAY) == {"forecast": (date(2026, 11, 24), {"x": 1})}
     assert prefetch_public("consultation", "내일 비 오나요?", "other", TODAY) == {}
     assert calls == [("law", "infection"), ("law", "child_safety"), ("forecast", date(2026, 11, 24))]
+    # 자료 찾는 AI 경로에서는 예보를 낱말로 미리 가져오지 않아요(AI가 forecast 도구로 불러요).
+    monkeypatch.setenv("ANSWER_GATHER", "agent")
+    assert prefetch_public("inquiry", "내일 비 오나요?", "other", TODAY) == {}
+    assert calls[-1] == ("forecast", date(2026, 11, 24)) and len(calls) == 3
 
 
 def test_prefetch_law_error_becomes_unchecked(monkeypatch):

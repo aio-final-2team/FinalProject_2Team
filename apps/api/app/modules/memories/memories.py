@@ -1,9 +1,10 @@
 import json
 import logging
 import os
-import re
 from datetime import datetime
 from pathlib import Path
+
+import agents
 
 from sqlalchemy import text
 
@@ -13,7 +14,8 @@ from app.core.constants import CONSENT_VERSION, REJECTION_RULE_TEXTS, REJECTION_
 from app.core.db import transaction
 from app.core.schedule import KST
 from app.core.errors import ApiError
-from app.core.memory_rules import mask_child_names, validate_rule_json, tone_contents, parent_candidates, memory_page
+from app.core.memory_rules import (mask_child_names, validate_rule_json, tone_contents, parent_candidates, memory_page,
+                                    fallback_parent_candidates, checked_rule)
 from agents.llm import OpenAIModel, feature
 from agents.guardrails.sensitive import mask_sensitive
 from app.modules.requests import events
@@ -22,6 +24,9 @@ from app.modules.requests.events import record
 from app.modules.memories.saved_answers import set_status as set_saved_status  # noqa: F401  라우트가 backend.memories.set_saved_status로 부름
 
 log = logging.getLogger(__name__)
+# 저장소와 이미지(/app)의 폴더 깊이가 달라서 agents 패키지 위치로 찾아요.
+PROMPT = Path(agents.__file__).resolve().parent / "prompts" / "memory.md"
+RULE_INPUT_LIMIT = 10  # 기억 AI에 넘기는 최근 거절 글 수
 VISIBLE_MEMORY = """m.org_id=:org AND m.deleted_at IS NULL AND (
     (m.owner_id=:owner AND m.child_id IS NULL AND (NOT :parent OR m.kind='preference'))
     OR (:parent AND m.kind='care_note' AND EXISTS (SELECT 1 FROM child_guardians g
@@ -78,7 +83,7 @@ def after_approval(user, card, req, decision, content):
         with transaction() as connection:
             names = list(connection.scalars(text("SELECT display_name FROM children WHERE org_id=:org"),
                                             {"org": user.org_id}))
-        prompt = (Path(__file__).resolve().parents[5] / "agents/prompts/memory.md").read_text()
+        prompt = PROMPT.read_text()
         payload = {"original": mask_sensitive(mask_child_names(card["draft"].get("text", ""), names)),
                    "edited": mask_sensitive(mask_child_names(content["text"], names))}
         result = OpenAIModel("MEMORY").json(prompt, json.dumps(payload, ensure_ascii=False))
@@ -157,27 +162,73 @@ def save_parent_candidates(connection, req, candidates, names):
 
 @feature("보호자 기억")
 def after_request(request_id):
-    if not os.getenv("LLM_MODEL_MEMORY", "").strip():
-        return
     req = None
     try:
         with transaction() as connection:
             req = dict(connection.execute(text("SELECT * FROM requests WHERE id=:id"), {"id": request_id}).mappings().one())
             if req["status"] not in ("sent_or_booked", "completed"):
                 return
-            if not re.search(r"선호|항상|보통|평소|매번|평일|매주|알레르기|낮잠|잠들|등원|안아|낯가림|분리불안", req["body"]):
-                return
-            # 국외 AI 전송에 동의하지 않은 보호자의 글은 기억 추출 모델에 보내지 않아요.
+            # 국외 AI 전송에 동의하지 않은 보호자의 글은 기억 추출 모델에 보내지 않고 대역으로도 기억하지 않아요.
             if not _memory_kinds(connection, req):
                 return
             names = list(connection.scalars(text("SELECT display_name FROM children WHERE org_id=:org"), {"org": req["org_id"]}))
-        prompt = (Path(__file__).resolve().parents[5] / "agents/prompts/memory.md").read_text()
-        reply = OpenAIModel("MEMORY").json(prompt, json.dumps({"parent_body": mask_sensitive(mask_child_names(req["body"], names)),
-                                                              "untrusted_data_fields": ["parent_body"]}, ensure_ascii=False))
+        candidates = None
+        if os.getenv("LLM_MODEL_MEMORY", "").strip():
+            # 반복인지·어떤 기억인지는 기억 AI가 정해요. 해당 없으면 후보 0개로 답해요.
+            try:
+                reply = OpenAIModel("MEMORY").json(PROMPT.read_text(), json.dumps(
+                    {"parent_body": mask_sensitive(mask_child_names(req["body"], names)),
+                     "untrusted_data_fields": ["parent_body"]}, ensure_ascii=False))
+                candidates = reply.get("candidates") if isinstance(reply, dict) else None
+                if not isinstance(candidates, list) or len(candidates) > 2:
+                    raise ValueError("보호자 기억 후보 형식 오류")
+            except Exception:
+                memory_failed(None, "extract_parent", req)
+                candidates = None
+        if candidates is None:
+            candidates = fallback_parent_candidates(req["body"])  # 모델 없음·실패 대역
         with transaction() as connection:
-            save_parent_candidates(connection, req, reply["candidates"], names)
+            save_parent_candidates(connection, req, candidates, names)
     except Exception:
         memory_failed(None, "extract_parent", req)
+
+
+def rejections_since_decision(connection, org_id, owner_id, reason_code):
+    """마지막 거절·끄기 결정 뒤 쌓인 같은 이유 기억 글이에요. 최근 것부터예요."""
+    return list(connection.scalars(text("""
+        SELECT content FROM memories WHERE org_id=:org AND owner_id=:owner
+          AND kind='rejection_reason' AND reason_code=:code AND deleted_at IS NULL
+          AND created_at>coalesce((
+            SELECT max(decided_at) FROM memory_rules WHERE org_id=:org AND owner_id=:owner
+              AND reason_code=:code AND status IN ('declined','off')), '-infinity'::timestamptz)
+        ORDER BY created_at DESC,id DESC
+    """), {"org": org_id, "owner": owner_id, "code": reason_code}))
+
+
+def open_rule(connection, org_id, owner_id, reason_code):
+    return connection.scalar(text("""
+        SELECT id FROM memory_rules WHERE org_id=:org AND owner_id=:owner AND reason_code=:code
+          AND status IN ('proposed','active')
+    """), {"org": org_id, "owner": owner_id, "code": reason_code})
+
+
+def active_rules(connection, org_id, owner_id, reason_codes=None):
+    """담임이 켠 규칙만 [{id, reason_code, rule_text, rule_json}]로 돌려줘요. 제안·거절·끈 규칙은 읽지 않아요."""
+    return [dict(row) for row in connection.execute(text("""
+        SELECT id,reason_code,rule_text,rule_json FROM memory_rules
+        WHERE org_id=:org AND owner_id=:owner AND status='active'
+          AND (CAST(:codes AS text[]) IS NULL OR reason_code=ANY(CAST(:codes AS text[])))
+        ORDER BY created_at,id
+    """), {"org": org_id, "owner": owner_id, "codes": list(reason_codes) if reason_codes else None}).mappings()]
+
+
+@feature("거절 이유 규칙 제안")
+def suggest_rule(reason_code, texts, names):
+    """기억 AI가 쌓인 거절 글을 읽고 규칙 문장과 rule_json을 제안해요. 공통 규칙이 없으면 None이에요."""
+    reply = OpenAIModel("MEMORY").json(PROMPT.read_text(), json.dumps(
+        {"rejections": {"reason_code": reason_code, "texts": [mask_sensitive(t) for t in texts[:RULE_INPUT_LIMIT]]},
+         "untrusted_data_fields": ["rejections"]}, ensure_ascii=False))
+    return checked_rule(reply, reason_code, names)
 
 
 def propose_rule(connection, owner_id, reason_code, rule_text, rule_json, *, org_id):
@@ -186,20 +237,10 @@ def propose_rule(connection, owner_id, reason_code, rule_text, rule_json, *, org
     # INSERT 전에 직렬화해 서로 다른 요청에서 동시에 거절해도 세 번째를 빠뜨리지 않아요.
     connection.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))"),
                        {"key": f"memory-rule:{org_id}:{owner_id}:{reason_code}"})
-    existing = connection.scalar(text("""
-        SELECT id FROM memory_rules WHERE org_id=:org AND owner_id=:owner AND reason_code=:code
-          AND status IN ('proposed','active')
-    """), {"org": org_id, "owner": owner_id, "code": reason_code})
+    existing = open_rule(connection, org_id, owner_id, reason_code)
     if existing is not None:
         return existing
-    count = connection.scalar(text("""
-        SELECT count(*) FROM memories WHERE org_id=:org AND owner_id=:owner
-          AND kind='rejection_reason' AND reason_code=:code AND deleted_at IS NULL
-          AND created_at>coalesce((
-            SELECT max(decided_at) FROM memory_rules WHERE org_id=:org AND owner_id=:owner
-              AND reason_code=:code AND status IN ('declined','off')), '-infinity'::timestamptz)
-    """), {"org": org_id, "owner": owner_id, "code": reason_code})
-    if count < REJECTION_RULE_THRESHOLD:
+    if len(rejections_since_decision(connection, org_id, owner_id, reason_code)) < REJECTION_RULE_THRESHOLD:
         return None
     rule_id = connection.scalar(text("""
         INSERT INTO memory_rules (org_id,owner_id,reason_code,rule_text,rule_json)
@@ -208,10 +249,7 @@ def propose_rule(connection, owner_id, reason_code, rule_text, rule_json, *, org
     """), {"org": org_id, "owner": owner_id, "code": reason_code, "text": rule_text,
            "json": json.dumps(rule_json)})
     if rule_id is None:
-        return connection.scalar(text("""
-            SELECT id FROM memory_rules WHERE org_id=:org AND owner_id=:owner AND reason_code=:code
-              AND status IN ('proposed','active')
-        """), {"org": org_id, "owner": owner_id, "code": reason_code})
+        return open_rule(connection, org_id, owner_id, reason_code)
     card = dict(connection.execute(text("""
         INSERT INTO cards (org_id,kind,status,assignee_id,subject_type,subject_id,draft)
         VALUES (:org,'rule_proposal','pending',:owner,'memory_rule',:rule,CAST(:draft AS jsonb)) RETURNING *
@@ -222,16 +260,13 @@ def propose_rule(connection, owner_id, reason_code, rule_text, rule_json, *, org
 
 
 def remember_rejection(connection, user, card, decision, reason_code, reason_text):
+    """거절 이유를 기억으로 남겨요. 같은 이유가 세 건 쌓였고 기억 AI가 켜져 있으면, 커밋 뒤 부를 일을 돌려줘요.
+    AI 호출을 거절 트랜잭션(카드·요청 잠금) 안에서 하지 않으려는 거예요. 모델이 꺼져 있으면 고정 문장 대역을 바로 저장해요."""
     if user.role != "teacher":
-        return
+        return None
     connection.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))"),
                        {"key": f"memory-rule:{user.org_id}:{user.id}:{reason_code}"})
-    classroom_id = connection.scalar(text("SELECT classroom_id FROM requests WHERE id=:id AND org_id=:org"),
-                                     {"id": card["request_id"], "org": user.org_id})
-    name_query = "SELECT display_name FROM children WHERE org_id=:org"
-    if classroom_id is not None:
-        name_query += " AND classroom_id=:class"
-    names = connection.scalars(text(name_query), {"org": user.org_id, "class": classroom_id})
+    names = _rejection_names(connection, user, card)
     content = mask_child_names(reason_text or "거절 이유: " + reason_code, names)
     connection.execute(text("""
         INSERT INTO memories (org_id,owner_id,kind,reason_code,content,structured,source_card_id,created_at)
@@ -239,20 +274,71 @@ def remember_rejection(connection, user, card, decision, reason_code, reason_tex
     """), {"org": user.org_id, "owner": user.id, "code": reason_code,
            "content": content,
            "structured": json.dumps({"decision": decision, "card_version": card["version"]}), "card": card["id"]})
-    # other 자유 글을 같은 선호로 단정하지 않고, 민감한 글을 규칙에 옮기지 않아요.
-    if reason_code in REJECTION_RULE_TEXTS:
-        for attempt in range(2):
-            try:
-                with connection.begin_nested():
-                    propose_rule(connection, user.id, reason_code, REJECTION_RULE_TEXTS[reason_code],
-                                 {"reason_code": reason_code}, org_id=user.org_id)
+    if _rule_texts(connection, user, reason_code) is None:
+        return None
+    if os.getenv("LLM_MODEL_MEMORY", "").strip():
+        return lambda: suggest_rule_after_commit(user, dict(card), reason_code)
+    _save_proposal(connection, user, card, reason_code, _fallback_rule(reason_code))
+    return None
+
+
+def suggest_rule_after_commit(user, card, reason_code):
+    """커밋 뒤: 기억 AI가 쌓인 거절 글로 규칙을 제안해요. 저장 때 propose_rule이 세 건·열린 규칙을 다시 세요."""
+    with transaction() as connection:
+        texts = _rule_texts(connection, user, reason_code)
+        names = _rejection_names(connection, user, card)
+    if texts is None:
+        return
+    failed = False
+    try:
+        proposal = suggest_rule(reason_code, texts, names)  # AI가 공통 규칙이 없다고 하면 None으로 제안하지 않아요.
+    except Exception:
+        proposal, failed = _fallback_rule(reason_code), True
+    with transaction() as connection:
+        if failed:
+            events.record(connection, None, "tool_failed", card=card, actor_type="agent", agent_name="memory",
+                          tool="suggest_rule", code="SAVE_FAILED")
+        _save_proposal(connection, user, card, reason_code, proposal)
+
+
+def _rejection_names(connection, user, card):
+    classroom_id = connection.scalar(text("SELECT classroom_id FROM requests WHERE id=:id AND org_id=:org"),
+                                     {"id": card["request_id"], "org": user.org_id})
+    name_query = "SELECT display_name FROM children WHERE org_id=:org"
+    if classroom_id is not None:
+        name_query += " AND classroom_id=:class"
+    return list(connection.scalars(text(name_query), {"org": user.org_id, "class": classroom_id}))
+
+
+def _rule_texts(connection, user, reason_code):
+    """세 건이 쌓였고 열린 규칙이 없을 때만 거절 글 목록을 돌려줘요. 아니면 None이라 모델을 부르지 않아요."""
+    texts = rejections_since_decision(connection, user.org_id, user.id, reason_code)
+    if len(texts) < REJECTION_RULE_THRESHOLD or open_rule(connection, user.org_id, user.id, reason_code) is not None:
+        return None
+    return texts
+
+
+def _fallback_rule(reason_code):
+    """대역은 other 자유 글을 같은 이유로 단정하지 않고, 민감한 글을 규칙에 옮기지 않아요."""
+    if reason_code not in REJECTION_RULE_TEXTS:
+        return None
+    return REJECTION_RULE_TEXTS[reason_code], {"reason_code": reason_code}
+
+
+def _save_proposal(connection, user, card, reason_code, proposal):
+    if proposal is None:
+        return
+    for attempt in range(2):
+        try:
+            with connection.begin_nested():
+                propose_rule(connection, user.id, reason_code, *proposal, org_id=user.org_id)
+            break
+        except Exception as error:
+            invalid = isinstance(error, ApiError) and error.code == "VALIDATION_FAILED"
+            if invalid or attempt == 1:
+                events.record(connection, None, "tool_failed", card=card, actor_type="agent", agent_name="memory",
+                              tool="propose_rule", code="VALIDATION_FAILED" if invalid else "SAVE_FAILED")
                 break
-            except Exception as error:
-                invalid = isinstance(error, ApiError) and error.code == "VALIDATION_FAILED"
-                if invalid or attempt == 1:
-                    events.record(connection, None, "tool_failed", card=card, actor_type="agent", agent_name="memory",
-                                  tool="propose_rule", code="VALIDATION_FAILED" if invalid else "SAVE_FAILED")
-                    break
 
 
 def list_memories(user, kind, page, size, sort):

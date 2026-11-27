@@ -5,6 +5,8 @@
 
 - 반 공통 줄(day·supplies·meal)은 코드가 그대로 만든다. AI는 아이 메모 줄과 보호자 요청 줄만 쓴다.
 - 쓰기·검사는 각각 1번 다시 한다. 메모에 없는 말·요청 누락은 자료 AI로 최대 2번 돌려보낸다.
+- 확인 항목의 problem(무엇이 문제인지)·action(선생님이 할 일)은 검사 AI가 자기 말로 쓴다. kind는 화면에 띄울 행동 버튼 종류만 정한다.
+  코드는 넘으면 안 되는 선(다른 아이 이름, 투약 사람 확인, 요청 누락, 실패)만 직접 만든다.
 - 아이들은 동시에 처리한다. 동시 실행 수는 NOTE_DRAFT_CONCURRENCY(기본 5)로 묶는다(흐름 문서 5장).
 """
 
@@ -19,19 +21,35 @@ from agents.llm import JsonModel, ModelError, OpenAIModel, feature, keep_trace
 
 PROMPTS = Path(__file__).resolve().parents[1] / "prompts"
 RETURN_KINDS = {"not_in_memo", "request_missed"}  # 자료 AI가 고칠 수 있는 문제
-MODEL_KINDS = {"not_in_memo", "sensitive", "other_child", "date_check", "absent"}  # 검사 AI가 낼 수 있는 값
+MODEL_KINDS = {"not_in_memo", "sensitive", "other_child", "date_check", "absent"}  # 검사 AI가 고르는 행동 종류
+LEFT_OUT_REASONS = MODEL_KINDS - {"not_in_memo"}  # 아이 메모 줄이 빠진 이유가 되는 확인
+CODE_KINDS = {"request_missed", "draft_failed", "check_failed", "return_limit"}  # 코드만 만든다. 검사 AI가 내면 버린다
+GENERAL_KIND = "sensitive"  # 모르는 행동 종류: 선생님이 보고 빼기·고치기·그대로 보내기를 정하는 일반 확인
 MAX_RETURNS = 2
 REQUEST_KEY = {"medication": "medication", "pickup": "pickup", "inquiry": "inquiry"}  # 계약 v0.4.1(#282)
 NO_SUPPLIES = {"", "없음"}
 
+# 코드가 만드는 확인의 문제 한 줄(PROBLEM)과 할 일 한 줄(ACTION). 검사 AI 확인은 AI가 자기 말로 쓴다.
+# memo_left_out·request_repeats_child는 자료 AI에게만 돌려보내는 내부 신호라 open_checks에 넣지 않는다.
 PROBLEM = {
-    "draft_failed": "이 아이 초안을 만들지 못했어요. 다시 시도하거나 직접 써 주세요.",
-    "check_failed": "메모와 대조하는 검사가 끝나지 않았어요. 직접 읽고 확인해 주세요.",
-    "return_limit": "AI가 두 번 고쳐도 남은 문제가 있어요. 직접 확인해 주세요.",
-    "request_missed": "보호자 요청이 초안에 없어요. 요청 내용을 넣어 주세요.",
-    "other_child": "다른 아이 이름이 들어 있어요. 이 아이 알림장에서는 빼 주세요.",
+    "draft_failed": "이 아이 초안을 만들지 못했어요.",
+    "check_failed": "메모와 대조하는 검사가 끝나지 않았어요.",
+    "return_limit": "AI가 두 번 고쳐도 남은 문제가 있어요.",
+    "request_missed": "보호자 요청이 초안에 없어요.",
+    "other_child": "다른 아이 이름이 들어 있어요.",
+    "other_child_memo": "메모에 다른 아이 이름이 있어요.",
+    "medication": "보호자 투약 요청이에요.",
     "memo_left_out": "선생님 관찰 메모가 초안에서 빠졌어요. 메모를 보고 다시 써 주세요.",
-    "medication": "보호자 투약 요청이에요. 보내기 전에 직접 확인해 주세요.",
+    "request_repeats_child": "보호자 요청 줄이 아이 메모 줄과 같아요. 이 요청에 맞게 다시 써 주세요.",
+}
+ACTION = {
+    "draft_failed": "다시 만들거나 직접 써 주세요.",
+    "check_failed": "직접 읽고 확인해 주세요.",
+    "return_limit": "직접 확인해 주세요.",
+    "request_missed": "요청 내용을 넣어 주세요.",
+    "other_child": "이 아이 알림장에서는 빼 주세요.",
+    "other_child_memo": "누구 이야기인지 확인해 주세요.",
+    "medication": "약 이름·양·시간이 요청과 맞는지 보고 확인해 주세요.",
 }
 
 WRITE_FORMAT = """
@@ -47,8 +65,9 @@ JSON 하나로만 답한다.
 CHECK_FORMAT = """
 ## 답 형식
 JSON 하나로만 답한다. 문제가 없으면 checks는 빈 목록이다.
-{"checks": [{"item_key": "child 또는 줄 key", "kind": "not_in_memo|sensitive|other_child|date_check|absent", "problem": "선생님이 읽을 설명 한 문장", "sentence": "걸린 초안 문장 또는 null"}]}
-- 보호자 요청 누락은 코드가 따로 본다. 너는 위 다섯 값만 쓴다.
+{"checks": [{"item_key": "child 또는 줄 key", "kind": "not_in_memo|sensitive|other_child|date_check|absent", "problem": "무엇이 문제인지 한 줄", "action": "선생님이 할 일 한 줄", "sentence": "걸린 초안 문장 또는 null"}]}
+- kind는 화면에 띄울 행동 버튼 종류다. 위 다섯 값 가운데 하나만 쓴다.
+- 보호자 요청 누락과 투약 요청 줄의 사람 확인은 코드가 따로 남긴다.
 """
 
 
@@ -127,6 +146,9 @@ def draft_child(payload, child, common, names, writer, checker) -> dict:
         except ModelError as error:
             trace.append({"step": "write", "attempt": attempt, "result": "failed", "error": str(error)})
             return result(child, common, [], [new_check("child", "draft_failed")], trace, "handoff", "draft_failed")
+        repeated = [new_check(line["key"], "request_repeats_child", sentence=line["value"],
+                              request_id=line["source"]["request_id"])
+                    for line in own if line.pop("_repeats_child", False)]
         trace.append({"step": "write", "attempt": attempt, "result": "ok",
                       "lines": [{"key": line["key"], "value": line["value"]} for line in own]})
         found = code_checks(own, child, names)
@@ -138,11 +160,12 @@ def draft_child(payload, child, common, names, writer, checker) -> dict:
             review_result = f"failed: {error}"
         missing_memo = memo_left_out(memo, own, found)
         found = unique(found)
-        issues = [f for f in found if f["kind"] in RETURN_KINDS]
+        issues = [f for f in found if f["kind"] in RETURN_KINDS] + repeated  # repeated는 자료 AI에만 간다
         if missing_memo:
             issues.append(new_check("child", "memo_left_out"))  # 자료 AI에만 전달하고 open_checks에는 넣지 않는다
         trace.append({"step": "check", "attempt": attempt, "result": review_result,
-                      "kinds": [f["kind"] for f in found], "memo_left_out": missing_memo})
+                      "kinds": [f["kind"] for f in found], "memo_left_out": missing_memo,
+                      "repeats_child": len(repeated)})
         if any(f["kind"] == "check_failed" for f in found):
             return result(child, common, own, found, trace, "handoff", "check_failed")
         if not issues:
@@ -170,7 +193,8 @@ def masked(text):
 
 
 def masked_requests(child) -> list[dict]:
-    return [{**req, "text": masked(req.get("text"))} for req in child.get("requests") or []]
+    return [{**req, "text": masked(req.get("text")), "result_line": masked(req.get("result_line"))}
+            for req in child.get("requests") or []]
 
 
 def write(model: JsonModel, payload, child, issues) -> list[dict]:
@@ -197,10 +221,10 @@ def write(model: JsonModel, payload, child, issues) -> list[dict]:
         value = (line.get("value") or "").strip() if isinstance(line.get("value"), str) else ""
         if not (req and value):  # 입력에 없는 요청 ID는 버린다
             continue
-        if text and same(value, text):  # 아이 메모 줄을 다시 쓴 것: 요청 원문을 옮기고 선생님 답으로 넘긴다
-            value = f"보호자 요청: {req['text']}"
         out = {"key": REQUEST_KEY[req["type"]], "label": "보호자 요청", "value": value,
                "source": {"type": "request", "request_id": req["request_id"]}}
+        if text and same(value, text):  # 아이 메모 줄을 다시 썼다: 코드가 덮지 않고 자료 AI에 돌려보낸다
+            out["_repeats_child"] = True
         lines.append(out)
     return lines
 
@@ -215,13 +239,14 @@ def code_checks(own: list[dict], child: dict, names: list[str]) -> list[dict]:
             found.append(new_check(line["key"], "other_child", sentence=line["value"]))
     memo = child.get("memo") or ""
     if not found and any(n in memo for n in others):  # 초안에서 이름을 뺐어도 누구 이야기인지는 선생님이 본다
-        found.append(new_check("child", "other_child", problem="메모에 다른 아이 이름이 있어요. 누구 이야기인지 확인해 주세요."))
+        found.append(new_check("child", "other_child", why="other_child_memo"))
     covered = {line["source"].get("request_id") for line in own if line["source"]["type"] == "request"}
     for req in child.get("requests") or []:
         if req["request_id"] not in covered:
             found.append(new_check(REQUEST_KEY[req["type"]], "request_missed", request_id=req["request_id"]))
         elif req["type"] == "medication":  # 투약은 늘 사람이 본다(NFR-03)
-            found.append(new_check("medication", "sensitive", problem=PROBLEM["medication"], request_id=req["request_id"]))
+            # 행동은 '보고 그대로 보내거나 고치기'라 sensitive 버튼을 쓴다. 제목은 투약 문장(problem)이 맡는다
+            found.append(new_check("medication", "sensitive", why="medication", request_id=req["request_id"]))
     return found
 
 
@@ -229,8 +254,7 @@ def memo_left_out(memo: str, own: list[dict], found: list[dict]) -> bool:
     """아이 메모 줄이 빠지고 다른 확인 사유도 없으면 자료 AI에 다시 쓰도록 한다."""
     if not memo or any(line["key"] == "child" for line in own):
         return False
-    if any(f["item_key"] == "child" and f["kind"] in {"sensitive", "other_child", "date_check", "absent"}
-           for f in found):
+    if any(f["item_key"] == "child" and f["kind"] in LEFT_OUT_REASONS for f in found):
         return False
     return True
 
@@ -249,15 +273,27 @@ def review(model: JsonModel, payload, child, own) -> list[dict]:
         raise ModelError("checks 목록이 없어요", format=True)
     found = []
     for check in checks:
-        if isinstance(check, dict) and check.get("kind") in MODEL_KINDS:
-            found.append(new_check(check.get("item_key") or "child", check["kind"],
-                                   problem=check.get("problem"), sentence=check.get("sentence")))
+        if not isinstance(check, dict) or check.get("kind") in CODE_KINDS:  # 요청 누락·실패 표시는 코드 몫
+            continue
+        kind, problem = check.get("kind"), clean(check.get("problem"))
+        if kind not in MODEL_KINDS:
+            if not problem:
+                continue
+            kind = GENERAL_KIND  # 모르는 행동 종류여도 AI가 짚은 문제는 살리고 일반 확인 버튼으로 띄운다
+        found.append(new_check(check.get("item_key") or "child", kind, problem=problem,
+                               sentence=clean(check.get("sentence")), action=clean(check.get("action"))))
     return found
 
 
-def new_check(item_key, kind, problem=None, sentence=None, request_id=None) -> dict:
-    check = {"item_key": item_key, "kind": kind, "problem": problem or PROBLEM.get(kind) or "선생님 확인이 필요해요.",
-             "sentence": sentence}
+def clean(value):
+    return (value.strip() or None) if isinstance(value, str) else None
+
+
+def new_check(item_key, kind, problem=None, sentence=None, request_id=None, *, action=None, why=None) -> dict:
+    """why는 코드 확인의 상황 이름(PROBLEM·ACTION 키). 문장을 받으면 그 문장을 쓰고 코드 문구로 덮지 않는다."""
+    why = why or kind
+    check = {"item_key": item_key, "kind": kind, "problem": problem or PROBLEM.get(why) or "선생님 확인이 필요해요.",
+             "action": action or (None if problem else ACTION.get(why)), "sentence": sentence}
     if request_id:
         check["request_id"] = request_id
     return check

@@ -1,10 +1,10 @@
-"""감독 모델 제안은 요청 유형과 코드 긴급 판단을 덮어쓰지 않는다."""
+"""감독 AI 판단이 계약 목록 안이면 그대로 쓴다. 코드는 요청 유형·선(아이 몸에 해가 간 표현)만 지키고, 낱말은 모델 없음 대역이다."""
 
 import pytest
 
 from agents.llm import ModelError
 from app.core.request_rules import classify
-from app.modules.requests.supervisor import classify_request, validate_proposal
+from app.modules.requests.supervisor import PROMPTS, classify_request, validate_proposal
 
 
 class FakeModel:
@@ -107,12 +107,12 @@ def test_inquiry_model_failure_and_non_dict_default_to_ask(monkeypatch):
 
 
 @pytest.mark.parametrize("category", ["health", None, "건강"])
-def test_inquiry_model_uncertain_without_known_category_stays_normal(category):
-    # 팀 서버(11/25): 열·알레르기·투약 문의를 모델이 '판단 필요 / health'로 올려 원장 보고가 생겼어요
+def test_inquiry_model_uncertain_without_known_category_is_kept(category):
+    # 건강 문의를 일반으로 내리던 코드 예외는 없앴어요. 판단 필요 기준은 supervisor.md 원칙으로 AI에게 줘요.
     body = "아이가 열이 나면 등원해도 되나요?"
     got = validate_proposal("inquiry", body, {"topic_key": "health_hygiene", "urgency": "normal",
                                                "risk_level": "uncertain", "risk_category": category})
-    assert got["risk_level"] == "normal" and got["risk_category"] is None
+    assert got["risk_level"] == "uncertain" and got["risk_category"] is None
 
 
 def test_inquiry_model_uncertain_with_known_category_is_kept():
@@ -138,3 +138,42 @@ def test_inquiry_with_judgement_phrase_in_body_is_kept():
     got = validate_proposal("inquiry", "판단 필요한 문의예요", {
         "topic_key": "other", "urgency": "normal", "risk_level": "uncertain", "risk_category": None})
     assert got["risk_level"] == "uncertain"
+
+
+def test_model_topic_and_normal_risk_beat_fallback_words():
+    # 낱말 대역이면 '선생님'→teacher, '변호사'→긴급이지만, AI가 목록 안 값을 주면 그대로 써요.
+    body = "[TEST] 변호사 선생님 상담이 있어서 일찍 하원해요"
+    assert classify("inquiry", body)["risk_level"] == "urgent"
+    got = validate_proposal("inquiry", body, {"topic_key": "pickup_bus", "urgency": "normal",
+                                               "risk_level": "normal", "risk_category": "legal_external"})
+    assert (got["topic_key"], got["risk_level"], got["risk_category"], got["urgency"]) == (
+        "pickup_bus", "normal", None, "normal")
+
+
+@pytest.mark.parametrize("level", ["normal", "uncertain"])
+def test_child_harm_line_raises_model_risk(level):
+    got = validate_proposal("complaint", "[TEST] 아이가 친구에게 맞고 왔어요", {"topic_key": "peer_conflict",
+                            "risk_level": level, "risk_reason": "[TEST] 이유"})
+    assert (got["risk_level"], got["risk_category"], got["urgency"]) == ("urgent", "child_safety", "urgent")
+    assert "risk_reason" not in got
+
+
+def test_risk_reason_is_one_masked_line_only_for_uncertain():
+    reason = "  [TEST] 교직원을   탓하는지\n애매해요 010-1234-5678 " + "가" * 100
+    got = validate_proposal("complaint", "[TEST] 급식 민원", {"risk_level": "uncertain", "risk_reason": reason})
+    assert got["risk_reason"].startswith("[TEST] 교직원을 탓하는지 애매해요 [전화번호] 가")
+    assert len(got["risk_reason"]) == 80 and "\n" not in got["risk_reason"]
+    for level in ("normal", "urgent"):
+        assert "risk_reason" not in validate_proposal("complaint", "[TEST] 급식 민원", {
+            "risk_level": level, "risk_category": "staff_attack", "risk_reason": "[TEST] 이유"})
+    assert "risk_reason" not in validate_proposal("complaint", "[TEST] 급식 민원", {"risk_level": "uncertain", "risk_reason": 3})
+
+
+def test_prompt_asks_for_risk_reason_without_tool_flow(monkeypatch):
+    monkeypatch.setenv("LLM_MODEL_SUPERVISOR", "fake-model")
+    model = FakeModel({})
+    classify_request("complaint", "[TEST] 급식 민원", model)
+    assert "risk_reason" in model.inputs[0][0] and "3건째" in model.inputs[0][0]
+    # 코드는 분류 JSON만 받으므로 감독 지침에 도구 흐름·채워지지 않는 자리표시를 두지 않아요.
+    prompt = (PROMPTS / "supervisor.md").read_text(encoding="utf-8")
+    assert not any(tool in prompt for tool in ("search_documents", "find_consult_slots", "create_card", "get_my_requests", "{"))

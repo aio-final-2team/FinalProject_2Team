@@ -49,10 +49,20 @@ def _prepare_card(request_id, route, answer=None, classification=None):
     return str(card_id)
 
 
+class Gathered(list):
+    """자료 찾는 AI가 모은 근거 조각. 협업 그래프는 조각 목록을 그대로 작성 노드에 넘기므로, 법령을 못 가져왔는지도
+    목록에 실어 카드까지 보낸다(체크포인트에는 남지 않음)."""
+
+    def __init__(self, chunks, law_unchecked=False):
+        super().__init__(chunks)
+        self.law_unchecked = law_unchecked
+
+
 def _request_context(request_id):
     with transaction() as connection:
         return connection.execute(text("""
             SELECT r.type,r.body,r.org_id,r.classroom_id,r.requester_id,r.child_id,r.created_at,
+                   (SELECT c.display_name FROM children c WHERE c.org_id=r.org_id AND c.id=r.child_id) AS child_name,
                    (SELECT s.user_id FROM classroom_staff s
                     JOIN users u ON (u.id,u.org_id)=(s.user_id,s.org_id)
                     WHERE s.org_id=r.org_id AND s.classroom_id=r.classroom_id
@@ -73,10 +83,14 @@ def _high_risk_request(request_id):
 
 
 def _search_request(request_id):
-    from agents.graphs.answer import PERSONAL
-    from app.modules.documents.answer import graph_enabled, daily_note_chunks, daily_record_chunks
+    from agents.graphs import answer as answer_graph
+    from agents.graphs.answer import PERSONAL, gather_on
+    from agents.graphs.gather import gather
+    from app.modules.documents.answer import (asked_on, graph_enabled, daily_note_chunks, daily_record_chunks,
+                                              request_who)
+    from app.modules.documents.tools import RequestToolbox
     from app.modules.documents.search import search_documents
-    from app.modules.documents.public_sources import forecast_evidence, prefetch_public
+    from app.modules.documents.public_sources import question_forecast
 
     req = _request_context(request_id)
     if req["type"] == "inquiry" and not graph_enabled():
@@ -85,13 +99,15 @@ def _search_request(request_id):
         return [{"skip": True}]
     user = SimpleNamespace(id=req["requester_id"], org_id=req["org_id"], role="parent")
     chunks = []
-    forecast = None
-    if req["type"] == "inquiry":
-        public = prefetch_public("inquiry", req["body"], "other", datetime.now(KST).date())
-        day, fetched = public.get("forecast", (None, None))
-        if fetched:
-            with transaction() as connection:
-                forecast = forecast_evidence(connection, req["org_id"], day, forecast=fetched)
+    if gather_on():  # 자료 찾는 AI가 같은 요청 범위의 도구(예보·법령 포함)로 모으고, 못 모으면 아래 고정 검색 그대로
+        tools = RequestToolbox(req)
+        found = gather(req["body"], tools, answer_graph.OpenAIModel("GATHER"), today=asked_on(req), who=request_who(req))
+        if found:
+            return Gathered(found, law_unchecked=tools.law_unchecked)
+    # 고정 검색(대역)에서만 질문 낱말(event_day)로 예보를 가져와요. 외부 API는 트랜잭션 밖이에요.
+    # 날짜는 초안과 같이 질문 받은 날 기준이에요(전날 온 "내일 비 와요?"를 오늘 처리해도 접수 다음 날 예보).
+    forecast = (question_forecast(req["org_id"], req["body"], asked_on(req) or datetime.now(KST).date())
+                if req["type"] == "inquiry" else None)
     types = ("notice", "policy") if req["type"] == "complaint" else ("notice", "schedule", "menu", "policy")
     for doc_type in types:
         for attempt in range(2):
@@ -107,25 +123,34 @@ def _search_request(request_id):
     return sorted(chunks, key=lambda item: (item.get("source") in PERSONAL, item["score"]), reverse=True)[:8]
 
 
+ANSWER_RULE_CODES = ("wrong_fact", "tone", "missing_info", "privacy", "policy", "other")  # 상담 시간 규칙(slot·room)은 상담 후보 쪽에서 읽어요
+
+
 def _load_request_memory(request_id):
-    from app.modules.memories.memories import load_tones
+    """담임 말투 기억과, 담임이 켠 답변 규칙(거절 이유가 쌓여 기억 AI가 제안한 것)을 답변 AI에 맞춤 참고로 줘요."""
+    from app.modules.memories.memories import active_rules, load_tones
     req = _request_context(request_id)
     if req["teacher_id"] is None:
         return []
     with transaction() as connection:
-        return load_tones(connection, req["org_id"], req["teacher_id"])
+        rules = active_rules(connection, req["org_id"], req["teacher_id"], ANSWER_RULE_CODES)
+        return load_tones(connection, req["org_id"], req["teacher_id"]) + [
+            {"kind": "rule", "content": rule["rule_text"]} for rule in rules]
 
 
 def _write_request(state):
     from agents.graphs import answer as answer_graph
-    from app.modules.documents.answer import asked_on, graph_enabled
+    from app.modules.documents.answer import asked_on, graph_enabled, request_who
     from app.modules.memories.saved_answers import find_saved_answer
 
     req = _request_context(state["request_id"])
     if req["type"] == "inquiry" and not graph_enabled():
         return {"draft": {}, "passed": True}
     chunks = state["parallel"]["chunks"]
-    prompt = answer_graph._prompt("documents.md", "## 입력", "## 알림장 초안 쓰기") + answer_graph.WRITE_FORMAT
+    # 기본 경로(draft_answer)처럼 공통 규칙(지시 무시·개인정보·발송 금지)과 질문 받은 날·이 요청의 아이를 앞에 붙여요.
+    prompt = (answer_graph._common(asked_on(req), request_who(req))
+              + answer_graph._prompt("documents.md", "## 입력", "## 알림장 초안 쓰기")
+              + answer_graph.WRITE_FORMAT)
     # 보호자 글은 문의 답변 그래프(answer.py)처럼 가려서 모델에 보낸다(T55 G-5). 원 자료 조각은 그대로 둔다.
     payload = {"question": mask_sensitive(req["body"]), "today": answer_graph.day_label(asked_on(req)), "chunks": chunks, "memories": state["parallel"].get("memories", []),
                "prior_answer": find_saved_answer(req),
@@ -141,18 +166,22 @@ def _write_request(state):
     reply = answer_graph._ask_writer(answer_graph.OpenAIModel("DOCUMENT"), prompt, payload, [])
     if reply is None:
         return {"draft": {"text": "", "evidence": [], "no_evidence": True, "conflict": False}}
-    return {"draft": answer_graph._verify(reply, chunks, [], req["body"])}
+    draft = answer_graph._verify(reply, chunks, [], req["body"])
+    if isinstance(chunks, Gathered):  # 카드에서 법령을 낱말로 다시 붙이지 않고 AI가 인용한 조문만 근거로 둬요
+        draft.update(gathered=True, **({"law_unchecked": True} if chunks.law_unchecked else {}))
+    return {"draft": draft}
 
 
 def _check_request(state):
     from agents.graphs import answer as answer_graph
-    from app.modules.documents.answer import asked_on, graph_enabled
+    from app.modules.documents.answer import asked_on, graph_enabled, request_who
 
     req = _request_context(state["request_id"])
     if req["type"] == "inquiry" and not graph_enabled():
         return {"passed": True, "issues": []}
     issues = answer_graph._review(answer_graph.OpenAIModel("CHECKER"), mask_sensitive(req["body"]), state["draft"],
-                                  state["parallel"]["chunks"], state.get("attempt", 0) + 1, [], asked_on(req))
+                                  state["parallel"]["chunks"], state.get("attempt", 0) + 1, [], asked_on(req),
+                                  request_who(req))
     if issues is None:
         return {"passed": False, "issues": [{"field": "출처", "problem": "검사하지 못했어요."}],
                 "attempt": 2}

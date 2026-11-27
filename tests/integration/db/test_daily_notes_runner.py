@@ -178,7 +178,8 @@ def test_writer_can_round_trip_json_input_and_output(db_client, teacher, monkeyp
         assert child["memo"] == "[TEST] 아이 메모"
         assert child["requests"] == []  # 하늘의 기침 문의는 알림장 재료가 아니에요
         other = next(c for c in decoded["children"] if c["child_id"] == str(seed.demo_id("503")))
-        assert other["requests"] == [{"request_id": str(seed.REQUEST_PICKUP), "type": "pickup", "text": "오늘 할머니가 데리러 가요"}]
+        assert other["requests"] == [{"request_id": str(seed.REQUEST_PICKUP), "type": "pickup", "text": "오늘 할머니가 데리러 가요",
+                                      "result_line": None}]  # 완료 전이라 처리 결과가 없어요
         assert decoded["menu"]["document_id"] == str(seed.MENU)
         return json.loads(json.dumps(stub_writer.write(decoded)))
 
@@ -298,19 +299,22 @@ def test_unknown_writer_check_preserves_draft_and_logs_only_kind(db_client, teac
         rows = stub_writer.write(payload)
         target = next(row for row in rows if row["child_id"] == str(seed.CHILD))
         target["open_checks"].append({"id": "future", "item_key": "child", "kind": "future_check",
-                                      "problem": "[TEST] 설명은 그대로", "sentence": "[TEST] 비공개 문장"})
+                                      "problem": "[TEST] 설명은 그대로", "action": "[TEST] 할 일도 그대로",
+                                      "sentence": "[TEST] 비공개 문장"})
         return rows
 
     set_writer(monkeypatch, writer)
     draft(db_client, teacher, child_memos=[{"child_id": str(seed.CHILD), "memo": "[TEST] 보존할 메모"}])
     child = next(n for n in notes(db_client, teacher) if n["child_id"] == str(seed.CHILD))
     assert child["status"] == "needs_check"
-    assert [c["kind"] for c in child["open_checks"]] == ["date_check", "check_failed"]
+    # 모르는 종류는 검사 실패로 바꾸지 않고 일반 확인(sensitive) 버튼으로 두며 문제·할 일 문장을 살린다
+    assert [c["kind"] for c in child["open_checks"]] == ["date_check", "sensitive"]
     check = child["open_checks"][-1]
     assert check["problem"] == "[TEST] 설명은 그대로" and check["sentence"] == "[TEST] 비공개 문장"
+    assert check["action"] == "[TEST] 할 일도 그대로"
     assert any(line["value"] == "[TEST] 보존할 메모" for line in child["content"]["items"])
     assert "future_check" in caplog.text
-    assert all(value not in caplog.text for value in ("보존할 메모", "설명은 그대로", "비공개 문장"))
+    assert all(value not in caplog.text for value in ("보존할 메모", "설명은 그대로", "할 일도 그대로", "비공개 문장"))
 
 
 @pytest.mark.parametrize("memo", ["열이 났음", "넘어져 다침", "약 먹음"])

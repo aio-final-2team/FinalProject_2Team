@@ -178,3 +178,97 @@ def test_rule_notification_off_hours_and_duplicate_event_replay(db_client, seede
         rows = connection.execute(text("SELECT recipient_id,kind,request_id,deliver_after FROM notifications WHERE card_id=:id"),
                                   {"id": card["id"]}).all()
         assert rows == [(seed.TEACHER, "new_card", None, datetime(2026, 11, 23, 9, tzinfo=KST))]
+
+
+def fake_memory_model(monkeypatch, reply):
+    import json
+    from types import SimpleNamespace
+    from app.modules.memories import memories
+    monkeypatch.setenv("LLM_MODEL_MEMORY", "fake-memory")
+    seen = []
+
+    def answer(system, user):
+        seen.append(json.loads(user))
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
+    monkeypatch.setattr(memories, "OpenAIModel", lambda role: SimpleNamespace(json=answer))
+    return seen
+
+
+def reject_with(client, code, reason_text):
+    _, cid = create(client, "inquiry")
+    response = client.post(f"{BASE}/cards/{cid}/decisions", headers=auth(seed.TEACHER),
+                           json={"version": 1, "decision": "reject", "reason_code": code, "reason_text": reason_text})
+    assert response.status_code == 200, response.text
+
+
+def test_ai_rule_from_rejection_texts_feeds_consultation_time_after_activation(db_client, seeded_db, monkeypatch):
+    """[TEST] 기억 AI가 쌓인 거절 글로 규칙 문장·시간 조건을 제안하고, 켠 뒤 상담 후보가 그 값을 받아요."""
+    seen = fake_memory_model(monkeypatch, {"rule": {"rule_text": "[TEST] 상담은 14시 이후에만 잡아요",
+                                                    "rule_json": {"after": "14:00", "reason_code": "tone"}}})
+    for index in range(3):
+        reject_with(db_client, "slot_unavailable", f"[TEST] 오전은 수업이라 어려워요 {index}")
+    assert len(seen) == 1 and seen[0]["rejections"]["reason_code"] == "slot_unavailable"
+    assert sorted(seen[0]["rejections"]["texts"]) == [f"[TEST] 오전은 수업이라 어려워요 {i}" for i in range(3)]
+    with seeded_db.connect() as connection:
+        rid, rule_text, rule_json = connection.execute(text(
+            "SELECT id,rule_text,rule_json FROM memory_rules WHERE reason_code='slot_unavailable'")).one()
+    assert rule_text == "[TEST] 상담은 14시 이후에만 잡아요"
+    assert rule_json == {"reason_code": "slot_unavailable", "after": "14:00"}
+    assert db_client.post(f"{BASE}/memory-rules/{rid}/decision", headers=auth(seed.TEACHER),
+                          json={"decision": "activate"}).status_code == 200
+    _, cid = create(db_client, "consultation")
+    with seeded_db.connect() as connection:
+        starts = connection.scalars(text("SELECT lower(period) FROM consultation_slots WHERE card_id=:id"),
+                                    {"id": cid}).all()
+        assert len(starts) == 3 and all(s.astimezone(KST).hour >= 14 for s in starts)
+        from app.modules.memories.memories import active_rules
+        assert [r["id"] for r in active_rules(connection, seed.ORG, seed.TEACHER)] == [rid]
+        assert active_rules(connection, seed.ORG, seed.TEACHER, ("tone",)) == []
+
+
+@pytest.mark.parametrize("code,reply,expected,failed", [
+    ("other", {"rule": {"rule_text": "[TEST] 답 끝에 연락 방법을 붙여요", "rule_json": {}}},
+     "[TEST] 답 끝에 연락 방법을 붙여요", False),
+    ("tone", {"rule": None}, None, False),
+    ("tone", RuntimeError("[TEST] 모델 오류"), "fallback", True),
+    ("tone", {"rule": {"rule_text": "[TEST] 하늘이 답은 짧게 써요", "rule_json": {}}}, "fallback", True),
+    ("other", RuntimeError("[TEST] 모델 오류"), None, True),
+])
+def test_ai_rule_judges_sameness_and_model_failure_uses_fixed_fallback(db_client, seeded_db, monkeypatch,
+                                                                      code, reply, expected, failed):
+    """[TEST] 공통 규칙인지는 AI가 정해요(other 포함). 모델 실패·선 위반은 코드별 고정 문장 대역이에요."""
+    from app.core.constants import REJECTION_RULE_TEXTS
+    seen = fake_memory_model(monkeypatch, reply)
+    for _ in range(3):
+        reject_with(db_client, code, "[TEST] 답을 더 짧게 해 주세요")
+    assert len(seen) == 1
+    with seeded_db.connect() as connection:
+        texts = connection.scalars(text("SELECT rule_text FROM memory_rules WHERE reason_code=:code"),
+                                   {"code": code}).all()
+        assert texts == ([] if expected is None else [REJECTION_RULE_TEXTS[code] if expected == "fallback" else expected])
+        assert connection.scalar(text("""SELECT count(*) FROM events WHERE action='tool_failed'
+                                         AND detail->>'tool'='suggest_rule'""")) == (1 if failed else 0)
+
+
+def test_rule_suggestion_model_runs_after_the_rejection_commits(db_client, seeded_db, monkeypatch):
+    """[TEST] 거절 규칙 제안 AI는 거절이 커밋된 뒤에 불려요. 카드·요청 잠금을 잡은 채 모델을 기다리지 않아요."""
+    from types import SimpleNamespace
+    from app.modules.memories import memories
+    monkeypatch.setenv("LLM_MODEL_MEMORY", "fake-memory")
+    visible = []
+
+    def answer(system, user):
+        with seeded_db.connect() as connection:  # 다른 연결에서 세 번째 거절이 이미 보여야 해요
+            visible.append(connection.scalar(text(
+                "SELECT count(*) FROM memories WHERE kind='rejection_reason' AND reason_code='tone'")))
+        return {"rule": {"rule_text": "[TEST] 답을 더 짧게 써요", "rule_json": {}}}
+    monkeypatch.setattr(memories, "OpenAIModel", lambda role: SimpleNamespace(json=answer))
+    for _ in range(3):
+        reject_with(db_client, "tone", "[TEST] 답을 더 짧게 해 주세요")
+    assert visible == [3]
+    with seeded_db.connect() as connection:
+        assert connection.scalars(text("SELECT rule_text FROM memory_rules WHERE reason_code='tone'")).all() == [
+            "[TEST] 답을 더 짧게 써요"]
+        assert connection.scalar(text("SELECT count(*) FROM cards WHERE kind='rule_proposal'")) == 1

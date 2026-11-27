@@ -6,7 +6,7 @@ import pytest
 
 from agents.graphs.answer import SENSITIVE, draft_answer
 from agents.graphs.daily_note import review, write
-from app.modules.requests.supervisor import classify_request, topic_conflict, validate_proposal
+from app.modules.requests.supervisor import classify_request, validate_proposal
 
 
 class Fake:
@@ -30,11 +30,10 @@ def test_supervisor_prompt_and_user_boundary():
     assert user["untrusted_data_fields"] == ["body"]
 
 
-def test_code_topic_cannot_be_replaced():
-    proposal = {"topic_key": "fee"}
-    assert validate_proposal("inquiry", "급식 문의", proposal)["topic_key"] == "meal"
-    assert topic_conflict("inquiry", "급식 문의", proposal)
-    assert validate_proposal("inquiry", "분류 어려움", proposal)["topic_key"] == "fee"
+def test_model_topic_in_list_is_used_and_unknown_falls_back():
+    # 주제는 AI가 정해요. 목록 밖 값이면 그 칸만 낱말 대역('급식'→meal)으로 채워요.
+    assert validate_proposal("inquiry", "급식 문의", {"topic_key": "fee"})["topic_key"] == "fee"
+    assert validate_proposal("inquiry", "급식 문의", {"topic_key": "invented"})["topic_key"] == "meal"
 
 
 def test_answer_writer_and_checker_mark_untrusted_data():
@@ -114,7 +113,7 @@ def test_request_graph_writer_and_checker_mask_guardian_body(monkeypatch):
     monkeypatch.setattr(answer_graph, "_ask_writer",
                         lambda model, prompt, payload, trace: sent.setdefault("write", payload) and None)
     monkeypatch.setattr(answer_graph, "_review",
-                        lambda model, question, draft, chunks, attempt, trace, today=None: sent.setdefault("check", question) and [])
+                        lambda model, question, draft, chunks, attempt, trace, today=None, who=None: sent.setdefault("check", question) and [])
     state = {"request_id": "r1", "parallel": {"chunks": []}, "draft": {"text": ""}}
     graph_agent._write_request(state)
     graph_agent._check_request(state)

@@ -1,5 +1,7 @@
 """알림장 초안 그래프: 가짜 모델로 흐름(쓰기 → 코드 검사 → 검사 AI → 돌려보내기)을 확인한다."""
 
+import json
+
 from agents.graphs.daily_note import MAX_RETURNS, draft_daily_notes
 from agents.llm import ModelError
 
@@ -21,9 +23,11 @@ class Script:
     def __init__(self, *answers):
         self.answers = list(answers)
         self.calls = 0
+        self.users = []
 
     def json(self, system, user):
         self.calls += 1
+        self.users.append(json.loads(user))
         answer = self.answers.pop(0) if len(self.answers) > 1 else self.answers[0]
         if answer is ModelError:
             raise ModelError("가짜 실패", format=True)  # 답 모양 실패: 그래프가 1번 더 묻는다
@@ -113,10 +117,28 @@ def test_not_in_memo_from_checker_is_returned_but_sensitive_is_not():
     assert writer.calls == 1 and [c["kind"] for c in note["open_checks"]] == ["sensitive"]
 
 
-def test_unknown_kind_from_checker_is_ignored():
-    checker = Script({"checks": [{"item_key": "child", "kind": "made_up"}, {"kind": "request_missed"}]})
+def test_unknown_kind_from_checker_keeps_problem_as_general_check():
+    checker = Script({"checks": [
+        {"item_key": "child", "kind": "made_up", "problem": "[TEST] 보호자가 오해할 수 있어요.", "action": "[TEST] 표현을 고쳐 주세요."},
+        {"item_key": "child", "kind": "made_up"},  # 문제 문장도 없으면 띄울 것이 없다
+        {"kind": "request_missed", "problem": "[TEST] 요청 누락"}]})  # 요청 누락은 코드 몫이라 버린다
     [note] = draft_daily_notes(payload([kid("a", "가온", "블록")]), Script({"child": "블록 놀이를 했어요."}), checker)
-    assert note["open_checks"] == []
+    [check] = note["open_checks"]
+    assert check["kind"] == "sensitive" and check["problem"] == "[TEST] 보호자가 오해할 수 있어요."
+    assert check["action"] == "[TEST] 표현을 고쳐 주세요."
+
+
+def test_checker_problem_and_action_are_kept_as_written():
+    checker = Script({"checks": [{"item_key": "child", "kind": "date_check", "problem": "  [TEST] 준비물 날짜가 달라요. ",
+                                  "action": "[TEST] 통신문 날짜를 보고 확인해 주세요.", "sentence": "[TEST] 내일 앞치마"}]})
+    [note] = draft_daily_notes(payload([kid("a", "라온", "[TEST] 앞치마 내일")]), Script({"child": "[TEST] 내일 앞치마"}), checker)
+    [check] = note["open_checks"]
+    assert (check["kind"], check["problem"], check["action"], check["sentence"]) == (
+        "date_check", "[TEST] 준비물 날짜가 달라요.", "[TEST] 통신문 날짜를 보고 확인해 주세요.", "[TEST] 내일 앞치마")
+    # 검사 AI가 문제만 쓰고 할 일을 비우면 코드 문구로 채우지 않는다
+    checker = Script({"checks": [{"item_key": "child", "kind": "other_child", "problem": "[TEST] 친구 이야기 같아요."}]})
+    [note] = draft_daily_notes(payload([kid("a", "라온", "[TEST] 블록")]), Script({"child": "[TEST] 블록"}), checker)
+    assert note["open_checks"][0]["action"] is None
 
 
 def test_writer_fails_twice_gives_draft_failed():
@@ -172,7 +194,8 @@ def test_return_limit_adds_explicit_open_check():
     [note] = draft_daily_notes(payload([kid("a", "가온", "블록", [req])]), writer, Script(OK))
     assert [c["kind"] for c in note["open_checks"]] == ["request_missed", "return_limit"]
     assert note["open_checks"][-1]["item_key"] == "child"
-    assert note["open_checks"][-1]["problem"] == "AI가 두 번 고쳐도 남은 문제가 있어요. 직접 확인해 주세요."
+    assert note["open_checks"][-1]["problem"] == "AI가 두 번 고쳐도 남은 문제가 있어요."
+    assert note["open_checks"][-1]["action"] == "직접 확인해 주세요."
     assert note["end"] == "handoff"
 
 
@@ -263,6 +286,8 @@ def test_medication_request_line_always_gets_teacher_check():
     [note] = draft_daily_notes(payload([kid("a", "로아", "", [req])]), writer, Script(OK))
     [check] = note["open_checks"]
     assert check["kind"] == "sensitive" and check["item_key"] == "medication" and check["request_id"] == "r1"
+    # 화면 제목은 '민감한 정보'가 아니라 투약 문장, 할 일은 따로 한 줄
+    assert check["problem"] == "보호자 투약 요청이에요." and "확인" in check["action"]
 
 
 def test_concurrent_run_keeps_child_order_and_same_result():
@@ -328,14 +353,24 @@ def test_unanswered_inquiry_keeps_text_without_code_check():
     assert note["open_checks"] == []
 
 
-def test_request_line_repeating_child_line_becomes_request_text():
+def test_request_line_repeating_child_line_goes_back_to_writer_not_overwritten():
     req = {"request_id": "r1", "type": "inquiry", "text": "요즘 친구랑 잘 지내나요?"}
-    writer = Script({"child": "친구에게 먼저 사과했어요.",
-                     "requests": [{"request_id": "r1", "value": "친구에게 먼저 사과했어요."}]})
+    same = {"child": "친구에게 먼저 사과했어요.", "requests": [{"request_id": "r1", "value": "친구에게 먼저 사과했어요."}]}
+    fixed = {"child": "친구에게 먼저 사과했어요.", "requests": [{"request_id": "r1", "value": "[TEST] 친구와 지내는 모습을 물어보셨어요."}]}
+    writer = Script(same, fixed)
     [note] = draft_daily_notes(payload([kid("a", "윤슬", "친구에게 먼저 사과함", [req])]), writer, Script(OK))
+    assert writer.calls == 2 and note["open_checks"] == []
+    [issue] = writer.users[1]["review_issues"]
+    assert issue["kind"] == "request_repeats_child" and issue["request_id"] == "r1"
     line = next(item for item in note["content"]["items"] if item["source"]["type"] == "request")
-    assert line["value"] == "보호자 요청: 요즘 친구랑 잘 지내나요?"
-    assert note["open_checks"] == []
+    assert line["value"] == "[TEST] 친구와 지내는 모습을 물어보셨어요." and "_repeats_child" not in line
+
+    writer = Script(same)  # 끝까지 같으면 코드가 고쳐 쓰지 않고 선생님께 넘긴다
+    [note] = draft_daily_notes(payload([kid("a", "윤슬", "친구에게 먼저 사과함", [req])]), writer, Script(OK))
+    assert writer.calls == MAX_RETURNS + 1
+    line = next(item for item in note["content"]["items"] if item["source"]["type"] == "request")
+    assert line["value"] == "친구에게 먼저 사과했어요."
+    assert [c["kind"] for c in note["open_checks"]] == ["return_limit"]
 
 
 def test_eval_memo_score_ignores_request_checks():

@@ -19,7 +19,7 @@ from sqlalchemy import text
 from app.api.schemas.actions import NoteContent
 from app.api.schemas.views import OpenCheck
 from app.core.config import settings
-from app.core.care import missed_request_check
+from app.core.care import missed_request_check, note_result
 from app.core.constants import NOTE_REQUEST_TYPES
 from app.core.db import transaction
 from app.core.schedule import KST
@@ -57,8 +57,13 @@ def _payload(connection, entry):
         ORDER BY created_at, id
     """), values).mappings().all()
     start = datetime.combine(entry["note_date"], time.min, KST)
+    # 처리 결과는 교직원이 완료할 때 남긴 한 줄이에요(완료 이력의 result_line). 완료 전이면 null이에요.
     requests = connection.execute(text("""
-        SELECT r.id AS request_id, r.child_id, r.type, r.body AS text FROM requests r
+        SELECT r.id AS request_id, r.child_id, r.type, r.body AS text,
+               (SELECT e.detail->>'result_line' FROM events e
+                WHERE e.request_id=r.id AND e.org_id=r.org_id AND e.card_id IS NULL
+                  AND e.detail->>'care_decision'='complete' ORDER BY e.id DESC LIMIT 1) AS result_line
+        FROM requests r
         WHERE r.org_id=:org AND r.classroom_id=:class AND r.type=ANY(CAST(:types AS text[]))
           AND r.created_at>=:start AND r.created_at<:end
           AND EXISTS (SELECT 1 FROM child_guardians g
@@ -90,7 +95,8 @@ def _payload(connection, entry):
             "children": [{"child_id": c["id"], "display_name": c["display_name"],
                           "memo": memos.get(str(c["id"]), ""),
                           "care_notes": load_child_notes(connection, entry["org_id"], c["id"], entry["author_id"]),
-                          "requests": [{k: r[k] for k in ("request_id", "type", "text")}
+                          "requests": [{**{k: r[k] for k in ("request_id", "type", "text")},
+                                        "result_line": note_result(r["result_line"])}
                                        for r in requests if r["child_id"] == c["id"]]} for c in children],
             "menu": dict(menu) if menu is not None else None}
     return json.loads(json.dumps(payload, default=str))
@@ -118,8 +124,9 @@ def _validated(result, payload):
             for check in row["open_checks"]:
                 if (isinstance(check, dict) and isinstance(check.get("kind"), str)
                         and check["kind"] not in get_args(OpenCheck.model_fields["kind"].annotation)):
-                    log.warning("알림장 확인 종류 미지원 kind=%s", check["kind"])
-                    check = {**check, "kind": "check_failed"}
+                    # 모르는 행동 종류는 일반 확인(sensitive: 빼기·직접 고치기·그대로 보내기) 버튼으로 두고 problem·action은 살린다
+                    log.warning("알림장 확인 종류 미지원 kind=%s → sensitive", check["kind"])
+                    check = {**check, "kind": "sensitive"}
                 checks.append(OpenCheck.model_validate(check).model_dump(mode="json"))
             if len({c["id"] for c in checks}) != len(checks):
                 raise ValueError("확인 ID 중복")
