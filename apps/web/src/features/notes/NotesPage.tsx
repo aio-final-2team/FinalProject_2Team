@@ -360,8 +360,11 @@ function Review({ notes }: { notes: DailyNote[] }) {
           <span className="flex items-baseline gap-2">
             <b className="text-headline font-semibold">{names[n.child_id] ?? "아이"}</b>
             {!(allSent && n.status === "sent") && <span className={`text-caption font-bold ${st.cls}`}>{st.label}</span>}
+            {!!n.replies?.length && <span className="shrink-0 rounded-full bg-tint px-2 py-0.5 text-caption font-bold text-accent-ink">답장 {n.replies.length}</span>}
+            {n.supplies_checked_at && <span className="shrink-0 rounded-full bg-ok-tint px-2 py-0.5 text-caption font-bold text-ok">준비물 챙김</span>}
           </span>
           <span className="block truncate text-footnote text-ink2">{sub}</span>
+          {!!n.replies?.length && <span className="block truncate text-footnote font-semibold text-accent-ink">{n.replies[n.replies.length - 1].body}</span>}
         </Link>
         {right ?? <Icon name="chevR" className="size-4 text-ink2" />}
       </li>
