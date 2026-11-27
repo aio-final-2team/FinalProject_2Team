@@ -36,6 +36,7 @@ def setup_graph(seeded_db, monkeypatch, answer):
     with seeded_db.begin() as connection:
         seed_documents(connection)
     monkeypatch.setenv("ANSWER_WRITER", "graph")
+    monkeypatch.setenv("ANSWER_GATHER", "fixed")  # 고정 검색과 자료·검사 두 모델 순서를 보는 시험이에요(자료 찾는 AI는 tests/unit/test_gather.py)
     from agents.graphs import answer as graph
     Writer.answer = answer
     Writer.checker_answer = {"passed": True, "issues": []}

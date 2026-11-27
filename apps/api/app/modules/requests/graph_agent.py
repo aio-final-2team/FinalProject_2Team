@@ -73,8 +73,11 @@ def _high_risk_request(request_id):
 
 
 def _search_request(request_id):
-    from agents.graphs.answer import PERSONAL
-    from app.modules.documents.answer import graph_enabled, daily_note_chunks, daily_record_chunks
+    from agents.graphs import answer as answer_graph
+    from agents.graphs.answer import PERSONAL, gather_on
+    from agents.graphs.gather import gather
+    from app.modules.documents.answer import asked_on, graph_enabled, daily_note_chunks, daily_record_chunks
+    from app.modules.documents.tools import RequestToolbox
     from app.modules.documents.search import search_documents
     from app.modules.documents.public_sources import forecast_evidence, prefetch_public
 
@@ -92,6 +95,10 @@ def _search_request(request_id):
         if fetched:
             with transaction() as connection:
                 forecast = forecast_evidence(connection, req["org_id"], day, forecast=fetched)
+    if gather_on():  # 자료 찾는 AI가 같은 요청 범위의 도구로 모으고, 못 모으면 아래 고정 검색 그대로
+        found = gather(req["body"], RequestToolbox(req, forecast), answer_graph.OpenAIModel("GATHER"), today=asked_on(req))
+        if found:
+            return found
     types = ("notice", "policy") if req["type"] == "complaint" else ("notice", "schedule", "menu", "policy")
     for doc_type in types:
         for attempt in range(2):
@@ -125,7 +132,9 @@ def _write_request(state):
     if req["type"] == "inquiry" and not graph_enabled():
         return {"draft": {}, "passed": True}
     chunks = state["parallel"]["chunks"]
-    prompt = answer_graph._prompt("documents.md", "## 입력", "## 알림장 초안 쓰기") + answer_graph.WRITE_FORMAT
+    # 기본 경로(draft_answer)처럼 공통 규칙(지시 무시·개인정보·발송 금지)과 질문 받은 날을 앞에 붙여요.
+    prompt = (answer_graph._common(asked_on(req)) + answer_graph._prompt("documents.md", "## 입력", "## 알림장 초안 쓰기")
+              + answer_graph.WRITE_FORMAT)
     # 보호자 글은 문의 답변 그래프(answer.py)처럼 가려서 모델에 보낸다(T55 G-5). 원 자료 조각은 그대로 둔다.
     payload = {"question": mask_sensitive(req["body"]), "today": answer_graph.day_label(asked_on(req)), "chunks": chunks, "memories": state["parallel"].get("memories", []),
                "prior_answer": find_saved_answer(req),

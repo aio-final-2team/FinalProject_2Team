@@ -41,6 +41,7 @@ def use_model(seeded_db, monkeypatch, hook):
             WHERE d.title='겨울방학 안내' AND ch.location='1쪽 겨울방학 기간'
         """))
     monkeypatch.setenv("ANSWER_WRITER", "graph")
+    monkeypatch.setenv("ANSWER_GATHER", "fixed")  # 고정 검색과 자료·검사 두 모델 순서를 보는 시험이에요(자료 찾는 AI는 tests/unit/test_gather.py)
     from agents.graphs import answer as graph
     SlowModel.hook = staticmethod(hook)
     monkeypatch.setattr(graph, "OpenAIModel", SlowModel)

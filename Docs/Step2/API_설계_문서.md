@@ -1565,6 +1565,8 @@ API 69 `PATCH /saved-answers/{answer_id}`는 `{status:"off"|"active"}`를 받는
 
 아이의 몸·마음·친구·식사·낮잠을 묻는 문의는 같은 보호자 확인으로 질문이 가리키는 날(오늘·어제·그제, 날짜 말이 없으면 질문 받은 날)의 담임 관찰 기록(daily_records, 삭제 제외, 날마다 최근 3개)도 후보로 넣는다. 후보는 `{chunk_id:null,source:"daily_record",record_id,record_date,title:"M월 D일 관찰 기록",quote}`(민감정보 형식 가림)이고 카드 상세의 `card.draft.record_evidence[]`에 같은 방식으로 보인다. 관찰 기록은 보호자에게 바로 보이지 않는 메모라 담임 검토 초안에만 쓰고, 학부모 sources에는 넣지 않으며 saved_answers에도 저장하지 않는다.
 
+근거 후보는 `ANSWER_GATHER`로 모은다. 기본 `agent`이면 서버가 질문 문장으로 문서 4종을 고정 검색하는 대신, 자료 찾는 AI(`agents/graphs/gather.py`, 지침 `agents/prompts/gather.md`)가 범위가 정해진 도구를 골라 불러 모은다. 도구는 `documents(doc_type, query)`(위 문서 검색과 같은 원·반 범위, top_k 8, 민원은 notice·policy만)와, 아이를 정한 문의에만 여는 `child_records(date)`(그날 관찰 기록)·`daily_notes(date)`(그날 보낸 알림장)·`care(date)`(그날 접수한 투약·귀가 요청과 처리 상태) 4종이다. 날짜는 질문 받은 날 기준 14일 전~1일 뒤의 하루만 받고, 도구 인자에 기관·아이·보호자는 없다. 범위는 요청 행(기관·반·아이·요청한 보호자의 보호자 관계)에서만 온다. care 후보는 `{chunk_id:null,source:"care_request",request_id,request_date,title:"M월 D일 투약 요청|귀가 요청",quote}`(민감정보 형식·다른 아이 이름 가림, content에 처리 상태)이고 카드 상세의 `card.draft.care_evidence[]`에 관찰 기록과 같은 방식으로 보이며 학부모 sources·saved_answers에는 넣지 않는다. 한 차례에 도구 4개, 최대 3차례 부르고 후보는 12개까지다. 작성·검사·인용 대조·카드 저장은 그대로이고, 자료 찾는 AI가 실패하거나 후보가 하나도 없으면 고정 검색으로 돌아간다. 위 두 단락의 질문 낱말 조건(아이 하루·몸·마음 질문, 오늘·어제·그제)은 고정 검색(`fixed`) 경로에만 쓰인다. 받은함 기본 경로·협업 그래프 검색 노드·AI에게 묻기(documents 도구만)가 같은 방식이다.
+
 ### 3.26 알림장 다시 만들기 — `POST /api/v1/daily-notes/drafts/{input_id}/regenerate`
 
 | 항목 | 내용 |

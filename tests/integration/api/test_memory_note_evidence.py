@@ -76,6 +76,7 @@ def test_memory_note_reaches_checker_and_card_but_never_saved_answer(client,pare
             note=next(c for c in payload['chunks'] if c.get('source')=='daily_note')
             return {'text':note['quote'],'evidence':[{'chunk_id':None,'source':'daily_note','note_id':note['note_id'],'quote':note['quote']}]}
     monkeypatch.setenv('ANSWER_WRITER','graph')
+    monkeypatch.setenv('ANSWER_GATHER','fixed')  # 고정 검색 경로가 붙이는 근거를 보는 시험이에요
     monkeypatch.setenv('LLM_MODEL_MEMORY','')
     monkeypatch.setattr(answer,'OpenAIModel',Model)
     monkeypatch.setattr(document_answer,'search_documents',lambda *a,**kw:{'chunks':[]})
@@ -157,6 +158,7 @@ def test_record_reaches_teacher_card_but_never_saved_answer(client,parent,teache
             return {'text':'[TEST] 친구와 잘 지냈어요.','evidence':[{'chunk_id':None,'source':'daily_record',
                                                                      'record_id':record['record_id'],'quote':record['quote']}]}
     monkeypatch.setenv('ANSWER_WRITER','graph')
+    monkeypatch.setenv('ANSWER_GATHER','fixed')  # 고정 검색 경로가 붙이는 근거를 보는 시험이에요
     monkeypatch.setenv('LLM_MODEL_MEMORY','')
     monkeypatch.setattr(answer,'OpenAIModel',Model)
     monkeypatch.setattr(document_answer,'search_documents',lambda *a,**kw:{'chunks':[]})
@@ -172,3 +174,114 @@ def test_record_reaches_teacher_card_but_never_saved_answer(client,parent,teache
     assert detail(client,teacher,cid)['card']['draft']['record_evidence'][0]['record_id']==record_id
     with transaction() as c:
         assert c.scalar(text('SELECT count(*) FROM saved_answers'))==0
+
+
+def add_care(child_id=seed.CHILD,kind='medication',body='[TEST] 점심 먹고 시럽 먹여 주세요.',status='received',days_ago=0):
+    child=next(c for c in seed.CHILDREN if c['id']==child_id)
+    with transaction() as c:
+        return str(c.scalar(text("""INSERT INTO requests(org_id,classroom_id,child_id,requester_id,client_request_id,type,title,body,status,created_at)
+            VALUES (:org,:class,:child,:parent,:key,:type,:body,:body,:status,:at) RETURNING id"""),
+            {'org':seed.ORG,'class':child['classroom_id'],'child':child_id,'parent':child['guardian_ids'][0],'key':str(uuid4()),
+             'type':kind,'body':body,'status':status,'at':datetime.now(KST)-timedelta(days=days_ago)}))
+
+
+def toolbox(**changes):
+    from app.modules.documents.tools import RequestToolbox
+    req={'org_id':seed.ORG,'requester_id':seed.PARENT,'child_id':seed.CHILD,'classroom_id':seed.CLASS_STAR,
+         'type':'inquiry','body':'[TEST] 오늘 어땠나요?','created_at':datetime.now(KST)}
+    return RequestToolbox({**req,**changes})
+
+
+@pytest.mark.parametrize('memory_backend',['db'],indirect=True)
+def test_request_toolbox_keeps_child_guardian_scope_and_date_window(memory_backend):
+    today=str(datetime.now(KST).date())
+    record,note=add_record(0),add_note('db',0)
+    other=next(c['display_name'] for c in seed.CHILDREN if c['id']==seed.CHILD_OTHER)
+    medicine=add_care(status='completed')
+    pickup=add_care(kind='pickup',body=f'[TEST] 오늘 {other}랑 같이 할머니가 데리러 가요.')
+    add_care(kind='inquiry',body='[TEST] 오늘 낮잠 잤나요?')
+    add_care(child_id=seed.CHILD_OTHER)
+    add_care(days_ago=1)
+    box=toolbox()
+    assert [s['name'] for s in box.specs()]==['documents','child_records','daily_notes','care']
+    assert [c['record_id'] for c in box.call('child_records',{'date':today})]==[record]
+    assert [c['note_id'] for c in box.call('daily_notes',{'date':today})]==[note]
+    care={c['request_id']:c for c in box.call('care',{'date':today})}
+    assert set(care)=={medicine,pickup}
+    assert care[medicine]['content'].endswith('(처리: 투약 완료)') and care[medicine]['title'].endswith('투약 요청')
+    assert other not in care[pickup]['content'] and '○○랑' in care[pickup]['quote'] and care[pickup]['source']=='care_request'
+    # 다른 보호자·다른 기관 요청으로는 같은 아이 도구를 불러도 비어요(아이·보호자를 고르는 인자는 없어요).
+    for changes in ({'requester_id':seed.PARENT_OTHER},{'org_id':uuid4()}):
+        assert all(toolbox(**changes).call(name,{'date':today})==[] for name in ('child_records','daily_notes','care'))
+    day=datetime.now(KST).date()
+    for args in ({'date':str(day-timedelta(days=15))},{'date':str(day+timedelta(days=2))},{'date':'어제'},
+                 {'date':today,'child_id':str(seed.CHILD_OTHER)},{}):
+        with pytest.raises(ValueError):
+            box.call('child_records',args)
+    assert box.call('care',{'date':str(day-timedelta(days=1))})[0]['request_date']==str(day-timedelta(days=1))
+    with pytest.raises(ValueError):
+        box.call('documents',{'doc_type':'consult_timetable','query':'상담'})
+    # 아이를 정하지 않은 문의·민원에는 아이 도구가 없어요.
+    for changes in ({'child_id':None},{'type':'complaint'}):
+        assert [s['name'] for s in toolbox(**changes).specs()]==['documents']
+        with pytest.raises(ValueError):
+            toolbox(**changes).call('care',{'date':today})
+
+
+@pytest.mark.parametrize('memory_backend',['db'],indirect=True)
+def test_gathered_care_request_reaches_card_and_graph_but_never_saved_answer(client,parent,teacher,memory_backend,monkeypatch):
+    from agents.graphs import answer
+    from app.modules.documents import answer as document_answer,search,embedding
+    from app.modules.requests import graph_agent
+    medicine=add_care(status='completed')
+    roles=[]
+    class Model:
+        def __init__(self,role):
+            self.role=role
+            roles.append(role)
+        def json(self,system,user):
+            payload=json.loads(user)
+            if self.role=='GATHER':
+                return {'calls':[] if payload['found'] else [{'tool':'care','args':{'date':payload['today'][:10]}}],'done':bool(payload['found'])}
+            if self.role=='CHECKER':
+                return {'passed':True,'issues':[]}
+            care=next(c for c in payload['chunks'] if c.get('source')=='care_request')
+            return {'text':'[TEST] 점심 먹고 시럽을 먹였어요.','evidence':[{'chunk_id':None,'source':'care_request',
+                                                                         'request_id':care['request_id'],'quote':care['quote']}]}
+    monkeypatch.setenv('ANSWER_WRITER','graph')
+    monkeypatch.setenv('LLM_MODEL_MEMORY','')
+    monkeypatch.setattr(answer,'OpenAIModel',Model)
+    monkeypatch.setattr(document_answer,'search_documents',lambda *a,**kw:pytest.fail('고정 검색 금지'))
+    monkeypatch.setattr(search,'search_documents',lambda *a,**kw:{'chunks':[]})
+    rid,cid=create(client,parent,teacher,type='inquiry',body='오늘 약 먹였나요?')
+    card=detail(client,teacher,cid)
+    assert card['card']['draft']['care_evidence'][0]['request_id']==medicine and 'GATHER' in roles
+    assert 'record_evidence' not in card['card']['draft'] and 'no_evidence' not in card['warnings']
+    assert [c['request_id'] for c in graph_agent._search_request(rid)]==[medicine]
+    monkeypatch.setattr(embedding,'enabled',lambda:True)
+    monkeypatch.setenv('EMBEDDING_MODEL',embedding.MODEL)
+    assert decision(client,teacher,cid,'edit_approve',edited_content={'text':'[TEST] 시럽을 먹였어요.'}).status_code==200
+    assert detail(client,teacher,cid)['card']['draft']['care_evidence'][0]['request_id']==medicine
+    with transaction() as c:
+        assert c.scalar(text('SELECT count(*) FROM saved_answers'))==0
+        assert c.scalar(text('SELECT count(*) FROM card_evidence WHERE card_id=:id'),{'id':cid})==0
+
+
+@pytest.mark.parametrize('memory_backend',['db'],indirect=True)
+def test_graph_write_node_prompt_starts_with_common_rules(client,parent,teacher,memory_backend,monkeypatch):
+    from agents.graphs import answer
+    from app.modules.requests import graph_agent
+    rid,_=create(client,parent,teacher,type='inquiry',body='[TEST] 준비물 알려 주세요')
+    systems=[]
+    class Model:
+        def __init__(self,role): self.role=role
+        def json(self,system,user):
+            systems.append((self.role,system))
+            return {'text':'','evidence':[]}
+    monkeypatch.setenv('ANSWER_WRITER','graph')
+    monkeypatch.setattr(answer,'OpenAIModel',Model)
+    graph_agent._write_request({'request_id':rid,'parallel':{'chunks':[],'memories':[]}})
+    (role,system),=systems
+    # 협업 그래프 작성 노드도 기본 경로처럼 지시 무시·개인정보 공통 규칙과 질문 받은 날을 받아요.
+    assert role=='DOCUMENT' and system.startswith('# 공통 규칙') and '{today}' not in system
+    assert answer.day_label(datetime.now(KST).date()) in system and system.index('# 공통 규칙')<system.index('## 입력')
