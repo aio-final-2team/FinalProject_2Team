@@ -16,6 +16,7 @@ RISK_CATEGORIES = {"child_safety", "staff_attack", "legal_external", "privacy_le
 LEVEL = {"normal": 0, "uncertain": 1, "urgent": 2}
 PROMPTS = Path(agents.llm.__file__).resolve().parent / "prompts"
 OUT_OF_SCOPE_KINDS = {"payment", "others_privacy", "other_family", "other_teacher"}
+INTENTS = {"notice", "ask"}
 
 
 def _scope_kind(body):
@@ -46,7 +47,9 @@ def classify_request(request_type, body, writer=None):
     model = writer or OpenAIModel("SUPERVISOR")
     system = ((PROMPTS / "common.md").read_text(encoding="utf-8") + "\n" +
               (PROMPTS / "supervisor.md").read_text(encoding="utf-8") +
-              "\n분류 결과를 JSON으로 제안한다: topic_key, urgency, risk_level, risk_category, out_of_scope_kind. "
+              "\n분류 결과를 JSON으로 제안한다: topic_key, urgency, risk_level, risk_category, out_of_scope_kind, intent. "
+              "intent는 inquiry에서만 notice 또는 ask로 판단하고, 애매하거나 알림과 부탁이 섞이면 ask로 둔다. "
+              "그 밖의 요청 유형 intent는 ask다. "
               "화면의 요청 유형은 바꾸지 않는다.")
     try:
         proposal = model.json(system, json.dumps({"request_type": request_type, "body": mask_sensitive(body),
@@ -59,6 +62,8 @@ def classify_request(request_type, body, writer=None):
 def validate_proposal(request_type, body, proposal):
     base = _code_classification(request_type, body)
     base["out_of_scope_kind"] = _scope_kind(body)
+    base["intent"] = (proposal.get("intent") if request_type == "inquiry" and isinstance(proposal, dict)
+                      and proposal.get("intent") in INTENTS else "ask")
     if not isinstance(proposal, dict):
         if base.get("risk_level") in ("urgent", "uncertain"):
             base["out_of_scope_kind"] = None

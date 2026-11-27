@@ -25,7 +25,7 @@ def test_supervisor_adds_topic_and_risk(monkeypatch):
                        "risk_level": "uncertain", "risk_category": "privacy_leak"})
     got = validate_proposal("complaint", "급식이 차가워요", classify_request("complaint", "급식이 차가워요", model))
     assert got == {"topic_key": "meal", "urgency": "normal", "risk_level": "uncertain",
-                   "risk_category": "privacy_leak", "out_of_scope_kind": None}
+                   "risk_category": "privacy_leak", "out_of_scope_kind": None, "intent": "ask"}
 
 
 def test_screen_type_is_fixed_and_code_urgency_cannot_be_weakened(monkeypatch):
@@ -54,7 +54,7 @@ def test_inquiry_and_consultation_accept_model_risk_like_complaint(monkeypatch, 
                        "risk_category": "child_safety"})
     got = validate_proposal(request_type, "식단 문의", classify_request(request_type, "식단 문의", model))
     assert got == {"topic_key": "meal", "urgency": "urgent", "risk_level": "urgent", "risk_category": "child_safety",
-                   "out_of_scope_kind": None}
+                   "out_of_scope_kind": None, "intent": "ask"}
 
 
 def test_urgent_risk_without_category_becomes_uncertain():
@@ -69,6 +69,7 @@ def test_bad_values_and_model_failure_fall_back_to_code(monkeypatch):
     invalid = FakeModel({"topic_key": "invented", "urgency": "critical", "risk_level": "safe",
                          "risk_category": "made_up"})
     base = {**classify("complaint", "급식 문의"), "out_of_scope_kind": None}
+    base["intent"] = "ask"
     assert validate_proposal("complaint", "급식 문의", classify_request("complaint", "급식 문의", invalid)) == base
     assert validate_proposal("complaint", "급식 문의", classify_request("complaint", "급식 문의", FakeModel(ModelError("offline")))) == base
 
@@ -76,7 +77,33 @@ def test_bad_values_and_model_failure_fall_back_to_code(monkeypatch):
 def test_default_keeps_code_behavior(monkeypatch):
     monkeypatch.delenv("LLM_MODEL_SUPERVISOR", raising=False)
     assert validate_proposal("complaint", "버스 민원", classify_request("complaint", "버스 민원")) == {
-        **classify("complaint", "버스 민원"), "out_of_scope_kind": None}
+        **classify("complaint", "버스 민원"), "out_of_scope_kind": None, "intent": "ask"}
+
+
+@pytest.mark.parametrize("intent", ["notice", "ask"])
+def test_inquiry_accepts_only_supported_intent(intent):
+    got = validate_proposal("inquiry", "오후에 확인해 주세요", {"intent": intent})
+    assert got["intent"] == intent
+
+
+@pytest.mark.parametrize("intent", [None, "invented", "NOTICE"])
+def test_invalid_or_missing_intent_defaults_to_ask(intent):
+    got = validate_proposal("inquiry", "금요일엔 외삼촌이 데리러 갈 예정입니다", {"intent": intent})
+    assert got["intent"] == "ask"
+
+
+@pytest.mark.parametrize("request_type", ["consultation", "complaint", "medication", "pickup"])
+@pytest.mark.parametrize("intent", ["notice", "ask", "invented", None])
+def test_non_inquiry_intent_is_always_ask(request_type, intent):
+    got = validate_proposal(request_type, "내용", {"intent": intent})
+    assert got["intent"] == "ask"
+
+
+def test_inquiry_model_failure_and_non_dict_default_to_ask(monkeypatch):
+    monkeypatch.setenv("LLM_MODEL_SUPERVISOR", "fake-model")
+    assert validate_proposal("inquiry", "안내해 주세요", classify_request(
+        "inquiry", "안내해 주세요", FakeModel(ModelError("offline"))))["intent"] == "ask"
+    assert validate_proposal("inquiry", "안내해 주세요", [])["intent"] == "ask"
 
 
 @pytest.mark.parametrize("category", ["health", None, "건강"])

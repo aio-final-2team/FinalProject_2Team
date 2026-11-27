@@ -104,7 +104,8 @@ def run_request(request_id, prepared_answer=None, prepared_fields=None):
         connection.execute(text("""
             UPDATE requests SET topic_key=:topic_key,urgency=:urgency,risk_level=:risk_level,risk_category=:risk_category
             WHERE id=:id
-        """), {"id": request_id, "risk_level": None, "risk_category": None, **fields})
+        """), {"id": request_id, "topic_key": fields["topic_key"], "urgency": fields["urgency"],
+               "risk_level": fields.get("risk_level"), "risk_category": fields.get("risk_category")})
         set_status(connection, req, "classified", action="classified", actor_type="agent", agent_name="supervisor",
                    topic_model_rejected=topic_conflict(req["type"], req["body"], proposal)
                    if req["type"] == initial["type"] and req["body"] == initial["body"] else False)
