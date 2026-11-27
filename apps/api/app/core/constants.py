@@ -46,6 +46,7 @@ def rejection_body(reason_code, reason_text):
     return f"{label} · {reason_text}" if reason_text else label
 
 
+# 선: 권한 밖 고정 안내. 권한 밖인지·어떤 종류인지는 감독 AI가 정하고, 문장은 승인 없이 나가는 예외라 고정해 둬요.
 OUT_OF_SCOPE_MESSAGES = {
     "payment": "유치온에서는 원비 결제를 하지 않아요. 원비는 원에서 안내한 기존 방법으로 문의해 주세요.",
     "others_privacy": "다른 가정의 연락처 같은 개인정보는 알려 드릴 수 없어요.",

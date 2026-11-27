@@ -2,6 +2,8 @@
 
 import json
 
+from tests import fake_supervisor
+from tools import eval_request
 from tools.eval_request import CASES, evaluate
 
 
@@ -16,7 +18,9 @@ def test_request_cases_have_expected_counts_and_fields():
     assert all("risk_level" not in case for case in cases)
 
 
-def test_fake_model_compares_all_old_and_new_request_cases():
+def test_fake_model_compares_all_old_and_new_request_cases(monkeypatch):
+    # 낱말 대역엔 판단 필요가 없어서 RQ-20(판단 필요)은 가짜 감독 AI가 판단 필요라고 답하게 해요.
+    monkeypatch.setattr(eval_request, "classify", fake_supervisor.judged)
     results = evaluate()
     assert len(results) == 20 and all(item["passed"] for item in results)
     assert all(not item["differences"] for item in results[:12])

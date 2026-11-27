@@ -21,7 +21,8 @@ AI_TIMEOUT_SECONDS = 180  # API 6.1·T14 6.1 ⑤: 요청 하나의 AI 처리 전
 
 
 def _handoff(connection, req, reason):
-    # 모델이 실패해도 코드의 안전 규칙과 현재 유효한 담임 배정은 건너뛰지 않아요.
+    # 모델이 실패했으니 낱말 대역(classify)으로 주제·위험을 정해요. 아이 몸에 해가 간 표현(선)은 여기서도 긴급이에요.
+    # 현재 유효한 담임 배정도 건너뛰지 않아요.
     fields = classify(req["type"], req["body"])
     teacher = homeroom_teacher(connection, req)
     connection.execute(text("""

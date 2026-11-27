@@ -1,14 +1,13 @@
-"""선택 요청 유형을 보존하며 모델 분류 제안을 검증한다."""
+"""선택 요청 유형을 보존하며 감독 AI의 분류를 검증한다. 판단은 AI가, 코드는 값이 계약 목록 안인지와 선만 본다."""
 
 import json
 import os
-import re
 from pathlib import Path
 
 import agents.llm
 from agents.llm import ModelError, OpenAIModel
 from agents.guardrails.sensitive import mask_sensitive
-from app.core.request_rules import RISK_TYPES, classify
+from app.core.request_rules import RISK_TYPES, child_harm, classify, scope_kind
 
 TOPICS = {"safety", "meal", "teacher", "belongings", "fee", "pickup_bus", "peer_conflict",
           "health_hygiene", "photo_record", "communication", "other"}
@@ -17,28 +16,7 @@ LEVEL = {"normal": 0, "uncertain": 1, "urgent": 2}
 PROMPTS = Path(agents.llm.__file__).resolve().parent / "prompts"
 OUT_OF_SCOPE_KINDS = {"payment", "others_privacy", "other_family", "other_teacher"}
 INTENTS = {"notice", "ask"}
-
-
-def _scope_kind(body):
-    """분명한 권한 밖 요청만 코드로 잡고, 애매하면 모델 판단에 맡긴다."""
-    other = r"다른\s*(?:엄마|아빠|학부모|부모|가정|집|아이|반)|남의|친구\s*(?:엄마|아빠)|옆\s*반"
-    if re.search(other, body) and re.search(r"전화번호|연락처|휴대폰\s*번호|핸드폰\s*번호|주소", body):
-        return "others_privacy"
-    if re.search(r"상담", body) and re.search(r"옆\s*반\s*(?:[^\s]*\s*)?선생님|다른\s*선생님|담임\s*아닌\s*선생님", body):
-        return "other_teacher"
-    if re.search(r"결제\s*(?:해|할|하고|부탁)|카드로\s*결제", body):
-        return "payment"
-    record_owner = r"다른\s*(?:집|가정|아이)|남의|친구\s*(?:엄마|아빠)"
-    if (not re.search(r"우리\s*(?:아이|애)|저희\s*아이", body)
-            and re.search(record_owner, body)
-            and re.search(r"민원|요청|알림장|기록", body)
-            and re.search(r"보여|알려|볼\s*수", body)):
-        return "other_family"
-    return None
-
-
-def _code_classification(request_type, body):
-    return classify(request_type, body)
+RISK_REASON_MAX = 80  # 카드에 한 줄로 보이는 판단 필요 이유
 
 
 def classify_request(request_type, body, writer=None):
@@ -47,7 +25,8 @@ def classify_request(request_type, body, writer=None):
     model = writer or OpenAIModel("SUPERVISOR")
     system = ((PROMPTS / "common.md").read_text(encoding="utf-8") + "\n" +
               (PROMPTS / "supervisor.md").read_text(encoding="utf-8") +
-              "\n분류 결과를 JSON으로 제안한다: topic_key, urgency, risk_level, risk_category, out_of_scope_kind, intent. "
+              "\n분류 결과를 JSON으로 제안한다: topic_key, urgency, risk_level, risk_category, risk_reason, "
+              "out_of_scope_kind, intent. "
               "intent는 inquiry에서만 notice 또는 ask로 판단하고, 애매하거나 알림과 부탁이 섞이면 ask로 둔다. "
               "그 밖의 요청 유형 intent는 ask다. "
               "화면의 요청 유형은 바꾸지 않는다.")
@@ -60,46 +39,36 @@ def classify_request(request_type, body, writer=None):
 
 
 def validate_proposal(request_type, body, proposal):
-    base = _code_classification(request_type, body)
-    base["out_of_scope_kind"] = _scope_kind(body)
-    base["intent"] = (proposal.get("intent") if request_type == "inquiry" and isinstance(proposal, dict)
-                      and proposal.get("intent") in INTENTS else "ask")
-    if not isinstance(proposal, dict):
-        if base.get("risk_level") in ("urgent", "uncertain"):
-            base["out_of_scope_kind"] = None
-        return base
-    result = dict(base)
-    if proposal.get("topic_key") in TOPICS and (base["topic_key"] == "other" or proposal["topic_key"] == base["topic_key"]):
-        result["topic_key"] = proposal["topic_key"]
-    if proposal.get("urgency") in ("normal", "urgent"):
-        result["urgency"] = "urgent" if base["urgency"] == "urgent" else proposal["urgency"]
+    """AI 값이 계약 목록 안이면 그대로 쓴다. 빠졌거나 목록 밖인 칸만 낱말 대역(모델 없음·실패·mock)으로 채운다.
+
+    선은 둘이다: 아이 몸에 해가 간 명백한 표현은 긴급으로 올리고, AI가 올린 위험은 코드가 내리지 않는다.
+    """
+    ai = proposal if isinstance(proposal, dict) else {}
+    fallback = classify(request_type, body)
+    result = {"topic_key": ai["topic_key"] if ai.get("topic_key") in TOPICS else fallback["topic_key"],
+              "urgency": ai["urgency"] if ai.get("urgency") in ("normal", "urgent") else fallback["urgency"]}
     if request_type in RISK_TYPES:
-        level = proposal.get("risk_level")
+        level = ai.get("risk_level")
         if level in LEVEL:
-            result["risk_level"] = max((base["risk_level"], level), key=LEVEL.get)
-        if result["risk_level"] == "urgent":
+            category = ai.get("risk_category") if ai.get("risk_category") in RISK_CATEGORIES else None
+            if level == "urgent" and category is None:
+                level = "uncertain"  # 긴급은 위험 종류가 계약이에요. 종류를 못 대면 사람이 판단하게 판단 필요로 둬요.
+            elif level == "normal":
+                category = None
+        else:
+            level, category = fallback["risk_level"], fallback["risk_category"]
+        if level != "urgent" and child_harm(body):
+            level, category = "urgent", "child_safety"
+        result.update(risk_level=level, risk_category=category)
+        if level == "urgent":
             result["urgency"] = "urgent"
-        category = base.get("risk_category") or proposal.get("risk_category")
-        if category not in RISK_CATEGORIES:
-            category = None
-        if result["risk_level"] == "urgent" and category is None:
-            result["risk_level"] = "uncertain"
-        # 문의에서 모델이 '판단 필요'라고만 하고 위험 종류 네 가지 중 하나를 대지 못하면 올리지 않는다.
-        # 열·알레르기·투약 같은 건강 문의가 원장 보고로 가던 것을 막는다(모델이 '긴급'이라 한 글은 그대로 올린다).
-        elif (request_type == "inquiry" and level == "uncertain" and base["risk_level"] == "normal"
-                and category is None):
-            result["risk_level"] = "normal"
-        result["risk_category"] = category
-    suggested = proposal.get("out_of_scope_kind")
-    if result["out_of_scope_kind"] is None and suggested in OUT_OF_SCOPE_KINDS:
-        result["out_of_scope_kind"] = suggested
+        reason = ai.get("risk_reason")
+        if level == "uncertain" and isinstance(reason, str) and reason.strip():
+            result["risk_reason"] = mask_sensitive(" ".join(reason.split()))[:RISK_REASON_MAX]
+    suggested = ai.get("out_of_scope_kind", "missing")
+    result["out_of_scope_kind"] = (suggested if suggested is None or suggested in OUT_OF_SCOPE_KINDS
+                                   else scope_kind(body, result["topic_key"]))
     if result.get("risk_level") in ("urgent", "uncertain"):
         result["out_of_scope_kind"] = None
+    result["intent"] = ai.get("intent") if request_type == "inquiry" and ai.get("intent") in INTENTS else "ask"
     return result
-
-
-def topic_conflict(request_type, body, proposal):
-    """코드가 특정한 주제를 고른 경우, 다른 모델 제안을 이력에 표시한다."""
-    base_topic = _code_classification(request_type, body)["topic_key"]
-    return (isinstance(proposal, dict) and base_topic != "other"
-            and proposal.get("topic_key") in TOPICS and proposal["topic_key"] != base_topic)

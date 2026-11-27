@@ -12,6 +12,7 @@ from app import backend
 from app.core.db import transaction
 from app.core.schedule import KST
 from app.mock import seed, store
+from tests import fake_supervisor
 from tests.integration.api.helpers import BASE, decision, err
 from tests.integration.api.test_requests import notices
 
@@ -241,7 +242,8 @@ def test_dismiss_notification_uses_reason_label_and_text(client, parent, teacher
 
 
 @pytest.mark.parametrize("body", ["[TEST] 일반 문의", "[TEST] 아이가 다쳤어요", "[TEST] 판단 필요 문의"])
-def test_escalated_reply_waits_in_progress_until_director_instruction(client, parent, teacher, director, body):
+def test_escalated_reply_waits_in_progress_until_director_instruction(client, parent, teacher, director, monkeypatch, body):
+    fake_supervisor.install(monkeypatch)  # 판단 필요는 가짜 감독 AI가 정해요
     rid, cid = create(client, parent, teacher, type="inquiry", body=body)
     if detail(client, teacher, cid)["request"]["status"] != "escalated":
         response = decision(client, teacher, cid, "escalate")
@@ -467,8 +469,9 @@ def test_no_text_draft_cannot_be_approved(client, parent, teacher, director):
 
 @pytest.mark.parametrize("uncertain", [True, False])
 def test_teacher_reclassification_keeps_report_until_director_instruction(
-    client, parent, teacher, director, uncertain
+    client, parent, teacher, director, monkeypatch, uncertain
 ):
+    fake_supervisor.install(monkeypatch)
     rid, cid = create(client, parent, teacher, body="[TEST] 판단 필요 민원" if uncertain else "[TEST] 버스 문의")
     version = 1
     if not uncertain:
@@ -495,8 +498,9 @@ def test_teacher_reclassification_keeps_report_until_director_instruction(
 
 @pytest.mark.parametrize("target_report", [False, True])
 def test_director_normal_closes_report_and_notifies_returned_reply_once(
-    client, parent, teacher, director, card_backend, target_report
+    client, parent, teacher, director, card_backend, monkeypatch, target_report
 ):
+    fake_supervisor.install(monkeypatch)
     baseline = client.get(BASE + "/overview", headers=director).json()["waiting"]
     rid, cid = create(client, parent, teacher, body="[TEST] 판단 필요 민원")
     report = next(c for c in client.get(BASE + "/cards?kind=director_report", headers=director).json()["items"]
