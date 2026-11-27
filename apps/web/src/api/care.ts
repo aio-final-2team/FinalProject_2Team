@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { RequestIntent } from "@/domain/status";
 import { api } from "./client";
 
 /**
@@ -18,6 +19,10 @@ export type CareItem = {
   version: number;
   unregistered_pickup: boolean;
   missing_fields: string[];
+  /** 완료 때 남긴 처리 결과 한 줄. 그날 알림장 입력의 이 요청 자리에 들어간다 */
+  result_line?: string | null;
+  /** 투약·귀가는 늘 ask(부탁) */
+  intent?: RequestIntent | null;
   /** 태웅님이 11/24에 추가하기로 한 칸. 서버에 올라오기 전에는 없다 */
   child_id?: string;
   child_name?: string;
@@ -39,14 +44,15 @@ export function useCareDecision() {
   const qc = useQueryClient();
   return useMutation({
     /* reject는 사유(reason_text 1~1000자)가 필요하고, 사유는 보호자에게 전달된다 */
-    mutationFn: async (v: { id: string; decision: "confirm" | "complete" | "reject"; version: number; reason_text?: string; type?: CareType }) => {
+    /* result_line은 완료 때만 보내는 선택 칸. 비우면 서버가 '13시에 약 먹였어요'처럼 처리 시각으로 만든다 */
+    mutationFn: async (v: { id: string; decision: "confirm" | "complete" | "reject"; version: number; reason_text?: string; result_line?: string; type?: CareType }) => {
       /* 등록된 인계자로 접수된 귀가 요청은 confirm·complete에 같은 pickup_guardian_id를 다시 보낸다(문서 3.27). 미등록이면 생략한다 */
       let guardian: string | undefined;
       if (v.type === "pickup" && v.decision !== "reject") {
         const d = await api<{ care?: { pickup_guardian_id?: string | null } | null }>(`/api/v1/requests/${v.id}`).catch(() => null);
         guardian = d?.care?.pickup_guardian_id ?? undefined;
       }
-      return api(`/api/v1/requests/${v.id}/care-decisions`, { method: "POST", body: JSON.stringify({ decision: v.decision, version: v.version, ...(guardian ? { pickup_guardian_id: guardian } : {}), ...(v.reason_text ? { reason_text: v.reason_text } : {}) }) });
+      return api(`/api/v1/requests/${v.id}/care-decisions`, { method: "POST", body: JSON.stringify({ decision: v.decision, version: v.version, ...(guardian ? { pickup_guardian_id: guardian } : {}), ...(v.reason_text ? { reason_text: v.reason_text } : {}), ...(v.decision === "complete" && v.result_line?.trim() ? { result_line: v.result_line.trim() } : {}) }) });
     },
     onSettled: () => qc.invalidateQueries({ queryKey: ["care-requests"] }),
   });

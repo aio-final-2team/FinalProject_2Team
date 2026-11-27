@@ -4,6 +4,7 @@ from datetime import timedelta
 
 from app.core.errors import ApiError
 from app.core.consents import require_complete
+from app.core.care import request_intent
 from app.core.constants import CARE_REQUEST_TYPES
 from app.api.labels import parent_label, staff_label
 from app.api.schemas.common import Period
@@ -205,7 +206,7 @@ def staff_listing(user, status, page, size, sort, answered_by, classroom_id, typ
             is_care = req.type in CARE_REQUEST_TYPES
             cancelled = care.view(req)["cancelled_by_parent"] if is_care and req.status == "rejected" else False
             items.append({**{k: getattr(req, k) for k in ("id", "type", "title", "status", "updated_at", "classroom_id")},
-                          **requester_fields(req), "answered_by": answer,
+                          **requester_fields(req), "answered_by": answer, "intent": request_intent(req.type, req.intent),
                           "status_label": staff_label(req.status, req.type, cancelled_by_parent=cancelled),
                           "next_action": ("confirm" if req.status == "received" else
                                           "complete" if req.status == "assigned" else None) if is_care else None,

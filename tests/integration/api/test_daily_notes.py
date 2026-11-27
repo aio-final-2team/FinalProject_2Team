@@ -589,7 +589,9 @@ def test_note_list_huge_page_is_empty(client, teacher):
             response = client.get(BASE + "/daily-notes", headers=teacher, params={
                 "date": batch()["note_date"], "classroom_id": str(seed.CLASS_STAR), "page": page, "size": 100})
             assert response.status_code == 200, response.text
-            assert response.json() == {"items": [], "total": total, "page": page, "size": 100}
+            body = response.json()
+            assert body.pop("pending_medication_count") >= 0  # 빈 쪽에도 반의 미완료 투약 수는 줘요
+            assert body == {"items": [], "total": total, "page": page, "size": 100}
 
 
 def test_scope_and_roles_on_all_note_operations(client, teacher, teacher_other, parent, director):

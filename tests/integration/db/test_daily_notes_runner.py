@@ -178,7 +178,8 @@ def test_writer_can_round_trip_json_input_and_output(db_client, teacher, monkeyp
         assert child["memo"] == "[TEST] 아이 메모"
         assert child["requests"] == []  # 하늘의 기침 문의는 알림장 재료가 아니에요
         other = next(c for c in decoded["children"] if c["child_id"] == str(seed.demo_id("503")))
-        assert other["requests"] == [{"request_id": str(seed.REQUEST_PICKUP), "type": "pickup", "text": "오늘 할머니가 데리러 가요"}]
+        assert other["requests"] == [{"request_id": str(seed.REQUEST_PICKUP), "type": "pickup", "text": "오늘 할머니가 데리러 가요",
+                                      "result_line": None}]  # 완료 전이라 처리 결과가 없어요
         assert decoded["menu"]["document_id"] == str(seed.MENU)
         return json.loads(json.dumps(stub_writer.write(decoded)))
 

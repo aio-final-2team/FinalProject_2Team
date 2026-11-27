@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { RequestIntent } from "@/domain/status";
 import { ApiError, api, uuid } from "./client";
 import { useLiveStream } from "./stream";
 
@@ -10,7 +11,7 @@ export type CareInput = { medication_name?: string; medication_dose?: string; me
 /** 등록된 인계자 목록 (API 34): 그 아이에 연결된 보호자 계정. 연락처는 오지 않는다 */
 export const usePickupGuardians = (childId?: string) =>
   useQuery({ queryKey: ["pickup-guardians", childId], enabled: !!childId, queryFn: () => api<{ items: { id: string; display_name: string }[] }>(`/api/v1/children/${childId}/pickup-guardians`).then((r) => r.items) });
-export type CareView = CareInput & { version: number; unregistered_pickup: boolean; missing_fields: string[]; confirmed_at: string | null; completed_at: string | null };
+export type CareView = CareInput & { version: number; unregistered_pickup: boolean; missing_fields: string[]; confirmed_at: string | null; completed_at: string | null; result_line?: string | null };
 export type RequestSummary = {
   id: string;
   type: string;
@@ -37,7 +38,7 @@ export type RequestDetail = {
 };
 
 /** 교직원 요청 목록 항목(API GET /requests, 교직원). 서버가 아직 열지 않았으면 빈 목록이다 */
-export type StaffRequest = RequestSummary & { child_id: string | null; child_name: string | null; requester_name: string | null; answered_by: "agent" | "staff" | null; classroom_id: string | null };
+export type StaffRequest = RequestSummary & { child_id: string | null; child_name: string | null; requester_name: string | null; answered_by: "agent" | "staff" | null; classroom_id: string | null; intent?: RequestIntent | null };
 /** AI가 카드 없이 바로 답하고 끝낸 요청을 교사(우리 반)·원장(원 전체)이 읽는다 */
 export const useAiAnswered = (enabled: boolean) =>
   useQuery({

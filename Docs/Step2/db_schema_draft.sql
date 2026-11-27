@@ -151,6 +151,7 @@ CREATE TABLE requests (
     closed_at        timestamptz,
     care_detail      jsonb NOT NULL DEFAULT '{}',  -- 투약·귀가 입력. 접수 이력에는 값 대신 fields 목록만 남김(0012)
     source_note_id   uuid,                 -- 답장 원문 알림장(0019), 아래에서 기관 짝 FK 연결
+    intent           text CHECK (intent IN ('notice', 'ask')),  -- 감독 AI의 문의 알림/부탁 분류(0022). 투약·귀가는 조회 때 늘 'ask'
     FOREIGN KEY (classroom_id, org_id) REFERENCES classrooms(id, org_id),
     FOREIGN KEY (child_id, org_id) REFERENCES children(id, org_id),
     FOREIGN KEY (requester_id, org_id) REFERENCES users(id, org_id),

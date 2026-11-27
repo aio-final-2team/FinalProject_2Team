@@ -98,6 +98,7 @@ class Request:
     created_at: datetime = field(default_factory=lambda: now())
     updated_at: datetime = field(default_factory=lambda: now())
     closed_at: datetime | None = None
+    intent: str | None = None  # 감독 AI의 알림/부탁 분류(0022). 투약·귀가는 접수 때 'ask'
 
 
 @dataclass
@@ -355,7 +356,7 @@ def create_request(user, *, client_request_id: str, type: str, body: str, child_
         _state.messages.append(Message(id=_state.next_int(), request_id=req.id, sender_type="user",
                                        sender_id=user.id, body=body))
         if type in CARE_REQUEST_TYPES:
-            req.assignee_id = homeroom_teacher(req.classroom_id)
+            req.assignee_id, req.intent = homeroom_teacher(req.classroom_id), "ask"
         event = add_event(req, "created", actor_type="user", actor_id=user.id, to_status="received", trace_id=trace_id,
                   **({"fields": list(detail)} if type in CARE_REQUEST_TYPES else {}))
         from app.mock.notes import request_received
@@ -379,7 +380,7 @@ def _mock_proposal(req: Request) -> dict:
 def _classify(req: Request) -> dict:
     from app.modules.requests.supervisor import validate_proposal
     fields = validate_proposal(req.type, req.body, _mock_proposal(req))
-    for key in ("topic_key", "urgency", "risk_level", "risk_category"):
+    for key in ("topic_key", "urgency", "risk_level", "risk_category", "intent"):
         setattr(req, key, fields.get(key))
     return fields
 

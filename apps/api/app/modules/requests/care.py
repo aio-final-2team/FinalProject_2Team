@@ -1,14 +1,16 @@
 """T46 등록 인계자 조회·재검사와 교직원 실제 확인. 요청 행 잠금으로 직렬화해요."""
 
 import json
+from datetime import datetime
 
 from sqlalchemy import text
 
 from app.core import scope
-from app.core.care import care_view, check_decision, check_parent_change, updated_detail
+from app.core.care import care_view, check_decision, check_parent_change, request_intent, result_line, updated_detail
 from app.core.constants import UNREGISTERED_PICKUP_CHECK
 from app.core.db import transaction
 from app.core.errors import ApiError
+from app.core.schedule import KST
 from app.modules.requests.events import record, set_status
 
 
@@ -62,7 +64,9 @@ def decision(user, request_id, body):
             set_status(connection, req, target, action=action,
                        actor_type="user", actor_id=user.id, care_decision=body.decision,
                        version=current["version"], pickup_snapshot=snapshot,
-                       **({"reason_text": body.reason_text.strip()} if body.decision == "reject" else {}))
+                       **({"reason_text": body.reason_text.strip()} if body.decision == "reject" else {}),
+                       **({"result_line": result_line(req["type"], body.result_line, datetime.now(KST))}
+                          if body.decision == "complete" else {}))
             if body.decision == "confirm" and current["unregistered_pickup"]:
                 record(connection, req, "checked", actor_type="user", actor_id=user.id,
                        unregistered_pickup=True, label=UNREGISTERED_PICKUP_CHECK, version=current["version"],
@@ -129,7 +133,8 @@ def listing(user, classroom_id, status, page, size, sort):
                            "status_label": staff_label(r["status"], r["type"],
                                                        cancelled_by_parent=current["cancelled_by_parent"]),
                            **{k: v for k, v in current.items()
-                              if k in ("version", "unregistered_pickup", "missing_fields")},
+                              if k in ("version", "unregistered_pickup", "missing_fields", "result_line")},
+                           "intent": request_intent(r["type"], r["intent"]),
                            "next_action": "confirm" if r["status"] == "received" else "complete" if r["status"] == "assigned" else None}
                           for r in rows[(page-1)*size:page*size] for current in (view(connection, r),)],
                 "total": len(rows), "page": page, "size": size}

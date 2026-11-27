@@ -37,7 +37,7 @@ def test_child_requests_input_and_demo_omission(client, teacher):
     child = store.state().children[seed.CHILD]
     requests = mock_notes.requests_for_child(child, store.now().date())
     assert seed.REQUEST_COUGH not in {req["request_id"] for req in requests}  # 기침 문의는 받은함에서만 다뤄요
-    assert all(set(req) == {"request_id", "type", "text"} for req in requests)
+    assert all(set(req) == {"request_id", "type", "text", "result_line"} for req in requests)
     assert draft(client, teacher).status_code == 202
     notes = note_list(client, teacher).json()["items"]
     for note in notes:

@@ -421,6 +421,7 @@ FK를 걸 수 없는 참조가 두 곳 있다. `cards.subject_id`와 `notificati
 | `requests` | `assignee_id` | `uuid` / NULL 허용, FK (assignee_id, org_id) → users | 요청 담당 교직원 |
 | `requests` | `previous_request_id` | `uuid` / NULL 허용, FK (previous_request_id, org_id) → requests | 다시 연 요청이면 이전 요청 |
 | `requests` | `source_note_id` | `uuid` / NULL 허용, FK (source_note_id, org_id) → daily_notes (0019) | 답장 원문의 알림장. 일반 요청은 null이며 별도 답장 표 없이 기존 문의 흐름 사용 |
+| `requests` | `intent` | `text` / NULL 허용, CHECK notice·ask (0022) | 감독 AI가 분류 때 정한 알림/부탁(문의만 notice 가능). 투약·귀가는 접수 때 ask이고 조회도 늘 ask로 읽음. 분류 전·모델 실패 인계는 null |
 | `requests` | `created_at` | `timestamptz` / NOT NULL, 기본값 now() | 접수 시각 |
 | `requests` | `updated_at` | `timestamptz` / NOT NULL, 기본값 now() | 마지막으로 바뀐 시각 |
 | `requests` | `closed_at` | `timestamptz` / NULL 허용 | 끝난 시각 |
@@ -486,7 +487,7 @@ FK를 걸 수 없는 참조가 두 곳 있다. `cards.subject_id`와 `notificati
 
 **요청**
 
-- `type`: `inquiry`(안내 문의) · `consultation`(상담) · `complaint`(민원) · `medication`(투약) · `pickup`(귀가). 투약·귀가(T46, 팀 확인 전 초안)의 접수 입력은 0012에서 `requests.care_detail`로 옮긴다. 교직원이 실제로 확인·완료한 일은 이력의 `care_decision`·행위자·`created_at`으로 남긴다. 상태는 `received → assigned → completed` 순서로 바뀐다. 알림장 줄에 보이는 `request_status`는 따로 저장하지 않고, 조회할 때 요청 상태를 읽어 온다.
+- `type`: `inquiry`(안내 문의) · `consultation`(상담) · `complaint`(민원) · `medication`(투약) · `pickup`(귀가). 투약·귀가(T46, 팀 확인 전 초안)의 접수 입력은 0012에서 `requests.care_detail`로 옮긴다. 교직원이 실제로 확인·완료한 일은 이력의 `care_decision`·행위자·`created_at`으로 남긴다. 완료 이력에는 처리 결과 한 줄 `result_line`(비우면 처리 시각·종류로 만든 기본 문장)도 남기고, 알림장 입력은 이 값을 그 요청 자리에 넣는다. 상태는 `received → assigned → completed` 순서로 바뀐다. 알림장 줄에 보이는 `request_status`는 따로 저장하지 않고, 조회할 때 요청 상태를 읽어 온다.
 - `care_detail`: 투약은 `medication_name`·`medication_dose`·`medication_time`, 귀가는 `pickup_guardian_id`·`pickup_name`·`pickup_relation`을 담는다. 0012는 기존 투약·귀가의 첫 접수 이력(`created`, `to_status = received`, 요청 자체 이력)의 값을 백필한다. 접수 이력에서는 값 키를 빼고 `fields`에 키 이름 목록만 남기며, `trace_id` 등 다른 정보는 보존한다. SQL NULL은 허용하지 않고, 입력이나 접수 이력이 없으면 빈 객체다. JSON null과 빠진 키는 구별해 그대로 옮긴다. 접수·조회·학부모 부분 수정은 이 칸을 사용한다. 부분 수정 때 missing_fields도 다시 저장하고 care_updated 이력에는 값 없이 fields·version만 남긴다. 반려는 dismissed(care_decision=reject·reason_text), 학부모 취소는 cancelled(cancelled_by_parent=true)로 남기며 둘 다 요청은 rejected다. 입력 수정·추가 글의 판 증가와 실제 확인은 순서 있는 이력에서 읽는다.
 - `client_request_id`: 화면이 제출할 때 만드는 키다. 같은 사람이 같은 키로 다시 보내면 DB가 거부하므로, 네트워크 재시도로 요청이 두 번 생기지 않는다.
 - `urgency`: 모든 요청에 붙는 급한 정도(`low`·`normal`·`high`·`urgent`)로, 받은함을 정렬할 때 쓴다.

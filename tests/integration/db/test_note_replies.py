@@ -19,7 +19,7 @@ def test_note_replies_0019_round_trip_defaults_foreign_key_and_retention(seeded_
     command.upgrade(alembic_config, "head")
     with seeded_db.begin() as connection:
         assert connection.execute(text("SELECT * FROM requests ORDER BY id")).mappings().all() == [
-            {**r, "source_note_id": None} for r in requests_before]
+            {**r, "source_note_id": None, "intent": None} for r in requests_before]
         entry = connection.scalar(text("""INSERT INTO daily_note_inputs(org_id,classroom_id,author_id,note_date)
             VALUES (:org,:class,:user,CURRENT_DATE) RETURNING id"""),
             {"org": seed.ORG, "class": seed.CLASS_STAR, "user": seed.TEACHER})

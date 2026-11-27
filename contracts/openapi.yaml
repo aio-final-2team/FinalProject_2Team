@@ -4541,6 +4541,15 @@ components:
             - complaint
           - type: 'null'
           title: Request Type
+        intent:
+          anyOf:
+          - type: string
+            enum:
+            - notice
+            - ask
+          - type: 'null'
+          title: Intent
+          description: 감독 AI의 알림/부탁 분류. 투약·귀가는 늘 ask, 분류가 없으면 null
         title:
           type: string
           title: Title
@@ -4766,6 +4775,13 @@ components:
             maxLength: 1000
           - type: 'null'
           title: Reason Text
+        result_line:
+          anyOf:
+          - type: string
+            maxLength: 200
+          - type: 'null'
+          title: Result Line
+          description: 완료 때 알림장에 남길 처리 결과 한 줄(선택). 비우면 처리 시각·종류로 만들어요
       type: object
       required:
       - decision
@@ -4840,6 +4856,12 @@ components:
             format: date-time
           - type: 'null'
           title: Completed At
+        result_line:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Result Line
+          description: 완료 때 남긴 처리 결과 한 줄. 그날 알림장 입력의 그 요청 자리에 들어가요
       type: object
       required:
       - version
@@ -4915,6 +4937,20 @@ components:
             type: string
           type: array
           title: Missing Fields
+        result_line:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Result Line
+        intent:
+          anyOf:
+          - type: string
+            enum:
+            - notice
+            - ask
+          - type: 'null'
+          title: Intent
+          description: 감독 AI의 알림/부탁 분류. 투약·귀가는 늘 ask, 분류가 없으면 null
       type: object
       required:
       - id
@@ -6488,6 +6524,13 @@ components:
             $ref: '#/components/schemas/NoteListItem'
           type: array
           title: Items
+        pending_medication_count:
+          anyOf:
+          - type: integer
+            minimum: 0.0
+          - type: 'null'
+          title: Pending Medication Count
+          description: 그날 아직 완료하지 않은 투약 요청 수(교직원만). 알림장 발송은 막지 않아요
       type: object
       required:
       - total
@@ -8231,6 +8274,15 @@ components:
           type: string
           format: uuid
           title: Classroom Id
+        intent:
+          anyOf:
+          - type: string
+            enum:
+            - notice
+            - ask
+          - type: 'null'
+          title: Intent
+          description: 감독 AI의 알림/부탁 분류. 투약·귀가는 늘 ask, 분류가 없으면 null
       type: object
       required:
       - id
@@ -8333,6 +8385,15 @@ components:
             - staff
           - type: 'null'
           title: Answered By
+        intent:
+          anyOf:
+          - type: string
+            enum:
+            - notice
+            - ask
+          - type: 'null'
+          title: Intent
+          description: 감독 AI의 알림/부탁 분류. 투약·귀가는 늘 ask, 분류가 없으면 null
       type: object
       required:
       - id

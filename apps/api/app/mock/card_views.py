@@ -4,6 +4,7 @@ from collections import Counter
 from datetime import timedelta
 
 from app.api.labels import note_batch_label, staff_label
+from app.core.care import request_intent
 from app.mock import cards, documents, notes, store
 
 FILTERS = ("unassigned", "needs_review", "uncertain", "on_hold", "in_progress", "done")
@@ -45,7 +46,7 @@ def staff_request(req, card_kind=None):
     from app.mock.request_actions import source_note
     return {k: getattr(req, k) for k in ("id", "type", "title", "body", "status", "risk_level", "risk_category",
                                         "parent_confirmed_at", "classroom_id", "created_at", "updated_at")} | {
-        **requester_fields(req),
+        **requester_fields(req), "intent": request_intent(req.type, req.intent),
         "source_note": source_note(req),
         "repeat_count": store.repeat_count(req), "missing_fields": req.missing_fields,
         "status_label": staff_label(req.status, req.type, card_kind=card_kind), "hold_until": store.hold_until_of(req.id)}
@@ -62,6 +63,7 @@ def item(card):
             if note_batch else "확인 필요" if card.status == "pending" else "완료",
             "note_batch": note_batch,
             "request_id": card.request_id, "request_type": req.type if req else None,
+            "intent": request_intent(req.type, req.intent) if req else None,
             "title": req.title if req else card.draft.get("summary", ""), "urgency": req.urgency if req else None,
             "risk_level": req.risk_level if req else None,
             "risk_category": req.risk_category if req and req.risk_level == "urgent" else None,

@@ -53,6 +53,10 @@ export const STAFF_LABEL: Record<Status, Label> = {
 export type RequestType = "inquiry" | "consult" | "complaint";
 export const TYPE_LABEL: Record<RequestType, string> = { inquiry: "문의", consult: "상담", complaint: "민원" };
 
+/** 감독 AI가 정한 요청 의도(#408): 알려 주는 말인지, 해 달라는 말인지. 투약·귀가는 늘 부탁. 교직원 화면에만 쓴다 */
+export type RequestIntent = "notice" | "ask";
+export const INTENT_LABEL: Record<RequestIntent, string> = { notice: "알림", ask: "부탁" };
+
 /** 민원 위험 등급 (T04 2.3). 학부모에게는 보이지 않는다. */
 export type Risk = "normal" | "urgent" | "judge";
 

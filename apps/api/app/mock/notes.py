@@ -7,11 +7,11 @@ from uuid import uuid4
 from app.core.photos import profile_view
 from app.core.errors import ApiError
 from app.core.consents import require_complete
-from app.core.care import missed_request_check, note_content
+from app.core.care import missed_request_check, note_content, note_result
 from app.core.constants import LATE_NOTE_REQUEST_NOTICE, NOTE_REQUEST_TYPES
 from app.core.config import settings
 from app.core.schedule import KST, due_at
-from app.mock import seed, store
+from app.mock import care, seed, store
 from app.mock.records import NoteInput, Note
 from app.mock import daily_records
 
@@ -120,15 +120,27 @@ def regenerate(user, input_id, background_tasks=None):
         return {**draft_view(entry), "kept_edited": kept_edited}
 
 
+def _day_requests(org_id, classroom_id, note_date):
+    """그날 같은 원(·반) 보호자가 보낸 투약·귀가 요청. DB 입력 SELECT와 같은 조건이에요."""
+    children = store.state().children
+    return [req for req in store.state().requests.values()
+            if req.org_id == org_id and (classroom_id is None or req.classroom_id == classroom_id)
+            and req.type in NOTE_REQUEST_TYPES and req.created_at.astimezone(KST).date() == note_date
+            and req.child_id in children and req.requester_id in children[req.child_id].guardian_ids]
+
+
 def requests_for_child(child, note_date):
-    """입구 함수의 children[].requests: 같은 원·반·아이의 그날 보호자 요청."""
-    requests = [req for req in store.state().requests.values()
-                if req.org_id == child.org_id and req.classroom_id == child.classroom_id
-                and req.child_id == child.id and req.requester_id in child.guardian_ids
-                and req.type in NOTE_REQUEST_TYPES
-                and req.created_at.astimezone(KST).date() == note_date]
-    return [{"request_id": req.id, "type": req.type, "text": req.body}
+    """입구 함수의 children[].requests: 같은 원·반·아이의 그날 보호자 요청과 완료 때 남긴 처리 결과."""
+    requests = [req for req in _day_requests(child.org_id, child.classroom_id, note_date) if req.child_id == child.id]
+    return [{"request_id": req.id, "type": req.type, "text": req.body, "result_line": note_result(care.view(req)["result_line"])}
             for req in sorted(requests, key=lambda req: (req.created_at, str(req.id)))]
+
+
+def pending_medications(user, note_date, classroom_id):
+    """그날 아직 완료하지 않은 투약 요청 수. 알림장 발송은 막지 않고 화면 안내에만 써요."""
+    return None if user.role == "parent" else sum(
+        req.type == "medication" and req.status in ("received", "assigned")
+        for req in _day_requests(user.org_id, classroom_id, note_date))
 
 
 def draft(user, body, background_tasks=None):
@@ -324,7 +336,8 @@ def list_notes(user, note_date, classroom_id, page, size, sort):
         items = sorted(visible(user, note_date, classroom_id), key=lambda n: n.created_at,
                        reverse=sort.startswith("-"))
         return {"items": [{**view(n), "input_id": n.input_id} for n in items[(page-1)*size:page*size]],
-                "total": len(items), "page": page, "size": size}
+                "total": len(items), "page": page, "size": size,
+                "pending_medication_count": pending_medications(user, note_date, classroom_id)}
 
 
 def send(user, body):
