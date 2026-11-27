@@ -93,6 +93,31 @@ def test_fixture_documents_load_with_locations_and_classrooms(seeded_db, docs):
     assert row["location"] == "1쪽 준비물" and set(row["classes"]) == {seed.CLASS_STAR, seed.CLASS_SUN}
 
 
+def test_reseed_keeps_replaced_virtual_document_superseded(seeded_db, docs):
+    source = next((FIXTURES / "notice").glob("*.md"))
+    parsed = parse_document(source.read_text(encoding="utf-8"))
+    with seeded_db.begin() as connection:
+        old_id = connection.scalar(text("""
+            SELECT id FROM documents WHERE org_id=:org AND content_sha256=:sha
+        """), {"org": seed.ORG, "sha": parsed.content_sha256})
+        assert old_id is not None
+        new_id = connection.scalar(text("""
+            INSERT INTO documents (org_id,title,doc_type,source,status,ingest_status,content_sha256,
+                                   supersedes_id,is_virtual)
+            VALUES (:org,'새 판','notice','uploaded','active','succeeded',:sha,:old,false)
+            RETURNING id
+        """), {"org": seed.ORG, "sha": hashlib.sha256(b"manual replacement version").hexdigest(),
+               "old": old_id})
+        connection.execute(text("UPDATE documents SET status='superseded' WHERE id=:id"), {"id": old_id})
+
+        assert seed_documents(connection)["added"] == []
+        statuses = connection.execute(text("""
+            SELECT id,status FROM documents WHERE id IN (:old,:new)
+        """), {"old": old_id, "new": new_id}).all()
+
+    assert dict(statuses) == {old_id: "superseded", new_id: "active"}
+
+
 def test_search_finds_winter_break_with_location_and_date(docs):
     found = search_documents(staff(), str(seed.ORG), "notice", "겨울방학은 언제부터인가요?",
                              on_date=date(2026, 11, 20))["chunks"]

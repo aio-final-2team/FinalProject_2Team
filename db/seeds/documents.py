@@ -67,11 +67,13 @@ def seed_documents(connection) -> dict[str, list[str]]:
           AND id <> ALL(CAST(:demo_ids AS uuid[]))
           AND content_sha256 <> ALL(CAST(:shas AS text[]))
     """), {"org": seed.ORG, "demo_ids": [seed.MENU, seed.NOTICE, seed.OLD_NOTICE], "shas": current_shas})
+    # 새 판이 참조하는 가상 문서는 재시드 때 active로 복구하지 않아요.
     connection.execute(text("""
-        UPDATE documents SET status='active'
-        WHERE org_id=:org AND is_virtual=true AND status='superseded'
-          AND id <> ALL(CAST(:demo_ids AS uuid[]))
-          AND content_sha256 = ANY(CAST(:shas AS text[]))
+        UPDATE documents AS d SET status='active'
+        WHERE d.org_id=:org AND d.is_virtual=true AND d.status='superseded'
+          AND d.id <> ALL(CAST(:demo_ids AS uuid[]))
+          AND d.content_sha256 = ANY(CAST(:shas AS text[]))
+          AND NOT EXISTS (SELECT 1 FROM documents n WHERE n.org_id=d.org_id AND n.supersedes_id=d.id)
     """), {"org": seed.ORG, "demo_ids": [seed.MENU, seed.NOTICE, seed.OLD_NOTICE], "shas": current_shas})
     return {"added": added, "skipped": skipped}
 
