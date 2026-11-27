@@ -207,7 +207,7 @@ def test_request_toolbox_keeps_child_guardian_scope_and_date_window(memory_backe
     add_care(child_id=seed.CHILD_OTHER)
     add_care(days_ago=1)
     box=toolbox()
-    assert [s['name'] for s in box.specs()]==['documents','child_records','daily_notes','care']
+    assert [s['name'] for s in box.specs()]==['documents','child_records','daily_notes','care','forecast']
     assert [c['record_id'] for c in box.call('child_records',{'date':today})]==[record]
     assert [c['note_id'] for c in box.call('daily_notes',{'date':today})]==[note]
     care={c['request_id']:c for c in box.call('care',{'date':today})}
@@ -225,9 +225,9 @@ def test_request_toolbox_keeps_child_guardian_scope_and_date_window(memory_backe
     assert box.call('care',{'date':str(day-timedelta(days=1))})[0]['request_date']==str(day-timedelta(days=1))
     with pytest.raises(ValueError):
         box.call('documents',{'doc_type':'consult_timetable','query':'상담'})
-    # 아이를 정하지 않은 문의·민원에는 아이 도구가 없어요.
-    for changes in ({'child_id':None},{'type':'complaint'}):
-        assert [s['name'] for s in toolbox(**changes).specs()]==['documents']
+    # 아이를 정하지 않은 문의·민원에는 아이 도구가 없어요(문의는 예보, 민원은 법령 조문 도구만 더해요).
+    for changes,names in (({'child_id':None},['documents','forecast']),({'type':'complaint'},['documents','law_article'])):
+        assert [s['name'] for s in toolbox(**changes).specs()]==names
         with pytest.raises(ValueError):
             toolbox(**changes).call('care',{'date':today})
 

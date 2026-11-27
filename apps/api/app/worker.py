@@ -57,6 +57,14 @@ def request_agent(request_id):
         run_request(request_id)
 
 
+@celery_app.task(name="yuchion.request_redraft")
+def request_redraft(request_id):
+    """학부모가 답을 받은 뒤 글을 더 남기면 새 글까지 넣은 대화로 초안을 다시 써요(실패하면 빈 초안 그대로)."""
+    if enabled():
+        from app.modules.requests.redraft import redraft_request
+        redraft_request(request_id)
+
+
 @celery_app.task(name="yuchion.sweep")
 def sweep():
     if enabled():

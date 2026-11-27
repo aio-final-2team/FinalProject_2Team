@@ -8,6 +8,8 @@ from pathlib import Path
 
 from sqlalchemy import text
 
+from agents.graphs.answer import gather_on
+from app.core.db import transaction
 from app.core.schedule import KST
 from tools.public_apis.law import get_law_article
 from tools.public_apis.weather import WeatherClient
@@ -23,6 +25,7 @@ RAIN_SNOW = re.compile(r"(?<![가-힣])[비눈](?![가-힣])|(?<![가-힣])[비�
 RELATIVE_DAYS = {"오늘": 0, "내일": 1, "모레": 2}
 MONTH_DAY = re.compile(r"(\d{1,2})\s*월\s*(\d{1,2})\s*일|(?<!\d)(\d{1,2})/(\d{1,2})(?!\d)")
 FORECAST_DAYS = 3
+SAFETY_LAW = "child_safety"  # 아동 안전으로 분류된 민원은 AI가 안 불러도 이 조문을 붙이는 선
 
 
 def law_topics():
@@ -36,7 +39,8 @@ def infection_words(when):
 
 
 def law_rule_key(topic_key, risk_category, body):
-    """법령 조문을 붙일 조건에 맞는 규칙 이름. 주제가 넓어 주제만으로는 붙이지 않고, 없으면 None."""
+    """법령 조문을 붙일 조건에 맞는 규칙 이름. 주제가 넓어 주제만으로는 붙이지 않고, 없으면 None.
+    낱말 조건(when)은 대역이에요: 고정 검색·모델 없음·실패 때만 써요. 자료 찾는 AI는 law_article 도구로 스스로 불러요."""
     for key, rule in law_topics().items():
         when = rule["when"]
         if risk_category in when.get("risk_categories", ()) or (
@@ -130,8 +134,44 @@ def forecast_evidence(connection, org_id, day, client=None, forecast=None):
             "document_title": title, "location": str(day), "content": line, "effective_from": None}
 
 
+def stored_forecast(org_id, day):
+    """그날 예보를 가져와 공공 자료 조각으로 저장한다. 외부 API는 트랜잭션 밖에서 부르고 저장만 자기 트랜잭션에서 한다.
+    못 하면 None."""
+    fetched = fetch_forecast(day)
+    if not fetched:
+        return None
+    try:
+        with transaction() as connection:
+            return forecast_evidence(connection, org_id, day, forecast=fetched)
+    except Exception:  # 예보 저장 실패가 답변을 막지 않는다
+        return None
+
+
+def question_forecast(org_id, question, today):
+    """고정 검색 대역: 질문 낱말·날짜(event_day)가 가리키는 날의 예보. 자료 찾는 AI는 forecast 도구로 부른다."""
+    day = event_day(question, today)
+    return stored_forecast(org_id, day) if day else None
+
+
+def stored_law(org_id, key):
+    """법령표 키의 조문을 가져와 저장하고 근거 조각으로 돌려준다(외부 API는 트랜잭션 밖). 못 가져오면 None."""
+    try:
+        fetched = fetch_law(key)
+        if not fetched or fetched.get("unchecked"):
+            return None
+        with transaction() as connection:
+            item = law_evidence(connection, org_id, key, fetched=fetched)
+    except Exception:  # 법령 실패는 카드에 law_unchecked로만 남긴다
+        return None
+    topic = fetched["topic"]
+    return {"chunk_id": item["chunk_id"], "document_title": f"{topic['law_name']} {topic['article']}",
+            "location": topic["article"], "content": fetched["data"]["text"], "score": 1.0, "effective_from": None}
+
+
 def prefetch_public(request_type, body, topic_key, today, with_forecast=True, risk_category=None):
-    """공공 API 호출(법령은 검색→조문 두 번이라 최악 약 20초)을 DB 트랜잭션·연결을 잡기 전에 끝내 둔다. 결과는 처리 안에서 저장만 한다."""
+    """공공 API 호출(법령은 검색→조문 두 번이라 최악 약 20초)을 DB 트랜잭션·연결을 잡기 전에 끝내 둔다. 결과는 처리 안에서 저장만 한다.
+    예보는 고정 검색 경로(ANSWER_GATHER=fixed)에서만 미리 가져온다. 자료 찾는 AI 경로는 AI가 forecast 도구로 부르고,
+    AI가 못 모아 고정 검색으로 돌아갈 때만 question_forecast로 가져온다(documents/answer.py)."""
     found = {}
     rule_key = law_rule_key(topic_key, risk_category, body) if request_type == "complaint" else None
     if rule_key:
@@ -139,7 +179,7 @@ def prefetch_public(request_type, body, topic_key, today, with_forecast=True, ri
             found["law"] = (rule_key, fetch_law(rule_key))
         except Exception:
             found["law"] = (rule_key, {"unchecked": True})
-    if request_type == "inquiry" and with_forecast:
+    if request_type == "inquiry" and with_forecast and not gather_on():
         day = event_day(body, today)
         if day:
             found["forecast"] = (day, fetch_forecast(day))
@@ -164,26 +204,34 @@ def event_day(question, today):
     return None
 
 
-def attach_law_evidence(connection, card, req, prefetched=None):
-    """민원 답변 카드에 법령 근거를 붙인다. 실패해도 카드 처리는 계속한다."""
-    item = None
+def attach_law_evidence(connection, card, req, prefetched=None, answer=None):
+    """민원 답변 카드에 법령 근거를 붙인다. 실패해도 카드 처리는 계속한다.
+    자료 찾는 AI가 모은 근거로 쓴 초안(answer["gathered"])이면 AI가 law_article로 받아 인용한 조문만 save_evidence로
+    근거에 들어가고, 여기서는 아동 안전 선만 지킨다(AI가 안 불러도 아동복지법 조문을 붙임, 원장 보고와 같은 급).
+    그 밖(모델 없음·고정 검색·실패)에는 law_rule_key 낱말 조건이 대역이다."""
+    gathered = bool(answer and answer.get("gathered"))
+    item = {"unchecked": True} if gathered and answer.get("law_unchecked") else None
     try:
         with connection.begin_nested():  # 저장 오류가 바깥 트랜잭션을 망치지 않게 한다
-            rule_key = law_rule_key(req.get("topic_key"), req.get("risk_category"), req["body"])
-            if rule_key is None:
-                return
-            prefetched_key, fetched = (prefetched or {}).get("law", (None, None))
-            item = law_evidence(connection, req["org_id"], rule_key,
-                                fetched=fetched if prefetched_key == rule_key else None)
-            if item and item.get("chunk_id"):
-                rank = connection.scalar(text("SELECT coalesce(max(rank),0)+1 FROM card_evidence WHERE card_id=:id"),
-                                         {"id": card["id"]})
-                connection.execute(text("""
-                    INSERT INTO card_evidence(card_id, org_id, chunk_id, rank, score, quote)
-                    VALUES (:card, :org, :chunk, :rank, :score, :quote)
-                """), {"card": card["id"], "org": card["org_id"], "chunk": item["chunk_id"], "rank": rank,
-                       "score": item["score"], "quote": item["quote"]})
-                return
+            if gathered:
+                rule_key = SAFETY_LAW if req.get("risk_category") == SAFETY_LAW else None
+            else:
+                rule_key = law_rule_key(req.get("topic_key"), req.get("risk_category"), req["body"])
+            if rule_key is not None:
+                prefetched_key, fetched = (prefetched or {}).get("law", (None, None))
+                found = law_evidence(connection, req["org_id"], rule_key,
+                                     fetched=fetched if prefetched_key == rule_key else None)
+                if found and found.get("chunk_id"):
+                    # AI가 같은 조문을 이미 인용했으면 그 근거 그대로 둔다
+                    rank = connection.scalar(text("SELECT coalesce(max(rank),0)+1 FROM card_evidence WHERE card_id=:id"),
+                                             {"id": card["id"]})
+                    connection.execute(text("""
+                        INSERT INTO card_evidence(card_id, org_id, chunk_id, rank, score, quote)
+                        VALUES (:card, :org, :chunk, :rank, :score, :quote) ON CONFLICT (card_id, chunk_id) DO NOTHING
+                    """), {"card": card["id"], "org": card["org_id"], "chunk": found["chunk_id"], "rank": rank,
+                           "score": found["score"], "quote": found["quote"]})
+                elif found:
+                    item = found
     except Exception:
         item = {"unchecked": True}
     if item and item.get("unchecked"):

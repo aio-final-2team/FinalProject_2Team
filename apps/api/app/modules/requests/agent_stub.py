@@ -167,7 +167,8 @@ def run_request(request_id, prepared_answer=None, prepared_fields=None):
             connection.execute(text("UPDATE cards SET check_result=CAST(:check AS jsonb) WHERE id=:id"),
                                {"id": card["id"], "check": json.dumps(check)})
         if req["type"] == "complaint":
-            attach_law_evidence(connection, card, req, prefetched)  # 조건에 맞을 때만 법령 근거를 붙임(T52)
+            # AI 초안이면 AI가 인용한 조문만 근거로 두고 아동 안전 선만 지켜요. 모델 없음·실패 때는 낱말 조건 대역(T52)
+            attach_law_evidence(connection, card, req, prefetched, answer)
         record(connection, req, "drafted", card=card, actor_type="agent", agent_name="document")
         repeated = (repeat_count(connection, req) or 0) >= 3
         if (high_risk or repeated) and director:

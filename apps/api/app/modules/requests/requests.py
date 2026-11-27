@@ -378,6 +378,7 @@ def staff_listing(user, status, page, size, sort, answered_by, classroom_id, typ
 
 
 def message(user, request_id, body, *, background_tasks):
+    reopened = False
     with transaction() as connection:
         scope.request_in_scope(user, request_id, connection=connection)
         require_complete(user)
@@ -413,9 +414,12 @@ def message(user, request_id, body, *, background_tasks):
                         closed_at=NULL,hold_until=NULL,version=version+1,updated_at=clock_timestamp(),
                         draft=CAST(:draft AS jsonb),check_result=NULL WHERE id=:id RETURNING *
                 """), {"id": row["id"], "draft": json.dumps(draft)}).mappings().one())
+                reopened = True
             req["parent_confirmed_at"] = None
             connection.execute(text("UPDATE requests SET parent_confirmed_at=NULL WHERE id=:id"), {"id": request_id})
             set_status(connection, req, "awaiting_review", action="returned", card=card, actor_type="user", actor_id=user.id)
+    if reopened:  # 커밋한 뒤 처음 초안과 같은 일꾼이 새 글까지 넣은 대화로 다시 써요. 실패하면 빈 초안 그대로예요
+        dispatch("redraft", request_id, background_tasks)
     return {"message": msg}
 
 
