@@ -238,7 +238,10 @@ function Detail({ note, notes, name, names }: { note: DailyNote; notes: DailyNot
               ) : (
                 <p className={`mt-0.5 text-body ${bad ? "rounded-xs bg-tint" : ""}`}>{noMd(it.value)}</p>
               )}
-              <span className={`mt-1 inline-block rounded-sm px-2 py-0.5 text-caption font-semibold ${it.source.type === "document" ? "bg-ok-tint text-ok" : it.source.type === "request" ? "bg-lav-tint text-lav" : "bg-g text-ink2"}`}>{src}</span>
+              {/* 줄 이름과 출처가 같은 말이면(보호자 요청 / 보호자 요청) 배지는 숨긴다 */}
+              {src !== (it.key === "child" ? "" : itemLabel(it)) && (
+                <span className={`mt-1 inline-block rounded-sm px-2 py-0.5 text-caption font-semibold ${it.source.type === "document" ? "bg-ok-tint text-ok" : it.source.type === "request" ? "bg-lav-tint text-lav" : "bg-g text-ink2"}`}>{src}</span>
+              )}
             </div>
           );
         })}

@@ -66,11 +66,11 @@ export const CHECK_KIND: Record<CheckKind, { title: string; short: string; fix?:
   not_in_memo: { title: "메모에 없는 말이 들어갔어요", short: "메모에 없는 말", fix: "이 문장 빼기", keep: "실제로 있었던 일이에요" },
   sensitive: { title: "민감한 정보가 들어갔어요", short: "민감 정보", fix: "이 문장 빼기", keep: "보내도 되는 내용이에요" },
   other_child: { title: "다른 아이 이야기가 들어갔어요", short: "다른 아이 이름", fix: "이 문장 빼기", keep: "그대로 두기" },
-  date_check: { title: "날짜를 확인해 주세요", short: "날짜 확인", keep: "적힌 날짜가 맞아요" },
+  date_check: { title: "날짜를 확인해 주세요", short: "날짜 확인", keep: "확인했어요" },
   absent: { title: "결석한 아이예요", short: "결석", keep: "확인했어요" },
   draft_failed: { title: "이 아이 초안을 만들지 못했어요", short: "초안 실패", keep: "직접 쓰고 확인할게요" },
   check_failed: { title: "검사를 하지 못했어요", short: "검사 실패", keep: "직접 읽고 확인했어요" },
-  request_missed: { title: "보호자 요청이 빠졌어요", short: "보호자 요청 누락", keep: "빼고 보내기" },
+  request_missed: { title: "보호자 요청이 빠졌어요", short: "보호자 요청 누락", keep: "넣지 않기" },
   return_limit: { title: "AI가 고쳐도 남은 문제가 있어요", short: "남은 문제", keep: "직접 확인했어요" },
 };
 

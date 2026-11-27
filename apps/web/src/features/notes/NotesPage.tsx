@@ -431,6 +431,8 @@ function Review({ notes }: { notes: DailyNote[] }) {
   };
 
   const preview = notes.find((n) => hasChild(n)) ?? notes[0];
+  /* 보내기 전 확인에는 아이 이름 없이 반 활동·식단·준비물 같은 공통 내용만 보여 준다 */
+  const common = (preview?.content.items ?? []).filter((it) => ["day", "meal", "supplies"].includes(it.key) && it.value.trim());
   return (
     <Frame title="알림장 확인" sub={`${user?.display_name} · ${notes.length}명${allSent ? "" : " · 17:00까지"}`}>
       {!allSent && <section className="mt-4 rounded-lg bg-card p-3 shadow-card">
@@ -571,13 +573,13 @@ function Review({ notes }: { notes: DailyNote[] }) {
 
       {/* A-07 일괄 발송 시트 */}
       <Sheet open={sheet} onClose={() => setSheet(false)} title={`${notes.length}명에게 한 번에 보내기`}>
-        <p className="text-footnote text-ink2">반 전체 {notes.length}명에게 보내요. 보낸 뒤에는 정정으로만 고칠 수 있어요</p>
-        {preview && (
+        <p className="text-footnote text-ink2">반 전체 {notes.length}명에게 보내요. 아이별 내용은 그 아이의 보호자에게만 가요. 보낸 뒤에는 정정으로만 고칠 수 있어요</p>
+        {common.length > 0 && (
           <div className="grid gap-1 rounded-lg bg-g p-3 text-callout">
-            <b className="text-headline">{nameI(names[preview.child_id] ?? "아이")}의 오늘</b>
-            {preview.content.items.filter((it) => it.value.trim()).map((it, i) => (
+            <b className="text-headline">모든 가정에 들어가는 내용</b>
+            {common.map((it, i) => (
               <span key={i}>
-                <b className="mr-1.5 text-footnote text-ink2">{it.key === "child" ? "아이 이야기" : itemLabel(it)}</b>
+                <b className="mr-1.5 text-footnote text-ink2">{itemLabel(it)}</b>
                 {noMd(it.value)}
               </span>
             ))}
