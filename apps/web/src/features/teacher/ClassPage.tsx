@@ -2,7 +2,7 @@ import { ScreenTop } from "@/components/ScreenTop";
 import { Link } from "react-router";
 import { useState } from "react";
 import { useDocuments, type Doc } from "@/api/documents";
-import { useNotes } from "@/api/notes";
+import { useNextMeal } from "@/api/meals";
 import { useSession } from "@/app/session";
 import { Icon } from "@/components/Icon";
 import { QueryState } from "@/components/QueryState";
@@ -11,12 +11,12 @@ import { UploadSheet } from "./UploadSheet";
 import { dateLabel, todayKST } from "@/domain/notes";
 
 
-/** 오늘 우리 반: 이번 달 식단표와 가정통신문 (API 28·30 자료). 자료 본문은 API가 주지 않아 제목·적용일·오늘 식단 줄만 보여 준다. */
+/** 식단표와 가정통신문 (API 28·29 자료). 식단은 식단표 본문 표에서 오늘 또는 가장 가까운 날짜를 읽어 점심·오후 간식으로 나눠 보여 준다. */
 export function ClassPage() {
   const { user } = useSession();
   const cid = user?.classroom_ids[0];
   const date = todayKST();
-  const notes = useNotes(cid, date);
+  const meal = useNextMeal(date).data;
   const docs = useDocuments();
   const active = (type: string) => (docs.data ?? []).filter((d) => d.doc_type === type && d.status === "active").sort((a, b) => b.effective_from.localeCompare(a.effective_from));
   const menus = active("menu");
@@ -25,11 +25,10 @@ export function ClassPage() {
   const [moreMenu, setMoreMenu] = useState(false);
   const [moreNotice, setMoreNotice] = useState(false);
   const FOLD = 4;
-  const meal = notes.data?.[0]?.content.items.find((i) => i.key === "meal");
 
   return (
     <div className="mx-auto max-w-[680px] px-4 pb-10">
-      <ScreenTop back={{ to: "/teacher/home", label: "홈" }} title="오늘 우리 반" sub={`${dateLabel(date)} · 식단표와 가정통신문이에요`} />
+      <ScreenTop back={{ to: "/teacher/home", label: "홈" }} title="식단표와 가정통신문" sub={dateLabel(date)} />
       <button type="button" onClick={() => setUp(true)} className="mt-3 inline-flex h-10 items-center rounded-md bg-tint px-4 text-callout font-semibold text-accent-ink active:scale-[.97]">자료 올리기</button>
       <UploadSheet open={up} onClose={() => setUp(false)} classroomId={cid} />
 
@@ -37,10 +36,18 @@ export function ClassPage() {
         <Group title="식단표" empty="등록된 식단표가 없어요" count={menus.length + (meal ? 1 : 0)}>
           {meal && (
             <li className="px-3 py-3">
-              <span className="text-caption font-bold text-accent-ink">오늘 식단</span>
-              <b className="mt-0.5 block text-callout">{meal.value}</b>
-              <span className="text-caption text-ink2">{meal.source.document_title ?? "식단표"}에서 가져왔어요</span>
-              <MealRepresentative date={date} mealText={meal.value} />
+              <span className="text-caption font-bold text-accent-ink">{meal.today ? "오늘 식단" : `다음 식단 · ${meal.label}`}</span>
+              <dl className="mt-1.5 grid grid-cols-[4.5rem_1fr] gap-x-3 gap-y-1.5 text-callout">
+                <dt className="font-bold text-ink2">점심</dt>
+                <dd className="font-semibold">{meal.lunch}</dd>
+                {meal.snack && (
+                  <>
+                    <dt className="font-bold text-ink2">오후 간식</dt>
+                    <dd className="font-semibold">{meal.snack}</dd>
+                  </>
+                )}
+              </dl>
+              <MealRepresentative date={meal.date} mealText={meal.lunch} />
             </li>
           )}
           {(moreMenu ? menus : menus.slice(0, FOLD)).map((d) => <DocRow key={d.id} d={d} />)}
