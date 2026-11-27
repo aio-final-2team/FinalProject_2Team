@@ -25,16 +25,15 @@ export function CareSection({ classroomId, all }: { classroomId?: string; all?: 
   const [rejecting, setRejecting] = useState<CareItem | null>(null);
   const [reason, setReason] = useState("");
 
-  const [tab, setTab] = useState<"all" | "pickup" | "medication">("all");
+  const [tab, setTab] = useState<"pickup" | "medication">("pickup");
   const isOpen = (c: CareItem) => c.status === "received" || c.status === "assigned";
   const everything = q.data ?? [];
-  const list = tab === "all" ? everything : everything.filter((c) => c.type === tab);
+  const list = everything.filter((c) => c.type === tab);
   const open = list.filter(isOpen);
   const closed = list.filter((c) => c.status === "completed" || c.status === "rejected");
   const shown = more ? open : open.slice(0, FOLD);
   const count = (t: "pickup" | "medication") => everything.filter((c) => c.type === t && isOpen(c)).length;
   const TABS = [
-    { k: "all", label: "전체", n: everything.filter(isOpen).length },
     { k: "pickup", label: "귀가", n: count("pickup") },
     { k: "medication", label: "투약", n: count("medication") },
   ] as const;
@@ -91,7 +90,7 @@ export function CareSection({ classroomId, all }: { classroomId?: string; all?: 
       </div>
       <QueryState queries={[q]} skeleton={2} errorTitle="귀가·투약 요청을 불러오지 못했어요">
         {open.length === 0 ? (
-          <p className="rounded-lg bg-card p-4 text-center text-callout text-ink2 shadow-card">{closed.length ? `요청 ${closed.length}건을 모두 처리했어요` : tab === "all" ? "들어온 요청이 없어요" : `들어온 ${TYPE[tab].label} 요청이 없어요`}</p>
+          <p className="rounded-lg bg-card p-4 text-center text-callout text-ink2 shadow-card">{closed.length ? `${TYPE[tab].label} 요청 ${closed.length}건을 모두 처리했어요` : `들어온 ${TYPE[tab].label} 요청이 없어요`}</p>
         ) : (
           <ul className="overflow-hidden rounded-lg bg-card shadow-card">
             {shown.map((c) => {
