@@ -4,7 +4,12 @@ import pytest
 from app import backend
 from app.core.db import transaction
 from app.mock import seed, store
-from tests.integration.api.test_memories import memory_backend
+from tests.integration.api import test_memories, test_memory_learning
+from tests.integration.api.test_memory_learning import find, change
+
+# 다른 시험 파일의 fixture를 이름으로 묶어 둬요(import하면 ruff F811 오탐).
+memory_backend = test_memories.memory_backend
+saved_case = test_memory_learning.saved_case
 
 
 def save(mode, candidates, body=None, **changes):
@@ -126,9 +131,6 @@ def test_memory_parent_confirmation_discard_delete(client,parent,parent_other,te
     assert row['content']=='' and row['structured']=={} and row['confirmed_at'] is None
     assert client.post(path,headers=parent,json={'decision':'remember'}).status_code==409
     assert not load(memory_backend,req['child_id'],seed.PARENT)
-
-
-from tests.integration.api.test_memory_learning import saved_case, find, change
 
 
 def test_memory_saved_answer_toggle_scope_and_invalidation(client,teacher,teacher_other,director,parent,saved_case):

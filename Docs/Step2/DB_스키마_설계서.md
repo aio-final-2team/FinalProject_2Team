@@ -1388,7 +1388,7 @@ T50이 붙기 전까지는 사진을 올린 사람이 아이를 직접 표시한
 | children.profile_photo_path | NULL 허용 text. MEDIA_DIR 안 상대 경로 `profiles/<child_id>.jpg`. 없으면 화면은 이름 글자를 보여 준다. 퇴소 작업이 NULL로 비우고 파일을 지운다 |
 | meal_photos | PK (org_id, meal_date), org_id는 organizations FK. main_dish, storage_path(`meals/<org_id>/<날짜>.webp`), media_type(jpeg·png·webp), size_bytes(1 이상), created_at |
 
-사진은 모두 AI로 만든 가상 사진이다. 아이 사진은 `data/fixtures/kg-demo-01/profile_photos`(가상 정면 얼굴 21장), 급식 사진은 같은 원 식단표 점심을 바탕으로 만든 `meal_photos`(38장)에서 기동 시드가 넣는다. 데모 원과 사람별 QA 원이 같은 사진을 쓰고, 이미 있는 행·파일은 덮지 않는다. 두 폴더 모두 MEDIA_DIR 하위 폴더라 고아 사진 점검(`media_sweep`) 대상이 아니다.
+사진은 모두 AI로 만든 가상 사진이다. 아이 사진은 `data/fixtures/kg-demo-01/profile_photos`(가상 정면 얼굴 21장), 급식 사진은 같은 원 식단표 점심을 바탕으로 만든 `meal_photos`(38장)에서 기동 시드가 넣는다. 데모 원과 사람별 QA 원이 같은 사진을 쓰고, 이미 있는 행·파일은 덮지 않는다. 고아 사진 점검(`media_sweep`)은 `profiles/` 파일을 `children.profile_photo_path`와 대조해, 퇴소 때 파일 삭제가 실패했거나 복원 뒤 다시 적용으로 경로가 비워진 파일을 찾는다. `meals/`는 점검 대상이 아니다.
 조회 권한은 API 설계 문서 3.41을 따른다. 아이 사진은 `child_in_scope`(보호자·현재 담임·같은 기관 원장)로 막고 범위 밖은 404와 permission_denied 이력이다. 급식 사진은 같은 기관 사용자 누구나 본다.
 퇴소 작업은 프로필 경로를 비우고 파일도 지운다. 시드는 퇴소 이력이 있는 아이의 사진을 다시 넣지 않는다(`db/test_photos.py::test_withdraw_removes_profile_photo_and_seed_keeps_it_removed`). 이 표·열이 더해지며 FK 74·컬럼 328이 됐다.
 

@@ -1115,14 +1115,19 @@ def busy_blocks():
     return out
 
 
-def write_busy_blocks():
+def busy_blocks_text():
+    """consult_timetable/staff_busy_blocks.json 내용."""
     import json
-    d = OUT / "consult_timetable"
-    d.mkdir(parents=True, exist_ok=True)
     data = {"kindergarten_id": KG["id"], "is_virtual": True, "table": "staff_busy_blocks",
             "note": "period = [start, end). 후보 시간은 이 바쁜 시간의 빈틈(30분 단위)으로 계산. 상담 시간표 문서(CS-*)와 같은 값.",
             "day_window": [DAY_START, DAY_END], "slot_minutes": SLOT_MIN, "blocks": busy_blocks()}
-    (d / "staff_busy_blocks.json").write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return json.dumps(data, ensure_ascii=False, indent=2) + "\n"
+
+
+def write_busy_blocks():
+    d = OUT / "consult_timetable"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "staff_busy_blocks.json").write_text(busy_blocks_text(), encoding="utf-8")
 
 
 def free_from_json(path):
@@ -1176,7 +1181,8 @@ def check_busy_blocks():
     return errs
 
 
-def write_index():
+def index_text():
+    """README.md 내용. 시험이 커밋된 README와 같은지 본다."""
     rows = ["| id | 종류 | 제목 | 대상 반 | 시행일 | 근거로 쓰는 평가 문항 | 메모 |", "| --- | --- | --- | --- | --- | --- | --- |"]
     for d in DOCS:
         rows.append(f"| [{d['id']}]({filename(d)}) | {d['doc_type']} | {d['title']} | {d['classroom']} | {d['effective_from']} | {', '.join(d['eval_refs']) or '—'} | {d['note'] or ''} |")
@@ -1187,6 +1193,27 @@ def write_index():
 기존 평가 자료 {len(ORIGINAL_DOC_IDS)}개에 운영 안내·별빛반 활동·12~1월 자료 {len(DOCS) - len(ORIGINAL_DOC_IDS)}개를 보탰습니다. 겨울방학 날짜 충돌과 근거 없는 질문은 의도한 시험 장치입니다.
 
 {FICTION}
+
+## 가상 기억·승인 답 시드
+
+`memories/memories.json`은 원 자료 검색 대상이 아닌 기억 시드예요. 실제 기관·인물·아동 정보는 없어요.
+`db.seeds.demo` → `db.seeds.documents` → `db.seeds.memories` 순서로 실행해요.
+
+| 넣는 데이터 | 수량 | 범위 |
+| --- | ---: | --- |
+| 담임 말투 | 16 | teacher01 10·teacher02 6, 80자 이내 |
+| 담임 업무 선호 | 10 | teacher01 6·teacher02 4, 기계가 읽는 JSON 포함 |
+| 담임 거절 이유 | 20 | teacher01 14·teacher02 6, 상담 시간 거절 각 3 |
+| 학부모 선호 | 20 | parent01·parent02·별빛반 보호자 8명, 각 2 |
+| 원장 업무 선호 | 3 | director01 |
+| 기억 규칙 | 5 | 활성 3·제안 1·거절 1 |
+| 승인 답·완료 이력 | 각각 30 | 별빛반 답 20·원 전체 답 10, teacher01 수정 승인 10 |
+
+기억은 총 69개예요. 승인 답의 사실은 확장판 66개 문서와 대조한 공통 문서에서 가져왔어요.
+문서 연결은 `saved_answer_sources`, 조각 연결은 `card_evidence`로 확인할 수 있어요.
+질문 임베딩은 `EMBEDDING_MODEL=BAAI/bge-m3`와 실제 모델이 있을 때만 채우며, 없으면 경고 후 승인 답을 건너뛰어요.
+다시 실행해도 중복되지 않고 삭제한 기억·끄거나 거절한 답과 규칙을 되살리지 않아요.
+실행 방법과 소유자별 개수는 [시드 안내](../../../db/seeds/README.md)에 있어요.
 
 - 기관 ID `{KG['id']}` · 반: {', '.join(CLASSES.values())}
 - 교사: {', '.join(f'`{k}` {v}' for k, v in TEACHERS.items())}
@@ -1246,7 +1273,11 @@ def write_index():
 
 ## 문서 목록
 """
-    (OUT / "README.md").write_text(head + "\n".join(rows) + "\n", encoding="utf-8")
+    return head + "\n".join(rows) + "\n"
+
+
+def write_index():
+    (OUT / "README.md").write_text(index_text(), encoding="utf-8")
 
 
 def main():

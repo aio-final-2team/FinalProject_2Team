@@ -69,10 +69,13 @@ def test_memory_note_reaches_checker_and_card_but_never_saved_answer(client,pare
     note_id=add_note(memory_backend,0)
     seen=[]
     class Model:
-        def __init__(self,role): self.role=role
+        def __init__(self,role):
+            self.role=role
         def json(self,system,user):
-            payload=json.loads(user);seen.append((self.role,payload))
-            if self.role=='CHECKER': return {'passed':True,'issues':[]}
+            payload=json.loads(user)
+            seen.append((self.role,payload))
+            if self.role=='CHECKER':
+                return {'passed':True,'issues':[]}
             note=next(c for c in payload['chunks'] if c.get('source')=='daily_note')
             return {'text':note['quote'],'evidence':[{'chunk_id':None,'source':'daily_note','note_id':note['note_id'],'quote':note['quote']}]}
     monkeypatch.setenv('ANSWER_WRITER','graph')
@@ -100,7 +103,8 @@ def test_memory_note_reaches_checker_and_card_but_never_saved_answer(client,pare
     assert decision(client,teacher,cid,'edit_approve',edited_content={'text':'[TEST] 낮잠을 잘 잤어요.'}).status_code==200
     assert detail(client,teacher,cid)['card']['draft']['note_evidence'][0]['note_id']==note_id
     if memory_backend=='db':
-        with transaction() as c: assert c.scalar(text('SELECT count(*) FROM saved_answers'))==0
+        with transaction() as c:
+            assert c.scalar(text('SELECT count(*) FROM saved_answers'))==0
     else:
         assert store.state().saved_answers=={}
 
