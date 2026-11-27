@@ -19,7 +19,8 @@ def _me(user) -> MeOut:
         user=UserOut(id=user.id, role=user.role, display_name=user.display_name, org_id=user.org_id,
                      consents_complete=complete(user),
                      classroom_ids=classroom_ids),
-        children=[ChildOut(id=c.id, display_name=c.display_name, classroom_id=c.classroom_id) for c in children],
+        children=[ChildOut(id=c.id, display_name=c.display_name, classroom_id=c.classroom_id,
+                           profile_photo=getattr(c, "profile_photo", None)) for c in children],
     )
 
 

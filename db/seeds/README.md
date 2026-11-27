@@ -10,6 +10,10 @@ PYTHONPATH=apps/api python -m db.seeds.documents
 EMBEDDING_MODEL=BAAI/bge-m3 PYTHONPATH=apps/api python -m db.seeds.memories
 ```
 
+`db.seeds.demo`는 끝에서 `db.seeds.photos`도 불러요. 가상 아이 프로필 사진 21장과 식단표 점심으로 만든 급식 참고 사진 38장을
+`MEDIA_DIR/profiles/`·`MEDIA_DIR/meals/<원 ID>/`에 쓰고 `children.profile_photo_path`·`meal_photos`에 적어요. 사람별 QA 원도 같은 사진을 받아요.
+원본은 `data/fixtures/kg-demo-01/profile_photos`·`meal_photos`이고, 이미 있는 행·파일은 덮지 않아요.
+
 | 가상 데이터 | teacher01 | teacher02 | 그 밖 | 합계 |
 | --- | ---: | ---: | ---: | ---: |
 | 말투(`tone`, 80자 이내) | 10 | 6 | 0 | 16 |

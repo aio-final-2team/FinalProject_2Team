@@ -129,6 +129,9 @@ def seed_demo(connection, *, refresh_note_requests=False, write_media=True):
 
     if has_feed:
         seed_feed(connection, withdrawn, write_media=write_media)
+    from db.seeds.photos import seed_photos
+
+    seed_photos(connection, write_media=write_media)
 
 
 def seed_feed(connection, withdrawn=frozenset(), *, write_media=True):

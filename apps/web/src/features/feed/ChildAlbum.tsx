@@ -84,7 +84,7 @@ export function ChildAlbum({ embedded = false }: { embedded?: boolean }) {
           )}
 
           <div className="mt-4 flex items-center gap-4">
-            <ChildAvatar name={name} photo={kid?.profile_photo} childId={kid?.id} size={72} tone="tint" textClass="text-[28px]" />
+            <ChildAvatar name={name} photo={kid?.profile_photo} size={72} tone="tint" textClass="text-[28px]" />
             <div className="min-w-0">
               <h2 className="truncate text-title font-bold tracking-[-0.02em]">{name}</h2>
               <p className="text-footnote text-ink2">우리 반</p>

@@ -10,6 +10,7 @@ from sqlalchemy import text
 from app.core import scope
 from app.core.config import settings
 from app.core.db import transaction
+from app.core.photos import profile_view
 from app.core.errors import ApiError
 from app.core.consents import require_complete
 from app.core.care import missed_request_check, note_content
@@ -94,10 +95,11 @@ def classroom_children(user, classroom_id, *, connection=None):
     with (transaction() if connection is None else nullcontext(connection)) as connection:
         scope.classroom_in_scope(user, classroom_id, connection=connection)
         items = connection.execute(text("""
-            SELECT id, display_name, classroom_id FROM children
+            SELECT id, display_name, classroom_id, profile_photo_path FROM children
             WHERE org_id=:org AND classroom_id=:class ORDER BY display_name, id
         """), {"org": user.org_id, "class": classroom_id}).mappings().all()
-    return {"items": [dict(row) for row in items]}
+    return {"items": [{"id": row["id"], "display_name": row["display_name"], "classroom_id": row["classroom_id"],
+                       "profile_photo": profile_view(row["id"], row["profile_photo_path"])} for row in items]}
 
 
 def draft_view(entry):

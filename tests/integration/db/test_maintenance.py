@@ -65,7 +65,9 @@ def test_sweep_lists_only_orphans_and_deletes_them_only_with_apply(media_root, s
     assert media_sweep.sweep(apply=True) == expected
     assert not stray.exists() and not (media_root / expected[0]).exists()
     remaining = sorted(p.name for p in media_root.iterdir())
-    assert remaining == sorted([f"{seed.demo_id(f'f0{n}')}.jpg" for n in range(1, 5)] + ["fresh.png", "link.png", "mock", "videos"])
+    # 프로필·급식 사진(0021)도 하위 폴더(profiles/·meals/)라 고아 점검 대상이 아니에요.
+    assert remaining == sorted([f"{seed.demo_id(f'f0{n}')}.jpg" for n in range(1, 5)]
+                               + ["fresh.png", "link.png", "meals", "mock", "profiles", "videos"])
     assert video.exists() and outside.exists() and media_sweep.sweep(apply=True) == []
 
 

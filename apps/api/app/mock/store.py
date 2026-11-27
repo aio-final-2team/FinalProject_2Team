@@ -16,6 +16,7 @@ from app.core.errors import ApiError
 from app.core.consents import require_complete
 from app.core.constants import CARE_REQUEST_TYPES, OUT_OF_SCOPE_MESSAGES
 from app.mock import seed
+from app.core.photos import profile_view
 from app.core.schedule import KST, due_at
 from app.mock.records import Approval, Booking, Notification, Document, Chunk, Evidence, Rule, NoteInput, Note
 
@@ -59,6 +60,10 @@ class Child:
     display_name: str
     guardian_ids: list[UUID]
     photo_scope: str = "family"
+
+    @property
+    def profile_photo(self):
+        return profile_view(self.id, seed.profile_photo(self.id))
 
 
 @dataclass

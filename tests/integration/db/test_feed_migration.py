@@ -24,7 +24,8 @@ def test_feed_revision_backfill_constraints_and_previous_revision_roundtrip(db_e
     with db_engine.begin() as connection:
         assert dict(catalog(connection)) == HEAD_CATALOG
         assert dict(connection.execute(text("SELECT * FROM children WHERE id=:id"),
-                                       {"id": seed.CHILD}).mappings().one()) == {**original, "photo_scope": "family"}
+                                       {"id": seed.CHILD}).mappings().one()) == {**original, "photo_scope": "family",
+                                                                                   "profile_photo_path": None}
         for invalid in (None, "public", ""):
             with pytest.raises(IntegrityError), connection.begin_nested():
                 connection.execute(text("UPDATE children SET photo_scope=:scope WHERE id=:id"),

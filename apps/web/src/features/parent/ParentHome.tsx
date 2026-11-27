@@ -88,7 +88,7 @@ export function ParentHome() {
             {/* 사진 칸은 B안(사진 확장)에서 붙는다. 사진 없는 날 규칙대로 글만 보여 준다 */}
             <div className="p-5">
               <div className="flex items-start gap-3">
-                <ChildAvatar name={child?.display_name ?? "아이"} photo={child?.profile_photo} childId={child?.id} size={48} tone="tint" />
+                <ChildAvatar name={child?.display_name ?? "아이"} photo={child?.profile_photo} size={48} tone="tint" />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2 text-caption text-ink2">
                     <span className="font-bold text-accent-ink">오늘 알림장</span>
@@ -118,7 +118,7 @@ export function ParentHome() {
                     </div>
                   ))}
                 </dl>
-                {facts.find((fact) => fact.key === "meal") && <MealRepresentative date={date} mealText={facts.find((fact) => fact.key === "meal")!.value} />}
+                {facts.find((fact) => fact.key === "meal") && <MealRepresentative date={date} />}
                 </>
               )}
             </div>

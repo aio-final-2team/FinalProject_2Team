@@ -4,6 +4,7 @@ from copy import deepcopy
 from datetime import datetime
 from uuid import uuid4
 
+from app.core.photos import profile_view
 from app.core.errors import ApiError
 from app.core.consents import require_complete
 from app.core.care import missed_request_check, note_content
@@ -313,7 +314,8 @@ def visible(user, note_date, classroom_id=None):
 def classroom_children(user, classroom_id):
     with store._lock:
         children = store.classroom_children(user, classroom_id)
-        return {"items": [{"id": c.id, "display_name": c.display_name, "classroom_id": c.classroom_id}
+        return {"items": [{"id": c.id, "display_name": c.display_name, "classroom_id": c.classroom_id,
+                           "profile_photo": profile_view(c.id, seed.profile_photo(c.id))}
                           for c in sorted(children, key=lambda c: c.display_name)]}
 
 

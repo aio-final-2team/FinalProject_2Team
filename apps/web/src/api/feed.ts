@@ -66,4 +66,4 @@ export function useSetPhotoScope(childId?: string) {
 }
 
 /** 사진 한 장을 토큰 붙여 받아 브라우저 임시 주소로 바꾼다. 한 번 받으면 다시 받지 않는다 */
-export const usePhotoUrl = (fileUrl: string) => useQuery({ queryKey: ["photo", fileUrl], queryFn: () => fetchBlobUrl(fileUrl), staleTime: Infinity, gcTime: 10 * 60_000, retry: 1 });
+export const usePhotoUrl = (fileUrl: string) => useQuery({ queryKey: ["photo", fileUrl], queryFn: () => fetchBlobUrl(fileUrl), enabled: !!fileUrl, staleTime: Infinity, gcTime: 10 * 60_000, retry: 1 });

@@ -1,8 +1,8 @@
 import { Link } from "react-router";
 import { useDocument, useDocuments } from "@/api/documents";
-import { usePosts } from "@/api/feed";
+import { usePhotoUrl, usePosts } from "@/api/feed";
 import { pickNotice, plain, useNextMeal } from "@/api/meals";
-import { useMealRepresentative } from "@/api/publicMeals";
+import { useMealPhoto } from "@/api/mealPhotos";
 import { useSession } from "@/app/session";
 import { AuthPhoto } from "@/components/AuthPhoto";
 import { todayKST } from "@/domain/notes";
@@ -22,7 +22,9 @@ export function TodayClass() {
   const { user } = useSession();
   const date = todayKST();
   const meal = useNextMeal(date).data;
-  const mealImg = useMealRepresentative(meal?.date ?? date, meal?.lunch).data;
+  const mealPhoto = useMealPhoto(meal?.date).data;
+  const mealSrc = usePhotoUrl(mealPhoto?.file_url ?? "").data;
+  const mealImg = mealPhoto && mealSrc ? { fileUrl: mealSrc, mainDish: mealPhoto.main_dish } : null;
   const docs = useDocuments();
   const notice = pickNotice(docs.data, date);
   const noticeBody = useDocument(notice?.id).data;
@@ -62,7 +64,7 @@ export function TodayClass() {
         </dl>
         {(mealImg || photo) && (
           <div className={`mt-3 grid gap-2 ${mealImg && photo ? "grid-cols-2" : "grid-cols-1"}`}>
-            {mealImg ? <Link to="/teacher/class" className="block overflow-hidden rounded-lg active:opacity-80"><img src={mealImg.fileUrl} alt={`${mealImg.mainDish} 참고 이미지`} className="aspect-[4/3] w-full object-cover" /></Link> : null}
+            {mealImg ? <Link to="/teacher/class" className="block overflow-hidden rounded-lg active:opacity-80"><img src={mealImg.fileUrl} alt={`${mealImg.mainDish} 급식 참고 사진`} className="aspect-[4/3] w-full object-cover" /></Link> : null}
             {photo ? <Link to="/teacher/feed" className="block overflow-hidden rounded-lg active:opacity-80"><AuthPhoto photo={photo} className="aspect-[4/3] w-full" /></Link> : null}
           </div>
         )}

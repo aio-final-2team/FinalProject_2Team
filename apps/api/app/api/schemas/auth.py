@@ -5,6 +5,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from app.api.schemas.photos import ProfilePhoto
+
 
 class LoginIn(BaseModel):
     login_id: str = Field(min_length=1, max_length=64)
@@ -24,6 +26,7 @@ class ChildOut(BaseModel):
     id: UUID
     display_name: str
     classroom_id: UUID
+    profile_photo: ProfilePhoto | None = Field(default=None, description="없으면 null. 화면은 이름 글자를 보여 줘요")
 
 
 class ChildList(BaseModel):

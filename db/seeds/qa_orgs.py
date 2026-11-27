@@ -20,18 +20,19 @@ from db.seeds.memories import seed_memories
 from db.seeds.care_notes import seed_care_notes
 from db.seeds.consultations import seed_consultations
 from db.seeds.daily_records import seed_daily_records
+from db.seeds.photos import seed_photos
 
 # FK 자식부터. 요청의 source_note_id 때문에 requests를 daily_notes보다 먼저 지워요.
 DELETE_ORDER = tuple("saved_answer_sources saved_answers notifications events approvals card_evidence "
                      "consultation_bookings consultation_slots memories memory_rules cards request_messages requests "
-                     "daily_notes daily_note_inputs daily_records feed_photo_children feed_photos feed_posts "
+                     "daily_notes daily_note_inputs daily_records feed_photo_children feed_photos feed_posts meal_photos "
                      "document_classrooms document_chunks documents staff_busy_blocks rooms child_guardians children "
                      "classroom_staff user_consents user_settings users classrooms".split())
 INSERT_ORDER = tuple("organizations classrooms users user_consents user_settings classroom_staff children "
                      "child_guardians rooms staff_busy_blocks documents document_chunks document_classrooms requests "
                      "request_messages cards card_evidence approvals consultation_slots consultation_bookings memories "
                      "memory_rules saved_answers saved_answer_sources daily_note_inputs daily_notes daily_records "
-                     "events notifications feed_posts feed_photos feed_photo_children".split())
+                     "events notifications feed_posts feed_photos feed_photo_children meal_photos".split())
 UUID_PATTERN = re.compile(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}")
 
 
@@ -110,7 +111,13 @@ def populate(connection, org, source):
             connection.execute(text(f"INSERT INTO public.{table} OVERRIDING SYSTEM VALUE "
                 f"SELECT * FROM jsonb_populate_record(NULL::public.{table},CAST(:row AS jsonb)) "
                 f"{conflict}"), rows)
+    photos(connection, org)
     return {table: len(source[table]) for table in ("users", "children", "documents")}
+
+
+def photos(connection, org):
+    """프로필·급식 사진 행을 채우고 파일을 써요. 0021 전에 만든 QA 원도 다음 기동 때 채워져요."""
+    seed_photos(connection, qa_id(org["tag"], seed.ORG), lambda child_id: qa_id(org["tag"], child_id))
 
 
 def seed_qa_orgs(connection):
@@ -124,6 +131,7 @@ def seed_qa_orgs(connection):
         lock(connection, org)
         if connection.scalar(text("SELECT EXISTS(SELECT 1 FROM organizations WHERE id=:id)"),
                              {"id": qa_id(org["tag"], seed.ORG)}):
+            photos(connection, org)
             continue
         if source is None:
             source = template(connection)

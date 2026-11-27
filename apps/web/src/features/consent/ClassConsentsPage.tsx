@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useClassroomConsents } from "@/api/consents";
+import { useChildren } from "@/api/notes";
 import { useAllCards } from "@/api/cards";
 import { useSession } from "@/app/session";
 import { ChildAvatar } from "@/components/ChildAvatar";
@@ -25,6 +26,8 @@ export function ClassConsentsPage({ role }: { role: Exclude<Role, "parent"> }) {
   const [picked, setPicked] = useState<string>();
   const current = choices.find((c) => c.id === picked) ?? choices[0];
   const q = useClassroomConsents(current?.id);
+  const kids = useChildren(current?.id);
+  const photos = useMemo(() => Object.fromEntries((kids.data ?? []).map((k) => [k.id, k.profile_photo])), [kids.data]);
   const [only, setOnly] = useState(false);
 
   const items = q.data ?? [];
@@ -64,7 +67,7 @@ export function ClassConsentsPage({ role }: { role: Exclude<Role, "parent"> }) {
             <ul className="mt-3 overflow-hidden rounded-lg bg-card shadow-card [&>li+li]:border-t [&>li+li]:border-sep">
               {rows.map((c) => (
                 <li key={c.child_id} className="flex items-center gap-3 px-3 py-2.5">
-                  <ChildAvatar name={c.display_name} childId={c.child_id} />
+                  <ChildAvatar name={c.display_name} photo={photos[c.child_id]} />
                   <span className="min-w-0 flex-1">
                     <b className="block truncate text-callout font-semibold">{c.display_name}</b>
                     <span className="text-footnote text-ink2">{c.guardians_total ? `보호자 ${c.guardians_total}명 중 ${c.guardians_complete}명 동의` : "연결된 보호자가 없어요"}</span>

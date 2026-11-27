@@ -3994,6 +3994,148 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
       security:
       - HTTPBearer: []
+  /api/v1/children/{child_id}/profile-photo:
+    get:
+      tags:
+      - 사진
+      summary: 아이 프로필 사진
+      operationId: profile_photo_api_v1_children__child_id__profile_photo_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: child_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Child Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/webp:
+              schema:
+                type: string
+                format: binary
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+  /api/v1/meal-photos:
+    get:
+      tags:
+      - 사진
+      summary: 급식 참고 사진 목록
+      operationId: meal_photos_api_v1_meal_photos_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: from
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date
+          title: From
+      - name: to
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date
+          title: To
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MealPhotoList'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+  /api/v1/meal-photos/{meal_date}/file:
+    get:
+      tags:
+      - 사진
+      summary: 급식 참고 사진 파일
+      operationId: meal_photo_file_api_v1_meal_photos__meal_date__file_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: meal_date
+        in: path
+        required: true
+        schema:
+          type: string
+          format: date
+          title: Meal Date
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/webp:
+              schema:
+                type: string
+                format: binary
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
   /health:
     get:
       tags:
@@ -4929,6 +5071,11 @@ components:
           type: string
           format: uuid
           title: Classroom Id
+        profile_photo:
+          anyOf:
+          - $ref: '#/components/schemas/ProfilePhoto'
+          - type: 'null'
+          description: 없으면 null. 화면은 이름 글자를 보여 줘요
       type: object
       required:
       - id
@@ -5819,6 +5966,36 @@ components:
       required:
       - user
       title: MeOut
+    MealPhoto:
+      properties:
+        meal_date:
+          type: string
+          format: date
+          title: Meal Date
+        main_dish:
+          type: string
+          title: Main Dish
+        file_url:
+          type: string
+          title: File Url
+          description: 로그인 토큰을 붙여 받는 주소예요(77번 API)
+      type: object
+      required:
+      - meal_date
+      - main_dish
+      - file_url
+      title: MealPhoto
+    MealPhotoList:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/MealPhoto'
+          type: array
+          title: Items
+      type: object
+      required:
+      - items
+      title: MealPhotoList
     MemoryCandidateOut:
       properties:
         id:
@@ -6986,6 +7163,16 @@ components:
       - created_at
       - photos
       title: PostView
+    ProfilePhoto:
+      properties:
+        file_url:
+          type: string
+          title: File Url
+          description: 로그인 토큰을 붙여 받는 주소예요(75번 API)
+      type: object
+      required:
+      - file_url
+      title: ProfilePhoto
     QAClassroom:
       properties:
         id:
