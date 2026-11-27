@@ -1,7 +1,5 @@
 import { Link, useNavigate } from "react-router";
 import { useCards } from "@/api/cards";
-import { useDocuments } from "@/api/documents";
-import { pickNotice, useNextMeal } from "@/api/meals";
 import { useCareRequests } from "@/api/care";
 import { useChildren, useNotes } from "@/api/notes";
 import { useSession } from "@/app/session";
@@ -13,6 +11,7 @@ import { dateLabel, todayKST } from "@/domain/notes";
 import { useRecords } from "@/features/records/store";
 import { QueryState } from "@/components/QueryState";
 import { SOON } from "./SoonPage";
+import { TodayClass } from "./TodayClass";
 
 type Doc = { id: string; title: string; doc_type: string; status: string; effective_from: string };
 
@@ -28,8 +27,6 @@ export function TeacherHome() {
   const { records } = useRecords(cid, date);
   const care = useCareRequests(cid);
   const careOpen = (care.data ?? []).filter((c) => c.status !== "completed").length;
-  const docs = useDocuments();
-  const nextMeal = useNextMeal(date).data;
 
   const urgent = (inbox.data?.items ?? []).filter((c) => c.risk === "urgent");
   const list = notes.data ?? [];
@@ -38,7 +35,6 @@ export function TeacherHome() {
   list.forEach((n) => c[n.status]++);
   const allSent = list.length > 0 && c.sent === list.length;
   const allReady = list.length > 0 && c.ready === list.length;
-  const notice = pickNotice(docs.data, date);
   // TODO(#368): 반·담임 표시 이름 API가 오면 실제 값으로 교체한다.
   const homeTitle = "별빛반 손영민 선생님";
 
@@ -59,15 +55,7 @@ export function TeacherHome() {
       <ScreenTop title={homeTitle} sub={dateLabel(date)} right={<BellLink to="/teacher/notifications" />} />
 
       <QueryState queries={[kids, notes, inbox]} skeleton={3}>
-      <Link to="/teacher/class" className="mt-4 flex items-center gap-3 rounded-xl bg-tint p-4 text-ink shadow-card transition-transform duration-100 active:scale-[.98]">
-        <span className="grid size-12 shrink-0 place-items-center rounded-xl bg-card text-accent-ink shadow-card"><Icon name="document" className="size-6" /></span>
-        <span className="min-w-0 flex-1">
-          <span className="text-caption font-bold text-accent-ink">오늘 우리 반</span>
-          <span className="mt-1 block truncate text-callout"><b className="mr-1.5 text-footnote text-accent-ink">급식</b>{nextMeal ? `${nextMeal.today ? "오늘" : nextMeal.label} 점심 ${nextMeal.lunch}` : "등록된 식단이 없어요"}</span>
-          <span className="mt-0.5 block truncate text-callout"><b className="mr-1.5 text-footnote text-accent-ink">가정통신문</b>{notice ? notice.title : "등록된 가정통신문이 없어요"}</span>
-        </span>
-        <Icon name="chevR" className="size-4 shrink-0 text-accent-ink" />
-      </Link>
+      <TodayClass />
       {urgent.length > 0 && (
         <>
           <Label>먼저 확인해 주세요</Label>

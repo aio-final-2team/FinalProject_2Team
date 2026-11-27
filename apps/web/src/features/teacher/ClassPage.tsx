@@ -37,7 +37,7 @@ export function ClassPage() {
       <UploadSheet open={up} onClose={() => setUp(false)} classroomId={cid} />
 
       <QueryState queries={[docs]} skeleton={2}>
-        <Group title={meal && !meal.today ? "다음 식단" : "오늘 식단"} empty="등록된 식단표가 없어요" count={meal ? 1 : 0}>
+        <Group title={meal && !meal.today ? "다음 식단" : "오늘 식단"} empty="등록된 식단표가 없어요" count={(meal ? 1 : 0) + weeks.length}>
           {meal && (
             <li className="px-3 py-3">
               <span className="text-caption font-bold text-accent-ink">{meal.label}</span>
@@ -54,8 +54,6 @@ export function ClassPage() {
               <MealRepresentative date={meal.date} mealText={meal.lunch} />
             </li>
           )}
-        </Group>
-        <Group title="주차별 식단표" empty="이번 주 이후 식단표가 아직 없어요" count={weeks.length}>
           {weeks.map((d) => <DocRow key={d.id} d={d} week={menuWeek(d)!} />)}
         </Group>
         {past.length > 0 && (
