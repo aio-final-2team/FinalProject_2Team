@@ -39,7 +39,7 @@ export function StaffLayout({ role }: { role: Exclude<Role, "parent"> }) {
   const { pathname } = useLocation();
 
   return (
-    <div className="min-h-full lg:grid lg:grid-cols-[232px_1fr]">
+    <div className={`min-h-full lg:grid lg:grid-cols-[232px_1fr] ${role === "teacher" ? "[--tab-lift:20px] lg:[--tab-lift:0px]" : ""}`}>
       <aside className="sticky top-0 hidden h-dvh flex-col gap-6 border-r border-sep bg-card px-4 py-6 lg:flex">
         <div className="px-2">
           <MainLogo className="h-10" />
@@ -77,7 +77,7 @@ export function StaffLayout({ role }: { role: Exclude<Role, "parent"> }) {
         </button>
       </aside>
 
-      <main className="min-w-0 pb-[calc(76px+env(safe-area-inset-bottom))] lg:pb-0">
+      <main className="min-w-0 pb-[calc(76px+env(safe-area-inset-bottom)+var(--tab-lift,0px))] lg:pb-0">
         <Outlet />
       </main>
 

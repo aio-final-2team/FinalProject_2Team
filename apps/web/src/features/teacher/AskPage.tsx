@@ -159,8 +159,8 @@ export function AskPage() {
         <div ref={end} />
       </div>
 
-      {/* 입력 칸: 휴대폰에서는 아래 탭 바 바로 위에 붙는다. 탭 바 가운데 캐릭터가 솟는 만큼 아래 여백을 둔다 */}
-      <div data-bottom-bar className="glass fixed inset-x-0 bottom-[calc(64px+env(safe-area-inset-bottom))] z-20 border-t border-sep bg-bar px-4 pb-10 pt-2.5 backdrop-blur-xl lg:sticky lg:bottom-0 lg:mt-6 lg:pb-2.5">
+      {/* 입력 칸: 휴대폰에서는 아래 탭 바 바로 위에 붙는다. 캐릭터가 솟는 높이(--tab-lift)만큼 아래 여백을 둔다 */}
+      <div data-bottom-bar className="glass fixed inset-x-0 bottom-[calc(64px+env(safe-area-inset-bottom))] z-20 border-t border-sep bg-bar px-4 pb-[calc(10px+var(--tab-lift,0px))] pt-2.5 backdrop-blur-xl lg:sticky lg:bottom-0 lg:mt-6">
         <div className="mx-auto grid max-w-[680px] gap-2">
           {turns.length === 0 && !pending && (
             <div className="flex flex-wrap gap-2" role="group" aria-label="질문 예시">

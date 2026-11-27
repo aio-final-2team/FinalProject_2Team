@@ -332,7 +332,7 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
 
       {/* 아래 고정 행동 칸 */}
       {isOpen && !reportOnly && (
-        <div data-bottom-bar className={`glass fixed inset-x-0 z-20 bottom-[calc(64px+env(safe-area-inset-bottom))] bg-bar px-4 py-3 shadow-[0_-1px_0_var(--sep)] backdrop-blur-xl backdrop-saturate-[1.8] lg:sticky lg:bottom-4 lg:mx-0 lg:rounded-2xl lg:shadow-[0_8px_30px_rgba(11,31,58,.12),0_0_0_.5px_var(--sep)]`}>
+        <div data-bottom-bar className={`glass fixed inset-x-0 z-20 bottom-[calc(64px+env(safe-area-inset-bottom))] bg-bar px-4 pb-[calc(12px+var(--tab-lift,0px))] pt-3 shadow-[0_-1px_0_var(--sep)] backdrop-blur-xl backdrop-saturate-[1.8] lg:sticky lg:bottom-4 lg:mx-0 lg:rounded-2xl lg:shadow-[0_8px_30px_rgba(11,31,58,.12),0_0_0_.5px_var(--sep)]`}>
           <div className="mx-auto grid max-w-[720px] gap-2">{director ? <DirectorActions c={c} open={open} /> : <TeacherActions c={c} open={open} draft={draft} slot={slot} pending={pendingSend || act.isPending} run={run} />}</div>
         </div>
       )}
