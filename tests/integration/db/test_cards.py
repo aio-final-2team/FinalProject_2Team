@@ -113,7 +113,9 @@ def test_0013_escalated_reply_view_roundtrip_preserves_rows(db_client, seeded_db
 
     def snapshot():
         with seeded_db.connect() as connection:
-            return {table: [{**({"source_note_id": None} if table == "requests" else {}), **row}
+            # 0012보다 뒤에 생긴 칸: source_note_id(0019)는 비어 있고, intent(0022)는 내리면 지워져 비교에서 빼요.
+            return {table: [{**({"source_note_id": None} if table == "requests" else {}),
+                             **{k: v for k, v in row.items() if k != "intent"}}
                             for row in connection.execute(text(f"SELECT * FROM {table} ORDER BY id")).mappings()]
                     for table in ("requests", "cards", "approvals", "events", "notifications")}
 

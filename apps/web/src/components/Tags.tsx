@@ -1,4 +1,4 @@
-import { PARENT_LABEL, STAFF_LABEL, TYPE_LABEL, type RequestType, type Status, type Tone } from "@/domain/status";
+import { INTENT_LABEL, PARENT_LABEL, STAFF_LABEL, TYPE_LABEL, type RequestIntent, type RequestType, type Status, type Tone } from "@/domain/status";
 import type { ReactNode } from "react";
 import { Icon } from "./Icon";
 
@@ -36,6 +36,12 @@ export function TypeTag({ type, size = "md" }: { type: RequestType; size?: "sm" 
       {TYPE_LABEL[type]}
     </span>
   );
+}
+
+/** 요청 의도 배지(알림 회색 · 부탁 라벤더). 알림장 줄 배지(#407)와 같은 모양이고, 값이 없으면 그리지 않는다 */
+export function IntentTag({ intent }: { intent?: RequestIntent | null }) {
+  if (!intent) return null;
+  return <span className={`inline-block rounded-sm px-2 py-0.5 text-caption font-semibold ${intent === "ask" ? "bg-lav-tint text-lav" : "bg-g text-ink2"}`}>{INTENT_LABEL[intent]}</span>;
 }
 
 /** 목록 줄 왼쪽 아이콘 칸: 진할수록 급함 */

@@ -10,6 +10,7 @@ from app.api.schemas.common import Period
 
 RequestType = Literal["inquiry", "consultation", "complaint", "medication", "pickup"]
 RequestReadType = RequestType
+RequestIntent = Literal["notice", "ask"]
 RequestStatus = Literal["received", "classified", "needs_info", "assigned", "awaiting_review", "approved",
                         "sent_or_booked", "completed", "on_hold", "escalated", "rejected"]
 
@@ -43,11 +44,15 @@ class CareDecisionIn(BaseModel):
     version: int = Field(ge=1, description="교직원이 본 care.version. 보호자 새 글·입력 수정마다 증가해요")
     pickup_guardian_id: UUID | None = None
     reason_text: str | None = Field(default=None, max_length=1000)
+    result_line: str | None = Field(default=None, max_length=200,
+                                    description="완료 때 알림장에 남길 처리 결과 한 줄(선택). 비우면 처리 시각·종류로 만들어요")
 
     @model_validator(mode="after")
     def rejection_reason(self):
         if self.decision == "reject" and not (self.reason_text or "").strip():
             raise ValueError("반려 사유를 적어 주세요")
+        if self.decision != "complete" and self.result_line is not None:
+            raise ValueError("처리 결과는 완료할 때만 적어요")
         return self
 
 
@@ -90,6 +95,7 @@ class CareOut(BaseModel):
     missing_fields: list[str] = Field(default_factory=list)
     confirmed_at: datetime | None = None
     completed_at: datetime | None = None
+    result_line: str | None = Field(default=None, description="완료 때 남긴 처리 결과 한 줄. 그날 알림장 입력의 그 요청 자리에 들어가요")
 
 
 class CareState(BaseModel):

@@ -4,8 +4,30 @@ from copy import deepcopy
 import json
 from uuid import uuid4
 
+from agents.guardrails.sensitive import mask_sensitive
 from app.core.errors import ApiError
 from app.core.constants import CARE_REQUEST_TYPES, MEDICATION_FIELDS
+from app.core.schedule import KST
+
+RESULT_DONE = {"medication": "약 먹였어요", "pickup": "귀가했어요"}
+
+
+def request_intent(req_type, intent):
+    """감독 AI의 알림/부탁 분류(#408). 투약·귀가는 분류를 거치지 않고 늘 부탁이에요(지혜님 결정)."""
+    return "ask" if req_type in CARE_REQUEST_TYPES else intent
+
+
+def result_line(req_type, text, at):
+    """완료 때 남기는 처리 결과 한 줄. 비우면 처리 시각·종류로 '13시에 약 먹였어요' 같은 기본 문장을 만들어요."""
+    if (text or "").strip():
+        return text.strip()
+    at = at.astimezone(KST)
+    return f"{at.hour}시{f' {at.minute}분' if at.minute else ''}에 {RESULT_DONE[req_type]}"
+
+
+def note_result(line):
+    """알림장 입력의 처리 결과. 선생님이 쓴 글이라 모델에 가기 전에 민감정보를 가려요."""
+    return mask_sensitive(line) if line else None
 
 
 def missed_request_check(request_type, request_id):
@@ -34,7 +56,7 @@ def care_view(events, req_type, care_detail):
         "pickup_guardian_id", "pickup_name", "pickup_relation", *MEDICATION_FIELDS)})
     result = {**fields, "version": 1, "unregistered_pickup": req_type == "pickup" and not fields.get("pickup_guardian_id"),
               "cancelled_by_parent": False, "rejection": None,
-              "confirmed_at": None, "completed_at": None,
+              "confirmed_at": None, "completed_at": None, "result_line": None,
               "missing_fields": [key for key in MEDICATION_FIELDS if not (fields.get(key) or "").strip()]
               if req_type == "medication" else []}
     for event in events:
@@ -49,6 +71,7 @@ def care_view(events, req_type, care_detail):
             result["confirmed_at"] = event["created_at"]
         elif detail.get("care_decision") == "complete":
             result["completed_at"] = event["created_at"]
+            result["result_line"] = detail.get("result_line")
         elif detail.get("care_decision") == "reject":
             result["rejection"] = {"reason_code": "other", "reason_text": detail["reason_text"]}
         elif detail.get("cancelled_by_parent"):

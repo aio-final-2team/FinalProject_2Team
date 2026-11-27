@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from app.core.care import care_view, check_decision, check_parent_change, updated_detail
+from app.core.care import care_view, check_decision, check_parent_change, request_intent, result_line, updated_detail
 from app.core.constants import CARE_REQUEST_TYPES, UNREGISTERED_PICKUP_CHECK
 from app.core.errors import ApiError
 from app.mock import seed, store
@@ -51,7 +51,9 @@ def decision(user, request_id, body):
             store.set_request_status(req, target, action=action,
                                      actor_type="user", actor_id=user.id, care_decision=body.decision,
                                      version=current["version"], pickup_snapshot=snapshot,
-                                     **({"reason_text": body.reason_text.strip()} if body.decision == "reject" else {}))
+                                     **({"reason_text": body.reason_text.strip()} if body.decision == "reject" else {}),
+                                     **({"result_line": result_line(req.type, body.result_line, store.now())}
+                                        if body.decision == "complete" else {}))
             if body.decision == "confirm" and current["unregistered_pickup"]:
                 store.add_event(req, "checked", actor_type="user", actor_id=user.id,
                                 unregistered_pickup=True, label=UNREGISTERED_PICKUP_CHECK, version=current["version"],
@@ -104,7 +106,9 @@ def listing(user, classroom_id, status, page, size, sort):
                            "child_id": r.child_id, "child_name": store.state().children[r.child_id].display_name,
                            "status_label": staff_label(r.status, r.type,
                                                        cancelled_by_parent=current["cancelled_by_parent"]), "updated_at": r.updated_at,
-                           **{k: v for k, v in current.items() if k in ("version", "unregistered_pickup", "missing_fields")},
+                           **{k: v for k, v in current.items()
+                              if k in ("version", "unregistered_pickup", "missing_fields", "result_line")},
+                           "intent": request_intent(r.type, r.intent),
                            "next_action": "confirm" if r.status == "received" else "complete" if r.status == "assigned" else None}
                           for r in rows[(page-1)*size:page*size] for current in (view(r),)],
                 "total": len(rows), "page": page, "size": size}

@@ -542,3 +542,34 @@ def test_waiting_streams_leave_threads_available_for_me(db_client, parent, seede
             limiter.total_tokens = previous
 
     anyio.run(exercise)
+
+
+@pytest.mark.parametrize("request_type,proposal,stored", [
+    ("inquiry", {"intent": "notice"}, "notice"), ("inquiry", {"intent": "invented"}, "ask"),
+    ("complaint", {"intent": "notice"}, "ask"), ("inquiry", None, None),
+])
+def test_classified_intent_is_saved_and_shown_on_staff_views(db_client, seeded_db, monkeypatch,
+                                                             request_type, proposal, stored):
+    """가짜 감독 AI의 의도 분류를 분류 저장 때 함께 남겨요. None은 모델 실패 인계(분류 없음)예요."""
+    from tests.integration.db.test_cards import auth
+
+    req, _ = requests.create(users.get_user(seed.PARENT), background_tasks=BackgroundTasks(), client_request_id=str(uuid4()),
+                             type=request_type, body="[TEST] 금요일엔 외삼촌이 데리러 갈 예정입니다", child_id=seed.CHILD,
+                             previous_request_id=None, trace_id="intent")
+    if proposal is None:
+        with seeded_db.begin() as connection:
+            runner._handoff(connection, dict(connection.execute(text("SELECT * FROM requests WHERE id=:id"),
+                                                                {"id": req["id"]}).mappings().one()), "ai_failed")
+    else:
+        monkeypatch.setattr(agent_stub, "classify_request", lambda *args: proposal)
+        agent_stub.run_request(req["id"])
+    assert rows(seeded_db, "requests", req["id"])[0]["intent"] == stored
+    teacher = auth(seed.TEACHER)
+    staff = db_client.get("/api/v1/requests?size=100", headers=teacher).json()["items"]
+    assert next(r for r in staff if r["id"] == str(req["id"]))["intent"] == stored
+    card = next(c for c in rows(seeded_db, "cards", req["id"]) if c["kind"] == "reply_draft")
+    detail = db_client.get(f"/api/v1/cards/{card['id']}", headers=teacher)
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["request"]["intent"] == stored
+    listed = db_client.get(f"/api/v1/cards?request_type={request_type}&size=100", headers=teacher).json()["items"]
+    assert next(c for c in listed if c["id"] == str(card["id"]))["intent"] == stored

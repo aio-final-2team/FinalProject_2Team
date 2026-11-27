@@ -208,8 +208,9 @@ def list_notes(user, note_date, classroom_id, page, size, sort):
         if classroom_id is not None and user.role != "parent":
             scope.classroom_in_scope(user, classroom_id, connection=connection)
         total = connection.scalar(text("SELECT count(*)" + query), values)
+        pending = None if user.role == "parent" else pending_medications(connection, user.org_id, note_date, classroom_id)
         if values["offset"] >= total:
-            return {"items": [], "total": total, "page": page, "size": size}
+            return {"items": [], "total": total, "page": page, "size": size, "pending_medication_count": pending}
         items = connection.execute(text("SELECT n.*" + query +
                                    f" ORDER BY n.created_at {direction}, c.created_at {direction},"
                                    f" c.id {direction}, n.id {direction} LIMIT :limit OFFSET :offset"),
@@ -221,7 +222,20 @@ def list_notes(user, note_date, classroom_id, page, size, sort):
             WHERE org_id=:org AND (id=ANY(CAST(:ids AS uuid[])) OR source_note_id=ANY(CAST(:notes AS uuid[])))
         """), {"org": user.org_id, "ids": request_ids, "notes": [str(n["id"]) for n in items]}).mappings()}
         return {"items": [{**view(row, requests=requests), "input_id": row["input_id"]} for row in items],
-                "total": total, "page": page, "size": size}
+                "total": total, "page": page, "size": size, "pending_medication_count": pending}
+
+
+def pending_medications(connection, org_id, note_date, classroom_id):
+    """그날 들어온 투약 요청 중 아직 완료하지 않은 수. 알림장 발송은 막지 않고 화면 안내에만 써요."""
+    start = datetime.combine(note_date, datetime.min.time(), KST)
+    return connection.scalar(text("""
+        SELECT count(*) FROM requests r
+        WHERE r.org_id=:org AND r.type='medication' AND r.status IN ('received','assigned')
+          AND (CAST(:class AS uuid) IS NULL OR r.classroom_id=CAST(:class AS uuid))
+          AND r.created_at>=:start AND r.created_at<:start + interval '1 day'
+          AND EXISTS (SELECT 1 FROM child_guardians g
+                      WHERE (g.child_id,g.org_id,g.user_id)=(r.child_id,r.org_id,r.requester_id))
+    """), {"org": org_id, "class": classroom_id, "start": start})
 
 
 def _check_sources(user, content, child_id, connection):

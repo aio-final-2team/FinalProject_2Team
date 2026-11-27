@@ -102,10 +102,12 @@ def run_request(request_id, prepared_answer=None, prepared_fields=None):
                 "key": f"complaint:{req['org_id']}:{req['classroom_id']}:{fields['topic_key']}"})
         req.update(fields)
         connection.execute(text("""
-            UPDATE requests SET topic_key=:topic_key,urgency=:urgency,risk_level=:risk_level,risk_category=:risk_category
+            UPDATE requests SET topic_key=:topic_key,urgency=:urgency,risk_level=:risk_level,risk_category=:risk_category,
+                intent=:intent
             WHERE id=:id
         """), {"id": request_id, "topic_key": fields["topic_key"], "urgency": fields["urgency"],
-               "risk_level": fields.get("risk_level"), "risk_category": fields.get("risk_category")})
+               "risk_level": fields.get("risk_level"), "risk_category": fields.get("risk_category"),
+               "intent": fields.get("intent")})
         set_status(connection, req, "classified", action="classified", actor_type="agent", agent_name="supervisor",
                    topic_model_rejected=topic_conflict(req["type"], req["body"], proposal)
                    if req["type"] == initial["type"] and req["body"] == initial["body"] else False)

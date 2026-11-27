@@ -2,6 +2,7 @@ import { useParams } from "react-router";
 import { TYPE_LABEL, useAiAnswered, useRequest } from "@/api/requests";
 import { ScreenTop } from "@/components/ScreenTop";
 import { SkeletonRows, StateView } from "@/components/StateView";
+import { IntentTag } from "@/components/Tags";
 import { fmtDateTime } from "@/domain/datetime";
 import type { Role } from "@/domain/types";
 
@@ -23,6 +24,7 @@ export function AiAnsweredPage({ role }: { role: Role }) {
           <header className="grid gap-1">
             <h2 className="text-headline font-bold tracking-[-0.02em]">{d.request.title ?? TYPE_LABEL[d.request.type]}</h2>
             <p className="text-sub text-ink2">{[TYPE_LABEL[d.request.type], who, fmtDateTime(d.request.created_at)].filter(Boolean).join(" · ")}</p>
+            {item?.intent && <div><IntentTag intent={item.intent} /></div>}
           </header>
           <p className="rounded-2xl bg-tint px-4 py-3 text-callout text-accent-ink">
             담당 범위 밖 문의라서 정해진 문구로 바로 안내했어요. 카드는 만들어지지 않았고, 따로 할 일은 없어요.
