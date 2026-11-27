@@ -13,8 +13,6 @@ import { QueryState } from "@/components/QueryState";
 import { SOON } from "./SoonPage";
 import { TodayClass } from "./TodayClass";
 
-type Doc = { id: string; title: string; doc_type: string; status: string; effective_from: string };
-
 /** 홈은 입력 화면이 아니라 API 상태를 요약하고 다음 행동 하나를 안내한다. */
 export function TeacherHome() {
   const { user } = useSession();
