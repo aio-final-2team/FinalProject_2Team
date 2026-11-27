@@ -9,7 +9,7 @@ export const KIND_ICON: Record<string, string> = {
   new_card: "inbox", urgent_complaint: "urgent", uncertain_complaint: "urgent", parent_message: "inquiry", reassigned: "profile",
   care_requested: "medication", care_confirmed: "approve", care_rejected: "reject", cancelled: "reject", completed: "approve",
   consultation_booked: "consult", consultation_ending: "pending", consultation_delayed: "pending",
-  note_sent: "document", note_corrected: "document", sent_or_booked: "inquiry",
+  note_sent: "document", note_corrected: "document", sent_or_booked: "inquiry", memory_candidate: "ai",
 };
 
 /**
@@ -20,7 +20,7 @@ const KIND_TAG: Record<string, string> = {
   note_sent: "알림장", note_corrected: "알림장",
   consultation_booked: "상담", consultation_ending: "상담", consultation_delayed: "상담", slot_hold_expired: "상담",
   care_requested: "투약·귀가", care_confirmed: "투약·귀가", care_rejected: "투약·귀가", cancelled: "투약·귀가",
-  director_report: "원장 보고", urgent_complaint: "긴급", uncertain_complaint: "판단 필요", reassigned: "담당 변경",
+  director_report: "원장 보고", memory_candidate: "기억", urgent_complaint: "긴급", uncertain_complaint: "판단 필요", reassigned: "담당 변경",
 };
 export const notificationTag = (n: Notification, requestType?: string) => KIND_TAG[n.kind] ?? requestType;
 
