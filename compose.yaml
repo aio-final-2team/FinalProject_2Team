@@ -11,6 +11,9 @@ services:
       MEDIA_DIR: ${MEDIA_DIR:-/media}
       DATA_BACKEND: ${DATA_BACKEND:-mock}
       QA_TOOLS: ${QA_TOOLS:-false}
+      QA_PASSWORD: ${QA_PASSWORD:-}
+      GIT_SHA: ${GIT_SHA:-}
+      DEPLOYED_AT: ${DEPLOYED_AT:-}
       SEED_DEMO: ${SEED_DEMO:-true}
       RUN_IN: ${RUN_IN:-api}
       CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}

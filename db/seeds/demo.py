@@ -19,7 +19,7 @@ from app.core.schedule import KST
 from app.mock import seed
 
 
-def seed_demo(connection, *, refresh_note_requests=False):
+def seed_demo(connection, *, refresh_note_requests=False, write_media=True):
     connection.execute(text("""
         INSERT INTO organizations (id, name, is_virtual)
         VALUES (:id, '가상 햇살유치원', true) ON CONFLICT DO NOTHING
@@ -128,10 +128,10 @@ def seed_demo(connection, *, refresh_note_requests=False):
         """), refreshed)
 
     if has_feed:
-        seed_feed(connection, withdrawn)
+        seed_feed(connection, withdrawn, write_media=write_media)
 
 
-def seed_feed(connection, withdrawn=frozenset()):
+def seed_feed(connection, withdrawn=frozenset(), *, write_media=True):
     from app.core import media
 
     first_posts = False
@@ -177,7 +177,7 @@ def seed_feed(connection, withdrawn=frozenset()):
             SELECT p.storage_path FROM feed_photos p JOIN feed_posts f ON (f.id,f.org_id)=(p.post_id,p.org_id)
             WHERE p.id=:id AND p.org_id=:org AND f.deleted_at IS NULL AND p.sha256=:sha256
         """), {"id": photo_id, "org": seed.ORG, "sha256": metadata["sha256"]})
-        if active and (upgraded or not media.path(active).is_file()):
+        if write_media and active and (upgraded or not media.path(active).is_file()):
             media.save(data, metadata, file_id=photo_id)
 
 

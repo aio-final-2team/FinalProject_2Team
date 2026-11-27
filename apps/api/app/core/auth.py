@@ -8,7 +8,7 @@ from typing import Literal
 from uuid import UUID
 
 import jwt
-from fastapi import Depends
+from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
@@ -39,7 +39,7 @@ def issue_token(user) -> str:
     return jwt.encode(claims, settings.jwt_secret, algorithm="HS256")
 
 
-def current_user(cred: HTTPAuthorizationCredentials | None = Depends(_bearer)) -> CurrentUser:
+def current_user(request: Request, cred: HTTPAuthorizationCredentials | None = Depends(_bearer)) -> CurrentUser:
     if cred is None:
         raise ApiError(401, "UNAUTHENTICATED")
     try:
@@ -54,6 +54,7 @@ def current_user(cred: HTTPAuthorizationCredentials | None = Depends(_bearer)) -
     if (user is None or not user.is_active or claims.get("ver") != user.token_version
             or claims.get("org") != str(user.org_id) or claims.get("role") != user.role):
         raise ApiError(401, "UNAUTHENTICATED")
+    request.state.qa_org_id = user.org_id
     return CurrentUser(id=user.id, org_id=user.org_id, role=user.role)
 
 

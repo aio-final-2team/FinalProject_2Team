@@ -18,6 +18,7 @@ fi
 
 # 현재 브랜치의 upstream만 갱신해요. 브랜치 전환이나 강제 덮어쓰기는 하지 않아요.
 git pull --ff-only
+export GIT_SHA=$(git rev-parse HEAD) DEPLOYED_AT=$(date -Iseconds)
 compose=(docker compose --env-file "$env_file" -f compose.yaml -f infra/team-server/compose.server.yaml)
 "${compose[@]}" config --quiet
 # 직접 빌드하는 이미지(api·web)의 지금 판을 :prev로 남겨요. 새 판이 안 뜨면 다시 빌드하지 않고 바로 되돌려요(DEPLOY.md 7-1).
