@@ -33,6 +33,13 @@ def view(role, agreed):
             "items": items}
 
 
+def memory_kinds(agreed):
+    """보호자 기억 후보로 저장할 수 있는 종류. 국외 AI 전송 동의가 없으면 없고, 돌봄 메모는 자녀 정보·건강 동의까지 있어야 해요."""
+    if "ai_processing" not in agreed:
+        return set()
+    return {"preference", "care_note"} if {"child_info", "child_health"} <= set(agreed) else {"preference"}
+
+
 def complete(user):
     from app import backend
     return backend.consents.get(user)["complete"]

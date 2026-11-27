@@ -1,6 +1,6 @@
--- 유치온 DB 스키마 초안 (T09) · 문서 버전 v0.24 ([제안] 필수 동의 11/24 반영)
+-- 유치온 DB 스키마 초안 (T09) · 문서 버전 v0.25 (보호자 확인 돌봄 메모 11/26 반영)
 -- 설계서: Docs/Step2/DB_스키마_설계서.md
--- 이 파일은 최종 설계 모양이다. 실제 적용은 apps/api/migrations의 0001~0016을 차례로 적용한다.
+-- 이 파일은 최종 설계 모양이다. 실제 적용은 apps/api/migrations의 0001~0017을 차례로 적용한다.
 -- 대상: PostgreSQL 16 + pgvector 0.8 (compose.yaml의 pgvector/pgvector:pg16). Supabase는 쓰지 않는다(설계서 5.1)
 -- 기관 경계: 기관에 속한 표끼리는 (id, org_id) 짝으로 참조해서 다른 원 행을 섞어 넣으면 DB가 거부한다
 
@@ -464,15 +464,19 @@ CREATE TABLE memories (
     org_id          uuid NOT NULL,
     owner_id        uuid NOT NULL,
     kind            text NOT NULL
-                    CHECK (kind IN ('rejection_reason', 'preference', 'tone')),
+                    CHECK (kind IN ('rejection_reason', 'preference', 'tone', 'care_note')),
     reason_code     text,                  -- 거절 이유면 approvals.reason_code와 같은 값
     content         text NOT NULL,
     structured      jsonb NOT NULL DEFAULT '{}',   -- 예: {"weekday": 3, "before": "14:00"}
     source_card_id  uuid,
     created_at      timestamptz NOT NULL DEFAULT now(),
     deleted_at      timestamptz,           -- 사용자가 지우면 표시하고 다음 제안에서 뺌
+    child_id        uuid,
+    confirm_status  text NOT NULL DEFAULT 'confirmed' CHECK (confirm_status IN ('pending','confirmed','discarded')),
+    confirmed_at    timestamptz,
     FOREIGN KEY (owner_id, org_id) REFERENCES users(id, org_id),
-    FOREIGN KEY (source_card_id, org_id) REFERENCES cards(id, org_id)
+    FOREIGN KEY (source_card_id, org_id) REFERENCES cards(id, org_id),
+    FOREIGN KEY (child_id, org_id) REFERENCES children(id, org_id)
 );
 CREATE INDEX memories_owner_idx ON memories (owner_id, kind, reason_code)
     WHERE deleted_at IS NULL;
@@ -630,7 +634,7 @@ CREATE TABLE notifications (
                                   'completed', 'rejected', 'note_sent',
                                   'slot_hold_expired', 'hold_resumed',
                                   'consultation_ending', 'consultation_delayed', 'care_requested', 'care_confirmed',
-                                  'parent_message', 'reassigned', 'consultation_booked', 'note_corrected', 'cancelled', 'care_rejected')),
+                                  'parent_message', 'reassigned', 'consultation_booked', 'note_corrected', 'cancelled', 'care_rejected', 'memory_candidate')),
     title         text NOT NULL,
     body          text,
     dedupe_key    text NOT NULL UNIQUE,    -- 요청 이력 또는 상담 예약·종류·수신자 키(설계서 2.6). 같은 알림 두 번 안 감

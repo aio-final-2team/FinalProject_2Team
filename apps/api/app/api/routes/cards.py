@@ -49,8 +49,10 @@ def reclassify(card_id: UUID, body: ReclassifyIn, user: CurrentUser = Depends(st
 @router.post("/cards/{card_id}/bookings", response_model=BookingResponse,
              responses={**errors(401, 403, 404, 409, 422),
                         409: {**errors(409)[409], "description": "SLOT_PAST: 이미 시작한 후보; SLOT_TAKEN: 예약 충돌"}})
-def book(card_id: UUID, body: BookingIn, user: CurrentUser = Depends(require_roles("teacher"))):
-    return backend.cards.book(user, card_id, body)
+def book(card_id: UUID, body: BookingIn, background_tasks: BackgroundTasks, user: CurrentUser = Depends(require_roles("teacher"))):
+    result = backend.cards.book(user, card_id, body)
+    background_tasks.add_task(backend.memories.after_request, result["request"]["id"])
+    return result
 
 
 @router.post("/cards/{card_id}/instructions", response_model=InstructionResponse, responses=errors(401, 403, 404, 409, 422))

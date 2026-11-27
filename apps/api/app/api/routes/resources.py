@@ -6,11 +6,11 @@ from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Path, Query, Response, UploadFile
 
-from app.api.schemas.actions import NoteDraftIn, NoteBatchIn, NotePatchIn, NoteCorrectIn
+from app.api.schemas.actions import NoteDraftIn, NoteBatchIn, NotePatchIn, NoteCorrectIn, MemoryConfirmIn, SavedAnswerStatusIn
 from app.api.schemas.auth import ChildList
 from app.api.schemas.views import (NotificationList, NotificationResponse, DraftResponse, NoteList, NoteResponse,
                                   SendResponse, DocumentResponse, DocumentDetailResponse, DocumentList,
-                                  MemoryKind, MemoryList, RegenerateResponse)
+                                  MemoryKind, MemoryList, RegenerateResponse, MemoryConfirmation, SavedAnswerResponse)
 from app.api.schemas.common import errors
 from app.core.auth import CurrentUser, current_user as note_user, require_roles as note_roles
 from app.core.constants import MAX_DOCUMENT_BYTES
@@ -65,14 +65,26 @@ def regenerate_notes(input_id: UUID, background_tasks: BackgroundTasks,
 @router.get("/memories", response_model=MemoryList, responses=errors(401, 403, 422))
 def memory_list(kind: MemoryKind | None = None, page: int = Query(1, ge=1),
                 size: int = Query(20, ge=1, le=100), sort: Sort = "-created_at",
-                user: CurrentUser = Depends(note_roles("teacher"))):
+                user: CurrentUser = Depends(note_user)):
     return backend.memories.list_memories(user, kind, page, size, sort)
 
 
 @router.delete("/memories/{memory_id}", status_code=204, responses=errors(401, 403, 404, 422))
-def delete_memory(memory_id: int = Path(..., ge=1), user: CurrentUser = Depends(note_roles("teacher"))):
+def delete_memory(memory_id: int = Path(..., ge=1), user: CurrentUser = Depends(note_user)):
     backend.memories.delete(user, memory_id)
     return Response(status_code=204)
+
+
+@router.post("/memories/{memory_id}/confirm", response_model=MemoryConfirmation, responses=errors(401, 403, 404, 409, 422))
+def confirm_memory(body: MemoryConfirmIn, memory_id: int = Path(..., ge=1),
+                   user: CurrentUser = Depends(note_roles("parent"))):
+    return backend.memories.confirm(user, memory_id, body.decision)
+
+
+@router.patch("/saved-answers/{answer_id}", response_model=SavedAnswerResponse, responses=errors(401, 403, 404, 409, 422))
+def saved_answer_status(answer_id: UUID, body: SavedAnswerStatusIn,
+                        user: CurrentUser = Depends(note_roles("teacher", "director"))):
+    return backend.memories.set_saved_status(user, answer_id, body.status)
 
 
 @router.get("/daily-notes", response_model=NoteList, responses=errors(401, 403, 404, 422))

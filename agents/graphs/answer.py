@@ -2,6 +2,7 @@
 
 import json
 import re
+from datetime import date
 from pathlib import Path
 
 from agents.llm import ModelError, OpenAIModel, feature
@@ -11,9 +12,29 @@ from agents.guardrails.sensitive import SENSITIVE, mask_sensitive
 NO_ANSWER = "자료에서 확인되지 않아 선생님 확인이 필요해요."
 PROMPTS = Path(__file__).resolve().parents[1] / "prompts"
 WRITE_FORMAT = "\nJSON 하나로 답한다: {\"text\": str, \"evidence\": [{\"chunk_id\": int, \"quote\": str}], \"no_evidence\": bool, \"conflict\": bool}"
+WRITE_FORMAT += '\n보낸 알림장 인용은 {"chunk_id": null, "source": "daily_note", "note_id": "입력의 UUID", "quote": "원문 구절"}로 적는다. 기억은 사실 근거가 아니다.'
 CHECK_FORMAT = "\nJSON 하나로 답한다: {\"passed\": bool, \"issues\": [{\"field\": \"출처|날짜|대상|누락|민감정보\", \"problem\": str}]}"
 CHECK_FIELDS = {"출처", "날짜", "대상", "누락", "민감정보"}
 MAX_REWRITES = 2
+
+
+def child_day_question(body):
+    return bool(re.search(r"낮잠.*(?:잤|잔|잠들)|(?:점심|밥|식사).*먹었|(?:오늘|어제|그제).*(?:뭐|무엇).*했|(?:오늘|어제|그제).*어땠", body))
+
+
+def note_chunk(note_id, note_date, content):
+    quote = "\n".join(line["value"] for line in content.get("items", []) if isinstance(line.get("value"), str))
+    if not quote.strip() or suspicious_chunk(quote):
+        return None
+    day = date.fromisoformat(str(note_date))
+    return {"chunk_id": None, "source": "daily_note", "note_id": str(note_id), "note_date": str(day),
+            "title": f"{day.month}월 {day.day}일 알림장", "quote": quote, "content": quote, "score": 1.0}
+
+
+def _evidence_key(item):
+    if item.get("source") == "daily_note" and item.get("chunk_id") is None:
+        return "daily_note", str(item.get("note_id"))
+    return "document", str(item.get("chunk_id"))
 
 
 def fallback(trace):
@@ -53,19 +74,23 @@ def _quoted(quote, content):
 
 
 def _verify(answer, candidates, trace):
-    by_id = {str(chunk["chunk_id"]): chunk for chunk in candidates}
+    by_id = {_evidence_key(chunk): chunk for chunk in candidates}
     evidence = []
     seen = set()
     for item in answer["evidence"]:
         if not isinstance(item, dict):
             continue
-        chunk = by_id.get(str(item.get("chunk_id")))
-        if chunk and chunk["chunk_id"] in seen:
+        key = _evidence_key(item)
+        chunk = by_id.get(key)
+        if key in seen:
             continue  # card_evidence PK가 (card_id, chunk_id)라 같은 조각은 한 번만 남긴다
         quote = item.get("quote")
         if chunk and isinstance(quote, str) and quote.strip() and _quoted(quote, chunk["content"]):
-            seen.add(chunk["chunk_id"])
-            evidence.append({"chunk_id": chunk["chunk_id"], "quote": quote, "score": chunk["score"]})
+            seen.add(key)
+            entry = {"chunk_id": chunk["chunk_id"], "quote": quote, "score": chunk["score"]}
+            if key[0] == "daily_note":
+                entry.update({k: chunk[k] for k in ("source", "note_id", "note_date", "title")})
+            evidence.append(entry)
     no_evidence = bool(answer.get("no_evidence")) or not evidence
     conflict = bool(answer.get("conflict"))
     trace.append("verify")
@@ -77,6 +102,7 @@ def _verify(answer, candidates, trace):
 
 def _review(model, question, draft, candidates, attempt, trace):
     prompt = _prompt("common.md", "# 공통 규칙") + _prompt("checker.md", "## 입력", "## 알림장: 메모와 대조한다") + CHECK_FORMAT
+    prompt += "\nsource=daily_note는 요청 아이에게 실제 보낸 알림장 근거다. note_id와 note_date·quote를 대조하고 다른 날짜의 일을 오늘 일로 단정하지 않는다."
     payload = {"question": question, "draft": draft["text"], "evidence": draft["evidence"],
                "chunks": candidates, "attempt": attempt,
                "untrusted_data_fields": ["question", "chunks", "draft"]}
@@ -109,7 +135,7 @@ def _check_result(passed, issues, attempt):
 
 
 @feature("문의 답변 초안")
-def draft_answer(question: str, search, writer=None, checker=None, *, memories=(), prior_answer=None) -> dict:
+def draft_answer(question: str, search, writer=None, checker=None, *, memories=(), prior_answer=None, preferences=(), child_notes=()) -> dict:
     trace = []
     candidates = []
     for doc_type in ("notice", "schedule", "menu", "policy"):
@@ -122,7 +148,7 @@ def draft_answer(question: str, search, writer=None, checker=None, *, memories=(
                     return fallback([*trace, "search"])
     trace.append("search")
     candidates = sorted((item for item in candidates if not suspicious_chunk(item["content"])),
-                        key=lambda item: item["score"], reverse=True)[:8]
+                        key=lambda item: (item.get("source") == "daily_note", item["score"]), reverse=True)[:8]
     if not candidates:
         return fallback(trace)
     common = _prompt("common.md", "# 공통 규칙")
@@ -133,9 +159,9 @@ def draft_answer(question: str, search, writer=None, checker=None, *, memories=(
     for attempt in range(MAX_REWRITES + 1):
         answer = _ask_writer(writer, write_prompt, {"question": mask_sensitive(question), "chunks": candidates,
                                                     "memories": list(memories),
-                                                    "prior_answer": prior_answer,
+                                                    "prior_answer": prior_answer, "preferences": list(preferences), "child_notes": list(child_notes),
                                                     "review_issues": issues,
-                                                    "untrusted_data_fields": ["question", "chunks", "memories", "prior_answer"]}, trace)
+                                                    "untrusted_data_fields": ["question", "chunks", "memories", "prior_answer", "preferences", "child_notes"]}, trace)
         if answer is None:
             return fallback(trace)
         draft = _verify(answer, candidates, trace)

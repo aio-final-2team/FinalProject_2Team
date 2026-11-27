@@ -60,7 +60,7 @@ def run_request(request_id, prepared_answer=None, prepared_fields=None):
     # LLM 호출은 요청 행 잠금 밖에서 한다. 요청 본문·유형은 접수 후 고정이다.
     with transaction() as connection:
         initial = connection.execute(text("""
-            SELECT id,type,body,status,org_id,classroom_id,requester_id FROM requests WHERE id=:id
+            SELECT id,type,body,status,org_id,classroom_id,requester_id,child_id FROM requests WHERE id=:id
         """), {"id": request_id}).mappings().one_or_none()
         if initial is None or initial["status"] not in ("received", "classified", "assigned", "needs_info"):
             return

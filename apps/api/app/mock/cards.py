@@ -107,6 +107,8 @@ def decide(user, card_id, body, background_tasks=None):
         if decision == "complete" and req.parent_confirmed_at is None and not body.reason_text:
             raise ApiError(409, "REASON_REQUIRED")
         content = body.edited_content if decision == "edit_approve" else card.draft
+        if decision == "edit_approve" and card.draft.get("note_evidence"):
+            content = {**content, "note_evidence": card.draft["note_evidence"]}
         if decision in ("approve", "edit_approve") and not content.get("text", "").strip():
             raise ApiError(409, "INVALID_TRANSITION")
         record(card, user, decision, body.reason_code, body.reason_text, body.edited_content)
@@ -338,6 +340,11 @@ def rule_decision(user, rule_id, body):
         rule = store.state().rules.get(rule_id)
         if rule is None or rule.org_id != user.org_id or rule.owner_id != user.id:
             store.deny(user)
+        if body.decision == "off":
+            if rule.status != "active":
+                raise ApiError(409, "INVALID_TRANSITION")
+            rule.status, rule.decided_at = "off", store.now()
+            return {"rule": {"id": rule.id, "status": rule.status}}
         if rule.status != "proposed":
             raise ApiError(409, "INVALID_TRANSITION")
         card = next((c for c in store.state().cards.values() if c.org_id == user.org_id
