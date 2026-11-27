@@ -47,6 +47,7 @@ class _CurrentRunModel:
 
 
 def _payload(connection, entry):
+    from app.modules.memories.memories import load_tones, load_child_notes
     values = {"org": entry["org_id"], "class": entry["classroom_id"], "date": entry["note_date"]}
     classroom = connection.execute(text("SELECT id, name FROM classrooms WHERE id=:class AND org_id=:org"),
                                    values).mappings().one()
@@ -78,10 +79,12 @@ def _payload(connection, entry):
     """), values).mappings().one_or_none()
     memos = {m["child_id"]: m["memo"] for m in entry["child_memos"]}
     payload = {"input_id": entry["id"], "note_date": entry["note_date"], "classroom": dict(classroom),
+            "memories": load_tones(connection, entry["org_id"], entry["author_id"]),
             "activities": entry["activities"], "supplies": entry["supplies"],
             "roster_names": [c["display_name"] for c in children],
             "children": [{"child_id": c["id"], "display_name": c["display_name"],
                           "memo": memos.get(str(c["id"]), ""),
+                          "care_notes": load_child_notes(connection, entry["org_id"], c["id"], entry["author_id"]),
                           "requests": [{k: r[k] for k in ("request_id", "type", "text")}
                                        for r in requests if r["child_id"] == c["id"]]} for c in children],
             "menu": dict(menu) if menu is not None else None}

@@ -74,6 +74,22 @@ def preference_key(preferred_times, now):
     return key
 
 
+def preferred_or_memory(preferred_times, memories):
+    # 요청 글·재선택에 시간 표현이 있을 때는 그 뜻이 우선이에요.
+    if not re.search(r"요일|오전|오후|\d{1,2}(?::[0-5]\d|시)|오늘|내일|다음\s*주|\d{4}-\d{2}-\d{2}", preferred_times or ""):
+        for memory in memories:
+            data = memory["structured"]
+            if any(key in data for key in ("after", "before", "weekday")):
+                preferred_times = " ".join(["월화수목금토일"[data["weekday"]]+"요일" if type(data.get("weekday")) is int and 0 <= data["weekday"] <= 6 else "",
+                                           data.get("after", "")+" 이후" if data.get("after") else "",
+                                           data.get("before", "")+" 이전" if data.get("before") else ""])
+                if data.get("after") and data.get("before"):
+                    preferred_times = preferred_times.split("요일")[0]+"요일 " if "요일" in preferred_times else ""
+                    preferred_times += data["after"]+"~"+data["before"]
+                break
+    return preferred_times
+
+
 def find_consult_slots(connection, teacher_id, date, *, org_id, request_id=None, rules=(), now=None, not_before=None,
                        preferred_times=None):
     """그날의 빈 시간 최대 세 개. 같은 시작 시각에는 상담실 하나만 골라요."""
@@ -152,6 +168,8 @@ def propose_slots(connection, req, card, teacher, round_no=None, *, preferred_ti
         # 첫 후보는 상담 요청 글의 희망(예: '다음 주 오후 4시 이후')을 읽어요(T04 4.1 주제·방식·선호 시간).
         # 해석하지 못한 글이면 preference_key가 빠른 순서를 써요.
         preferred_times = req.get("body")
+    from app.modules.memories.memories import load_preferences
+    preferred_times = preferred_or_memory(preferred_times, load_preferences(connection, req["org_id"], req["requester_id"]))
     now = datetime.now(KST)
     candidates = []
     for offset in range(1, 15):

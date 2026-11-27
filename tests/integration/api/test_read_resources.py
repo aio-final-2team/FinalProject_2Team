@@ -42,7 +42,7 @@ def test_seed_request_has_first_guardian_message(client, request_id, request_typ
     response = client.get(f"{BASE}/requests/{request_id}", headers={"Authorization": "Bearer " + token})
     assert response.status_code == 200, response.text
     data = response.json()
-    assert set(data) == {"request", "messages", "timeline", "consultation", "rejection", "sources", "care"}
+    assert set(data) == {"request", "messages", "timeline", "consultation", "rejection", "sources", "care", "memory_candidates"}
     req = data["request"]
     assert (req["id"], req["type"], req["title"], req["status"]) == (str(request_id), request_type, body, "received")
     # 원문만 있는 투약 시드는 구조화 필수값을 추측하지 않고 누락으로 표시해요(T46 15a).

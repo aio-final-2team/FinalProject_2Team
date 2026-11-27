@@ -1,4 +1,4 @@
-"""계약 생성물과 문서의 55개 API를 대조한다."""
+"""계약 생성물과 문서의 57개 API를 대조한다."""
 
 import json
 from pathlib import Path
@@ -24,10 +24,10 @@ def test_contract_matches_application():
         assert schema["properties"]["files"]["maxItems"] == 10
 
 
-def test_all_55_documented_endpoints_exist(client):
+def test_all_57_documented_endpoints_exist(client):
     doc = (ROOT / "Docs/Step2/API_설계_문서.md").read_text().split("## 2. API 목록")[1].split("## 3.")[0]
     endpoints = re.findall(r"\|\s*\d+\s*\|\s*(GET|POST|PATCH|DELETE)\s*\|\s*`([^`]+)`", doc)
-    assert len(endpoints) == 55
+    assert len(endpoints) == 57
     contract = client.get("/openapi.json").json()
     assert contract == json.loads(json.dumps(app.openapi()))
     for method, path in endpoints:

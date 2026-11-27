@@ -69,6 +69,8 @@ def test_third_rejection_proposes_one_card_and_retry_does_not_duplicate(client, 
         assert response.json()["next_card_id"] is not None
     proposed = proposals(client, teacher)[0]
     rule_id, proposal_id = proposed["rule"]["id"], proposed["card"]["id"]
+    mine = client.get(BASE+"/memories?kind=rule", headers=teacher).json()
+    assert any(r["id"] == rule_id for r in mine["rules"]) and all(r["source"] == "rule" for r in mine["items"])
     assert proposed["rule"]["status"] == "proposed" and proposed["request"] is None
     listed = next(c for c in client.get(BASE + "/cards?kind=rule_proposal", headers=teacher).json()["items"] if c["id"] == proposal_id)
     assert all(listed[k] is None for k in ("child_id", "child_name", "requester_name"))
@@ -206,6 +208,24 @@ def test_declined_rule_requires_three_new_rejections_after_latest_decision(clien
         reject(client, parent, teacher)
         assert len(proposals(client, teacher)) == 1
 
+
+def test_active_rule_can_be_turned_off_and_is_asked_again_after_three_new_rejections(client, parent, teacher):
+    for _ in range(3):
+        reject(client, parent, teacher)
+    rule_id = proposals(client, teacher)[0]["rule"]["id"]
+    err(decide_rule(client, teacher, rule_id, "off"), 409, "INVALID_TRANSITION")
+    assert decide_rule(client, teacher, rule_id, "activate").json()["rule"]["status"] == "active"
+    response = decide_rule(client, teacher, rule_id, "off")
+    assert response.status_code == 200 and response.json()["rule"] == {"id": rule_id, "status": "off"}
+    for choice in ("off", "activate", "decline"):
+        err(decide_rule(client, teacher, rule_id, choice), 409, "INVALID_TRANSITION")
+    listed = client.get(BASE + "/memories?kind=rule", headers=teacher).json()["items"]
+    assert [(row["source"], row["structured"]["status"]) for row in listed if row["id"] == rule_id] == [("rule", "off")]
+    for _ in range(2):
+        reject(client, parent, teacher)
+        assert proposals(client, teacher) == []
+    reject(client, parent, teacher)
+    assert [p["rule"]["id"] == rule_id for p in proposals(client, teacher)] == [False]
 
 def test_personal_rule_cannot_be_reassigned_or_seen_by_same_class_teacher(
     client, parent, teacher, teacher_other, director, memory_backend
