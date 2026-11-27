@@ -14,16 +14,24 @@ NO_ANSWER = "자료에서 확인되지 않아 선생님 확인이 필요해요."
 PROMPTS = Path(__file__).resolve().parents[1] / "prompts"
 WRITE_FORMAT = "\nJSON 하나로 답한다: {\"text\": str, \"evidence\": [{\"chunk_id\": int, \"quote\": str}], \"facts\": [{\"text\": str, \"evidence\": [{\"chunk_id\": int, \"quote\": str}]}], \"no_evidence\": bool, \"conflict\": bool, \"partial\": bool, \"unanswered\": [str]}"
 WRITE_FORMAT += '\n보낸 알림장 인용은 {"chunk_id": null, "source": "daily_note", "note_id": "입력의 UUID", "quote": "원문 구절"}로 적는다. 기억은 사실 근거가 아니다.'
+WRITE_FORMAT += '\n담임 관찰 기록 인용은 {"chunk_id": null, "source": "daily_record", "record_id": "입력의 UUID", "quote": "원문 구절"}로 적는다. quote는 원문 그대로, text는 담임 메모 말투 대신 보호자에게 보낼 말로 쓴다.'
 CHECK_FORMAT = "\nJSON 하나로 답한다: {\"passed\": bool, \"issues\": [{\"field\": \"출처|날짜|대상|누락|민감정보\", \"problem\": str}]}"
 CHECK_FIELDS = {"출처", "날짜", "대상", "누락", "민감정보"}
 MAX_REWRITES = 2
 KST = ZoneInfo("Asia/Seoul")
 WEEKDAYS = "월화수목금토일"
+# 문서 조각이 아닌 아이 개인 근거. card_evidence 대신 카드 초안에 남기고 이 칸들로 원 후보와 대조해요.
+PERSONAL = {"daily_note": ("note_id", "note_date"), "daily_record": ("record_id", "record_date")}
 WRITE_FORMAT += "\n입력의 today는 이 질문을 받은 날이다. 질문과 자료에 나오는 오늘·내일·이번 주는 today 기준 날짜로 바꿔 읽는다."
 
 
 def child_day_question(body):
     return bool(re.search(r"낮잠.*(?:잤|잔|잠들)|(?:점심|밥|식사).*먹었|(?:오늘|어제|그제).*(?:뭐|무엇).*했|(?:오늘|어제|그제).*어땠", body))
+
+
+def child_about_question(body):
+    """관찰 기록은 하루 질문보다 조금 넓게, 아이의 몸·마음·친구 이야기를 물을 때도 붙여요."""
+    return child_day_question(body) or bool(re.search(r"친구|지내|기침|콧물|열이|열나|아프|아파|다쳤|울었|낮잠|먹었", body))
 
 
 def note_chunk(note_id, note_date, content):
@@ -35,9 +43,21 @@ def note_chunk(note_id, note_date, content):
             "title": f"{day.month}월 {day.day}일 알림장", "quote": quote, "content": quote, "score": 1.0}
 
 
+def record_chunk(record_id, record_date, body):
+    """담임 관찰 기록은 보호자에게 바로 안 보이는 메모라, 담임이 검토하는 초안의 근거로만 써요.
+    선생님이 쓴 글이라 알림장 그래프처럼 민감정보 형식을 가려서 넘겨요(T55 G-5)."""
+    quote = mask_sensitive(body or "").strip()
+    if not quote or suspicious_chunk(quote):
+        return None
+    day = date.fromisoformat(str(record_date))
+    return {"chunk_id": None, "source": "daily_record", "record_id": str(record_id), "record_date": str(day),
+            "title": f"{day.month}월 {day.day}일 관찰 기록", "quote": quote, "content": quote, "score": 1.0}
+
+
 def _evidence_key(item):
-    if item.get("source") == "daily_note" and item.get("chunk_id") is None:
-        return "daily_note", str(item.get("note_id"))
+    source = item.get("source")
+    if source in PERSONAL and item.get("chunk_id") is None:
+        return source, str(item.get(PERSONAL[source][0]))
     return "document", str(item.get("chunk_id"))
 
 
@@ -106,8 +126,8 @@ def _verified_evidence(items, by_id, *, strict=False):
             continue  # card_evidence PK가 (card_id, chunk_id)라 같은 조각은 한 번만 남긴다
         seen.add(key)
         entry = {"chunk_id": chunk["chunk_id"], "quote": quote, "score": chunk["score"]}
-        if key[0] == "daily_note":
-            entry.update({k: chunk[k] for k in ("source", "note_id", "note_date", "title")})
+        if key[0] in PERSONAL:
+            entry.update({k: chunk[k] for k in ("source", *PERSONAL[key[0]], "title")})
         evidence.append(entry)
     return evidence, valid if strict else True
 
@@ -176,6 +196,7 @@ def _verify(answer, candidates, trace, question=None):
 def _review(model, question, draft, candidates, attempt, trace, today=None):
     prompt = _common(today) + _prompt("checker.md", "## 입력", "## 알림장: 메모와 대조한다") + CHECK_FORMAT
     prompt += "\nsource=daily_note는 요청 아이에게 실제 보낸 알림장 근거다. note_id와 note_date·quote를 대조하고 다른 날짜의 일을 오늘 일로 단정하지 않는다."
+    prompt += "\nsource=daily_record는 담임이 그 아이에 대해 남긴 관찰 기록이다. record_id와 record_date·quote를 대조하고 기록에 없는 일을 초안이 덧붙였는지 본다."
     if draft.get("partial"):
         prompt += ("\n부분 답변에서는 unanswered에 든 질문 항목이 고정 담임 확인 문구와 함께 남아 있으면 그 항목의 미답 자체는 누락 오류로 돌려보내지 않는다. "
                    "facts의 각 사실 문장을 같은 facts 항목의 evidence 인용과 따로 대조하고, 인용이 없거나 실제 조각이 뒷받침하지 않는 사실은 통과시키지 않는다. "
@@ -229,7 +250,7 @@ def draft_answer(question: str, search, writer=None, checker=None, *, memories=(
                     return fallback([*trace, "search"])
     trace.append("search")
     candidates = sorted((item for item in candidates if not suspicious_chunk(item["content"])),
-                        key=lambda item: (item.get("source") == "daily_note", item["score"]), reverse=True)[:8]
+                        key=lambda item: (item.get("source") in PERSONAL, item["score"]), reverse=True)[:8]
     if not candidates:
         return fallback(trace)
     common = _common(today)

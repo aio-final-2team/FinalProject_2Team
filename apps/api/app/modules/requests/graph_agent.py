@@ -73,7 +73,8 @@ def _high_risk_request(request_id):
 
 
 def _search_request(request_id):
-    from app.modules.documents.answer import graph_enabled, daily_note_chunks
+    from agents.graphs.answer import PERSONAL
+    from app.modules.documents.answer import graph_enabled, daily_note_chunks, daily_record_chunks
     from app.modules.documents.search import search_documents
     from app.modules.documents.public_sources import forecast_evidence, prefetch_public
 
@@ -102,8 +103,8 @@ def _search_request(request_id):
             except Exception:
                 if attempt:
                     raise
-    chunks.extend(daily_note_chunks(req))
-    return sorted(chunks, key=lambda item: (item.get("source") == "daily_note", item["score"]), reverse=True)[:8]
+    chunks.extend(daily_note_chunks(req) + daily_record_chunks(req))
+    return sorted(chunks, key=lambda item: (item.get("source") in PERSONAL, item["score"]), reverse=True)[:8]
 
 
 def _load_request_memory(request_id):
