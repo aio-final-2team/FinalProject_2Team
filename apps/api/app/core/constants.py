@@ -69,7 +69,9 @@ TONE_READ_LIMIT = 8
 TONE_MAX_LENGTH = 80
 SAVED_ANSWER_MIN_SIMILARITY = 0.80
 
-# 자유 글에서 시간·선호를 추측하지 않는 기억 대역이에요. 구체적인 조건 추출은 기억 AI가 맡아요.
+# 기억 모델이 없거나 실패했을 때만 쓰는 규칙 제안 대역이에요. 모델이 있으면 기억 AI가 쌓인 거절 글로
+# 규칙 문장과 rule_json을 제안해요. 대역은 자유 글에서 조건을 추측하지 않고, other는 제안하지 않아요.
+RULE_TEXT_MAX_LENGTH = 80
 REJECTION_RULE_TEXTS = {
     "wrong_fact": "담임이 지적한 사실을 확인한 뒤 초안을 제안해 주세요.",
     "tone": "담임이 남긴 말투 관련 거절 이유를 확인해 초안을 제안해 주세요.",

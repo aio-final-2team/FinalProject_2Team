@@ -103,7 +103,7 @@ def test_active_rule_restricts_real_consultation_candidates(db_client, memory_se
                                         "AND status='active' AND reason_code='slot_unavailable'"),
                                    {"owner": seed.TEACHER}).all()
         late = find_consult_slots(connection, seed.TEACHER, slots[0].lower.astimezone(KST).date(),
-                                  org_id=seed.ORG, rules=rules, preferred_times="17:30 이후")
+                                  org_id=seed.ORG, rules=rules, preference={"after": "17:30"})
         assert late and all(row["end"].astimezone(KST).hour*60+row["end"].minute <= 17*60 for row in late)
     # 활성 규칙을 끄면 같은 계산이 오전 후보를 다시 내놓아요.
     # 담임 바쁜 시간 시드(#378)의 오전 수업과 학부모 선호 기억(#377, parent01 '월요일 15시 이후')이 있으면

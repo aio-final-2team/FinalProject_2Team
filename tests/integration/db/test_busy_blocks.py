@@ -6,7 +6,7 @@ from sqlalchemy import text
 
 from app.core.schedule import KST, working_day
 from app.mock import seed
-from app.modules.consultations.slots import find_consult_slots
+from app.modules.consultations.slots import fallback_preference, find_consult_slots
 from db.seeds.demo import seed_demo
 from tests.integration.db.test_cards import BASE, auth, create
 
@@ -22,7 +22,7 @@ def test_two_week_seed_is_idempotent_and_consult_slots_avoid_class_and_duty(seed
             period = block["period"]
             candidates = find_consult_slots(connection, block["user_id"], period["start"].date(), org_id=seed.ORG,
                 now=datetime.combine(today-timedelta(days=1), datetime.min.time(), KST),
-                preferred_times=period["start"].strftime("%H:%M"))
+                preference=fallback_preference(period["start"].strftime("%H:%M"), datetime.now(KST)))
             assert bool(candidates) == working_day(period["start"].date())
             assert all(c["end"] <= period["start"] or period["end"] <= c["start"] for c in candidates)
 

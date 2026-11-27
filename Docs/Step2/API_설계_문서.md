@@ -555,7 +555,7 @@ X-Request-ID: 0e7d4a51-2c3b-4f6e-9a18-5b7c9d0e1f23
 최종 확정은 담임 → 상담실 순서로 거는 자문 잠금과 DB 배제 제약으로 한 건만 받는다(DB 설계서 9.1 F1-7).
 확정하면 학부모에게 `consultation_booked` 알림을 한 번 남긴다. 제목은 "상담 예약 확정", 본문은 예약한 한국 날짜·시간(`YYYY-MM-DD HH:MM~HH:MM`)이다. 문의·민원 회신 알림은 기존 `sent_or_booked`("답변 도착")를 쓴다.
 
-`none_fit`은 기존 후보를 버리고 희망 시간과 겹치는 빈 후보를 먼저, 겹침이 없으면 시간 거리가 가까운 순으로 최대 3개 다시 제안한다. `preferred_times`의 명시 날짜(YYYY-MM-DD), 오늘·내일·모레·다음 주·요일, HH:MM·오전/오후 시각·범위·이후/이전·오전/오후를 코드가 읽고, 해석하지 못한 문장은 원문을 이력에 보존한 채 빠른 시간 순서를 쓴다. 담임(없으면 원장)에게 원문을 담은 `parent_message` 알림을 남긴다. 다음 재제안·재배정에도 마지막 희망 시간을 반영한다.
+`none_fit`은 기존 후보를 버리고 희망 시간과 겹치는 빈 후보를 먼저, 겹침이 없으면 시간 거리가 가까운 순으로 최대 3개 다시 제안한다. `preferred_times`(첫 후보는 상담 요청 글)는 후보를 만들 때 작은 AI 호출(감독 모델)이 `{date_from, date_to, weekdays, part_of_day, after, before}` 구조값으로 옮기고, 코드는 값이 계약 안에 있는지만 본다. 감독 모델이 없거나 실패하면 명시 날짜·오늘/내일/모레·다음 주·요일·시각·범위·이후/이전·오전/오후 정규식 대역을 쓴다. 희망이 없으면 확인된 보호자 선호의 시각·요일을, 그것도 없으면 빠른 시간 순서를 쓰고, 원문은 이력에 보존한다. 담임(없으면 원장)에게 원문을 담은 `parent_message` 알림을 남긴다. 다음 재제안·재배정에도 마지막 희망 시간을 반영한다.
 담임 없는 반은 `unassigned` 상담 카드의 생성 때 원장에게 `new_card`를 보낸다. 후보가 있으면 학부모 체크를 허용하고, 후보가 없으면 원장 재배정으로 새 담당 기준 후보를 계산한다.
 확정 순간 충돌은 해당 후보만 `discarded`, 나머지 후보·체크는 보존하고 새 회차 후보를 최대 3개 더 만든다. 카드 판을 1 올리고 요청을 `needs_info`로 돌려 `slot_conflict_reproposed`(detail.slot_id·new_slot_ids)와 학부모 `needs_info` 알림을 같은 트랜잭션에 저장한다. 그 뒤 409 `SLOT_TAKEN`을 반환하므로 요청·카드를 새로 읽고 다시 선택한다. 충돌 때 승인·예약은 만들지 않는다. 재체크는 살아 있는 이전 후보도 받으며 최종 체크 목록을 교체한다. 알림 저장 실패는 재제안도 함께 롤백한다.
 
@@ -1114,7 +1114,7 @@ HTTP/1.1 200 OK
 | ⑦ 오류 응답 | 아래 오류 표. |
 | ⑧ 실행 규칙 | 연결된 제안 카드를 done으로 바꾸고 판을 1 올린다. 켜면 approve, 거절하면 reject로 결정과 이력을 남긴다. 같은 규칙을 다시 요청하면 409다. 모의 상담 후보에는 규칙을 적용하지 않는다. |
 
-DB 모드도 같은 결정 계약을 쓴다. 카드를 거절하거나 반려한 이유는 결정한 담임의 기억에 저장하는데, 이때 출처 요청이 속한 반의 아이 이름을 가린다. 반이 없으면 같은 기관 전체의 아이 이름을 본다. 이름은 앞에 한글이 없고 뒤에 글 끝·공백·문장부호나 조사·호칭이 올 때만 가리며, 다른 낱말 안에 섞인 글자는 그대로 둔다. 지우지 않은 기억 가운데 같은 코드가 세 건 이상이면 제안 카드 하나를 만든다. 같은 주인·같은 코드에 decline 결정이 있었다면, 마지막 decline 뒤로 새 기억이 세 건 쌓여야 다시 제안한다. 개인 규칙 제안은 재배정하지 않고, 주인에게 근무 시간을 기준으로 new_card 알림을 남긴다. 자동 대역은 코드별 안내만 제안하며, `other` 자유 글로는 자동 규칙을 만들지 않는다. 구체적인 조건은 기억 AI가 뽑아내고, DB의 상담 계산은 `active` 상태인 `slot_unavailable` 규칙의 시간 조건만 읽는다.
+DB 모드도 같은 결정 계약을 쓴다. 카드를 거절하거나 반려한 이유는 결정한 담임의 기억에 저장하는데, 이때 출처 요청이 속한 반의 아이 이름을 가린다. 반이 없으면 같은 기관 전체의 아이 이름을 본다. 이름은 앞에 한글이 없고 뒤에 글 끝·공백·문장부호나 조사·호칭이 올 때만 가리며, 다른 낱말 안에 섞인 글자는 그대로 둔다. 지우지 않은 기억 가운데 같은 코드가 세 건 이상이면 제안 카드 하나를 만든다. 같은 주인·같은 코드에 decline 결정이 있었다면, 마지막 decline 뒤로 새 기억이 세 건 쌓여야 다시 제안한다. 개인 규칙 제안은 재배정하지 않고, 주인에게 근무 시간을 기준으로 new_card 알림을 남긴다. 세 건이 쌓이면 기억 AI가 그 거절 글들을 읽고 공통된 바람이 있을 때만 규칙 문장과 `rule_json`(상담 시간 조건 `after`·`before`·`weekdays`)을 제안한다. `other`도 AI가 같은 바람인지 판단한다. 코드는 규칙 문장의 길이·아이 이름·민감정보·진단·가정사와 `rule_json` 형식만 검사한다. 기억 모델이 없거나 실패하면 대역으로 코드별 고정 안내와 `{reason_code}`만 제안하며, 이때 `other`는 제안하지 않는다. 상담 계산은 `active` 상태인 `slot_unavailable` 규칙의 시간 조건만 읽고, `weekdays`가 있으면 그 요일에만 적용한다.
 
 | 필드 | 위치 | 타입 | 필수 | 빈값 | 제약 | 설명 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -1552,7 +1552,7 @@ DELETE는 본인 기억과 학부모의 자기 아이 돌봄 메모만 지우며
 | `saved_answer` | 끄기·다시 켜기 | API 69 `PATCH /saved-answers/{id}` `{status:"off"\|"active"}` |
 | `rule` | 끄기 | 3.17 `POST /memory-rules/{id}/decision` `{decision:"off"}`. 끈 규칙은 목록에 status off로 남고, 같은 이유 거절이 끈 뒤로 3번 더 쌓이면 새 제안 카드로 다시 묻는다(FR-20). 끈 규칙을 그대로 다시 켜는 주소는 없다 |
 
-보호자 기억 후보(선호·돌봄 메모)는 보호자의 현재 약관 판 동의를 다시 확인한 뒤 만든다. `ai_processing`이 없으면 기억 추출 모델에 글을 보내지 않고, 돌봄 메모는 `child_info`·`child_health`까지 있어야 저장한다.
+보호자 기억 후보(선호·돌봄 메모)는 보호자의 현재 약관 판 동의를 다시 확인한 뒤 만든다. `ai_processing`이 없으면 기억 추출 모델에 글을 보내지 않고, 돌봄 메모는 `child_info`·`child_health`까지 있어야 저장한다. 동의가 있으면 낱말과 상관없이 기억 AI에 묻고, 반복 선호인지·돌봄인지·일회성인지는 AI가 정한다(0개도 가능). 코드는 원문 그대로 한 문장, 아이 이름·민감정보·진단·질환·가정사, 돌봄 낱말이 든 선호(확인 우회)만 막는다. 기억 모델이 없거나 실패하면 낱말 대역으로 후보를 골라 같은 검사를 거친다.
 
 API 67 `POST /memories/{memory_id}/confirm`은 `{decision:"remember"|"discard"}`를 받는다. 그 아이 보호자만 pending 후보를 결정하며 다른 상태는 409 INVALID_TRANSITION이다. remember는 confirmed와 confirmed_at, discard는 discarded와 빈 content·structured를 남긴다. 응답은 `{id,confirm_status,confirmed_at}`다. 학부모 요청 상세 `GET /requests/{id}`의 `memory_candidates:[{id,child_name,content}]`에는 그 요청에서 생긴 pending만 들어간다(없거나 교직원이면 빈 목록). memory_candidate 앱 알림은 후보마다 한 번이고 원문은 알림에 싣지 않는다.
 
@@ -2169,7 +2169,7 @@ def decide(card_id: UUID, body: CardDecision, user: User = Depends(current_staff
 | `search_documents` | 자료 | 요청한 기관의 자료만, 학부모면 원 전체 + 아이 반 자료 | `chunks[]` | `TOOL_TIMEOUT`·`UPSTREAM_UNAVAILABLE`(참), `VALIDATION_FAILED`·`NOT_FOUND`(거짓) | 1번 다시 → 실패하거나 근거가 없으면 추측하지 않고 담임 카드로 넘김(`no_evidence`) |
 | `get_law_article` | 자료 | 법령 이름·조문이 있음 | `text`, `source_url`, `fetched_at` | `UPSTREAM_UNAVAILABLE`(참), `NOT_FOUND`(거짓) | 1번 다시 → 실패면 법령 인용 없이 초안을 쓰고, 카드에 '법령 확인 못 함' 표시 |
 | `get_memory` | 기억 | 기억의 주인이 요청 담당자 | `memories[]`, `active_rules[]` | `SAVE_FAILED`(참) | 1번 다시 → 실패면 기억 없이 진행 |
-| `propose_rule` | 기억 | 같은 주인·같은 이유 코드가 3번(마지막 decline 뒤에 쌓인 새 기억만 셈). rule_json은 객체, after·before는 HH:MM | `rule_id`(이미 있으면 기존 ID) | `SAVE_FAILED`(참), `VALIDATION_FAILED`(거짓) | 1번 다시 → 실패면 제안만 되돌리고 tool_failed 기록(카드 거절·기억은 유지하고, 다음에 다시 셈) |
+| `propose_rule` | 기억 | 같은 주인·같은 이유 코드가 3번(마지막 decline 뒤에 쌓인 새 기억만 셈). rule_json은 객체, after·before는 HH:MM(after < before), weekdays는 0(월)~6(일) 목록 | `rule_id`(이미 있으면 기존 ID) | `SAVE_FAILED`(참), `VALIDATION_FAILED`(거짓) | 1번 다시 → 실패면 제안만 되돌리고 tool_failed 기록(카드 거절·기억은 유지하고, 다음에 다시 셈) |
 | `check_draft` | 검사 | 초안이 있는 카드·알림장 | 검사 결과를 저장 | `TOOL_TIMEOUT`·`UPSTREAM_UNAVAILABLE`(참) | 1번 다시 → 실패면 '검사 못 함'을 표시하고 사람 카드로 넘김 |
 | `return_to_step` | 검사 | `check_attempts` < 2 | `attempt` | `INVALID_TRANSITION`(거짓, 3번째) | 3번째에는 오류를 내는 대신 사람 카드로 넘김(FR-08) |
 | `find_consult_slots` | 코드 | 상담 요청이고 담임 일정이 있음 | `slots[]`(회차마다 최대 3개) | `TOOL_TIMEOUT`·`SAVE_FAILED`(참), `NOT_FOUND`(거짓) | 1번 다시 → 실패면 시간을 지어내지 않고 '지금 확인할 수 없음' 안내(30문항 YC-F01). 빈 목록이면 다른 날을 묻거나 담임 카드로 넘김 |

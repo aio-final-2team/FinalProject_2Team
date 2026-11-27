@@ -7,7 +7,8 @@ from app.core.consents import memory_kinds
 from app.core.constants import (CONSENT_VERSION, REJECTION_RULE_TEXTS, REJECTION_RULE_THRESHOLD, TONE_LIMIT, TONE_READ_LIMIT,
                                 SAVED_ANSWER_MIN_SIMILARITY)
 from app.core.errors import ApiError
-from app.core.memory_rules import mask_child_names, validate_rule_json, tone_contents, parent_candidates, memory_page
+from app.core.memory_rules import (mask_child_names, validate_rule_json, tone_contents, parent_candidates, memory_page,
+                                    fallback_parent_candidates)
 from app.mock import store
 from app.mock.records import Memory, Rule
 from agents.guardrails.sensitive import mask_sensitive
@@ -66,7 +67,22 @@ def load_tones(org_id, owner_id):
 
 
 def after_request(request_id):
-    pass  # 모의는 모델을 부르지 않고 아래 후보 저장 계약만 흉내 내요.
+    """모의엔 기억 AI가 없어 DB의 '모델 없음' 대역과 같은 낱말 후보를 같은 선으로 걸러 저장해요."""
+    req = store.state().requests.get(request_id)
+    if req is None or req.status not in ("sent_or_booked", "completed"):
+        return
+    names = [c.display_name for c in store.state().children.values() if c.org_id == req.org_id]
+    save_parent_candidates({"id": req.id, "org_id": req.org_id, "requester_id": req.requester_id,
+                            "child_id": req.child_id, "body": req.body}, fallback_parent_candidates(req.body), names)
+
+
+def active_rules(org_id, owner_id, reason_codes=None):
+    """DB active_rules와 같은 모양 [{id, reason_code, rule_text, rule_json}]이에요."""
+    rows = sorted((r for r in store.state().rules.values() if r.org_id == org_id and r.owner_id == owner_id
+                   and r.status == "active" and (not reason_codes or r.reason_code in reason_codes)),
+                  key=lambda r: (r.created_at, str(r.id)))
+    return [{"id": r.id, "reason_code": r.reason_code, "rule_text": r.rule_text, "rule_json": deepcopy(r.rule_json)}
+            for r in rows]
 
 
 def load_preferences(org_id, owner_id):
