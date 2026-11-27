@@ -1,0 +1,178 @@
+{
+  "evaluation_date": "2026-11-26",
+  "model": "real",
+  "search_mode": "벡터+낱말 검색(bge-m3)",
+  "results": [
+    {
+      "id": "G2",
+      "role": "한꺼번에 묻는 학부모",
+      "question": "다음 주 식단이랑 겨울방학이랑 독감 접종 다 알려줘요",
+      "account": "parent01",
+      "classroom": "만 4세 별빛반",
+      "expected": {
+        "path": "partial_conflict",
+        "target": "식단·접종 근거 및 방학 날짜 충돌",
+        "notes": "여러 주제와 충돌"
+      },
+      "actual": {
+        "classification": {
+          "topic_key": "meal",
+          "urgency": "normal",
+          "risk_level": "normal",
+          "risk_category": null,
+          "out_of_scope_kind": null
+        },
+        "risk_level": "normal",
+        "direct_notice_kind": null,
+        "route": "inquiry",
+        "card_kind": "reply_draft",
+        "status": "awaiting_review",
+        "director_report": false,
+        "ledger_report": false,
+        "actual_path": "partial",
+        "partial": true
+      },
+      "draft": "다음 주(11/30~12/04) 식단은 11/30 쌀밥·어묵국·닭볶음탕·배추김치와 우유, 12/1 잡곡밥·미소된장국·연어구이·브로콜리와 단호박, 12/2 크림스파게티·양배추샐러드와 귤, 12/3 쌀밥·김치찌개·두부조림과 고구마, 12/4 떡국·동그랑땡과 사과입니다.\n만 6개월 이상 어린이는 독감 예방접종을 권장하며, 가까운 병원이나 보건소에서 접종할 수 있습니다.\n독감 접종 후 이상 반응이 있으면 등원 전에 담임에게 알려 주세요.\n질문하신 ‘겨울방학’에 대해서는 자료에서 확인하지 못했어요. 선생님이 확인한 뒤 알려 드릴게요.",
+      "evidence": [
+        {
+          "document": "다음 주 12월 1주 점심 식단 미리보기 (11/30~12/04)",
+          "location": "다음 주 점심 메뉴·오후 간식 (11/30~12/04)",
+          "quote": "## 다음 주 점심 메뉴·오후 간식 (11/30~12/04)\n| 날짜 | 점심 | 오후 간식 |\n| --- | --- | --- |\n| 11-30(월) | 쌀밥, 어묵국⑥, 닭볶음탕, 배추김치 | 우유② |\n| 12-01(화) | 잡곡밥, 미소된장국⑤, 연어구이, 브로콜리 | 단호박 |\n| 12-02(수) | 크림스파게티②⑥, 양배추샐러드 | 귤 |\n| 12-03(목) | 쌀밥, 김치찌개, 두부조림⑤ | 고구마 |\n| 12-04(금) | 떡국①, 동그랑땡①⑥ | 사과 |"
+        },
+        {
+          "document": "독감 예방접종 및 겨울철 감염병 예방 안내",
+          "location": "1쪽 예방접종 권장",
+          "quote": "- 만 6개월 이상 어린이는 독감 예방접종을 권장합니다(가까운 병원·보건소)."
+        }
+      ],
+      "warnings": [
+        "no_evidence"
+      ],
+      "rule_checks": {
+        "parent_answer_waits_for_teacher": true,
+        "citations_are_verbatim": true,
+        "no_sensitive_data": true,
+        "scope_and_risk_routed": true,
+        "missing_evidence_and_conflict_marked": true,
+        "expected_path_matches": false
+      },
+      "judge": {
+        "status": "의심",
+        "reason": "식단과 접종 권고는 근거와 일치하지만, 접종 후 담임에게 알리라는 내용은 근거가 없고 겨울방학 날짜 충돌도 다루지 않았습니다."
+      },
+      "model_call_slots": {
+        "supervisor": 1,
+        "writer": 1,
+        "checker": 1,
+        "judge": 1
+      },
+      "actual_model_calls": 4,
+      "tokens": {
+        "supervisor": {
+          "prompt": 2464,
+          "completion": 568
+        },
+        "writer": {
+          "prompt": 3413,
+          "completion": 1576
+        },
+        "checker": {
+          "prompt": 3672,
+          "completion": 192
+        },
+        "judge": {
+          "prompt": 614,
+          "completion": 578
+        }
+      },
+      "duration_ms": 26287.802,
+      "iteration": 1
+    },
+    {
+      "id": "G3",
+      "role": "한꺼번에 묻는 학부모",
+      "question": "내일 김장 체험 준비물 알려주시고 오늘 할머니가 데리러 가요",
+      "account": "parent01",
+      "classroom": "만 4세 별빛반",
+      "expected": {
+        "path": "partial",
+        "target": "김장 준비물 및 귀가 변경 안내",
+        "notes": "문의와 귀가 변경 혼합"
+      },
+      "actual": {
+        "classification": {
+          "topic_key": "other",
+          "urgency": "normal",
+          "risk_level": "normal",
+          "risk_category": null,
+          "out_of_scope_kind": null
+        },
+        "risk_level": "normal",
+        "direct_notice_kind": null,
+        "route": "inquiry",
+        "card_kind": "reply_draft",
+        "status": "awaiting_review",
+        "director_report": false,
+        "ledger_report": false,
+        "actual_path": "no_evidence",
+        "partial": false
+      },
+      "draft": "",
+      "evidence": [],
+      "warnings": [
+        "no_evidence"
+      ],
+      "rule_checks": {
+        "parent_answer_waits_for_teacher": true,
+        "citations_are_verbatim": true,
+        "no_sensitive_data": true,
+        "scope_and_risk_routed": true,
+        "missing_evidence_and_conflict_marked": true,
+        "expected_path_matches": false
+      },
+      "judge": {
+        "status": "오류",
+        "reason": "김장 준비물과 오늘 귀가 변경에 대한 안내가 기대되지만 답변이 비어 있습니다."
+      },
+      "model_call_slots": {
+        "supervisor": 1,
+        "writer": 2,
+        "checker": 1,
+        "judge": 1
+      },
+      "actual_model_calls": 5,
+      "tokens": {
+        "supervisor": {
+          "prompt": 2463,
+          "completion": 1116
+        },
+        "writer": {
+          "prompt": 6370,
+          "completion": 1442
+        },
+        "checker": {
+          "prompt": 2695,
+          "completion": 371
+        },
+        "judge": {
+          "prompt": 117,
+          "completion": 217
+        }
+      },
+      "duration_ms": 27357.625,
+      "iteration": 1
+    }
+  ],
+  "total": 2,
+  "path_counts": {
+    "partial": 1,
+    "no_evidence": 1
+  },
+  "model_call_slots": {
+    "supervisor": 2,
+    "writer": 3,
+    "checker": 2,
+    "judge": 2
+  },
+  "actual_model_calls": 9
+}
