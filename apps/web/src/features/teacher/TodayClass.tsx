@@ -5,7 +5,6 @@ import { pickNotice, plain, useNextMeal } from "@/api/meals";
 import { useMealRepresentative } from "@/api/publicMeals";
 import { useSession } from "@/app/session";
 import { AuthPhoto } from "@/components/AuthPhoto";
-import { Icon } from "@/components/Icon";
 import { todayKST } from "@/domain/notes";
 
 const md = (iso: string) => `${Number(iso.slice(5, 7))}/${Number(iso.slice(8, 10))}`;
@@ -37,39 +36,34 @@ export function TodayClass() {
   return (
     <section aria-label="오늘 우리 반" className="mt-4">
       <h2 className="mb-2 px-1 text-footnote font-semibold text-ink2">오늘 우리 반</h2>
-      <ul className="overflow-hidden rounded-xl bg-tint shadow-card [&>li+li]:border-t [&>li+li]:border-card/60">
-        <li>
-          <Link to="/teacher/class" className="flex items-center gap-3 p-3.5 active:bg-card/40">
-            <span className="min-w-0 flex-1">
-              <b className="text-footnote text-accent-ink">급식{meal ? ` · ${meal.today ? "오늘" : meal.label}` : ""}</b>
-              <span className="mt-0.5 block text-callout">{meal ? `점심 ${meal.lunch}` : "등록된 식단이 없어요"}</span>
+      <div className="rounded-xl bg-tint p-4 shadow-card">
+        <dl className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-x-3 gap-y-2.5 text-callout">
+          <dt className="pt-px text-footnote font-bold text-accent-ink">급식{meal ? ` · ${meal.today ? "오늘" : meal.label}` : ""}</dt>
+          <dd>
+            <Link to="/teacher/class" className="block active:opacity-70">
+              {meal ? `점심 ${meal.lunch}` : "등록된 식단이 없어요"}
               {meal?.snack && <span className="block text-footnote text-ink2">오후 간식 {meal.snack}</span>}
-            </span>
-            {mealImg && <img src={mealImg.fileUrl} alt={`${mealImg.mainDish} 참고 이미지`} className="aspect-[4/3] w-24 shrink-0 rounded-lg object-cover" />}
-            <Icon name="chevR" className="size-4 shrink-0 text-accent-ink" />
-          </Link>
-        </li>
-        <li>
-          <Link to={notice ? `/teacher/class/${notice.id}` : "/teacher/class"} className="flex items-center gap-3 p-3.5 active:bg-card/40">
-            <span className="min-w-0 flex-1">
-              <b className="text-footnote text-accent-ink">가정통신문</b>
-              <span className="mt-0.5 block truncate text-callout">{notice ? notice.title : "등록된 가정통신문이 없어요"}</span>
-              {line && <span className="line-clamp-2 text-footnote text-ink2">{line}</span>}
-            </span>
-            <Icon name="chevR" className="size-4 shrink-0 text-accent-ink" />
-          </Link>
-        </li>
-        <li>
-          <Link to="/teacher/feed" className="flex items-center gap-3 p-3.5 active:bg-card/40">
-            <span className="min-w-0 flex-1">
-              <b className="text-footnote text-accent-ink">반 활동{when ? ` · ${when}` : ""}</b>
-              <span className="mt-0.5 line-clamp-2 block text-callout">{latest ? latest.body : "올라온 소식이 아직 없어요"}</span>
-            </span>
-            {photo && <AuthPhoto photo={photo} className="aspect-[4/3] w-24 shrink-0 overflow-hidden rounded-lg" />}
-            <Icon name="chevR" className="size-4 shrink-0 text-accent-ink" />
-          </Link>
-        </li>
-      </ul>
+            </Link>
+          </dd>
+          <dt className="pt-px text-footnote font-bold text-accent-ink">가정통신문</dt>
+          <dd>
+            <Link to={notice ? `/teacher/class/${notice.id}` : "/teacher/class"} className="block active:opacity-70">
+              <span className="block truncate">{notice ? notice.title : "등록된 가정통신문이 없어요"}</span>
+              {line && <span className="line-clamp-1 text-footnote text-ink2">{line}</span>}
+            </Link>
+          </dd>
+          <dt className="pt-px text-footnote font-bold text-accent-ink">반 활동{when ? ` · ${when}` : ""}</dt>
+          <dd>
+            <Link to="/teacher/feed" className="line-clamp-2 block active:opacity-70">{latest ? latest.body : "올라온 소식이 아직 없어요"}</Link>
+          </dd>
+        </dl>
+        {(mealImg || photo) && (
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            {mealImg ? <Link to="/teacher/class" className="block overflow-hidden rounded-lg active:opacity-80"><img src={mealImg.fileUrl} alt={`${mealImg.mainDish} 참고 이미지`} className="aspect-[4/3] w-full object-cover" /></Link> : <span />}
+            {photo ? <Link to="/teacher/feed" className="block overflow-hidden rounded-lg active:opacity-80"><AuthPhoto photo={photo} className="aspect-[4/3] w-full" /></Link> : <span />}
+          </div>
+        )}
+      </div>
     </section>
   );
 }
