@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Link } from "react-router";
 import { newKey, useCard, useCardAction } from "@/api/cards";
 import { useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "@/api/client";
@@ -13,6 +14,7 @@ import { useToast } from "@/components/Toast";
 import { REASON_LABEL, useRuleDecision } from "@/api/memory";
 import type { Card, CardAction, Role } from "@/domain/types";
 import { fmtDateTime } from "@/domain/datetime";
+import { dateLabel, todayKST } from "@/domain/notes";
 import { BackLink } from "./InboxPage";
 
 /** API 3.7 warnings[] 코드를 교사가 읽는 말로 */
@@ -173,6 +175,12 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
           {c.noEvidence && !c.warnings?.length && <Pill tone="action">근거 없음</Pill>}
         </div>
         <h1 className="text-large-title font-bold tracking-[-0.01em]">{c.title}</h1>
+        {c.sourceNote && (
+          <p className="text-sub text-ink2">
+            {dateLabel(c.sourceNote.note_date)} 알림장에 대한 답장
+            {c.sourceNote.note_date === todayKST() && <> · <Link to={`/teacher/notes/${c.sourceNote.note_id}`} className="font-semibold text-accent-ink">알림장 보기</Link></>}
+          </p>
+        )}
         {[c.className, c.childName, c.requesterName].filter(Boolean).length > 0 && (
           <p className="text-sub text-ink2">{[c.className, c.childName, c.requesterName].filter(Boolean).join(" · ")}</p>
         )}

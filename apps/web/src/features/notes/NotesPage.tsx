@@ -13,6 +13,7 @@ import { Dock, PrimaryButton, SubButton } from "@/components/Dock";
 import { Icon } from "@/components/Icon";
 import { Sheet } from "@/components/Sheet";
 import { useToast } from "@/components/Toast";
+import { useAllCards } from "@/api/cards";
 import { CHECK_KIND, NOTE_STATUS, dateLabel, itemLabel, nameI, noMd, todayKST, type DailyNote, type NoteItem } from "@/domain/notes";
 import { RecordSheet } from "@/features/records/RecordSheet";
 import { useRecords } from "@/features/records/store";
@@ -351,21 +352,35 @@ function Review({ notes }: { notes: DailyNote[] }) {
     });
   };
 
+  /* 답장의 요청 ID로 받은함 카드를 찾는다. 아직 목록에 없으면 받은함으로 보낸다 */
+  const allCards = useAllCards();
+  const replyCard = (requestId: string) => {
+    const card = allCards.find((c) => c.requestId === requestId);
+    return card ? `/teacher/inbox/${card.id}` : "/teacher/inbox";
+  };
+
   const row = (n: DailyNote, sub: string, right?: React.ReactNode) => {
     const st = NOTE_STATUS[n.status];
     return (
       <li key={n.id} className="flex min-h-14 items-center gap-3 px-3 py-2 [&+&]:border-t [&+&]:border-sep">
         <ChildAvatar name={names[n.child_id] ?? "?"} photo={photos[n.child_id]} childId={n.child_id} size={32} textClass="text-footnote" rounded="rounded-sm" />
-        <Link to={`/teacher/notes/${n.id}`} className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1">
+        <Link to={`/teacher/notes/${n.id}`} className="block">
           <span className="flex items-baseline gap-2">
             <b className="text-headline font-semibold">{names[n.child_id] ?? "아이"}</b>
             {!(allSent && n.status === "sent") && <span className={`text-caption font-bold ${st.cls}`}>{st.label}</span>}
-            {!!n.replies?.length && <span className="shrink-0 rounded-full bg-tint px-2 py-0.5 text-caption font-bold text-accent-ink">답장 {n.replies.length}</span>}
             {n.supplies_checked_at && <span className="shrink-0 rounded-full bg-ok-tint px-2 py-0.5 text-caption font-bold text-ok">준비물 챙김</span>}
           </span>
           <span className="block truncate text-footnote text-ink2">{sub}</span>
-          {!!n.replies?.length && <span className="block truncate text-footnote font-semibold text-accent-ink">{n.replies[n.replies.length - 1].body}</span>}
         </Link>
+          {!!n.replies?.length && (
+            /* 학부모 답장은 새 문의로 접수되어 받은함 카드로 온다. 누르면 그 카드로 간다 */
+            <Link to={replyCard(n.replies[n.replies.length - 1].request_id)} className="mt-0.5 flex items-center gap-1.5 text-footnote">
+              <span className="shrink-0 rounded-full bg-tint px-2 py-0.5 text-caption font-bold text-accent-ink">답장 {n.replies.length}</span>
+              <span className="min-w-0 truncate font-semibold text-accent-ink">{n.replies[n.replies.length - 1].body}</span>
+            </Link>
+          )}
+        </div>
         {right ?? <Icon name="chevR" className="size-4 text-ink2" />}
       </li>
     );
