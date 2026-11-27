@@ -136,7 +136,7 @@ def test_consultation_time_ai_value_reaches_slot_search(seeded_db,monkeypatch):
     req=save('db',[PREF])
     monkeypatch.setenv('LLM_MODEL_SUPERVISOR','fake-model')
     texts,seen=[],[]
-    monkeypatch.setattr(slots,'OpenAIModel',lambda role,timeout=None: SimpleNamespace(
+    monkeypatch.setattr(slots,'OpenAIModel',lambda role,timeout=None,retry_delays=None: SimpleNamespace(
         json=lambda s,u: texts.append(json.loads(u)['text']) or {'weekdays':[3],'part_of_day':'pm'}))
     monkeypatch.setattr(slots,'find_consult_slots',lambda *a,**kw: seen.append(kw['preference']) or [])
     with transaction() as c:

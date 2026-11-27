@@ -524,6 +524,7 @@ def test_seed_twice_keeps_same_rows_and_password_hash(db_engine, alembic_config)
 @pytest.mark.parametrize("now", ["2026-12-31T15:05:00+00:00", "2026-11-09T14:55:00+00:00"])
 def test_refresh_requests_preserves_fixture_offsets_and_daily_input(seeded_db, monkeypatch, now):
     from db.seeds import demo
+    from app.core.constants import NOTE_REQUEST_TYPES
     from app.modules.daily_notes.runner import _payload
 
     current = datetime.fromisoformat(now)
@@ -564,10 +565,14 @@ def test_refresh_requests_preserves_fixture_offsets_and_daily_input(seeded_db, m
                                "classroom_id": seed.CLASS_STAR, "note_date": day,
                                "activities": "[TEST] 날짜 이동", "supplies": "", "child_memos": []})
             observed = {r["request_id"] for child in payload["children"] for r in child["requests"]}
-            assert observed == {str(rid) for rid, dt in actual.items() if dt.astimezone(KST).date() == day}
+            # 알림장 재료는 투약·귀가 요청만이에요(#406). 문의는 받은함에서만 다뤄요.
+            care = set(connection.scalars(text("SELECT id FROM requests WHERE type = ANY(:types)"),
+                                          {"types": list(NOTE_REQUEST_TYPES)}))
+            assert observed == {str(rid) for rid, dt in actual.items()
+                                if dt.astimezone(KST).date() == day and rid in care}
             if day == today:
-                assert observed == {str(seed.REQUEST_COUGH), str(seed.REQUEST_PICKUP),
-                                    *(str(seed.demo_id(f"72{n:02d}")) for n in (2, 10, 19))}
+                # 기침 문의(REQUEST_COUGH)와 GR-19 문의는 받은함 몫이라 빠져요.
+                assert observed == {str(seed.REQUEST_PICKUP), *(str(seed.demo_id(f"72{n:02d}")) for n in (2, 10))}
     assert {r["id"]: r["created_at"] for r in seed.DEMO_NOTE_REQUESTS if "created_at" in r} == originals
 
 
