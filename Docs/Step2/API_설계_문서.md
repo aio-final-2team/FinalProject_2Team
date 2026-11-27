@@ -1194,7 +1194,7 @@ HTTP/1.1 200 OK
 | `child_memos[].memo` | 생성 본문 | string | 항목마다 필수 | 빈 문자열 불가 | 1~500자 | 모의 생성은 원문을 그대로 child 줄에 넣고, 공백뿐이면 줄을 만들지 않는다 |
 | `draft_status`·`error` | 응답 | string·object | 항상 | error는 null 가능 | queued·running·succeeded·failed; 오류는 {code, message} | 실패 조회도 200, 모의 오류 코드는 UPSTREAM_UNAVAILABLE |
 
-초안을 만드는 입구 함수의 전체 입력은 `{ input_id, note_date, classroom, activities, supplies, children, roster_names, menu }`이고, 이 중 `menu`는 `{ document_id, title, text }` 또는 null이다. `roster_names`는 반 전체 아이 이름이며, 부분 재생성으로 `children`을 걸러도 유지한다(3.26). 아이별 입력은 `{ child_id, display_name, memo, requests: [{ request_id, type, text }] }`다. `requests`는 클라이언트가 보내지 않고 서버가 모은다. 같은 기관·반·아이의 보호자가 보낸 `medication`·`pickup`·`inquiry` 요청 가운데 `created_at`의 한국 날짜가 `note_date`인 것을 모으며, 해당 요청이 없으면 빈 목록이다. 각 항목의 `text`에는 보호자 요청 본문이 들어간다. DB 모드의 실행기(runner)도 이 입구를 같은 모양으로 부른다.
+초안을 만드는 입구 함수의 전체 입력은 `{ input_id, note_date, classroom, activities, supplies, children, roster_names, menu }`이고, 이 중 `menu`는 `{ document_id, title, text }` 또는 null이다. `roster_names`는 반 전체 아이 이름이며, 부분 재생성으로 `children`을 걸러도 유지한다(3.26). 아이별 입력은 `{ child_id, display_name, memo, requests: [{ request_id, type, text }] }`다. `requests`는 클라이언트가 보내지 않고 서버가 모은다. 같은 기관·반·아이의 보호자가 보낸 `medication`·`pickup` 요청 가운데 `created_at`의 한국 날짜가 `note_date`인 것을 모으며, 해당 요청이 없으면 빈 목록이다. 문의·상담·민원은 답이 있어야 끝나는 일이라 알림장에 넣지 않고 받은함에서만 다룬다(알림장은 아이의 하루·식사·투약·귀가·준비물, 기획서 FR-14). 각 항목의 `text`에는 보호자 요청 본문이 들어간다. DB 모드의 실행기(runner)도 이 입구를 같은 모양으로 부른다.
 
 모의 초안은 요청 원문을 `source: { type: request, request_id }` 줄에 넣는다. 하늘의 "기침해요"와 다른 귀가 요청은 반영하지만, 노을의 고정 귀가 요청(…70a) 하나만은 일부러 빼서 `request_missed`를 보여 준다. 이 항목은 `item_key: pickup`, `sentence: null`, `request_id: …70a`다. 교사는 요청을 확인한 뒤 기존 PATCH의 `resolved_checks`로 해결한다. 미해결 항목이 남아 있으면 확인·발송을 막는 규칙도 기존과 같다.
 
@@ -1305,7 +1305,7 @@ HTTP/1.1 200 OK
 | 발송 막힘 | 지아를 확인하기 전 반 발송은 409 `NOTE_BATCH_BLOCKED`(`blocked`에 지아만). 지아의 항목을 모두 풀어도 확인 전이면 409. 확인 뒤 200 `sent_count=20`, 확인 카드 `done` |
 | 학부모 쪽 | `parent01`이 하늘 알림장(`sent`)을 받았고, 담임이 고친 줄이 그대로 보였다. 알림 1건 |
 
-초안 저장 뒤 같은 기관·반·아이의 당일 보호자 투약·귀가·문의가 새로 접수되면 기존 본문은 유지하고 `request_missed` 확인 항목을 해당 `request_id`와 함께 붙인다. `draft`·`needs_check`는 `needs_check`가 되고, `ready`도 확인자·확인 시각을 비우고 `needs_check`로 돌아간다. 이미 `sent`면 내용·확인 항목·상태는 유지한다. 두 경우 모두 반 카드 담당자에게 기존 `new_card` 알림을 보내며 `subject_type=daily_note`·`subject_id=아이 알림장 ID`로 알림장 화면에 연결하고, 같은 요청 재전송에는 확인·알림을 늘리지 않는다. 본문과 알림 제목에 보호자 원문을 복사하지 않는다. 다른 날짜·다른 반과 상담·민원은 이 처리에서 제외한다. 작성기가 입력을 읽은 뒤 저장하기 전 접수된 요청도 저장 직전 다시 읽어 `request_missed`로 남긴다.
+초안 저장 뒤 같은 기관·반·아이의 당일 보호자 투약·귀가가 새로 접수되면 기존 본문은 유지하고 `request_missed` 확인 항목을 해당 `request_id`와 함께 붙인다. `draft`·`needs_check`는 `needs_check`가 되고, `ready`도 확인자·확인 시각을 비우고 `needs_check`로 돌아간다. 이미 `sent`면 내용·확인 항목·상태는 유지한다. 두 경우 모두 반 카드 담당자에게 기존 `new_card` 알림을 보내며 `subject_type=daily_note`·`subject_id=아이 알림장 ID`로 알림장 화면에 연결하고, 같은 요청 재전송에는 확인·알림을 늘리지 않는다. 본문과 알림 제목에 보호자 원문을 복사하지 않는다. 다른 날짜·다른 반과 문의·상담·민원은 이 처리에서 제외한다. 작성기가 입력을 읽은 뒤 저장하기 전 접수된 요청도 저장 직전 다시 읽어 `request_missed`로 남긴다.
 
 ### 3.20 알림장 보기 — `GET /api/v1/daily-notes`
 
@@ -2197,7 +2197,7 @@ def decide(card_id: UUID, body: CardDecision, user: User = Depends(current_staff
 | `activities`·`supplies` | string | 필수 | 반 활동(1~2,000자)·준비물(빈 문자열 가능) |
 | `menu` | string 또는 null | 필수 | 그날 쓸 식단 본문. 없으면 null |
 | `child_name`·`child_memo` | string | 필수 | 아이 표시 이름과 담임 메모. 메모가 없으면 `""` |
-| `requests[]` | object[] | 필수 | `{ request_id, type, text }`. `type`은 `medication`·`pickup`·`inquiry` |
+| `requests[]` | object[] | 필수 | `{ request_id, type, text }`. `type`은 `medication`·`pickup`(서버가 문의는 보내지 않는다) |
 | `review_issues[]` | object[] | 필수 | 검사 AI가 돌려보낸 확인 항목. 처음에는 `[]` |
 
 결과는 `{"child": "아이 메모 줄 또는 null", "requests": [{"request_id", "value", "answered"}]}`이다. 코드는 이 결과를 아이 메모 줄(출처 `teacher_input`)과 보호자 요청 줄(출처 `request`)로 바꾸고, 입력에 없는 `request_id`는 버린다. 반 공통 줄(`day`·`supplies`·`meal`)은 모델이 아니라 코드가 만든다. 저장하고 나면 결과 ID는 아이별 알림장 ID(3.20 `items[].id`)가 된다. 상태는 확인 항목이 있으면 `needs_check`, 없으면 `draft`다. 업무상으로는 담임이 고치고 확인할 초안이 생겼다는 뜻이다.
