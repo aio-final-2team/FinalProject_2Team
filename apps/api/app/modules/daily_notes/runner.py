@@ -65,6 +65,7 @@ def _payload(connection, entry):
                       WHERE (g.child_id,g.org_id,g.user_id)=(r.child_id,r.org_id,r.requester_id))
         ORDER BY r.created_at, r.id
     """), {**values, "types": list(NOTE_REQUEST_TYPES), "start": start, "end": start + timedelta(days=1)}).mappings().all()
+    # 식단표는 다음 주 것을 미리 올려 두므로, 가장 늦게 적용된 식단보다 그날 줄(| MM-DD)이 있는 식단을 먼저 고른다.
     menu = connection.execute(text("""
         SELECT d.id AS document_id, d.title,
                string_agg(c.content, E'\n' ORDER BY c.chunk_index) AS text
@@ -76,8 +77,10 @@ def _payload(connection, entry):
           AND (NOT EXISTS (SELECT 1 FROM document_classrooms dc WHERE dc.document_id=d.id AND dc.org_id=d.org_id)
                OR EXISTS (SELECT 1 FROM document_classrooms dc
                           WHERE dc.document_id=d.id AND dc.org_id=d.org_id AND dc.classroom_id=:class))
-        GROUP BY d.id ORDER BY d.effective_from DESC NULLS LAST, d.created_at DESC, d.id LIMIT 1
-    """), values).mappings().one_or_none()
+        GROUP BY d.id
+        ORDER BY bool_or(c.content ~ ('\|\s*' || :mmdd || '([^0-9]|$)')) DESC,
+                 d.effective_from DESC NULLS LAST, d.created_at DESC, d.id LIMIT 1
+    """), {**values, "mmdd": str(entry["note_date"])[5:10]}).mappings().one_or_none()
     memos = {m["child_id"]: m["memo"] for m in entry["child_memos"]}
     memos = with_record_memos(connection, entry, memos)
     payload = {"input_id": entry["id"], "note_date": entry["note_date"], "classroom": dict(classroom),
