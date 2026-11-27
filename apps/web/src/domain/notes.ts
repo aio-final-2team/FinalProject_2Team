@@ -85,6 +85,9 @@ export function todayKST(): string {
   return d.toISOString().slice(0, 10);
 }
 
+/** 알림장 항목 글에 섞여 오는 마크다운 강조(**)를 화면에서는 걷어 낸다. 고치기 입력칸에는 원문을 그대로 둔다 */
+export const noMd = (s: string) => s.replace(/\*\*/g, "");
+
 export function dateLabel(iso: string): string {
   const [y, m, d] = iso.split("-").map(Number);
   const w = ["일요일", "월요일", "화요일", "수요일", "목요일", "금요일", "토요일"][new Date(y, m - 1, d).getDay()];

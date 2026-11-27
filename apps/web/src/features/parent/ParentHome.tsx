@@ -7,7 +7,7 @@ import { QueryState } from "@/components/QueryState";
 import { Icon } from "@/components/Icon";
 import { ChildAvatar, type ProfilePhoto } from "@/components/ChildAvatar";
 import { MealRepresentative } from "@/components/MealRepresentative";
-import { dateLabel, itemLabel, nameI, todayKST, type DailyNote } from "@/domain/notes";
+import { dateLabel, itemLabel, nameI, noMd, todayKST, type DailyNote } from "@/domain/notes";
 import { term } from "@/domain/wording";
 
 type Me = { user: { display_name: string }; children: { id: string; display_name: string; classroom_id: string; profile_photo?: ProfilePhoto }[] };
@@ -96,7 +96,7 @@ export function ParentHome() {
                       <time className="tabular-nums">{sentAt}</time>
                     </span>
                   </div>
-                  <h2 className="mt-1.5 text-headline font-bold leading-snug">{childLine ?? rest[0]?.value ?? "아이의 하루가 도착했어요"}</h2>
+                  <h2 className="mt-1.5 text-headline font-bold leading-snug">{noMd(childLine ?? rest[0]?.value ?? "아이의 하루가 도착했어요")}</h2>
                 </div>
               </div>
               {story.length > 0 && <div className="mt-4 rounded-xl bg-g p-3.5">
@@ -104,7 +104,7 @@ export function ParentHome() {
                 {story.map((i, k) => (
                     <p key={k} className="mt-1 text-callout leading-relaxed">
                       {i.source.type === "request" && <span className="mr-1.5 text-footnote font-semibold text-lav">내 요청</span>}
-                      {i.value}
+                      {noMd(i.value)}
                     </p>
                   ))}
               </div>}
@@ -113,7 +113,7 @@ export function ParentHome() {
                   {facts.map((f, k) => (
                     <div key={k} className="rounded-xl bg-tint px-3.5 py-3">
                       <dt className="text-footnote font-bold text-accent-ink">{itemLabel(f)}</dt>
-                      <dd className="mt-0.5 min-w-0 leading-relaxed">{f.source.type === "request" && <span className="mr-1.5 text-footnote font-semibold text-lav">내 요청</span>}{f.value}</dd>
+                      <dd className="mt-0.5 min-w-0 leading-relaxed">{f.source.type === "request" && <span className="mr-1.5 text-footnote font-semibold text-lav">내 요청</span>}{noMd(f.value)}</dd>
                     </div>
                   ))}
                 </dl>
