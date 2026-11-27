@@ -7,7 +7,6 @@ import { useSession } from "@/app/session";
 import { AuthPhoto } from "@/components/AuthPhoto";
 import { todayKST } from "@/domain/notes";
 
-const md = (iso: string) => `${Number(iso.slice(5, 7))}/${Number(iso.slice(8, 10))}`;
 /** 통신문 본문 조각의 앞 두 줄을 한 줄로 잇는다(제목·표 줄은 건너뛰고 목록 기호는 뗀다) */
 const firstLine = (text?: string) =>
   (text ?? "")
@@ -28,9 +27,9 @@ export function TodayClass() {
   const notice = pickNotice(docs.data, date);
   const noticeBody = useDocument(notice?.id).data;
   const posts = usePosts(user ? { kind: "org", id: user.org_id } : undefined).data;
-  const latest = (posts ?? []).filter((p) => p.status === "published").sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+  /* 반 활동은 오늘 올라온 소식만 보인다. 지난 글을 날짜 없이 보이면 오늘 일처럼 읽힌다 */
+  const latest = (posts ?? []).filter((p) => p.status === "published" && p.created_at.slice(0, 10) === date).sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
   const photo = latest?.photos[0];
-  const when = latest ? (latest.created_at.slice(0, 10) === date ? "오늘" : md(latest.created_at.slice(0, 10))) : "";
   const line = firstLine(noticeBody?.chunks?.[0]?.content);
 
   return (
@@ -38,7 +37,7 @@ export function TodayClass() {
       <h2 className="mb-2 px-1 text-footnote font-semibold text-ink2">오늘 우리 반</h2>
       <div className="rounded-xl bg-tint p-4 shadow-card">
         <dl className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-x-3 gap-y-2.5 text-callout">
-          <dt className="pt-px text-footnote font-bold text-accent-ink">급식{meal ? ` · ${meal.today ? "오늘" : meal.label}` : ""}</dt>
+          <dt className="pt-px text-footnote font-bold text-accent-ink">급식</dt>
           <dd>
             <Link to="/teacher/class" className="block active:opacity-70">
               {meal ? `점심 ${meal.lunch}` : "등록된 식단이 없어요"}
@@ -52,15 +51,19 @@ export function TodayClass() {
               {line && <span className="line-clamp-1 text-footnote text-ink2">{line}</span>}
             </Link>
           </dd>
-          <dt className="pt-px text-footnote font-bold text-accent-ink">반 활동{when ? ` · ${when}` : ""}</dt>
-          <dd>
-            <Link to="/teacher/feed" className="line-clamp-2 block active:opacity-70">{latest ? latest.body : "올라온 소식이 아직 없어요"}</Link>
-          </dd>
+          {latest && (
+            <>
+              <dt className="pt-px text-footnote font-bold text-accent-ink">반 활동</dt>
+              <dd>
+                <Link to="/teacher/feed" className="line-clamp-2 block active:opacity-70">{latest.body}</Link>
+              </dd>
+            </>
+          )}
         </dl>
         {(mealImg || photo) && (
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            {mealImg ? <Link to="/teacher/class" className="block overflow-hidden rounded-lg active:opacity-80"><img src={mealImg.fileUrl} alt={`${mealImg.mainDish} 참고 이미지`} className="aspect-[4/3] w-full object-cover" /></Link> : <span />}
-            {photo ? <Link to="/teacher/feed" className="block overflow-hidden rounded-lg active:opacity-80"><AuthPhoto photo={photo} className="aspect-[4/3] w-full" /></Link> : <span />}
+          <div className={`mt-3 grid gap-2 ${mealImg && photo ? "grid-cols-2" : "grid-cols-1"}`}>
+            {mealImg ? <Link to="/teacher/class" className="block overflow-hidden rounded-lg active:opacity-80"><img src={mealImg.fileUrl} alt={`${mealImg.mainDish} 참고 이미지`} className="aspect-[4/3] w-full object-cover" /></Link> : null}
+            {photo ? <Link to="/teacher/feed" className="block overflow-hidden rounded-lg active:opacity-80"><AuthPhoto photo={photo} className="aspect-[4/3] w-full" /></Link> : null}
           </div>
         )}
       </div>
