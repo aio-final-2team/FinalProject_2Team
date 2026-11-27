@@ -11,13 +11,13 @@ import { RecordSheet } from "./RecordSheet";
 import { useNotebook } from "@/features/notes/notebookCtx";
 import { useRecords } from "./store";
 
-/** 아이를 전부 펼치지 않고 검색·선택한 뒤 짧게 기록한다. 서버 API 전까지 이 기기에 임시 저장한다. */
+/** 아이를 전부 펼치지 않고 검색·선택한 뒤 짧게 기록한다. 기록은 서버에 저장한다. */
 export function RecordsPage() {
   const { user } = useSession();
   const cid = user?.classroom_ids[0];
   const date = todayKST();
   const kids = useChildren(cid);
-  const { records, add, remove } = useRecords(cid, date);
+  const { records, add, remove, query: recordsQ } = useRecords(cid, date);
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState<string | null>(null);
   const recordedKids = useMemo(() => (kids.data ?? []).filter((k) => records[k.id]?.length), [kids.data, records]);
@@ -80,7 +80,7 @@ export function RecordsPage() {
       )}
 
       <p className="mt-6 px-1 text-footnote text-ink2">관찰 기록은 알림장 초안을 만들 때 아이별 내용으로 반영돼요.</p>
-      <p className="mt-1 px-1 text-caption text-ink2">임시 저장이에요. 이 기기에만 보관돼요.</p>
+      {recordsQ.isError && <p role="alert" className="mt-1 px-1 text-caption text-danger">오늘 기록을 불러오지 못했어요. 새로고침해 주세요.</p>}
 
       {shownKid && <RecordSheet key={shownKid.id} open={!!openKid} name={shownKid.display_name} entries={records[shownKid.id] ?? []} onClose={() => setOpen(null)} onSave={(t) => add(shownKid.id, t)} onRemove={(i) => remove(shownKid.id, i)} />}
     </div>

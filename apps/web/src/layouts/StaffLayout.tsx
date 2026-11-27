@@ -6,7 +6,7 @@ import { useCards } from "@/api/cards";
 import { useNotes } from "@/api/notes";
 import { todayKST } from "@/domain/notes";
 import { useSession } from "@/app/session";
-import { MainLogo } from "@/components/Brand";
+import { MainLogo, SymbolMark } from "@/components/Brand";
 import { Icon } from "@/components/Icon";
 import type { Role } from "@/domain/types";
 
@@ -39,7 +39,7 @@ export function StaffLayout({ role }: { role: Exclude<Role, "parent"> }) {
   const { pathname } = useLocation();
 
   return (
-    <div className="min-h-full lg:grid lg:grid-cols-[232px_1fr]">
+    <div className={`min-h-full lg:grid lg:grid-cols-[232px_1fr] ${role === "teacher" ? "[--tab-lift:20px] lg:[--tab-lift:0px]" : ""}`}>
       <aside className="sticky top-0 hidden h-dvh flex-col gap-6 border-r border-sep bg-card px-4 py-6 lg:flex">
         <div className="px-2">
           <MainLogo className="h-10" />
@@ -59,6 +59,12 @@ export function StaffLayout({ role }: { role: Exclude<Role, "parent"> }) {
             </Link>
           ))}
         </nav>
+        {role === "teacher" && (
+          <Link to={`${base}/ask`} aria-current={tabOn(pathname, { to: `${base}/ask` }) ? "page" : undefined} className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-body font-semibold transition-colors ${tabOn(pathname, { to: `${base}/ask` }) ? "bg-tint text-accent-ink" : "text-ink hover:bg-fill"}`}>
+            <SymbolMark motion="curious" className="size-5" />
+            AI에게 묻기
+          </Link>
+        )}
         <button
           className="mt-auto flex items-center gap-3 rounded-xl px-3 py-2.5 text-sub text-ink2 hover:bg-fill"
           onClick={() => {
@@ -71,12 +77,12 @@ export function StaffLayout({ role }: { role: Exclude<Role, "parent"> }) {
         </button>
       </aside>
 
-      <main className="min-w-0 pb-[calc(76px+env(safe-area-inset-bottom))] lg:pb-0">
+      <main className="min-w-0 pb-[calc(76px+env(safe-area-inset-bottom)+var(--tab-lift,0px))] lg:pb-0">
         <Outlet />
       </main>
 
       <MeSheet open={me} onClose={() => setMe(false)} />
-      <TabBar className="max-w-none lg:hidden" items={items.map((it) => ({ to: it.to, icon: it.icon, label: it.label, count: it.count, also: it.also }))} extra={{ icon: "profile", label: "내 정보", onClick: () => setMe(true) }} />
+      <TabBar center={role === "teacher" ? { to: `${base}/ask`, label: "AI에게 묻기", mascot: true } : undefined} className="max-w-none lg:hidden" items={items.map((it) => ({ to: it.to, icon: it.icon, label: it.label, count: it.count, also: it.also }))} extra={{ icon: "profile", label: "내 정보", onClick: () => setMe(true) }} />
     </div>
   );
 }

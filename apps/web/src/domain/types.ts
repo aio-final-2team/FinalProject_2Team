@@ -12,6 +12,8 @@ export type Card = {
   kind?: string;
   inboxFilter?: InboxFilter;
   requestId: string;
+  /** 알림장 답장으로 접수된 문의면 그 알림장의 ID·날짜 (API 문서 3.34 source_note). 일반 요청은 없다 */
+  sourceNote?: { note_id: string; note_date: string };
   type: RequestType;
   status: Status;
   risk: Risk;

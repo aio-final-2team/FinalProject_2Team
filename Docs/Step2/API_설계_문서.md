@@ -7,7 +7,7 @@
 | 작업 | T13 API 설계 문서(FastAPI·Function Calling 도구 계약)·모의 API (#170) |
 | 작성 · 검토 | 태웅 · 인혜 |
 | 계약을 쓰는 쪽 | 화면 T12·T32(성주), 알림장 그래프 T32(프롬프트 검토 영민), 요청 처리 에이전트·자료·근거 검색 T29·T20·T33(영민) |
-| 판 | v0.13.4 · 2026-11-27 (판마다 바뀐 내용은 맨 끝 변경 이력 참고. 계약을 바꾸면 예시·모의 응답·시험도 함께 고친다) |
+| 판 | v0.13.7 · 2026-11-27 (판마다 바뀐 내용은 맨 끝 변경 이력 참고. 계약을 바꾸면 예시·모의 응답·시험도 함께 고친다) |
 | 2차 검토 링크 | `develop` 브랜치의 [API 설계 문서](https://github.com/aio-final-2team/FinalProject_2Team/blob/develop/Docs/Step2/API_설계_문서.md). API별 상태(2장)는 develop `24258f2` 코드로 판정했다. 이 커밋은 2장 상태 칸의 기준이고, 시연에 쓰는 커밋은 다음 줄에 따로 적는다 |
 | 시연 코드 기준 커밋 | 레포 [README](../../README.md#2차-검토-문서)의 '시연 코드 기준 커밋' 한 줄을 본다(11/24 밤 기준 develop `641591f`, 흐름 고치기 #338까지 팀 서버에 배포). 팀 서버를 다시 배포하면 README 그 한 줄만 고친다 |
 | 함께 보는 문서 | 아래 기준 판 표의 문서들, T04 흐름·권한 명세 |
@@ -28,7 +28,7 @@
 | **초안 실패 뒤 처리 — 알림장.** 작업 전체가 실패하면 `draft_status = failed`와 `error`로 알리고, 아이 한 명만 실패하면 그 아이에게만 확인 항목 `draft_failed`를 단다. 어느 쪽이든 반 발송은 막힌다. 다시 만들기까지의 복구 이력은 DB 설계서 2.6에 있다 | [3.19.1](#3191-접수부터-결과-조회까지-한-번에-따라가기), [3.26](#326-알림장-다시-만들기--post-apiv1daily-notesdraftsinput_idregenerate), DB 설계서 [2.6](DB_스키마_설계서.md#26-알림장알림평가) | `api/test_daily_notes.py::test_failed_writer_job_is_queryable_without_partial_notes`, `db/test_daily_notes_runner.py::test_one_child_failure_keeps_other_children_and_blocks_batch`, `db/test_daily_note_recovery.py::test_timeout_then_regenerate_is_one_recovered_incident_with_times`, `db/test_daily_note_recovery.py::test_failed_retry_is_handed_off_then_partial_template_is_fallback` | [`c80ee67`](https://github.com/aio-final-2team/FinalProject_2Team/commit/c80ee67), [`bf75f8f`](https://github.com/aio-final-2team/FinalProject_2Team/commit/bf75f8f) |
 | **초안 실패 뒤 처리 — 요청 처리 3분 마감.** 3분이 지나면 초안 없는 사람 카드로 넘기고(`ai_timeout`), 처리 중에 예외가 나면 `ai_failed`로 넘긴다. 코드 규칙으로 위험·주제를 다시 저장하고 유효한 담임에게 배정한다. 긴급·판단 필요면 원장 보고와 담임·원장 위험 알림도 남긴다. 모델 응답을 기다리는 동안에는 요청 행 잠금도 DB 연결도 잡지 않는다. 늦게 끝난 결과는 저장 직전에 다시 확인해서 버린다 | [6.1](#61-타임아웃), [6.3](#63-202로-접수하는-작업의-상태-조회) | `db/test_request_lock_timeout.py::test_answer_models_run_outside_request_row_lock`, `db/test_request_lock_timeout.py::test_ai_timeout_hands_off_empty_card_and_drops_late_draft`, `db/test_request_lock_timeout.py::test_timeout_error_raised_by_agent_is_ai_failed` | [`ab58b7c`](https://github.com/aio-final-2team/FinalProject_2Team/commit/ab58b7c) |
 | **초안 실패 뒤 처리 — 거절 뒤 재초안.** 담임이 회신 초안을 거절하면 새 회신 카드에는 초안 문장도 검사 결과도 없다. 그래서 그대로 승인하면 409가 나고, 담임이 직접 쓴 글(`edit_approve`)만 나간다 | [3.3](#33-카드-결정--post-apiv1cardscard_iddecisions) '결정마다 바뀌는 것' | `api/test_cards.py::test_reject_redraft_has_no_text_and_needs_teacher_text` | [`ab58b7c`](https://github.com/aio-final-2team/FinalProject_2Team/commit/ab58b7c) |
-| 첫 시연 순서, API 52개 목록의 상태 칸(DB 연결·모의만·제안) | [2](#2-api-목록), [2.1](#21-첫-시연-흐름의-연결표와-실제-연결-범위) | `api/test_openapi.py::test_all_52_documented_endpoints_exist`(목록 52행이 앱 경로와 같은지) | [`c80ee67`](https://github.com/aio-final-2team/FinalProject_2Team/commit/c80ee67) |
+| 첫 시연 순서, API 목록의 상태 칸(DB 연결·모의만·제안. 보완 당시 52개, 지금 74개) | [2](#2-api-목록), [2.1](#21-첫-시연-흐름의-연결표와-실제-연결-범위) | `api/test_openapi.py::test_all_documented_endpoints_exist`(목록 행이 앱 경로와 같은지) | [`c80ee67`](https://github.com/aio-final-2team/FinalProject_2Team/commit/c80ee67) |
 | 요청은 접수됐지만 인계 카드 저장에 실패한 경우 | [5.5.3](#553-사람-인계-카드--create_card), [6.7](#67-대표-사례-대조--화면apidb가-같은-상태로-보이는지) | `db/test_requests.py::test_agent_failure_preserves_request_and_hands_off_without_private_error`, `db/test_requests.py::test_sweep_exact_age_states_card_exclusion_and_concurrent_idempotency` | [`c80ee67`](https://github.com/aio-final-2team/FinalProject_2Team/commit/c80ee67) |
 | 기획서·계약표·DB 설계서와 맞춘 기준 판, 생성물이 앱 계약과 같은지 | 위 기준 판 표 | `api/test_openapi.py::test_contract_matches_application` | [`c80ee67`](https://github.com/aio-final-2team/FinalProject_2Team/commit/c80ee67) |
 
@@ -43,7 +43,7 @@
 | DB 2 | 검사를 통과한 아이별 초안만 복구 성공으로 세고, 사람에게 넘김·재시도 진입 실패를 따로 센다 | DB 2.6 'T58 복구 집계 기준' | `db/test_daily_note_recovery.py`의 현재 집계와 T58 기준 차이 기록, `daily_note_drafted` 저장 코드·0001/0003 DDL 확인 | 이 PR |
 | DB 3 | 시험 수치마다 커밋·날짜·alembic 판·범위·명령을 붙이고 권한·마이그레이션을 다시 확인한다 | API 2.2, DB 4.4·6.2·9.2 | `db/test_scope.py`, `db/test_scope_cases.py`, `db/test_migrations.py`, `db/test_feed_migration.py`, `db/test_request_risk_types.py` | 이 PR |
 
-이 문서는 유치온 API 69개(기존 49개는 v0.8 때 develop `24258f2` 코드로 확인, 투약·귀가 취소·수정·알림장 정정 3개와 필수 동의 3개, 기억 확인·승인한 답 고치기 2개, 바쁜 시간 3개·하루 중 기록 3개·알림장 답장과 준비물 확인 2개, 원 일정 1개·개인 알림 시간 2개·교직원 질문 1개 추가)와 에이전트 도구 15개의 계약을 담는다. 1~6장은 강사님 'API 설계 문서 작성법'에 나온 '문서에 들어가는 여섯 가지'의 순서를 따르고, 7장에는 API 필드와 DB 컬럼의 대응을, 8장에는 설정값을 적었다. 필드·권한·오류는 입출력 계약표와 같아야 한다. 두 문서가 어긋나면 계약표를 먼저 고친 뒤 두 문서의 판을 함께 올린다. 구현(FastAPI의 `/docs`)과 달라졌을 때도 둘을 대조해 판을 올린다. 모의 API와 생성물 `contracts/openapi.yaml`도 이 문서와 함께 둔다. 모의 API를 쓰는 법과 데모 계정은 [모의 API 안내](../../contracts/mock_api/README.md)에 있다. 제목에 [제안]이 붙은 절은 팀이 아직 계약을 확인하지 않은 내용으로, 투약·귀가(3.27), 상담 지연 입력(3.28), 피드·앨범(3.29), 보낸 알림장 정정(3.30), 필수 동의(3.31), 바쁜 시간(3.32), 하루 중 기록(3.33), 알림장 답장·준비물 확인(3.34), 원 일정(3.35), 개인 알림 시간(3.36), 교직원 AI 질문(3.37)이 여기에 해당한다. API별로 지금 어디까지 동작하는지는 2장 표의 상태 칸에 적었다.
+이 문서는 유치온 API 74개(기존 49개는 v0.8 때 develop `24258f2` 코드로 확인, 투약·귀가 취소·수정·알림장 정정 3개와 필수 동의 3개, 기억 확인·승인한 답 고치기 2개, 바쁜 시간 3개·하루 중 기록 3개·알림장 답장과 준비물 확인 2개, 원 일정 1개·개인 알림 시간 2개·교직원 질문 1개·재배정할 선생님 목록 1개·QA 알림장 초기화 1개·사람별 QA 원 도구 3개 추가)와 에이전트 도구 15개의 계약을 담는다. 1~6장은 강사님 'API 설계 문서 작성법'에 나온 '문서에 들어가는 여섯 가지'의 순서를 따르고, 7장에는 API 필드와 DB 컬럼의 대응을, 8장에는 설정값을 적었다. 필드·권한·오류는 입출력 계약표와 같아야 한다. 두 문서가 어긋나면 계약표를 먼저 고친 뒤 두 문서의 판을 함께 올린다. 구현(FastAPI의 `/docs`)과 달라졌을 때도 둘을 대조해 판을 올린다. 모의 API와 생성물 `contracts/openapi.yaml`도 이 문서와 함께 둔다. 모의 API를 쓰는 법과 데모 계정은 [모의 API 안내](../../contracts/mock_api/README.md)에 있다. 제목에 [제안]이 붙은 절은 팀이 아직 계약을 확인하지 않은 내용으로, 투약·귀가(3.27), 상담 지연 입력(3.28), 피드·앨범(3.29), 보낸 알림장 정정(3.30), 필수 동의(3.31), 바쁜 시간(3.32), 하루 중 기록(3.33), 알림장 답장·준비물 확인(3.34), 원 일정(3.35), 개인 알림 시간(3.36), 교직원 AI 질문(3.37), 재배정할 선생님 목록(3.38)이 여기에 해당한다. [QA 전용] 알림장 다시 시험하기(3.39)와 사람별 QA 원 도구(3.40)는 QA 서버에서만 켠다. API별로 지금 어디까지 동작하는지는 2장 표의 상태 칸에 적었다.
 
 **목차.** 1. 공통 정보와 인증 · 2. API 목록 · 3. 엔드포인트 상세 명세 · 4. 검증과 권한 규칙 · 5. Tool 정의와 호출 흐름 · 6. 실행 규칙 · 7. API 필드와 DB 컬럼 대응 · 8. 설정값 · 부록 A. 예시 ID · 부록 B. 강사 가이드 체크리스트 대조 · 변경 이력
 
@@ -57,7 +57,7 @@
 | 배포 서버 | `https://<배포 도메인>/api/v1` (AWS EC2) |
 | 자동 문서 | `http://localhost:8000/docs`, `http://localhost:8000/openapi.json`(버전 접두어 없이 앱 최상위 경로에 있음). 저장소에는 `/openapi.json`에서 뽑아낸 `contracts/openapi.yaml`을 생성물로 둔다 |
 | 상태 확인 | `GET /health` (인증 없음, 버전 접두어 없음) |
-| 모의 API | API 69개가 메모리에 올린 데모 데이터로 응답하므로, 다시 켜면 초기화된다. 실행 방법·계정·흐름은 [모의 API 안내](../../contracts/mock_api/README.md) 참고 |
+| 모의 API | API 74개 경로를 제공한다. 원 전체 초기화(72)는 404이며, 모의 업무 데이터는 다시 켜면 초기화된다. 실행 방법·계정·흐름은 [모의 API 안내](../../contracts/mock_api/README.md) 참고 |
 
 ### 1.2 인증
 
@@ -135,13 +135,13 @@ FastAPI가 기본으로 내는 422 응답은 예외 처리기에서 위 형식�
 
 첫 시연은 알림장 흐름으로 고정한다. 담임이 반 활동과 아이별 메모를 입력하면 AI가 초안을 만들고, 담임이 이를 확인·수정한 뒤 반 전체에 보낸다(기획서 2.3, 결정 D02). 이때 화면은 로그인·내 정보(3.8), 반 아이 목록(3.24), 초안 만들기·진행 상태(3.19), 알림장 보기(3.20), 고치기·확인(3.21), 반 알림장 보내기(3.6) 순서로 API를 부른다. 초안을 만들지 못했거나 다시 써야 하면 다시 만들기(3.26)를 부른다. 알림장을 보내면 학부모는 알림 목록(3.11)에서 `note_sent` 알림을 받고, 알림장 보기(3.20)에서 자기 아이 알림장을 연다.
 
-아래 표에 API 69개(기존 49개는 v0.8 때 develop `24258f2` 코드로 확인, 투약·귀가 취소·수정·알림장 정정 3개와 필수 동의 3개, 기억 확인·승인한 답 고치기 2개, 바쁜 시간 3개·하루 중 기록 3개·알림장 답장과 준비물 확인 2개, 원 일정 1개·개인 알림 시간 2개·교직원 질문 1개 추가)를 모았다. 인증·역할 열의 '자기 것'·'우리 반'은 4.2의 범위 규칙을 뜻한다. 상세 열에는 각 API를 자세히 설명한 3장의 절 번호를 적었다. 기존 49개 상태 칸은 develop 코드를 DB 모드(`DATA_BACKEND=db`)로 띄워 호출한 기록이며, 취소·수정 2개는 임시 DB 공용 HTTP 시험으로 확인한다.
+아래 표에 API 74개(기존 49개는 v0.8 때 develop `24258f2` 코드로 확인, 투약·귀가 취소·수정·알림장 정정 3개와 필수 동의 3개, 기억 확인·승인한 답 고치기 2개, 바쁜 시간 3개·하루 중 기록 3개·알림장 답장과 준비물 확인 2개, 원 일정 1개·개인 알림 시간 2개·교직원 질문 1개·재배정할 선생님 목록 1개·QA 알림장 초기화 1개·사람별 QA 원 도구 3개 추가)를 모았다. 인증·역할 열의 '자기 것'·'우리 반'은 4.2의 범위 규칙을 뜻한다. 상세 열에는 각 API를 자세히 설명한 3장의 절 번호를 적었다. 기존 49개 상태 칸은 develop 코드를 DB 모드(`DATA_BACKEND=db`)로 띄워 호출한 기록이며, 취소·수정 2개는 임시 DB 공용 HTTP 시험으로 확인한다.
 
 | 상태 | 뜻 | 개수 |
 | --- | --- | --- |
 | DB 연결 | DB 모드에서 실제 표를 읽고 쓴다. 모의 API에도 같은 경로가 있다 | 35 |
 | 모의만 | 모의 API에만 있고, DB 모드에서는 501 `NOT_IMPLEMENTED`를 돌려준다 | 0 |
-| 제안 | 모의·DB 두 모드에서 동작하지만, 계약을 팀이 확인하기 전이다 | 34 |
+| 제안 | 모의·DB 구현 범위는 상세 절을 따르며, 계약을 팀이 확인하기 전이다(QA 전용 포함) | 39 |
 
 설계서를 실제 동작으로 잇는 단계는 네 가지다(A 화면 계약·B 저장·C 외부 연동·D 모델). 'DB 연결'은 이 가운데 B 저장까지 실제로 확인했다는 뜻이다. 화면과 모델까지 실제로 동작하는지는 첫 시연 흐름을 기준으로 2.1에 따로 적었다. 지금 '모의만' 상태인 API는 없다. 자료 올리기(27)와 자료 상세(29)도 DB에 연결돼 있다. 기존 '제안' 세 절은 모두 기획서의 최종(반드시) 범위에 들어 있지만, 12/08 MVP에는 들어 있지 않다. 아래 표에 기존 세 절과 필수 동의 절의 상태를 적었다.
 
@@ -154,6 +154,9 @@ FastAPI가 기본으로 내는 422 응답은 예외 처리기에서 위 형식�
 | 3.33 [제안] 하루 중 기록(API 56~58) | FR-10 아이별 관찰과 알림장 메모 | 화면 연결 후 확인 | API 계약은 팀 확인 전이다 | 모의·DB 모두 구현, 0018 필요 |
 | 3.32 [제안] 바쁜 시간(API 59~61) | FR-05 상담 후보의 시간 충돌 방지 | 상담 예약의 일정 관리 | API 계약은 팀 확인 전이다 | 모의·DB 모두 구현, 기존 표 사용 |
 | 3.34 [제안] 알림장 답장·준비물 확인(API 62·68) | FR-14 학부모 홈 | 최종·중요 | API 계약은 팀 확인 전이다 | 모의·DB 모두 구현, 0019 필요 |
+| 3.38 [제안] 재배정할 선생님 목록(API 70) | FR-09·FR-19 원장 재배정 | 화면 연결 후 확인 | API 계약은 팀 확인 전이다 | 모의·DB 모두 구현, 기존 표 사용 |
+| 3.39 [QA 전용] 알림장 다시 시험하기(API 71) | QA 반복 시험 도구 | QA 서버 전용 | 운영 사용 금지 | 모의·DB 구현 |
+| 3.40 [QA 전용] 사람별 QA 원(API 72~74) | 독립된 QA·오류 진단 | QA 서버 전용 | 운영 사용 금지 | 초기화 DB 전용, 이력·정보 모의·DB 구현 |
 
 | # | 메서드 | 경로 | 인증·역할 | 설명 | 성공 | 요구사항 | 상세 | 상태 | 알림장 MVP | 팀 확인 남음 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -224,6 +227,11 @@ FastAPI가 기본으로 내는 422 응답은 예외 처리기에서 위 형식�
 | 65 | PATCH | `/api/v1/me/notification-settings` | 담임·원장 본인 | [제안] 개인 알림 시간 저장·해제 | 200 | FR-21 | 3.36 | 제안 | — | 팀: 제안 계약 |
 | 66 | POST | `/api/v1/staff/ask` | 담임·원장 | [제안] 원 자료로 교직원 질문에 답변(모델 장애: 503 UPSTREAM_UNAVAILABLE) | 200 | FR-21 | 3.37 | 제안 | — | 팀: 제안 계약 |
 | 68 | POST | `/api/v1/daily-notes/{note_id}/supplies-check` | 그 아이 보호자(보낸 알림장) | [제안] 준비물 '챙겼어요' 확인 | 200 | FR-14 | 3.34 | 제안 | — | 팀: 제안 계약 |
+| 70 | GET | `/api/v1/staff/teachers` | 원장·원감 | [제안] 재배정할 때 고를 같은 기관 선생님 목록(이름·지금 맡은 반) | 200 | FR-09, FR-19 | 3.38 | 제안 | — | 성주: 재배정 화면 연결 |
+| 71 | POST | `/api/v1/qa/daily-notes/reset` | 그 반 담임·원장 (QA 서버만) | [QA 전용] 한 반·날짜 알림장을 초기화해 같은 날 다시 시험 | 200 | QA 도구 | 3.39 | 제안 | QA | QA 서버만 켬 |
+| 72 | POST | `/api/v1/qa/sandbox/reset` | 자기 QA 원 사용자 | [QA 전용] 내 원 전체 초기화 | 200 | QA 도구 | 3.40 | 제안 | QA | QA 서버만 켬 |
+| 73 | GET | `/api/v1/qa/traces/{trace_id}` | JWT | [QA 전용] 자기 원 요청 이력·500 오류 조회 | 200 | QA 도구 | 3.40 | 제안 | QA | QA 서버만 켬 |
+| 74 | GET | `/api/v1/qa/info` | 없음 | [QA 전용] 배포 판·켜진 기능·원 목록 조회 | 200 | QA 도구 | 3.40 | 제안 | QA | QA 서버만 켬 |
 
 | 67 | POST | `/api/v1/memories/{memory_id}/confirm` | 그 아이 보호자 | 돌봄 메모 기억·버림 | 200 | FR-20 | 3.25 | DB 연결 | — | 화면 연결 필요 |
 | 69 | PATCH | `/api/v1/saved-answers/{answer_id}` | 승인한 담임·같은 기관 원장 | 승인 답 끄기·켜기 | 200 | FR-20 | 3.25 | DB 연결 | — | 화면 연결 필요 |
@@ -248,10 +256,10 @@ SSE 두 개(6번·14번)는 실시간 진행 화면(NFR-10)에서 쓴다. 투약
 
 | 단계 | 연결할 것 | 지금 상태 | 근거 |
 | --- | --- | --- | --- |
-| A 화면 계약 | 웹 화면 ↔ API | 확인 안 됨. 웹 코드(`apps/web/src/api/notes.ts`)는 3.19·3.20·3.21·3.24·3.6을 부르지만, 화면 표시는 첫 시연에서 점검한다 | 화면 점검 전 |
+| A 화면 계약 | 웹 화면 ↔ API | 화면으로 확인함(11/27). 확인·고치기·발송 잠금·반 발송·학부모 홈을 웹 화면에서 끝까지 눌러 봤다. 초안 만들기는 메모 17개를 손으로 넣지 않으려고 같은 API로 보내서, 화면의 진행 표시와 '관찰 기록'은 아직 화면으로 보지 않았다 | FB-021-1(`49edbe5`, 별빛반 20명, 담임 `teacher01`·학부모 `parent01`) |
 | B 저장 | API ↔ 시험 DB | 실제로 확인함 | 49개를 DB 모드로 불러 501이 없음, `tools/test_db.sh`의 DB 시험 290개 통과(과거 기준: 2026-11-23, `24258f2`, 0010, `tools/test_db.sh`; 이번 결과는 2.2) |
 | C 외부 연동 | 외부 API | 해당 없음. 알림장 흐름은 외부 API를 부르지 않는다 | — |
-| D 모델 | 그래프 ↔ 모델 ↔ 저장 | 모의 연동 성공 / 실제 연동 대기. 기본 작성기는 모델을 부르지 않는 대역이고, 그래프는 가짜 모델로 단위 시험을 통과했다. 실제 모델로 앱을 거친 실행은 이 판에서 확인하지 않았다 | `tests/unit/test_daily_note_graph.py` 27개 통과(과거 기준: 2026-11-23, `24258f2`, 0010 호환·DB 미사용, `python -m pytest tests/unit/test_daily_note_graph.py`; 이번 결과는 2.2) |
+| D 모델 | 그래프 ↔ 모델 ↔ 저장 | 실제 연동 확인함(11/27). 팀 서버 `DAILY_NOTE_WRITER=graph`·`RUN_IN=worker`, gpt-6-luna로 20명 초안 16초, 확인 필요 4명(민감 3·다른 아이 1). 코드 기본 작성기는 여전히 모델을 부르지 않는 대역이다 | FB-021-1(`49edbe5`). 단위 시험: `tests/unit/test_daily_note_graph.py` 27개 통과(과거 기준: 2026-11-23, `24258f2`, 0010 호환·DB 미사용, `python -m pytest tests/unit/test_daily_note_graph.py`; 이번 결과는 2.2) |
 
 **재현과 증빙.** 검토자는 아래 조건으로 같은 결과를 다시 볼 수 있다.
 
@@ -292,7 +300,7 @@ SSE 두 개(6번·14번)는 실시간 진행 화면(NFR-10)에서 쓴다. 투약
 
 ## 3. 엔드포인트 상세 명세
 
-API 56개를 가이드의 여덟 칸으로 쓴다. 필드 표의 '빈값'은 그 필드가 `""`이나 `null`을 받아도 되는지를 뜻한다. 예시의 고정 ID는 부록 A의 데모 ID이고, 3.8 이후 예시는 주요 응답 필드와 목록 첫 항목만 남겨 줄여 보인다. 토큰과 새로 발급한 ID도 `…`로 줄인다. 경로의 `{card_id}`·`{input_id}`·`{note_id}`에는 앞선 응답에서 받은 값을 넣는다.
+API 74개를 가이드의 여덟 칸으로 쓴다. 필드 표의 '빈값'은 그 필드가 `""`이나 `null`을 받아도 되는지를 뜻한다. 예시의 고정 ID는 부록 A의 데모 ID이고, 3.8 이후 예시는 주요 응답 필드와 목록 첫 항목만 남겨 줄여 보인다. 토큰과 새로 발급한 ID도 `…`로 줄인다. 경로의 `{card_id}`·`{input_id}`·`{note_id}`에는 앞선 응답에서 받은 값을 넣는다.
 
 ### 3.1 요청 만들기 — `POST /api/v1/requests`
 
@@ -1061,7 +1069,7 @@ HTTP/1.1 200 OK
 | ② 요청 헤더 | `Authorization`(필수), `X-Request-ID`(권장), `Content-Type: application/json`. |
 | ③ 경로·쿼리 | card_id(UUID, 필수). |
 | ④ 요청 본문 | assignee_id·reason. version은 받지 않는다. |
-| ⑤ 검증·권한 | director만. 배정 대상은 같은 기관의 활성 teacher여야 한다. director_report 카드나 done·rejected 카드는 재배정하지 못한다. |
+| ⑤ 검증·권한 | director만. 배정 대상은 같은 기관의 활성 teacher여야 한다(고를 목록은 API 70, 3.38). director_report 카드나 done·rejected 카드는 재배정하지 못한다. |
 | ⑥ 정상 응답 | 200 + card { assignee { id, display_name }, version }. |
 | ⑦ 오류 응답 | 아래 오류 표. |
 | ⑧ 실행 규칙 | 카드의 담당과 연결된 요청의 담당을 함께 바꾸고 카드 판을 1 올린다. unassigned 카드는 pending으로 바꾼다. 새 담당에게 reassigned("요청이 배정됐어요") 알림을 남긴다. 예약 확정 전 상담의 proposed·chosen_by_parent 후보는 새 담당의 바쁜 시간·확정 예약(지연 종료 시각 포함)과 다시 비교해 겹치는 것만 discarded로 버리고, 남은 후보의 teacher_id를 바꾼 뒤 버린 수만큼 다음 회차에서 가능한 후보를 채운다. 겹치지 않는 시각·체크는 보존하되, 학부모 체크를 버렸으면 남은 체크도 풀고 요청을 needs_info로 돌려 기존 needs_info 알림으로 다시 선택을 안내한다. 열린 후보가 없던 상담은 최대 세 개를 새로 계산하고 같은 안내를 남긴다. 그 밖의 요청 상태와 기한도 그대로 둔다. 다른 반 교사에게도 배정할 수 있고, 이력에는 from·to·reason을 남긴다. |
@@ -1870,6 +1878,120 @@ GET `/api/v1/me`와 로그인 응답의 user.consents_complete도 같은 판·�
 {"answer":"준비물은 수건이에요.","evidence":[{"document_id":"00000000-0000-4000-8000-000000000066","title":"가상 준비 안내","location":"1쪽 준비물","effective_date":"2026-12-01"}],"conflict":false}
 ```
 
+### 3.38 [제안] 재배정할 선생님 목록 — `GET /api/v1/staff/teachers`
+
+| 칸 | 내용 |
+| --- | --- |
+| ① 호출 목적 | 원장이 카드 담당을 바꿀 때(3.16, API 19) 고를 선생님을 보여 준다(API 70). 아직 맡은 카드가 없는 선생님도 나온다. |
+| ② 요청 헤더 | Authorization 필수, X-Request-ID 권장. |
+| ③ 경로·쿼리 | 없음. 기관은 로그인한 원장의 기관이다. |
+| ④ 요청 본문 | 없음. |
+| ⑤ 검증·권한 | director만. 같은 기관의 활성 teacher만 돌려준다. 3.16이 배정 대상으로 받는 조건과 같다. |
+| ⑥ 정상 응답 | 200 `{items:[{id,display_name,classrooms:[{id,name}]}]}`. 이름·지금 맡은 반만 주고 로그인 ID·연락처는 주지 않는다. |
+| ⑦ 오류 응답 | 401 UNAUTHENTICATED, 담임·학부모 403 FORBIDDEN_ROLE. 공통 오류 형식(1.4) 유지. |
+| ⑧ 실행 규칙 | 맡은 반은 `classroom_staff`에서 오늘(KST) `valid_from`~`valid_to` 안인 배정만 센다. 기간이 끝난 담임은 목록에 남되 반이 빈 배열이다. 정렬은 이름 → id, 반도 이름 → id(문자 코드 순, mock·DB 같음). 읽기 전용이라 이력·알림을 남기지 않는다. 새 표·마이그레이션은 없다. |
+
+| 필드 | 위치 | 타입 | 필수·빈값 | 설명 |
+| --- | --- | --- | --- | --- |
+| items[].id | 응답 | string(UUID) | 항상 | 3.16 `assignee_id`에 그대로 넣는 값 |
+| items[].display_name | 응답 | string | 항상 | 화면에 보일 이름 |
+| items[].classrooms | 응답 | object[] | 항상, 빈 배열 가능 | 지금 맡은 반 `{id,name}`. 맡은 반이 없으면 `[]` |
+
+```json
+{"items":[{"id":"00000000-0000-4000-8000-000000000201","display_name":"별빛반 선생님","classrooms":[{"id":"00000000-0000-4000-8000-000000000101","name":"만 4세 별빛반"}]},{"id":"00000000-0000-4000-8000-000000000203","display_name":"보조 선생님","classrooms":[]},{"id":"00000000-0000-4000-8000-000000000202","display_name":"햇님반 선생님","classrooms":[{"id":"00000000-0000-4000-8000-000000000102","name":"만 5세 햇님반"}]}]}
+```
+
+### 3.39 [QA 전용] 알림장 다시 시험하기 — `POST /api/v1/qa/daily-notes/reset`
+
+| 칸 | 내용 |
+| --- | --- |
+| ① 호출 목적 | QA에서 한 반·한 날짜 알림장을 지우고 초안 만들기부터 다시 시험한다(API 71). 운영에서는 켜지 않는다. |
+| ② 요청 헤더 | Authorization 필수, X-Request-ID 권장. |
+| ③ 경로·쿼리 | 없음. 기관은 로그인한 교직원의 기관이다. |
+| ④ 요청 본문 | `{classroom_id, note_date?}`. 추가 키를 거부한다. 날짜를 생략하면 오늘(KST)이다. |
+| ⑤ 검증·권한 | `QA_TOOLS=true` 또는 `1`일 때만 동작한다. 그 반의 현재 담임·같은 기관 원장만 가능하며 필수 동의 검사는 하지 않는다. |
+| ⑥ 정상 응답 | 200 `{classroom_id,note_date,deleted:{inputs,notes,cards,notifications,events},unlinked_replies}`. 없거나 이미 지운 대상은 모두 0이다. |
+| ⑦ 오류 응답 | 설정이 꺼져 있으면 인증·역할·본문 해석보다 먼저 404 NOT_FOUND. 켜져 있으면 401 UNAUTHENTICATED, 학부모 403 FORBIDDEN_ROLE, 다른 반 담임·다른 기관 반·없는 반 404 NOT_FOUND, 입력 오류 422 VALIDATION_FAILED. 공통 오류 형식(1.4)을 따른다. |
+| ⑧ 실행 규칙 | DB는 대상 입력을 FOR UPDATE로 잡고 한 트랜잭션에서 처리한다. 해당 입력의 아이별 알림장과 daily_note_batch 카드, 그 알림·이력·승인을 지운다. 카드 근거·상담 후보는 카드 삭제에 따라 지워진다. 답장 요청은 남기고 source_note_id만 비운다. 기억은 source_card_id만 비운다(승인 답은 문의 답변 카드에서만 생겨 알림장 카드와 연결되지 않는다). 카드→알림장→입력 순서로 삭제하고, FK 없는 tool_called 이력에 tool=qa_daily_note_reset·반·날짜·삭제 개수를 남긴다(0개 초기화도 한 건). deleted.events는 새 감사 기록을 제외한다. 계정·요청·하루 중 기록·기억 본문·다른 반과 날짜는 보존한다. OpenAPI에는 설정과 관계없이 항상 나온다. |
+
+| 필드 | 위치 | 타입 | 필수·빈값 | 설명 |
+| --- | --- | --- | --- | --- |
+| classroom_id | 요청·응답 | string(UUID) | 필수 | 초기화할 반, 현재 담당 범위 검사 |
+| note_date | 요청·응답 | string(date) | 요청 생략 가능, null 불가 | 기본 오늘 KST, 응답에는 항상 포함 |
+| deleted.inputs | 응답 | integer | 항상, 0 이상 | 지운 공통 입력 수 |
+| deleted.notes | 응답 | integer | 항상, 0 이상 | 지운 아이별 알림장 수 |
+| deleted.cards | 응답 | integer | 항상, 0 이상 | 지운 반 묶음 카드 수 |
+| deleted.notifications | 응답 | integer | 항상, 0 이상 | card_id 또는 daily_note 주제로 연결된 알림 수 |
+| deleted.events | 응답 | integer | 항상, 0 이상 | daily_note_id 또는 card_id가 연결된 이력 수 |
+| unlinked_replies | 응답 | integer | 항상, 0 이상 | 요청은 보존하고 source_note_id를 비운 답장 수 |
+
+```http
+POST /api/v1/qa/daily-notes/reset
+Authorization: Bearer <교직원 토큰>
+Content-Type: application/json
+
+{"classroom_id":"00000000-0000-4000-8000-000000000101","note_date":"2026-11-27"}
+```
+
+```json
+{"classroom_id":"00000000-0000-4000-8000-000000000101","note_date":"2026-11-27","deleted":{"inputs":1,"notes":20,"cards":1,"notifications":2,"events":42},"unlinked_replies":1}
+```
+
+### 3.40 [QA 전용] 사람별 QA 원 — API 72~74
+
+| 칸 | 내용 |
+| --- | --- |
+| ① 호출 목적 | 사람마다 자기 가상 원에서 반복 시험하고, 요청 ID로 오류와 배포 판을 확인해요. 사용 순서는 [QA 안내서](../QA/README.md)를 봐 주세요. |
+| ② 요청 헤더 | 72·73은 Authorization 필수, X-Request-ID 권장. 74는 로그인 없이 조회하고, Authorization을 붙이면 `me`(내 역할·원 이름·반 목록)를 더 줘요. |
+| ③ 경로·쿼리 | 72 POST `/qa/sandbox/reset`, 73 GET `/qa/traces/{trace_id}`(1~128자 문자열), 74 GET `/qa/info`. 기관은 JWT에서 얻어요. |
+| ④ 요청 본문 | 모두 없어요. 초기화 대상 원을 본문으로 고를 수 없어요. |
+| ⑤ 검증·권한 | QA_TOOLS=true·1만 열려요. 72는 DB의 sj·ym·jh·ih·tw QA 원 사용자(모든 역할)만 가능해요. QA_PASSWORD가 비어 있어도 404예요. 73은 어떤 역할이든 로그인해야 하고 자기 원 이력·오류만 보여요. |
+| ⑥ 정상 응답 | 72는 200 `{org_name,deleted,seeded}`. 73은 200 `{trace_id,events,errors}`이며 없으면 빈 배열 두 개. 74는 200 `{commit,deployed_at,migration,data_backend,switches,qa_orgs,me}`예요. `me`는 토큰이 없거나 틀리면 null이에요. |
+| ⑦ 오류 응답 | QA 꺼짐은 인증·입력 해석 전 404 NOT_FOUND. 72의 mock·데모 원·일반 원도 404. 로그인 필요 경로의 미인증은 401 UNAUTHENTICATED, 73의 128자 초과는 422 VALIDATION_FAILED예요. |
+| ⑧ 실행 규칙 | 72는 원별 advisory lock과 한 트랜잭션에서 FK 자식부터 원 단위 표를 지우고, 기존 시드로 해당 QA 원 하나를 다시 만들어요. 데모·다른 QA 원 행은 보존해요. 계정 ID·JWT는 유지하고 events에 tool_called, detail.tool=qa_sandbox_reset·삭제 수를 한 건 남겨요. 사진·문서 파일은 남겨요(shortcut: 디스크 정리는 별도 보존 정책 도입 때 처리). 새 기동은 이미 있는 QA 원을 덮지 않아요. 같은 content의 데모 문서 벡터를 먼저 복사하고 빈 벡터만 채워요. 73의 events는 detail.trace_id로 찾아 시각순이며, errors는 API 프로세스의 최근 500건 링 버퍼예요. 배포·재기동 때 errors는 사라지고 worker 예외는 포함하지 않아요. 예외 메시지·입력은 errors에 넣지 않아요. 74는 키·비밀번호·DB 주소를 노출하지 않아요. 같은 QA 서버의 GET `/api/v1/qa/console`은 72~74와 API 71을 버튼으로 부르는 QA 도구 화면(HTML)이에요. API 목록·OpenAPI에는 넣지 않고, QA_TOOLS가 꺼지면 404예요. |
+
+| 필드 | 위치 | 타입 | 필수·빈값 | 설명 |
+| --- | --- | --- | --- | --- |
+| trace_id | 73 경로·응답 | string | 1~128자 | X-Request-ID 또는 error.trace_id |
+| org_name | 72 응답 | string | 항상 | 예: QA 성주 원 |
+| deleted | 72 응답 | object(string→integer) | 항상, 각 값 0 이상 | FK 순서로 지운 표별 행 수, 새 감사 기록 제외 |
+| seeded | 72 응답 | object | 항상 | users·children·documents의 기준 시드 수 |
+| events | 73 응답 | array | 빈 배열 가능 | created_at·action·actor_type·agent_name·request_id·card_id·daily_note_id·detail. 뒤의 ID·agent_name은 null 가능 |
+| errors | 73 응답 | array | 빈 배열 가능 | at·method·path·status(500)·error_type·where(파일:줄). 메시지 없음 |
+| commit·deployed_at | 74 응답 | string 또는 null | 항상 | GIT_SHA·DEPLOYED_AT, 배포 스크립트가 전달해요 |
+| migration | 74 응답 | string 또는 null | 항상 | alembic_version.version_num, mock은 null |
+| data_backend | 74 응답 | string | 항상 | mock 또는 db |
+| switches | 74 응답 | object | 항상 | daily_note_writer·answer_writer·request_agent 문자열, embedding 불리언, llm_models(설정된 모델 이름만) |
+| qa_orgs | 74 응답 | array | 항상 | tag·name·login_prefix. sj·ym·jh·ih·tw 다섯 원 |
+
+```http
+POST /api/v1/qa/sandbox/reset
+Authorization: Bearer <자기 QA 원 토큰>
+```
+
+```json
+{"org_name":"QA 성주 원","deleted":{"users":22,"children":21,"documents":69},"seeded":{"users":22,"children":21,"documents":69}}
+```
+
+위 deleted 예시는 표 세 개만 줄여 보였어요. 실제 응답에는 모든 원 단위 표가 있어요.
+
+```http
+GET /api/v1/qa/traces/qa-example-1
+Authorization: Bearer <자기 원 토큰>
+```
+
+```json
+{"trace_id":"qa-example-1","events":[],"errors":[]}
+```
+
+```http
+GET /api/v1/qa/info
+```
+
+```json
+{"commit":null,"deployed_at":null,"migration":null,"data_backend":"mock","switches":{"daily_note_writer":"app.modules.daily_notes.stub_writer:write","answer_writer":"stub","request_agent":"app.modules.requests.agent_stub:run_request","embedding":false,"llm_models":{"default":"gpt-6-luna","supervisor":"","document":"","memory":"","checker":"","code":""}},"qa_orgs":[{"tag":"sj","name":"QA 성주 원","login_prefix":"sj."},{"tag":"ym","name":"QA 영민 원","login_prefix":"ym."},{"tag":"jh","name":"QA 지혜 원","login_prefix":"jh."},{"tag":"ih","name":"QA 인혜 원","login_prefix":"ih."},{"tag":"tw","name":"QA 태웅 원","login_prefix":"tw."}]}
+```
+
 ## 4. 검증과 권한 규칙
 
 ### 4.1 형식 검사(422)와 서버 검사(403·404·409)를 나눈다
@@ -2412,6 +2534,7 @@ MVP 설정값은 서버 설정(`.env`)으로 관리한다. `.env.example`에는 
 | `IMMEDIATE_RISK_CATEGORIES` | `child_safety` | 근무 시간 밖에도 바로 보내는 긴급 위험 종류. child_safety·staff_attack·legal_external·privacy_leak 중에서 골라 쉼표로 나열 |
 | `MEDIA_DIR` | `var/media` | 피드 파일을 저장하는 폴더(3.29). mock은 mock/만 초기화하고 DB 파일은 그대로 둠 |
 | `MOCK_STREAM_DELAY_MS` | `300` | 모의 SSE 이벤트 사이의 간격(밀리초). 음수를 넣으면 0으로 처리 |
+| `QA_TOOLS` | `false` | `true`·`1`만 참. 팀 QA 서버에서만 알림장 초기화·사람별 원 도구(3.39~3.40)를 켜고 운영에서는 금지 |
 | `LLM_MODEL_DEFAULT` | `gpt-6-luna` | 역할별 모델 칸이 비어 있을 때 쓰는 모델 |
 | `LLM_MODEL_SUPERVISOR` | (비움) | 감독 AI 모델 |
 | `LLM_MODEL_DOCUMENT` | (비움) | 자료 AI 모델 |
@@ -2437,6 +2560,7 @@ MVP 설정값은 서버 설정(`.env`)으로 관리한다. `.env.example`에는 
 | `CL-DEMO-02` | 만 5세 햇님반 | `classrooms` | `00000000-0000-4000-8000-000000000102` |
 | `T-DEMO-01` | 우리 반 담임 | `users` | `00000000-0000-4000-8000-000000000201` |
 | `T-DEMO-02` | 다른 반 교사(권한 거부 시험용) | `users` | `00000000-0000-4000-8000-000000000202` |
+| `teacher03` | 맡은 반이 없는 보조 교사(재배정 시험용, 표시 이름 '보조 선생님') | `users` | `00000000-0000-4000-8000-000000000203` |
 | `D-DEMO-01` | 원장 | `users` | `00000000-0000-4000-8000-000000000301` |
 | `P-DEMO-01` | 우리 아이 학부모 | `users` | `00000000-0000-4000-8000-000000000401` |
 | `P-DEMO-02` | 다른 아이 학부모 | `users` | `00000000-0000-4000-8000-000000000402` |
@@ -2461,9 +2585,9 @@ MVP 설정값은 서버 설정(`.env`)으로 관리한다. `.env.example`에는 
 
 | 체크리스트(가이드 33쪽) | 이 문서 |
 | --- | --- |
-| 구현할 API가 모두 목록 표에 있고 요구사항 ID와 연결된다 | 2장(69개, 요구사항 열·상태 칸) |
+| 구현할 API가 모두 목록 표에 있고 요구사항 ID와 연결된다 | 2장(74개, 요구사항 열·상태 칸) |
 | 서버 주소·인증·오류 형식·/docs·변경 이력이 있다 | 1장, 끝의 변경 이력 |
-| 구현할 API마다 상세 명세와 필드 명세 표가 있다 | 3장(69개 전부) |
+| 구현할 API마다 상세 명세와 필드 명세 표가 있다 | 3장(74개 전부) |
 | 형식 오류(422)와 권한·승인 오류(403)를 나눠 적었다 | 4.1 |
 | 202를 쓰는 API는 작업 상태·결과·실패 조회가 있다 | 3.19.1, 6.3 |
 | Tool마다 성공·실패 출력과 실패 후 처리가 있다 | 5.2, 5.4, 5.5, 5.7 |
@@ -2498,3 +2622,6 @@ MVP 설정값은 서버 설정(`.env`)으로 관리한다. `.env.example`에는 
 | v0.13.2 | 2026-11-26 | 카드 목록·상세·재분류에 아이·보호자 이름을 더해요. GET /requests를 담임·원장에게 열고 담당 반·유형·답변 주체로 걸러요. 학부모 응답은 유지해요(3.7·3.9). | 태웅 |
 | v0.13.3 | 2026-11-26 | [제안] 하루 중 기록 API 56~58·3.33과 API 22의 서버 기록 메모 fallback을 추가함. 기존 초안 요청·응답 칸은 유지함. | 태웅 |
 | v0.13.4 | 2026-11-27 | [제안] 원 일정 API 63(3.35)·개인 알림 시간 API 64~65(3.36)·교직원 AI 질문 API 66(3.37)을 더함. 미동의 차단에 교직원 AI 질문을 넣어 일곱 경로. 목록 69개(DB 연결 35·제안 34) | 태웅 |
+| v0.13.5 | 2026-11-27 | [제안] 재배정할 선생님 목록 API 70(3.38)을 더함. 원장만, 같은 기관 활성 선생님의 이름·지금 맡은 반만. 데모 시드에 반 없는 보조 교사 `teacher03`(…0203)을 더함. 목록 70개(DB 연결 35·제안 35) 지혜님 백엔드 정리 PM 체크: 본문 옛 숫자(52·56개)를 고치고 2.1의 A 화면·D 모델 칸을 11/27 리허설 기록(FB-021-1)으로 채움. | 태웅 |
+| v0.13.6 | 2026-11-27 | [QA 전용] 알림장 다시 시험하기 API 71(3.39)을 더함. QA_TOOLS로만 켜며 한 반·날짜의 알림장·묶음 카드·이력·알림을 삭제하고 답장은 연결만 해제. 목록 71개(DB 연결 35·제안 36) | 태웅 |
+| v0.13.7 | 2026-11-27 | [QA 전용] 사람별 QA 원 시드·전체 초기화 API 72·요청 trace API 73·배포 정보 API 74(3.40), QA 안내서를 더함. 목록 74개(DB 연결 35·제안 39) | 태웅 |

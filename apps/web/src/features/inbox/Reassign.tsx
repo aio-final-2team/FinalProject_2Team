@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { ApiError } from "@/api/client";
 import { useAllCards, useReassign } from "@/api/cards";
+import { useTeachers } from "@/api/staff";
 import { useSession } from "@/app/session";
 import { Button } from "@/components/Button";
 import { Sheet } from "@/components/Sheet";
@@ -8,8 +9,8 @@ import { useToast } from "@/components/Toast";
 import type { Card } from "@/domain/types";
 
 /**
- * 원장의 카드 재배정(API 19). 서버에 교사 목록 API가 없어서, 카드 목록에 담당으로 나온 선생님 중에서 고른다.
- * 아직 맡은 카드가 없는 선생님은 목록에 나오지 않는다(교사 목록 API가 생기면 그 목록으로 바꾼다).
+ * 원장의 카드 재배정(API 19). 고를 선생님은 선생님 목록 API(API 70)에서 받는다.
+ * 아직 맡은 카드가 없는 선생님과 반이 없는 보조 교사도 나온다.
  */
 export function Reassign({ c }: { c: Card }) {
   const { user } = useSession();
@@ -21,11 +22,12 @@ export function Reassign({ c }: { c: Card }) {
   const [reason, setReason] = useState("");
 
   const current = all.find((x) => x.id === c.id)?.assignee;
-  const teachers = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const x of all) if (x.assignee && x.assignee.id !== user?.id && x.assignee.id !== current?.id) m.set(x.assignee.id, x.assignee.name);
-    return [...m].map(([id, name]) => ({ id, name }));
-  }, [all, user?.id, current?.id]);
+  const list = useTeachers(open);
+  /* 지금 담당과 나는 빼고, 이름 옆에 지금 맡은 반을 붙인다 */
+  const teachers = useMemo(
+    () => (list.data ?? []).filter((t) => t.id !== user?.id && t.id !== current?.id).map((t) => ({ id: t.id, name: t.display_name, label: t.classrooms.length ? `${t.display_name} · ${t.classrooms.map((c) => c.name).join(", ")}` : t.display_name })),
+    [list.data, user?.id, current?.id],
+  );
 
   const locked = c.kind === "director_report" ? "원장 보고 카드는 바꿀 수 없어요" : c.status === "completed" || c.status === "rejected" ? "끝난 카드는 바꿀 수 없어요" : undefined;
 
@@ -49,12 +51,16 @@ export function Reassign({ c }: { c: Card }) {
       <Button variant="tinted" lockedReason={locked} onClick={() => setOpen(true)}>담당 바꾸기</Button>
       <Sheet open={open} onClose={() => setOpen(false)} title="담당 선생님 바꾸기">
         {current && <p className="text-sub text-ink2">지금 담당은 {current.name}이에요.</p>}
-        {teachers.length === 0 ? (
-          <p className="rounded-md bg-g p-3 text-callout text-ink2">고를 수 있는 선생님이 아직 없어요. 카드를 맡고 있는 다른 선생님이 있을 때 여기에 나와요.</p>
+        {list.isLoading ? (
+          <p className="rounded-md bg-g p-3 text-callout text-ink2">선생님 목록을 불러오고 있어요</p>
+        ) : list.isError ? (
+          <p role="alert" className="rounded-md bg-g p-3 text-callout text-ink2">선생님 목록을 불러오지 못했어요. 닫고 다시 열어 주세요.</p>
+        ) : teachers.length === 0 ? (
+          <p className="rounded-md bg-g p-3 text-callout text-ink2">바꿀 수 있는 다른 선생님이 없어요.</p>
         ) : (
           <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="새 담당 선생님">
             {teachers.map((t) => (
-              <button key={t.id} type="button" role="radio" aria-checked={pick === t.id} onClick={() => setPick(t.id)} className={`h-11 rounded-full px-4 text-callout font-semibold ${pick === t.id ? "bg-brand-fill text-on-brand" : "bg-card text-ink shadow-card"}`}>{t.name}</button>
+              <button key={t.id} type="button" role="radio" aria-checked={pick === t.id} onClick={() => setPick(t.id)} className={`h-11 rounded-full px-4 text-callout font-semibold ${pick === t.id ? "bg-brand-fill text-on-brand" : "bg-card text-ink shadow-card"}`}>{t.label}</button>
             ))}
           </div>
         )}
