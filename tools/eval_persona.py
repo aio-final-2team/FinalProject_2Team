@@ -203,6 +203,10 @@ def _path_from_result(case: dict[str, Any], state: dict[str, Any], result: dict[
         return supervisor["route"]
     if case["request_type"] == "complaint":
         return "teacher"
+    if result.get("partial") and result.get("conflict"):
+        return "partial_conflict"
+    if result.get("partial"):
+        return "partial"
     if result.get("conflict"):
         return "conflict"
     if result.get("no_evidence"):
@@ -294,6 +298,7 @@ def run_case(case: dict[str, Any], model_mode: str = "fake") -> dict[str, Any]:
                       "status": "awaiting_review" if route in ("inquiry", "complaint") and supervisor["route"] == "evidence"
                       else "escalated" if supervisor["route"] == "director" else "closed",
                       "draft": payload.get("text", ""), "evidence": payload.get("evidence", []),
+                      "partial": bool(payload.get("partial")),
                       "no_evidence": bool(payload.get("no_evidence")), "conflict": bool(payload.get("conflict")),
                       "director_report": supervisor["route"] == "director",
                       "ledger_report": supervisor["route"] == "director",
@@ -322,7 +327,7 @@ def run_case(case: dict[str, Any], model_mode: str = "fake") -> dict[str, Any]:
     if not saved:
         # Some routes return a graph answer directly to the card callback.
         saved.update({"route": case["request_type"], "card_kind": "teacher_review", "status": "closed",
-                      "draft": "", "evidence": [], "no_evidence": True, "conflict": False,
+                      "draft": "", "evidence": [], "partial": False, "no_evidence": True, "conflict": False,
                       "director_report": False, "ledger_report": False, "direct_notice": False,
                       "warnings": ["no_evidence"], "evidence_chunks": picked})
     saved["actual_path"] = _path_from_result(case, graph_result, saved, supervisor)
@@ -367,7 +372,7 @@ def run_case(case: dict[str, Any], model_mode: str = "fake") -> dict[str, Any]:
             "account": case.get("account", "parent01"), "classroom": classroom_name,
             "expected": {"path": case["expected_path"], "target": case["target"], "notes": case["notes"]},
             "actual": {key: saved[key] for key in ("classification", "risk_level", "direct_notice_kind",
-                      "route", "card_kind", "status", "director_report", "ledger_report", "actual_path")},
+                      "route", "card_kind", "status", "director_report", "ledger_report", "actual_path", "partial")},
             "draft": saved["draft"], "evidence": [{"document": next((c["document_title"] for c in all_chunks
                       if c["chunk_id"] == item.get("chunk_id")), ""), "location": next((c["location"] for c in all_chunks
                       if c["chunk_id"] == item.get("chunk_id")), ""), "quote": item.get("quote", "")}

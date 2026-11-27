@@ -152,8 +152,8 @@ def run_request(request_id, prepared_answer=None, prepared_fields=None):
                 if answer:
                     draft.update({key: answer[key] for key in ("text", "no_evidence", "conflict")})
                     check = answer.get("check_result")
-                if answer is None or answer["no_evidence"] or answer["conflict"]:
-                    # API 5.7: 근거 없음·충돌은 초안 없는 카드. 대체 문장이 승인으로 학부모에게 나가면 안 돼요.
+                if answer is None or (answer["no_evidence"] and not answer.get("partial")) or answer["conflict"]:
+                    # 전체 근거 없음·충돌은 초안 없는 카드예요. 부분 초안은 인용·경고를 유지해 담임이 확인해요.
                     draft["text"] = ""
             else:
                 draft["text"] = "(모의 초안) 말씀해 주셔서 감사합니다. 확인해서 다시 안내드릴게요."

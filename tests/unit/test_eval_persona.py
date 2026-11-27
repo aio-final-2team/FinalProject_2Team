@@ -2,7 +2,7 @@
 
 import json
 
-from tools.eval_persona import CASES, score_rules
+from tools.eval_persona import CASES, _path_from_result, score_rules
 
 
 def fixture():
@@ -57,6 +57,13 @@ def test_rule_6_actual_path_matches_the_case_expectation():
     assert score_rules(case, result, chunks)["expected_path_matches"]
     result["actual_path"] = "teacher"
     assert not score_rules(case, result, chunks)["expected_path_matches"]
+
+
+def test_partial_paths_keep_missing_evidence_and_conflict_distinct():
+    case = {"request_type": "inquiry"}
+    supervisor = {"route": "evidence"}
+    assert _path_from_result(case, {}, {"partial": True, "no_evidence": True}, supervisor) == "partial"
+    assert _path_from_result(case, {}, {"partial": True, "conflict": True}, supervisor) == "partial_conflict"
 
 
 def test_persona_cases_have_fifty_unique_items_and_type_expectations():
