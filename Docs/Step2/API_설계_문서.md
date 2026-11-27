@@ -7,7 +7,7 @@
 | 작업 | T13 API 설계 문서(FastAPI·Function Calling 도구 계약)·모의 API (#170) |
 | 작성 · 검토 | 태웅 · 인혜 |
 | 계약을 쓰는 쪽 | 화면 T12·T32(성주), 알림장 그래프 T32(프롬프트 검토 영민), 요청 처리 에이전트·자료·근거 검색 T29·T20·T33(영민) |
-| 판 | v0.13.7 · 2026-11-27 (판마다 바뀐 내용은 맨 끝 변경 이력 참고. 계약을 바꾸면 예시·모의 응답·시험도 함께 고친다) |
+| 판 | v0.13.8 · 2026-11-27 (판마다 바뀐 내용은 맨 끝 변경 이력 참고. 계약을 바꾸면 예시·모의 응답·시험도 함께 고친다) |
 | 2차 검토 링크 | `develop` 브랜치의 [API 설계 문서](https://github.com/aio-final-2team/FinalProject_2Team/blob/develop/Docs/Step2/API_설계_문서.md). API별 상태(2장)는 develop `24258f2` 코드로 판정했다. 이 커밋은 2장 상태 칸의 기준이고, 시연에 쓰는 커밋은 다음 줄에 따로 적는다 |
 | 시연 코드 기준 커밋 | 레포 [README](../../README.md#2차-검토-문서)의 '시연 코드 기준 커밋' 한 줄을 본다(11/24 밤 기준 develop `641591f`, 흐름 고치기 #338까지 팀 서버에 배포). 팀 서버를 다시 배포하면 README 그 한 줄만 고친다 |
 | 함께 보는 문서 | 아래 기준 판 표의 문서들, T04 흐름·권한 명세 |
@@ -28,7 +28,7 @@
 | **초안 실패 뒤 처리 — 알림장.** 작업 전체가 실패하면 `draft_status = failed`와 `error`로 알리고, 아이 한 명만 실패하면 그 아이에게만 확인 항목 `draft_failed`를 단다. 어느 쪽이든 반 발송은 막힌다. 다시 만들기까지의 복구 이력은 DB 설계서 2.6에 있다 | [3.19.1](#3191-접수부터-결과-조회까지-한-번에-따라가기), [3.26](#326-알림장-다시-만들기--post-apiv1daily-notesdraftsinput_idregenerate), DB 설계서 [2.6](DB_스키마_설계서.md#26-알림장알림평가) | `api/test_daily_notes.py::test_failed_writer_job_is_queryable_without_partial_notes`, `db/test_daily_notes_runner.py::test_one_child_failure_keeps_other_children_and_blocks_batch`, `db/test_daily_note_recovery.py::test_timeout_then_regenerate_is_one_recovered_incident_with_times`, `db/test_daily_note_recovery.py::test_failed_retry_is_handed_off_then_partial_template_is_fallback` | [`c80ee67`](https://github.com/aio-final-2team/FinalProject_2Team/commit/c80ee67), [`bf75f8f`](https://github.com/aio-final-2team/FinalProject_2Team/commit/bf75f8f) |
 | **초안 실패 뒤 처리 — 요청 처리 3분 마감.** 3분이 지나면 초안 없는 사람 카드로 넘기고(`ai_timeout`), 처리 중에 예외가 나면 `ai_failed`로 넘긴다. 코드 규칙으로 위험·주제를 다시 저장하고 유효한 담임에게 배정한다. 긴급·판단 필요면 원장 보고와 담임·원장 위험 알림도 남긴다. 모델 응답을 기다리는 동안에는 요청 행 잠금도 DB 연결도 잡지 않는다. 늦게 끝난 결과는 저장 직전에 다시 확인해서 버린다 | [6.1](#61-타임아웃), [6.3](#63-202로-접수하는-작업의-상태-조회) | `db/test_request_lock_timeout.py::test_answer_models_run_outside_request_row_lock`, `db/test_request_lock_timeout.py::test_ai_timeout_hands_off_empty_card_and_drops_late_draft`, `db/test_request_lock_timeout.py::test_timeout_error_raised_by_agent_is_ai_failed` | [`ab58b7c`](https://github.com/aio-final-2team/FinalProject_2Team/commit/ab58b7c) |
 | **초안 실패 뒤 처리 — 거절 뒤 재초안.** 담임이 회신 초안을 거절하면 새 회신 카드에는 초안 문장도 검사 결과도 없다. 그래서 그대로 승인하면 409가 나고, 담임이 직접 쓴 글(`edit_approve`)만 나간다 | [3.3](#33-카드-결정--post-apiv1cardscard_iddecisions) '결정마다 바뀌는 것' | `api/test_cards.py::test_reject_redraft_has_no_text_and_needs_teacher_text` | [`ab58b7c`](https://github.com/aio-final-2team/FinalProject_2Team/commit/ab58b7c) |
-| 첫 시연 순서, API 목록의 상태 칸(DB 연결·모의만·제안. 보완 당시 52개, 지금 74개) | [2](#2-api-목록), [2.1](#21-첫-시연-흐름의-연결표와-실제-연결-범위) | `api/test_openapi.py::test_all_documented_endpoints_exist`(목록 행이 앱 경로와 같은지) | [`c80ee67`](https://github.com/aio-final-2team/FinalProject_2Team/commit/c80ee67) |
+| 첫 시연 순서, API 목록의 상태 칸(DB 연결·모의만·제안. 보완 당시 52개, 지금 77개) | [2](#2-api-목록), [2.1](#21-첫-시연-흐름의-연결표와-실제-연결-범위) | `api/test_openapi.py::test_all_documented_endpoints_exist`(목록 행이 앱 경로와 같은지) | [`c80ee67`](https://github.com/aio-final-2team/FinalProject_2Team/commit/c80ee67) |
 | 요청은 접수됐지만 인계 카드 저장에 실패한 경우 | [5.5.3](#553-사람-인계-카드--create_card), [6.7](#67-대표-사례-대조--화면apidb가-같은-상태로-보이는지) | `db/test_requests.py::test_agent_failure_preserves_request_and_hands_off_without_private_error`, `db/test_requests.py::test_sweep_exact_age_states_card_exclusion_and_concurrent_idempotency` | [`c80ee67`](https://github.com/aio-final-2team/FinalProject_2Team/commit/c80ee67) |
 | 기획서·계약표·DB 설계서와 맞춘 기준 판, 생성물이 앱 계약과 같은지 | 위 기준 판 표 | `api/test_openapi.py::test_contract_matches_application` | [`c80ee67`](https://github.com/aio-final-2team/FinalProject_2Team/commit/c80ee67) |
 
@@ -43,7 +43,7 @@
 | DB 2 | 검사를 통과한 아이별 초안만 복구 성공으로 세고, 사람에게 넘김·재시도 진입 실패를 따로 센다 | DB 2.6 'T58 복구 집계 기준' | `db/test_daily_note_recovery.py`의 현재 집계와 T58 기준 차이 기록, `daily_note_drafted` 저장 코드·0001/0003 DDL 확인 | 이 PR |
 | DB 3 | 시험 수치마다 커밋·날짜·alembic 판·범위·명령을 붙이고 권한·마이그레이션을 다시 확인한다 | API 2.2, DB 4.4·6.2·9.2 | `db/test_scope.py`, `db/test_scope_cases.py`, `db/test_migrations.py`, `db/test_feed_migration.py`, `db/test_request_risk_types.py` | 이 PR |
 
-이 문서는 유치온 API 74개(기존 49개는 v0.8 때 develop `24258f2` 코드로 확인, 투약·귀가 취소·수정·알림장 정정 3개와 필수 동의 3개, 기억 확인·승인한 답 고치기 2개, 바쁜 시간 3개·하루 중 기록 3개·알림장 답장과 준비물 확인 2개, 원 일정 1개·개인 알림 시간 2개·교직원 질문 1개·재배정할 선생님 목록 1개·QA 알림장 초기화 1개·사람별 QA 원 도구 3개 추가)와 에이전트 도구 15개의 계약을 담는다. 1~6장은 강사님 'API 설계 문서 작성법'에 나온 '문서에 들어가는 여섯 가지'의 순서를 따르고, 7장에는 API 필드와 DB 컬럼의 대응을, 8장에는 설정값을 적었다. 필드·권한·오류는 입출력 계약표와 같아야 한다. 두 문서가 어긋나면 계약표를 먼저 고친 뒤 두 문서의 판을 함께 올린다. 구현(FastAPI의 `/docs`)과 달라졌을 때도 둘을 대조해 판을 올린다. 모의 API와 생성물 `contracts/openapi.yaml`도 이 문서와 함께 둔다. 모의 API를 쓰는 법과 데모 계정은 [모의 API 안내](../../contracts/mock_api/README.md)에 있다. 제목에 [제안]이 붙은 절은 팀이 아직 계약을 확인하지 않은 내용으로, 투약·귀가(3.27), 상담 지연 입력(3.28), 피드·앨범(3.29), 보낸 알림장 정정(3.30), 필수 동의(3.31), 바쁜 시간(3.32), 하루 중 기록(3.33), 알림장 답장·준비물 확인(3.34), 원 일정(3.35), 개인 알림 시간(3.36), 교직원 AI 질문(3.37), 재배정할 선생님 목록(3.38)이 여기에 해당한다. [QA 전용] 알림장 다시 시험하기(3.39)와 사람별 QA 원 도구(3.40)는 QA 서버에서만 켠다. API별로 지금 어디까지 동작하는지는 2장 표의 상태 칸에 적었다.
+이 문서는 유치온 API 77개(기존 49개는 v0.8 때 develop `24258f2` 코드로 확인, 투약·귀가 취소·수정·알림장 정정 3개와 필수 동의 3개, 기억 확인·승인한 답 고치기 2개, 바쁜 시간 3개·하루 중 기록 3개·알림장 답장과 준비물 확인 2개, 원 일정 1개·개인 알림 시간 2개·교직원 질문 1개·재배정할 선생님 목록 1개·QA 알림장 초기화 1개·사람별 QA 원 도구 3개·사진 3개 추가)와 에이전트 도구 15개의 계약을 담는다. 1~6장은 강사님 'API 설계 문서 작성법'에 나온 '문서에 들어가는 여섯 가지'의 순서를 따르고, 7장에는 API 필드와 DB 컬럼의 대응을, 8장에는 설정값을 적었다. 필드·권한·오류는 입출력 계약표와 같아야 한다. 두 문서가 어긋나면 계약표를 먼저 고친 뒤 두 문서의 판을 함께 올린다. 구현(FastAPI의 `/docs`)과 달라졌을 때도 둘을 대조해 판을 올린다. 모의 API와 생성물 `contracts/openapi.yaml`도 이 문서와 함께 둔다. 모의 API를 쓰는 법과 데모 계정은 [모의 API 안내](../../contracts/mock_api/README.md)에 있다. 제목에 [제안]이 붙은 절은 팀이 아직 계약을 확인하지 않은 내용으로, 투약·귀가(3.27), 상담 지연 입력(3.28), 피드·앨범(3.29), 보낸 알림장 정정(3.30), 필수 동의(3.31), 바쁜 시간(3.32), 하루 중 기록(3.33), 알림장 답장·준비물 확인(3.34), 원 일정(3.35), 개인 알림 시간(3.36), 교직원 AI 질문(3.37), 재배정할 선생님 목록(3.38), 아이 프로필·급식 참고 사진(3.41)이 여기에 해당한다. [QA 전용] 알림장 다시 시험하기(3.39)와 사람별 QA 원 도구(3.40)는 QA 서버에서만 켠다. API별로 지금 어디까지 동작하는지는 2장 표의 상태 칸에 적었다.
 
 **목차.** 1. 공통 정보와 인증 · 2. API 목록 · 3. 엔드포인트 상세 명세 · 4. 검증과 권한 규칙 · 5. Tool 정의와 호출 흐름 · 6. 실행 규칙 · 7. API 필드와 DB 컬럼 대응 · 8. 설정값 · 부록 A. 예시 ID · 부록 B. 강사 가이드 체크리스트 대조 · 변경 이력
 
@@ -57,7 +57,7 @@
 | 배포 서버 | `https://<배포 도메인>/api/v1` (AWS EC2) |
 | 자동 문서 | `http://localhost:8000/docs`, `http://localhost:8000/openapi.json`(버전 접두어 없이 앱 최상위 경로에 있음). 저장소에는 `/openapi.json`에서 뽑아낸 `contracts/openapi.yaml`을 생성물로 둔다 |
 | 상태 확인 | `GET /health` (인증 없음, 버전 접두어 없음) |
-| 모의 API | API 74개 경로를 제공한다. 원 전체 초기화(72)는 404이며, 모의 업무 데이터는 다시 켜면 초기화된다. 실행 방법·계정·흐름은 [모의 API 안내](../../contracts/mock_api/README.md) 참고 |
+| 모의 API | API 77개 경로를 제공한다. 원 전체 초기화(72)는 404이며, 모의 업무 데이터는 다시 켜면 초기화된다. 실행 방법·계정·흐름은 [모의 API 안내](../../contracts/mock_api/README.md) 참고 |
 
 ### 1.2 인증
 
@@ -135,7 +135,7 @@ FastAPI가 기본으로 내는 422 응답은 예외 처리기에서 위 형식�
 
 첫 시연은 알림장 흐름으로 고정한다. 담임이 반 활동과 아이별 메모를 입력하면 AI가 초안을 만들고, 담임이 이를 확인·수정한 뒤 반 전체에 보낸다(기획서 2.3, 결정 D02). 이때 화면은 로그인·내 정보(3.8), 반 아이 목록(3.24), 초안 만들기·진행 상태(3.19), 알림장 보기(3.20), 고치기·확인(3.21), 반 알림장 보내기(3.6) 순서로 API를 부른다. 초안을 만들지 못했거나 다시 써야 하면 다시 만들기(3.26)를 부른다. 알림장을 보내면 학부모는 알림 목록(3.11)에서 `note_sent` 알림을 받고, 알림장 보기(3.20)에서 자기 아이 알림장을 연다.
 
-아래 표에 API 74개(기존 49개는 v0.8 때 develop `24258f2` 코드로 확인, 투약·귀가 취소·수정·알림장 정정 3개와 필수 동의 3개, 기억 확인·승인한 답 고치기 2개, 바쁜 시간 3개·하루 중 기록 3개·알림장 답장과 준비물 확인 2개, 원 일정 1개·개인 알림 시간 2개·교직원 질문 1개·재배정할 선생님 목록 1개·QA 알림장 초기화 1개·사람별 QA 원 도구 3개 추가)를 모았다. 인증·역할 열의 '자기 것'·'우리 반'은 4.2의 범위 규칙을 뜻한다. 상세 열에는 각 API를 자세히 설명한 3장의 절 번호를 적었다. 기존 49개 상태 칸은 develop 코드를 DB 모드(`DATA_BACKEND=db`)로 띄워 호출한 기록이며, 취소·수정 2개는 임시 DB 공용 HTTP 시험으로 확인한다.
+아래 표에 API 77개(기존 49개는 v0.8 때 develop `24258f2` 코드로 확인, 투약·귀가 취소·수정·알림장 정정 3개와 필수 동의 3개, 기억 확인·승인한 답 고치기 2개, 바쁜 시간 3개·하루 중 기록 3개·알림장 답장과 준비물 확인 2개, 원 일정 1개·개인 알림 시간 2개·교직원 질문 1개·재배정할 선생님 목록 1개·QA 알림장 초기화 1개·사람별 QA 원 도구 3개·사진 3개 추가)를 모았다. 인증·역할 열의 '자기 것'·'우리 반'은 4.2의 범위 규칙을 뜻한다. 상세 열에는 각 API를 자세히 설명한 3장의 절 번호를 적었다. 기존 49개 상태 칸은 develop 코드를 DB 모드(`DATA_BACKEND=db`)로 띄워 호출한 기록이며, 취소·수정 2개는 임시 DB 공용 HTTP 시험으로 확인한다.
 
 | 상태 | 뜻 | 개수 |
 | --- | --- | --- |
@@ -232,6 +232,9 @@ FastAPI가 기본으로 내는 422 응답은 예외 처리기에서 위 형식�
 | 72 | POST | `/api/v1/qa/sandbox/reset` | 자기 QA 원 사용자 | [QA 전용] 내 원 전체 초기화 | 200 | QA 도구 | 3.40 | 제안 | QA | QA 서버만 켬 |
 | 73 | GET | `/api/v1/qa/traces/{trace_id}` | JWT | [QA 전용] 자기 원 요청 이력·500 오류 조회 | 200 | QA 도구 | 3.40 | 제안 | QA | QA 서버만 켬 |
 | 74 | GET | `/api/v1/qa/info` | 없음 | [QA 전용] 배포 판·켜진 기능·원 목록 조회 | 200 | QA 도구 | 3.40 | 제안 | QA | QA 서버만 켬 |
+| 75 | GET | `/api/v1/children/{child_id}/profile-photo` | 학부모(내 아이)·담임(우리 반)·원장(같은 기관) | [제안] 아이 프로필 사진 파일 | 200 | FR-10, FR-23 | 3.41 | 제안 | — | 화면: 아이 동그라미 |
+| 76 | GET | `/api/v1/meal-photos` | JWT(같은 기관) | [제안] 기간 안 급식 참고 사진 목록 | 200 | FR-11 | 3.41 | 제안 | — | 화면: 식단 사진 |
+| 77 | GET | `/api/v1/meal-photos/{meal_date}/file` | JWT(같은 기관) | [제안] 급식 참고 사진 파일 | 200 | FR-11 | 3.41 | 제안 | — | 화면: 식단 사진 |
 
 | 67 | POST | `/api/v1/memories/{memory_id}/confirm` | 그 아이 보호자 | 돌봄 메모 기억·버림 | 200 | FR-20 | 3.25 | DB 연결 | — | 화면 연결 필요 |
 | 69 | PATCH | `/api/v1/saved-answers/{answer_id}` | 승인한 담임·같은 기관 원장 | 승인 답 끄기·켜기 | 200 | FR-20 | 3.25 | DB 연결 | — | 화면 연결 필요 |
@@ -300,7 +303,7 @@ SSE 두 개(6번·14번)는 실시간 진행 화면(NFR-10)에서 쓴다. 투약
 
 ## 3. 엔드포인트 상세 명세
 
-API 74개를 가이드의 여덟 칸으로 쓴다. 필드 표의 '빈값'은 그 필드가 `""`이나 `null`을 받아도 되는지를 뜻한다. 예시의 고정 ID는 부록 A의 데모 ID이고, 3.8 이후 예시는 주요 응답 필드와 목록 첫 항목만 남겨 줄여 보인다. 토큰과 새로 발급한 ID도 `…`로 줄인다. 경로의 `{card_id}`·`{input_id}`·`{note_id}`에는 앞선 응답에서 받은 값을 넣는다.
+API 77개를 가이드의 여덟 칸으로 쓴다. 필드 표의 '빈값'은 그 필드가 `""`이나 `null`을 받아도 되는지를 뜻한다. 예시의 고정 ID는 부록 A의 데모 ID이고, 3.8 이후 예시는 주요 응답 필드와 목록 첫 항목만 남겨 줄여 보인다. 토큰과 새로 발급한 ID도 `…`로 줄인다. 경로의 `{card_id}`·`{input_id}`·`{note_id}`에는 앞선 응답에서 받은 값을 넣는다.
 
 ### 3.1 요청 만들기 — `POST /api/v1/requests`
 
@@ -1505,7 +1508,7 @@ HTTP/1.1 200 OK
 | ③ 경로·쿼리 | 경로 classroom_id(UUID, 필수)만 받는다. 페이지 쿼리는 없다. |
 | ④ 요청 본문 | 없음. |
 | ⑤ 검증·권한 | 현재 배정 기간 안에 있는 담임과 같은 기관 원장만 볼 수 있다. 학부모가 부르면 403 FORBIDDEN_ROLE, 없는 반이나 범위 밖 반이면 404 NOT_FOUND다. |
-| ⑥ 정상 응답 | 200 + `{ items: [{ id, display_name, classroom_id }] }`. 이름 오름차순이고, 아이가 없으면 items는 []다. |
+| ⑥ 정상 응답 | 200 + `{ items: [{ id, display_name, classroom_id, profile_photo }] }`. 이름 오름차순이고, 아이가 없으면 items는 []다. profile_photo는 사진이 없으면 null이다(3.41). |
 | ⑦ 오류 응답 | 401 UNAUTHENTICATED, 403 FORBIDDEN_ROLE, 404 NOT_FOUND, UUID 형식이 틀리면 422 VALIDATION_FAILED. |
 | ⑧ 실행 규칙 | 요청할 때마다 담임 배정 기간과 기관을 확인한다. 보호자·계정 정보는 보내지 않는다. |
 
@@ -1515,11 +1518,12 @@ HTTP/1.1 200 OK
 | `items[]` | 응답 | object[] | 항상 | 빈 목록 가능 | display_name 오름차순 | 해당 반 아이 전부 |
 | `items[].id`·`classroom_id` | 응답 | string(UUID) | 항상 | 불가 | 아이 ID·반 ID | id는 child_memos의 child_id로 보냄 |
 | `items[].display_name` | 응답 | string | 항상 | 불가 | 아이 표시 이름 | 목록에 보여 줄 이름 |
+| `items[].profile_photo` | 응답 | object 또는 null | 항상 | null 가능 | `{file_url}` | 아이 프로필 사진(API 75 주소). 내 정보·로그인의 `children[]`에도 같은 필드가 있다 |
 
 ```http
 GET /api/v1/classrooms/00000000-0000-4000-8000-000000000102/children
 HTTP/1.1 200 OK
-{"items": [{"id": "00000000-0000-4000-8000-000000000502", "display_name": "바다", "classroom_id": "00000000-0000-4000-8000-000000000102"}]}
+{"items": [{"id": "00000000-0000-4000-8000-000000000502", "display_name": "바다", "classroom_id": "00000000-0000-4000-8000-000000000102", "profile_photo": {"file_url": "/api/v1/children/00000000-0000-4000-8000-000000000502/profile-photo"}}]}
 ```
 
 ### 3.25 내 AI 기억 보기·지우기 — `GET /api/v1/memories`, `DELETE …/memories/{memory_id}`
@@ -1990,6 +1994,43 @@ GET /api/v1/qa/info
 
 ```json
 {"commit":null,"deployed_at":null,"migration":null,"data_backend":"mock","switches":{"daily_note_writer":"app.modules.daily_notes.stub_writer:write","answer_writer":"stub","request_agent":"app.modules.requests.agent_stub:run_request","embedding":false,"llm_models":{"default":"gpt-6-luna","supervisor":"","document":"","memory":"","checker":"","code":""}},"qa_orgs":[{"tag":"sj","name":"QA 성주 원","login_prefix":"sj."},{"tag":"ym","name":"QA 영민 원","login_prefix":"ym."},{"tag":"jh","name":"QA 지혜 원","login_prefix":"jh."},{"tag":"ih","name":"QA 인혜 원","login_prefix":"ih."},{"tag":"tw","name":"QA 태웅 원","login_prefix":"tw."}]}
+```
+
+### 3.41 [제안] 아이 프로필 사진·급식 참고 사진 — API 75~77
+
+| 칸 | 내용 |
+| --- | --- |
+| ① 호출 목적 | 아이 동그라미(관찰 기록·알림장 목록·우리 아이·동의 현황·앨범)에 아이 얼굴을, 식단 칸에 그날 점심 참고 사진을 보여 줘요. 사진은 모두 AI로 만든 가상 사진이에요(실제 원아·실제 급식 아님). |
+| ② 요청 헤더 | 세 API 모두 `Authorization`(필수), `X-Request-ID`(권장). 화면은 토큰을 붙여 받은 뒤 임시 주소로 바꿔 그려요(`<img src>`에 주소만 넣으면 401). |
+| ③ 경로·쿼리 | 75 경로 child_id(UUID). 76 쿼리 `from`·`to`(YYYY-MM-DD, 필수, 62일 안). 77 경로 meal_date(YYYY-MM-DD). 기관은 JWT에서 얻어요. |
+| ④ 요청 본문 | 모두 없어요. 사진을 올리는 API는 없고, 시드가 저장소 가상 사진을 넣어요. |
+| ⑤ 검증·권한 | 75는 4.2의 아이 범위 규칙과 같아요: 학부모는 보호자로 연결된 아이, 담임은 지금 배정 기간 안의 반 아이, 원장은 같은 기관 아이. 범위 밖·사진 없음은 404와 거부 이력이에요. 76·77은 같은 기관 사용자면 역할과 관계없이 볼 수 있어요. |
+| ⑥ 정상 응답 | 75·77은 200 이미지 본문(`image/jpeg`·`image/png`·`image/webp`, `Cache-Control: private, max-age=3600`). 76은 200 `{items:[{meal_date, main_dish, file_url}]}`이며 날짜 오름차순, 없으면 []예요. |
+| ⑦ 오류 응답 | 401 UNAUTHENTICATED, 404 NOT_FOUND(범위 밖·사진 없음·파일 없음), 날짜·UUID 형식이 틀리거나 to가 from보다 앞이거나 62일을 넘으면 422 VALIDATION_FAILED. |
+| ⑧ 실행 규칙 | 아이 사진은 `children.profile_photo_path`, 급식 사진은 `meal_photos`(기관·날짜 기본 키) 행이 가리키는 MEDIA_DIR 하위 파일(`profiles/`, `meals/<org_id>/`)이에요. 데모 원과 사람별 QA 원은 기동 시드가 `data/fixtures/kg-demo-01/profile_photos`·`meal_photos`의 같은 사진을 넣고, 이미 있는 행·파일은 덮지 않아요. 퇴소 작업은 프로필 경로를 비우고 파일을 지우며, 시드는 퇴소한 아이 사진을 되살리지 않아요. 급식 사진은 그 원 식단표 점심으로 만든 참고 사진이라 화면에 "참고 사진"이라고 밝혀요. |
+
+| 필드 | 위치 | 타입 | 필수·빈값 | 설명 |
+| --- | --- | --- | --- | --- |
+| child_id | 75 경로 | string(UUID) | 필수 | 사진을 받을 아이 |
+| from·to | 76 쿼리 | string(date) | 필수, from ≤ to, 62일 안 | 받을 기간(양 끝 포함) |
+| meal_date | 76 응답·77 경로 | string(date) | 필수 | 급식 날짜 |
+| main_dish | 76 응답 | string | 항상 | 사진의 주메뉴(예: 수육) |
+| file_url | 76 응답·아이 정보의 profile_photo | string | 항상 | 토큰을 붙여 받는 상대 주소(75·77) |
+
+```http
+GET /api/v1/meal-photos?from=2026-11-27&to=2026-11-27
+Authorization: Bearer <토큰>
+```
+
+```json
+{"items":[{"meal_date":"2026-11-27","main_dish":"수육","file_url":"/api/v1/meal-photos/2026-11-27/file"}]}
+```
+
+```http
+GET /api/v1/children/00000000-0000-4000-8000-000000000501/profile-photo
+Authorization: Bearer <하늘이 보호자 토큰>
+HTTP/1.1 200 OK
+Content-Type: image/jpeg
 ```
 
 ## 4. 검증과 권한 규칙
@@ -2585,9 +2626,9 @@ MVP 설정값은 서버 설정(`.env`)으로 관리한다. `.env.example`에는 
 
 | 체크리스트(가이드 33쪽) | 이 문서 |
 | --- | --- |
-| 구현할 API가 모두 목록 표에 있고 요구사항 ID와 연결된다 | 2장(74개, 요구사항 열·상태 칸) |
+| 구현할 API가 모두 목록 표에 있고 요구사항 ID와 연결된다 | 2장(77개, 요구사항 열·상태 칸) |
 | 서버 주소·인증·오류 형식·/docs·변경 이력이 있다 | 1장, 끝의 변경 이력 |
-| 구현할 API마다 상세 명세와 필드 명세 표가 있다 | 3장(74개 전부) |
+| 구현할 API마다 상세 명세와 필드 명세 표가 있다 | 3장(77개 전부) |
 | 형식 오류(422)와 권한·승인 오류(403)를 나눠 적었다 | 4.1 |
 | 202를 쓰는 API는 작업 상태·결과·실패 조회가 있다 | 3.19.1, 6.3 |
 | Tool마다 성공·실패 출력과 실패 후 처리가 있다 | 5.2, 5.4, 5.5, 5.7 |
@@ -2625,3 +2666,4 @@ MVP 설정값은 서버 설정(`.env`)으로 관리한다. `.env.example`에는 
 | v0.13.5 | 2026-11-27 | [제안] 재배정할 선생님 목록 API 70(3.38)을 더함. 원장만, 같은 기관 활성 선생님의 이름·지금 맡은 반만. 데모 시드에 반 없는 보조 교사 `teacher03`(…0203)을 더함. 목록 70개(DB 연결 35·제안 35) 지혜님 백엔드 정리 PM 체크: 본문 옛 숫자(52·56개)를 고치고 2.1의 A 화면·D 모델 칸을 11/27 리허설 기록(FB-021-1)으로 채움. | 태웅 |
 | v0.13.6 | 2026-11-27 | [QA 전용] 알림장 다시 시험하기 API 71(3.39)을 더함. QA_TOOLS로만 켜며 한 반·날짜의 알림장·묶음 카드·이력·알림을 삭제하고 답장은 연결만 해제. 목록 71개(DB 연결 35·제안 36) | 태웅 |
 | v0.13.7 | 2026-11-27 | [QA 전용] 사람별 QA 원 시드·전체 초기화 API 72·요청 trace API 73·배포 정보 API 74(3.40), QA 안내서를 더함. 목록 74개(DB 연결 35·제안 39) | 태웅 |
+| v0.13.8 | 2026-11-27 | [제안] 아이 프로필 사진 API 75·급식 참고 사진 API 76·77(3.41)을 더하고, 반 아이 목록·내 정보·로그인의 아이에 profile_photo를 더함. 프론트가 임시로 쓰던 데모 아이 ID 고정 사진·다른 기관 공개 식단 사진을 서버 사진으로 바꿈. 목록 77개(DB 연결 35·제안 42) | 태웅 |

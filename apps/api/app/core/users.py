@@ -11,6 +11,7 @@ from argon2.exceptions import InvalidHashError, VerificationError
 from sqlalchemy import text
 
 from app.core.db import transaction
+from app.core.photos import profile_view
 from app.core.schedule import KST
 
 _passwords = PasswordHasher()
@@ -86,9 +87,10 @@ def teachers_of(org_id: UUID, on: date | None = None) -> list[dict]:
 def children_of(parent_id: UUID) -> list[SimpleNamespace]:
     with transaction() as connection:
         rows = connection.execute(text("""
-            SELECT c.id, c.display_name, c.classroom_id FROM children c
+            SELECT c.id, c.display_name, c.classroom_id, c.profile_photo_path FROM children c
             JOIN child_guardians g ON (g.child_id, g.org_id)=(c.id, c.org_id)
             JOIN users u ON (u.id, u.org_id)=(g.user_id, g.org_id)
             WHERE u.id=:id AND u.role='parent' AND u.is_active ORDER BY c.id
         """), {"id": parent_id}).mappings()
-        return [SimpleNamespace(**row) for row in rows]
+        return [SimpleNamespace(**{key: value for key, value in row.items() if key != "profile_photo_path"},
+                                profile_photo=profile_view(row["id"], row["profile_photo_path"])) for row in rows]

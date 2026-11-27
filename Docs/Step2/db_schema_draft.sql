@@ -83,6 +83,7 @@ CREATE TABLE children (
     created_at    timestamptz NOT NULL DEFAULT now(),
     photo_scope   text NOT NULL DEFAULT 'family'
                   CONSTRAINT children_photo_scope_check CHECK (photo_scope IN ('family', 'class', 'org')),
+    profile_photo_path text,               -- 0021: MEDIA_DIR 안 profiles/<id>.jpg, 없으면 이름 글자
     FOREIGN KEY (classroom_id, org_id) REFERENCES classrooms(id, org_id),
     UNIQUE (id, org_id)
 );
@@ -817,4 +818,16 @@ CREATE TABLE user_settings (
     quiet_end time,
     updated_at timestamptz NOT NULL DEFAULT now(),
     FOREIGN KEY (user_id, org_id) REFERENCES users(id, org_id)
+);
+
+-- 0021: 원별 급식 참고 사진. 식단표 점심을 바탕으로 만든 가상 사진이며 파일은 MEDIA_DIR 안 meals/<org_id>/에 둬요.
+CREATE TABLE meal_photos (
+    org_id uuid NOT NULL REFERENCES organizations(id),
+    meal_date date NOT NULL,
+    main_dish text NOT NULL,
+    storage_path text NOT NULL,
+    media_type text NOT NULL CHECK (media_type IN ('image/jpeg', 'image/png', 'image/webp')),
+    size_bytes integer NOT NULL CHECK (size_bytes > 0),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (org_id, meal_date)
 );

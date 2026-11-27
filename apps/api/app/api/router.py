@@ -6,7 +6,7 @@ from app.api.routes import auth, requests, cards, resources, feed, consents, bus
 from app.api.routes import daily_records
 from app.api.routes import note_replies
 from app.api.routes import calendar, notification_settings, staff_ask
-from app.api.routes import teachers, qa_reset, qa_sandbox
+from app.api.routes import teachers, qa_reset, qa_sandbox, photos
 
 api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(auth.router)
@@ -25,3 +25,4 @@ api_router.include_router(staff_ask.router)
 api_router.include_router(teachers.router)
 api_router.include_router(qa_reset.router)
 api_router.include_router(qa_sandbox.router)
+api_router.include_router(photos.router)

@@ -2,6 +2,7 @@
 
 1. 보호자 연결을 끝낸다. 2. 공개 범위를 family로 되돌린다.
 3. 그 아이만 태그된 사진은 태그·사진 행·파일 순서로 지우고, 함께 찍힌 사진은 태그를 남긴다.
+   프로필 사진(0021)도 경로를 비우고 파일을 지운다.
 4. 그 아이 요청에서 나온 기억의 내용을 비우고 지운 시각을 남긴다.
 기록은 photo_scope_changed 이력 하나로 남긴다. detail.withdrawn과 지운 사진 ID가 들어가고, 복원 뒤 다시 적용이 이걸 찾는다.
 """
@@ -20,7 +21,7 @@ log = logging.getLogger(__name__)
 
 
 def plan(connection, child_id, lock=False):
-    child = connection.execute(text("SELECT id,org_id,photo_scope FROM children WHERE id=:id" +
+    child = connection.execute(text("SELECT id,org_id,photo_scope,profile_photo_path FROM children WHERE id=:id" +
                                     (" FOR UPDATE" if lock else "")), {"id": child_id}).mappings().one_or_none()
     if child is None:
         return None
@@ -33,6 +34,7 @@ def plan(connection, child_id, lock=False):
     """), key).mappings().all()
     return {
         "child_id": child_id, "org_id": child["org_id"], "photo_scope": child["photo_scope"],
+        "profile_photo": child["profile_photo_path"],
         "guardian_ids": list(connection.scalars(text(
             "SELECT user_id FROM child_guardians WHERE child_id=:child AND org_id=:org ORDER BY user_id"), key)),
         "solo_photos": [{"id": p["id"], "storage_path": p["storage_path"]} for p in photos if p["tags"] == 1],
@@ -48,7 +50,8 @@ def plan(connection, child_id, lock=False):
 
 
 def pending(todo):
-    return bool(todo["guardian_ids"] or todo["solo_photos"] or todo["memory_ids"] or todo["photo_scope"] != "family")
+    return bool(todo["guardian_ids"] or todo["solo_photos"] or todo["memory_ids"] or todo["profile_photo"]
+                or todo["photo_scope"] != "family")
 
 
 def run(connection, child_id, record=True):
@@ -58,7 +61,8 @@ def run(connection, child_id, record=True):
         return todo, []
     key = {"child": child_id, "org": todo["org_id"]}
     connection.execute(text("DELETE FROM child_guardians WHERE child_id=:child AND org_id=:org"), key)
-    connection.execute(text("UPDATE children SET photo_scope='family' WHERE id=:child AND org_id=:org"), key)
+    connection.execute(text("UPDATE children SET photo_scope='family', profile_photo_path=NULL "
+                            "WHERE id=:child AND org_id=:org"), key)
     solo = [p["id"] for p in todo["solo_photos"]]
     connection.execute(text("DELETE FROM feed_photo_children WHERE photo_id = ANY(:ids) AND org_id=:org"),
                        {**key, "ids": solo})
@@ -69,12 +73,13 @@ def run(connection, child_id, record=True):
     """), {**key, "ids": todo["memory_ids"]})
     if record:
         detail = {"child_id": str(child_id), "before": todo["photo_scope"], "after": "family",
-                  "withdrawn": True, "photo_ids": [str(i) for i in solo]}
+                  "withdrawn": True, "photo_ids": [str(i) for i in solo],
+                  "profile_photo_removed": bool(todo["profile_photo"])}
         connection.execute(text("""
             INSERT INTO events(org_id,actor_type,action,detail)
             VALUES (:org,'system','photo_scope_changed',CAST(:detail AS jsonb))
         """), {**key, "detail": json.dumps(detail)})
-    return todo, [p["storage_path"] for p in todo["solo_photos"]]
+    return todo, [p["storage_path"] for p in todo["solo_photos"]] + ([todo["profile_photo"]] if todo["profile_photo"] else [])
 
 
 def remove_files(names):

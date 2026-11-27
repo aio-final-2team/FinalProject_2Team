@@ -9,6 +9,7 @@
 로그인 비밀번호는 모의 API 전용 값이다. 실제 계정·원아 정보는 넣지 않는다.
 """
 
+import json
 from datetime import datetime, time, timedelta
 from pathlib import Path
 from uuid import UUID
@@ -201,12 +202,28 @@ FEED_PHOTOS = [
 FEED_CREATED_AT = datetime.fromisoformat("2026-11-21T09:00:00+09:00")
 
 
-def feed_photo(photo_id) -> bytes:
+def fixtures_dir() -> Path:
     for parent in Path(__file__).resolve().parents:
         fixtures = parent / "data/fixtures/kg-demo-01"
         if fixtures.is_dir():
-            return (fixtures / "feed_photos" / f"{str(photo_id)[-3:]}.jpg").read_bytes()
+            return fixtures
     raise FileNotFoundError("data/fixtures/kg-demo-01")
+
+
+def feed_photo(photo_id) -> bytes:
+    return (fixtures_dir() / "feed_photos" / f"{str(photo_id)[-3:]}.jpg").read_bytes()
+
+
+def profile_photo(child_id) -> Path | None:
+    """가상 아이 프로필 사진(정면 얼굴, AI로 만든 가상 사진). 없는 아이는 None이에요."""
+    path = fixtures_dir() / "profile_photos" / f"{child_id}.jpg"
+    return path if path.is_file() else None
+
+
+def meal_photos() -> list[dict]:
+    """우리 원 식단표 점심으로 만든 급식 참고 사진 목록이에요(날짜·주메뉴·파일)."""
+    folder = fixtures_dir() / "meal_photos"
+    return [{**row, "path": folder / row["file"]} for row in json.loads((folder / "meal_photos.json").read_text())]
 
 
 def feed_png():

@@ -51,7 +51,7 @@ export function ClassPage() {
                   </>
                 )}
               </dl>
-              <MealRepresentative date={meal.date} mealText={meal.lunch} />
+              <MealRepresentative date={meal.date} />
             </li>
           )}
           {weeks.map((d) => <DocRow key={d.id} d={d} week={menuWeek(d)!} />)}

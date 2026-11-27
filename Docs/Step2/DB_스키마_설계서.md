@@ -4,7 +4,7 @@
 | --- | --- |
 | 작업 | T09 데이터베이스 스키마 설계서 (#166) |
 | 작성 · 검토 | 태웅 · 영민 |
-| 판 | v0.27 · 2026-11-27 (판마다 바뀐 내용은 맨 끝 변경 이력에 있다) |
+| 판 | v0.28 · 2026-11-27 (판마다 바뀐 내용은 맨 끝 변경 이력에 있다) |
 | 2차 검토 링크 | `develop` 브랜치의 [DB 스키마 설계서](https://github.com/aio-final-2team/FinalProject_2Team/blob/develop/Docs/Step2/DB_스키마_설계서.md) |
 | 시연 코드 기준 커밋 | 레포 [README](../../README.md#2차-검토-문서)의 '시연 코드 기준 커밋' 한 줄을 본다(11/24 밤 기준 develop `641591f`, 흐름 고치기 #338까지 팀 서버에 배포). 팀 서버를 다시 배포하면 README 그 한 줄만 고친다 |
 | 대상 DB | PostgreSQL 16 + pgvector 0.8 (`compose.yaml`의 `pgvector/pgvector:pg16`). Supabase를 쓰지 않는 이유는 5.1에 있다 |
@@ -1381,6 +1381,17 @@ WHERE type = 'complaint' AND classroom_id = :classroom_id AND topic_key = :topic
 글을 삭제하면 deleted_at을 남기고 파일은 실제로 지운다. 반면 0010 downgrade는 표·새 이력·photo_scope만 되돌리고 파일 볼륨은 지우지 않는다.
 T50이 붙기 전까지는 사진을 올린 사람이 아이를 직접 표시한다. 얼굴 찾기·흐림·알림·화면은 이번 계약에 들어 있지 않다.
 
+## [제안] 아이 프로필 사진·급식 참고 사진 (0021)
+
+| 표·칸 | 저장 내용·제약 |
+| --- | --- |
+| children.profile_photo_path | NULL 허용 text. MEDIA_DIR 안 상대 경로 `profiles/<child_id>.jpg`. 없으면 화면은 이름 글자를 보여 준다. 퇴소 작업이 NULL로 비우고 파일을 지운다 |
+| meal_photos | PK (org_id, meal_date), org_id는 organizations FK. main_dish, storage_path(`meals/<org_id>/<날짜>.webp`), media_type(jpeg·png·webp), size_bytes(1 이상), created_at |
+
+사진은 모두 AI로 만든 가상 사진이다. 아이 사진은 `data/fixtures/kg-demo-01/profile_photos`(가상 정면 얼굴 21장), 급식 사진은 같은 원 식단표 점심을 바탕으로 만든 `meal_photos`(38장)에서 기동 시드가 넣는다. 데모 원과 사람별 QA 원이 같은 사진을 쓰고, 이미 있는 행·파일은 덮지 않는다. 두 폴더 모두 MEDIA_DIR 하위 폴더라 고아 사진 점검(`media_sweep`) 대상이 아니다.
+조회 권한은 API 설계 문서 3.41을 따른다. 아이 사진은 `child_in_scope`(보호자·현재 담임·같은 기관 원장)로 막고 범위 밖은 404와 permission_denied 이력이다. 급식 사진은 같은 기관 사용자 누구나 본다.
+퇴소 작업은 프로필 경로를 비우고 파일도 지운다. 시드는 퇴소 이력이 있는 아이의 사진을 다시 넣지 않는다(`db/test_photos.py::test_withdraw_removes_profile_photo_and_seed_keeps_it_removed`). 이 표·열이 더해지며 FK 74·컬럼 328이 됐다.
+
 ### 사진·기억의 보존과 삭제
 
 **0010이 미치는 범위.** 피드·앨범 표 세 개와 `children.photo_scope`는 0010에서 생긴다. 알림장 첫 시연(MVP)은 이 표를 읽지도 쓰지도 않으므로, 0010을 적용해도 알림장 흐름은 그대로다. 알림장 시험은 모두 0010까지 올린 DB에서 통과했다(9.2).
@@ -1480,6 +1491,7 @@ MVP에서 이미 적용되는 삭제는 담임 기억의 내용 비우기·`dele
 | v0.25 | 2026-11-26 | 0017 돌봄 메모·보호자 확인 상태와 확인 시각·아이 기관 짝 FK·확인 후보 알림을 더함. | 태웅 |
 | v0.26 | 2026-11-27 | [제안] 0018 하루 중 기록 표·기관 복합 FK·활성 인덱스·soft delete·알림장 메모 우선순위를 추가함. | 태웅 |
 | v0.27 | 2026-11-27 | [제안] 0020 개인 알림 설정(`user_settings`, 교직원 본인 알림 받는 시간)을 0019 뒤로 이음. 관계 표 67행·FK 73·컬럼 320으로 맞춤 | 태웅 |
+| v0.28 | 2026-11-27 | [제안] 0021 아이 프로필 사진 경로(`children.profile_photo_path`)와 원별 급식 참고 사진(`meal_photos`)을 0020 뒤로 이음. 퇴소 작업이 프로필 사진도 지움. FK 74·컬럼 328 | 태웅 |
 
 ## 부록. 가이드 제출 전 체크리스트
 
