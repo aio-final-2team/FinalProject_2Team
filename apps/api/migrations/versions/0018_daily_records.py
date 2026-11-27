@@ -1,9 +1,9 @@
-"""하루 중 기록. 임시 down 0016 — #377 머지 뒤 0017로 바꿀 것."""
+"""하루 중 기록."""
 
 from alembic import op
 
 revision = "0018"
-down_revision = "0016"
+down_revision = "0017"
 branch_labels = None
 depends_on = None
 
