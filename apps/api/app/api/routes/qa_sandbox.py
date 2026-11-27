@@ -15,11 +15,17 @@ from app.api.schemas.common import errors
 from app.api.schemas.qa_sandbox import SandboxResetOut, TraceOut, QAInfo
 from app.core.auth import CurrentUser, current_user
 from app.core.config import settings
-from app.core.db import transaction
 from app.core.errors import ApiError
 from app.core.qa_orgs import QA_ORGS, find_org
 from app.core.request_id import qa_errors, active_trace_id
 from app.modules.documents import embedding
+
+def transaction():
+    # mock 기동에서는 DB 모듈을 불러오지 않아요(tests/unit/test_backend.py). DB 판에서 부를 때만 가져와요.
+    from app.core.db import transaction as db_transaction
+
+    return db_transaction()
+
 
 router = APIRouter(tags=["[QA 전용] 사람별 QA 원"], route_class=QAOnlyRoute)
 _optional_bearer = HTTPBearer(auto_error=False)
