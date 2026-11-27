@@ -1,7 +1,8 @@
-"""가상 학부모 40문항을 요청·답변 그래프와 T20 실제 DB 검색에 돌리는 평가기.
+"""가상 학부모 문항을 요청·답변 그래프와 T20 실제 DB 검색에 돌리는 평가기.
 
 기본은 FakeModel이다. tools/run_persona_eval.sh가 만든 임시 PostgreSQL에서만
-실행하며, 임베딩을 끄고 T11 가상 시드를 넣는다.
+실행하며 T11 가상 시드를 넣는다. 투약·귀가는 협업 그래프의 지원 경로가 아니므로
+실측 시 --only로 제외한다.
 """
 
 from __future__ import annotations

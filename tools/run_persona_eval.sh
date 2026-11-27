@@ -31,7 +31,11 @@ export TEST_DATABASE_URL="postgresql+psycopg://yuchion:yuchion_test@127.0.0.1:$p
 export DATABASE_URL="$TEST_DATABASE_URL"
 export TEST_DB_CONTAINER="$container"
 export DATA_BACKEND=db
-export EMBEDDING_MODEL=
+if [[ "${PERSONA_EMBEDDING:-0}" == "1" ]]; then
+    export EMBEDDING_MODEL=BAAI/bge-m3
+else
+    export EMBEDDING_MODEL=
+fi
 export JWT_SECRET="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
 
 ready=0
@@ -52,4 +56,17 @@ echo "임시 평가 DB: 127.0.0.1:$port ($container)"
 python -m alembic -c apps/api/alembic.ini upgrade head
 PYTHONPATH=apps/api:. python -m db.seeds.demo
 PYTHONPATH=apps/api:. python -m db.seeds.documents
+if [[ "${PERSONA_EMBEDDING:-0}" == "1" ]]; then
+    PYTHONPATH=apps/api:. python -m db.seeds.embed
+    PYTHONPATH=apps/api:. python - <<'PY'
+from app.core.db import transaction
+from sqlalchemy import text
+
+with transaction() as connection:
+    count = connection.scalar(text("SELECT count(*) FROM document_chunks WHERE embedding IS NOT NULL"))
+print(f"벡터가 있는 조각: {count}개")
+if not count:
+    raise SystemExit("임베딩 조각이 없어 실측을 시작하지 않습니다")
+PY
+fi
 PYTHONPATH=apps/api:. python tools/eval_persona.py "$@"

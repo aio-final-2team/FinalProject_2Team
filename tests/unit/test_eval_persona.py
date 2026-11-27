@@ -59,10 +59,16 @@ def test_rule_6_actual_path_matches_the_case_expectation():
     assert not score_rules(case, result, chunks)["expected_path_matches"]
 
 
-def test_persona_cases_have_forty_unique_items_and_consultation_expectations():
+def test_persona_cases_have_fifty_unique_items_and_type_expectations():
     cases = json.loads(CASES.read_text(encoding="utf-8"))["cases"]
-    assert len(cases) == 40
-    assert len({case["id"] for case in cases}) == 40
+    assert len(cases) == 50
+    assert len({case["id"] for case in cases}) == 50
     by_id = {case["id"]: case for case in cases}
     assert by_id["C5"]["request_type"] == by_id["G5"]["request_type"] == "consultation"
     assert by_id["C5"]["expected_path"] == by_id["G5"]["expected_path"] == "no_evidence"
+    assert [by_id[f"T{i}"]["request_type"] for i in range(1, 11)] == [
+        "medication", "medication", "medication", "pickup", "pickup", "pickup",
+        "consultation", "consultation", "complaint", "complaint",
+    ]
+    assert all(all(key in case for key in ("expected_path", "target", "notes"))
+               for case in cases)
