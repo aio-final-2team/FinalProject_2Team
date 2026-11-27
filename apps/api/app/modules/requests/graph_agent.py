@@ -140,7 +140,7 @@ def _write_request(state):
     reply = answer_graph._ask_writer(answer_graph.OpenAIModel("DOCUMENT"), prompt, payload, [])
     if reply is None:
         return {"draft": {"text": "", "evidence": [], "no_evidence": True, "conflict": False}}
-    return {"draft": answer_graph._verify(reply, chunks, [])}
+    return {"draft": answer_graph._verify(reply, chunks, [], req["body"])}
 
 
 def _check_request(state):

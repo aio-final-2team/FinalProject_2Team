@@ -15,9 +15,11 @@ class Writer:
     def __init__(self, answer):
         self.answer = answer
         self.calls = 0
+        self.system = ""
 
     def json(self, system, user):
         self.calls += 1
+        self.system = system
         if isinstance(self.answer, Exception):
             raise self.answer
         return self.answer
@@ -27,9 +29,13 @@ class Checker:
     def __init__(self, answers=None):
         self.answers = answers or [{"passed": True, "issues": []}]
         self.calls = 0
+        self.payloads = []
+        self.system = ""
 
     def json(self, system, user):
         self.calls += 1
+        self.system = system
+        self.payloads.append(json.loads(user))
         answer = self.answers[min(self.calls - 1, len(self.answers) - 1)]
         if isinstance(answer, Exception):
             raise answer
@@ -47,6 +53,84 @@ def test_valid_quote():
     assert result["text"] == "12월 24일부터예요."
     assert result["evidence"][0]["chunk_id"] == 1
     assert result["trace"] == ["search", "write", "verify", "check", "end"]
+
+
+def test_writer_prompt_requires_named_event_match():
+    writer = Writer({"text": "확인 중이에요.", "evidence": [{"chunk_id": 1, "quote": "겨울방학"}],
+                     "no_evidence": False, "conflict": False})
+    draft_answer("우리 동네 장터 일정이 언제예요?", search, writer, Checker())
+    # 행사 이름이 다른 자료를 근거로 대신 답하지 않는 규칙이 작성 프롬프트에 포함된다.
+    assert "같은 행사·대상임을 확인할 수 있는 이름이나 연결 정보" in writer.system
+    assert "no_evidence = true" in writer.system
+
+
+def test_partial_answer_keeps_cited_facts_and_adds_fixed_unanswered_text():
+    question = "재롱잔치 날짜랑 준비물이랑 그날 하원 시간 바뀌는지 알려주세요"
+    chunks = [{"chunk_id": 21, "content": "재롱잔치는 12월 12일이고 준비물은 흰 양말입니다.", "score": 0.9}]
+    writer = Writer({"text": "재롱잔치는 12월 12일이고 준비물은 흰 양말이에요.",
+                     "evidence": [{"chunk_id": 21, "quote": "재롱잔치는 12월 12일이고 준비물은 흰 양말입니다."}],
+                     "facts": [{"text": "재롱잔치는 12월 12일이고 준비물은 흰 양말이에요.",
+                                "evidence": [{"chunk_id": 21, "quote": "재롱잔치는 12월 12일이고 준비물은 흰 양말입니다."}]}],
+                     "no_evidence": True, "conflict": False, "partial": True,
+                     "unanswered": ["그날 하원 시간 바뀌는지"]})
+    checker = Checker()
+
+    result = draft_answer(question, lambda *_: chunks, writer, checker)
+
+    assert result["partial"] and result["no_evidence"]
+    assert result["text"] == ("재롱잔치는 12월 12일이고 준비물은 흰 양말이에요.\n"
+                              "질문하신 ‘그날 하원 시간 바뀌는지’에 대해서는 자료에서 확인하지 못했어요. "
+                              "선생님이 확인한 뒤 알려 드릴게요.")
+    assert result["evidence"][0]["quote"] == chunks[0]["content"]
+    assert result["check_result"]["passed"] and checker.calls == 1
+    assert checker.payloads[0]["partial"] is True
+    assert "미답 자체는 누락 오류로 돌려보내지 않는다" in checker.system
+    assert "facts의 각 사실 문장을 같은 facts 항목의 evidence 인용과 따로 대조" in checker.system
+
+
+def test_partial_answer_requires_verbatim_citation_and_question_substring():
+    question = "재롱잔치 날짜와 하원 시간이 바뀌는지 알려주세요"
+    chunks = [{"chunk_id": 21, "content": "재롱잔치는 12월 12일입니다.", "score": 0.9}]
+    reply = {"text": "재롱잔치는 12월 12일이에요.",
+             "evidence": [{"chunk_id": 21, "quote": "12월 12일"}],
+             "facts": [{"text": "재롱잔치는 12월 12일이에요.",
+                        "evidence": [{"chunk_id": 21, "quote": "12월 12일"}]}],
+             "no_evidence": True, "conflict": False, "partial": True,
+             "unanswered": ["하원 시간이 바뀌는지"]}
+    from agents.graphs.answer import _verify
+
+    verified = _verify(reply, chunks, [], question)
+    assert verified["partial"] and verified["evidence"]
+    invalid = _verify({**reply, "facts": [{"text": "재롱잔치는 12월 12일이에요.",
+                                           "evidence": [{"chunk_id": 21, "quote": "12월 13일"}]}]},
+                      chunks, [], question)
+    assert invalid["no_evidence"] and not invalid["partial"] and invalid["text"] == NO_ANSWER
+    invalid_fact = _verify({**reply, "facts": [{"text": "근처 과학관에 갑니다.", "evidence": []}]},
+                           chunks, [], question)
+    assert invalid_fact["no_evidence"] and not invalid_fact["partial"] and invalid_fact["text"] == NO_ANSWER
+    mixed_fact = _verify({**reply, "facts": [{"text": "재롱잔치는 12월 12일이에요. 근처 과학관에 갑니다.",
+                                              "evidence": [{"chunk_id": 21, "quote": "12월 12일"}]}]},
+                         chunks, [], question)
+    assert mixed_fact["no_evidence"] and not mixed_fact["partial"] and mixed_fact["text"] == NO_ANSWER
+    unrelated = _verify({**reply, "unanswered": ["독감 접종 날짜"]}, chunks, [], question)
+    assert unrelated["no_evidence"] and not unrelated["partial"] and unrelated["text"] == NO_ANSWER
+
+
+def test_checker_rejection_does_not_release_partial_facts():
+    question = "재롱잔치 날짜와 하원 시간이 바뀌는지 알려주세요"
+    chunks = [{"chunk_id": 21, "content": "재롱잔치는 12월 12일입니다.", "score": 0.9}]
+    writer = Writer({"text": "재롱잔치는 12월 12일이에요. 근처 과학관에도 갑니다.",
+                     "evidence": [{"chunk_id": 21, "quote": "재롱잔치는 12월 12일입니다."}],
+                     "facts": [{"text": "근처 과학관에도 갑니다.",
+                                "evidence": [{"chunk_id": 21, "quote": "재롱잔치는 12월 12일입니다."}]}],
+                     "no_evidence": True, "conflict": False, "partial": True,
+                     "unanswered": ["하원 시간이 바뀌는지"]})
+    checker = Checker([{"passed": False, "issues": [{"field": "출처", "problem": "근거 없는 사실 문장이 있어요."}]}])
+
+    result = draft_answer(question, lambda *_: chunks, writer, checker)
+
+    assert result["text"] == NO_ANSWER and result["no_evidence"] and not result.get("partial")
+    assert writer.calls == 3 and checker.calls == 3
 
 
 def test_same_chunk_cited_twice_is_kept_once():
