@@ -59,8 +59,9 @@ def test_collects_doc_then_child_record_in_order_and_leaves_trace():
     assert trace == ["gather:documents", "gather:child_records"]
     assert len(model.payloads) == 3 and model.payloads[0]["round"] == 1
     assert "[전화번호]" in model.payloads[0]["question"] and "010" not in model.payloads[0]["question"]
+    # 조각마다 제목과 앞부분을 같이 줘서 모은 자료로 답할 수 있는지 AI가 판단해요.
     assert model.payloads[2]["found"][1] == {"tool": "child_records", "args": {"date": "2026-11-26"}, "count": 1,
-                                             "titles": ["11월 26일 관찰 기록"]}
+                                             "items": [{"title": "11월 26일 관찰 기록", "head": "[TEST] 점심을 남김없이 먹었어요."}]}
     assert model.payloads[0]["untrusted_data_fields"] == ["question", "found"]
 
 
@@ -84,10 +85,17 @@ def test_round_and_call_limits():
     box = Box(documents=lambda args: [{**DOC, "chunk_id": int(args["query"]), "score": 0.1}])
     many = calls(*[("documents", {"doc_type": "notice", "query": str(n)}) for n in range(MAX_CALLS + 3)])
     model = Model(many)  # done을 끝내 말하지 않아요
-    found = gather("[TEST]", box, model)
+    trace = []
+    found = gather("[TEST]", box, model, trace=trace)
     assert len(model.payloads) == MAX_ROUNDS
-    assert len(box.calls) == MAX_ROUNDS * MAX_CALLS
+    assert len(box.calls) == MAX_CALLS  # 같은 (도구, 인자)는 다음 차례에 다시 실행하지 않아요
+    assert trace.count("gather:repeat:documents") == (MAX_ROUNDS - 1) * MAX_CALLS
+    assert model.payloads[2]["found"][MAX_CALLS]["repeat"] and "count" not in model.payloads[2]["found"][MAX_CALLS]
     assert len(found) == MAX_CALLS  # 같은 조각은 차례가 바뀌어도 한 번만
+    rounds = [calls(*[("documents", {"doc_type": "notice", "query": f"{r}{n}"}) for n in range(MAX_CALLS)]) for r in range(1, 4)]
+    fresh = Box(documents=lambda args: [{**DOC, "chunk_id": int(args["query"]), "score": 0.1}])
+    gather("[TEST]", fresh, Model(*rounds))
+    assert len(fresh.calls) == MAX_ROUNDS * MAX_CALLS
     wide = Box(documents=lambda args: [{**DOC, "chunk_id": n, "score": n / 100} for n in range(20)])
     assert [c["chunk_id"] for c in gather("[TEST]", wide, Model(many))] == list(range(19, 19 - MAX_CANDIDATES, -1))
 

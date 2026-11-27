@@ -121,17 +121,37 @@ def care_request_chunks(req, day):
     return chunks
 
 
+def request_who(req):
+    """답변 AI들에게 알려 줄 '지금 상황': 질문한 사람과 이 요청의 아이(요청 행의 아이 이름).
+    이 보호자의 아이 이름이라 외부 모델에 보내도 되는 범위예요. 다른 아이 이름 가림은 그대로예요."""
+    name = req.get("child_name")
+    if name is None and req.get("child_id"):
+        with transaction() as connection:
+            name = connection.scalar(text("SELECT display_name FROM children WHERE org_id=:org AND id=:child"),
+                                     {"org": req["org_id"], "child": req["child_id"]})
+    return {"role": "학부모(이 요청을 낸 보호자)", "child": name}
+
+
 def answer_for_request(req, writer=None, checker=None, forecast=None):
-    """forecast는 run_request가 트랜잭션 밖에서 가져와 저장해 둔 예보 근거(없으면 None).
-    ANSWER_GATHER=agent면 자료 찾는 AI가 RequestToolbox로 근거를 모으고, 못 모으면 아래 search로 고정 검색해요."""
+    """forecast는 고정 검색 경로(ANSWER_GATHER=fixed)에서 run_request가 트랜잭션 밖에서 가져와 저장해 둔 예보 근거(없으면 None).
+    ANSWER_GATHER=agent면 자료 찾는 AI가 RequestToolbox로 근거를 모으고(예보도 AI가 forecast 도구로 불러요), 못 모으면
+    아래 search로 고정 검색해요. 그때만 질문 낱말(event_day)로 예보를 대역으로 가져와요."""
+    from app.modules.documents.public_sources import question_forecast
     from app.modules.documents.tools import RequestToolbox
+    from agents.graphs.answer import gather_on
     user = SimpleNamespace(id=req["requester_id"], org_id=req["org_id"], role="parent")
+    late = {"forecast": forecast, "tried": forecast is not None or not gather_on() or req["type"] != "inquiry"}
 
     def search(doc_type, query):
+        if req["type"] == "complaint" and doc_type not in ("notice", "policy"):
+            return []  # 민원 고정 검색은 협업 그래프처럼 가정통신문·운영 규정만
         chunks = search_documents(user, str(req["org_id"]), doc_type, query,
                                   classroom_id=req["classroom_id"], top_k=8)["chunks"]
-        if forecast and doc_type == "schedule":
-            chunks = [{k: v for k, v in forecast.items() if k != "quote"}, *chunks]
+        if doc_type == "schedule" and not late["tried"]:
+            late["tried"] = True  # 자료 찾는 AI가 못 모아 고정 검색으로 왔어요. 외부 API는 트랜잭션 밖에서 한 번만
+            late["forecast"] = question_forecast(req["org_id"], req["body"], datetime.now(KST).date())
+        if late["forecast"] and doc_type == "schedule":
+            chunks = [{k: v for k, v in late["forecast"].items() if k != "quote"}, *chunks]
         if doc_type == "notice":
             chunks = [*daily_note_chunks(req), *daily_record_chunks(req), *chunks]
         return chunks
@@ -153,7 +173,7 @@ def answer_for_request(req, writer=None, checker=None, forecast=None):
             preferences, child_notes = [], []
         return draft_answer(req["body"], search, writer=writer, checker=checker, memories=memories,
                             prior_answer=find_saved_answer(req), preferences=preferences, child_notes=child_notes,
-                            today=asked_on(req), gather_tools=RequestToolbox(req, forecast))
+                            today=asked_on(req), gather_tools=RequestToolbox(req), who=request_who(req))
     except Exception:  # 모델·자료 오류가 카드 생성을 막지 않도록 한다
         return fallback(["search", "write"])
 

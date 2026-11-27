@@ -836,7 +836,7 @@ HTTP/1.1 200 OK
 | `received`·`classified`·`assigned` | 추가 알림 없음. AI가 만든 카드 상세의 `messages[]`에서 대화를 읽는다. |
 | `awaiting_review`·`on_hold`·`escalated`·상담 아닌 `needs_info` | 같은 요청의 열린 카드(`done`·`rejected` 제외) 담당자마다 `parent_message` 알림을 하나씩 보낸다. 담당자가 없으면 원장에게 보낸다. 상태는 그대로다. |
 | 상담 `needs_info`·`sent_or_booked` | 담임(없으면 원장)에게 `parent_message`만 보낸다. 상담 후보·예약과 카드 상태는 그대로다. |
-| 문의·민원 `sent_or_booked` | 최신 `reply_draft`를 다시 열어 판을 1 올리고 닫힌 시각·보류 예정일을 지운다. `draft.text`는 빈 문자열, `check_result`는 null, 직전 발송 글은 `draft.previous_text`로 남긴다. 카드가 없으면 현재 유효한 담임에게 초안 없는 회신 카드를 새로 만들고, 담임이 없으면 `unassigned`다. 학부모 확인을 지우고 요청을 `awaiting_review`로 돌려 `new_card` 알림을 보낸다(담당 없으면 원장). |
+| 문의·민원 `sent_or_booked` | 최신 `reply_draft`를 다시 열어 판을 1 올리고 닫힌 시각·보류 예정일을 지운다. `draft.text`는 빈 문자열, `check_result`는 null, 직전 발송 글은 `draft.previous_text`로 남긴다. 커밋 뒤 처음 초안과 같은 일꾼이 새 글까지 넣은 대화로 답변 AI 초안을 다시 써 `draft.text`·`check_result`·근거를 채우고 판을 1 더 올린다(답변 AI가 꺼져 있거나 근거 없음·충돌·실패, 그새 담임이 손댄 카드는 빈 초안 그대로). 카드가 없으면 현재 유효한 담임에게 초안 없는 회신 카드를 새로 만들고, 담임이 없으면 `unassigned`다. 학부모 확인을 지우고 요청을 `awaiting_review`로 돌려 `new_card` 알림을 보낸다(담당 없으면 원장). |
 
 `parent_message` 제목은 “학부모가 글을 더 남겼어요”다. 다시 연 카드의 빈 초안을 그대로 `approve`하면 기존 규칙대로 409 `INVALID_TRANSITION`이다. 담임은 `edit_approve`에 직접 쓴 `edited_content.text`를 넣어야 보낼 수 있다. 이전 발송 글은 요청 대화에도 그대로 남는다.
 
@@ -1880,7 +1880,7 @@ GET `/api/v1/me`와 로그인 응답의 user.consents_complete도 같은 판·�
 | evidence[].document_id·title·location | 응답 | UUID·string·string | 항상 | 문서 ID·제목·원문 위치. 위치가 없으면 본문 |
 | evidence[].effective_date | 응답 | date 또는 null | 항상, null 가능 | 문서 effective_from |
 
-- 자료 충돌: 200, answer=`자료마다 내용이 달라요. 아래 두 자료를 확인해 주세요.`, conflict=true, 충돌한 양쪽 자료의 검증된 evidence를 반환한다(겨울방학 12/24·12/26 둘 다). 검색·인용에 없는 출처는 만들지 않는다.
+- 자료 충돌: 200, answer=AI가 두 자료가 어떻게 다른지 인용과 함께 쓴 설명(검사 AI를 통과했을 때). 설명이 비었거나 검사를 통과 못 하면 `자료마다 내용이 달라요. 아래 두 자료를 확인해 주세요.`, conflict=true, 충돌한 양쪽 자료의 검증된 evidence를 반환한다(겨울방학 12/24·12/26 둘 다). 검색·인용에 없는 출처는 만들지 않는다.
 - 모델 호출 실패: 기존 답변 흐름의 모양 오류·검사 재시도를 유지하며, 재시도 뒤에도 모델 오류로 답변을 못 만들면 503 `UPSTREAM_UNAVAILABLE`, 1.4의 `{error:{code,message,trace_id,details}}` 형식을 반환한다. 재시도에 성공하면 정상 200이다. ModelError 이외의 예외도 503이다.
 - 근거 없음: 200, answer=`자료에서 못 찾았어요`, evidence=[], conflict=false. 인용·검사 검증에서 근거를 확정하지 못해도 같은 안전 응답을 쓴다.
 

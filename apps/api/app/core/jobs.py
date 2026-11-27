@@ -41,8 +41,8 @@ def check_broker():
 
 
 def publish(job, object_id):
-    from app.worker import daily_note_drafts, request_agent
-    task = {"daily_note": daily_note_drafts, "request": request_agent}[job]
+    from app.worker import daily_note_drafts, request_agent, request_redraft
+    task = {"daily_note": daily_note_drafts, "request": request_agent, "redraft": request_redraft}[job]
     try:
         task.apply_async(args=[str(object_id)], retry=False)
     except Exception as error:
@@ -58,5 +58,7 @@ def dispatch(job, object_id, background_tasks):
         background_tasks.add_task(publish, job, object_id)
     else:
         from app.modules.daily_notes.runner import run_daily_note_drafts
+        from app.modules.requests.redraft import redraft_request
         from app.modules.requests.runner import run_request
-        background_tasks.add_task({"daily_note": run_daily_note_drafts, "request": run_request}[job], object_id)
+        background_tasks.add_task({"daily_note": run_daily_note_drafts, "request": run_request,
+                                   "redraft": redraft_request}[job], object_id)

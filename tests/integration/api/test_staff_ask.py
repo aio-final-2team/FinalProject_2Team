@@ -129,24 +129,42 @@ def test_staff_ask_auth_validation_and_forged_citation(client, parent, teacher, 
     assert len(Model.calls) == 3
 
 
-def test_staff_ask_conflict_preserves_both_sources(client, teacher, staff_ask_backend, monkeypatch):
+def test_staff_ask_conflict_explains_both_sources(client, teacher, staff_ask_backend, monkeypatch):
     ids = {add_doc(staff_ask_backend, f"겨울방학은 12월 {day}일에 시작해요.") for day in (24, 26)}
+    explanation = "[TEST] 한 자료는 12월 24일, 다른 자료는 12월 26일에 시작한다고 적혀 있어요."
 
     class ConflictModel(Model):
+        text = explanation
+        checker = {"passed": True, "issues": []}
+
         def json(self, system, user):
             self.calls.append(user)
+            if self.role == "CHECKER":
+                assert json.loads(user)["draft"] == self.text and json.loads(user)["conflict"] is True
+                return self.checker
             chunks = json.loads(user)["chunks"]
             assert {c["content"] for c in chunks} == {f"겨울방학은 12월 {d}일에 시작해요." for d in (24, 26)}
-            return {"text": "선택하지 않아요", "no_evidence": False, "conflict": True,
+            return {"text": self.text, "no_evidence": False, "conflict": True,
                     "evidence": [{"chunk_id": c["chunk_id"], "quote": c["content"]} for c in chunks]
                                 + [{"chunk_id": -1, "quote": "없는 자료"}]}
 
     monkeypatch.setattr("agents.graphs.answer.OpenAIModel", ConflictModel)
     r = client.post(BASE + "/staff/ask", headers=teacher, json={"question": "겨울방학"})
     assert r.status_code == 200, r.text
-    assert r.json()["answer"] == "자료마다 내용이 달라요. 아래 두 자료를 확인해 주세요."
-    assert r.json()["conflict"] is True and len(r.json()["evidence"]) == 2
-    assert {e["document_id"] for e in r.json()["evidence"]} == ids and len(Model.calls) == 1
+    # 자료끼리 다르면 AI가 두 자료가 어떻게 다른지 인용과 함께 설명하고, 검사 AI를 거쳐 돌려줘요.
+    assert r.json()["answer"] == explanation and r.json()["conflict"] is True
+    assert {e["document_id"] for e in r.json()["evidence"]} == ids and len(Model.calls) == 2
+    # 글이 비었거나 검사를 통과 못 하면 고정 안내로 대신하고 두 자료는 그대로 보여요.
+    for text_, checker in (("", ConflictModel.checker),
+                           (explanation, {"passed": False, "issues": [{"field": "출처", "problem": "[TEST] 날짜를 바꿔 옮겼어요"}]})):
+        Model.calls.clear()
+        monkeypatch.setattr(ConflictModel, "text", text_)
+        monkeypatch.setattr(ConflictModel, "checker", checker)
+        r = client.post(BASE + "/staff/ask", headers=teacher, json={"question": "겨울방학"})
+        assert r.status_code == 200, r.text
+        assert r.json()["answer"] == "자료마다 내용이 달라요. 아래 두 자료를 확인해 주세요."
+        assert r.json()["conflict"] is True and {e["document_id"] for e in r.json()["evidence"]} == ids
+        assert len(Model.calls) == (1 if not text_ else 2)
 
 
 def test_staff_ask_model_failure_is_503_and_recorded(client, teacher, staff_ask_backend, monkeypatch):

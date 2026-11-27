@@ -31,15 +31,17 @@ def respond(question, search, sources, writer=None, checker=None):
     try:
         writer = MaskedModel(writer if writer is not None else graph.OpenAIModel("DOCUMENT"))
         checker = MaskedModel(checker if checker is not None else graph.OpenAIModel("CHECKER"))
-        draft = graph.draft_answer(mask_sensitive(question), safe_search,
-                                  writer=writer, checker=checker, gather_tools=StaffToolbox(safe_search))
+        draft = graph.draft_answer(mask_sensitive(question), safe_search, writer=writer, checker=checker,
+                                  gather_tools=StaffToolbox(safe_search), who={"role": "교직원"}, explain_conflict=True)
     except ApiError:
         raise
     except Exception as error:
         raise ApiError(503, "UPSTREAM_UNAVAILABLE") from error
     evidence = [sources[e["chunk_id"]] for e in draft["evidence"] if e["chunk_id"] in sources]
     if draft["conflict"]:
-        return {"answer": "자료마다 내용이 달라요. 아래 두 자료를 확인해 주세요.",
+        # 두 자료가 어떻게 다른지 AI가 인용과 함께 쓴 글. 글이 비었거나 검사를 통과 못 하면 고정 안내로 대신해요.
+        explained = draft["check_result"]["passed"] and draft.get("conflict_text") and evidence
+        return {"answer": draft["text"] if explained else "자료마다 내용이 달라요. 아래 두 자료를 확인해 주세요.",
                 "evidence": evidence, "conflict": True}
     if draft["no_evidence"] or not draft["check_result"]["passed"]:
         if writer.failed or checker.failed:
