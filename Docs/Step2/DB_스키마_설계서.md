@@ -770,7 +770,7 @@ FK를 걸 수 없는 참조가 두 곳 있다. `cards.subject_id`와 `notificati
 - `notifications` 표 제약: `CHECK ((subject_type IS NULL) = (subject_id IS NULL))` · `CHECK (subject_type = 'daily_note')`
 - `eval_runs` 표 제약: `CHECK ((passed + errors) <= total)`
 
-**알림장.** 상태 값 `draft`·`needs_check`·`ready`·`sent`는 T04 6장의 `note_drafted`·`note_needs_check`·`note_ready`·`note_sent`와 뜻이 같다. 알림장 표가 따로 있어서 앞의 `note_`만 뺐다. MVP는 반 전체를 한 번에 보내고, 반에 `needs_check`가 하나라도 있으면 보내기를 잠근다. 잠금은 두 겹이다. **아이별로는 DB CHECK가** `open_checks`가 남은 알림장을 `sent`로 바꾸지 못하게 막고, **반 단위 잠금은 API 트랜잭션이** 맡는다. API는 그 반·그날의 알림장을 모두 잠근 뒤, 하나라도 `ready`가 아니면 아무것도 보내지 않고 409 `NOTE_BATCH_BLOCKED`로 답한다(FR-10, AC-04). `ready`·`sent`로 저장하려면 교사 확인(`confirmed_by`·`confirmed_at`)도 있어야 한다(NFR-03). `content`에는 식단·일정을 `documents`에서, 투약·귀가 줄을 `requests`에서 가져와 넣는다. 초안 뒤 접수된 당일 보호자 투약·귀가·문의는 입력→아이 알림장 순서로 같은 잠금을 잡고 `request_missed`·`request_id`를 붙인다. ready도 확인자·시각을 비우고 needs_check로 되돌리며 기존 returned 이력을 남긴다. sent는 보존하고 반 카드 담당자에게 new_card 알림만 보낸다. 전입 아이처럼 알림장 행이 없는 현재 반 아이도 API가 발송을 막고 카드 조회에서 missing으로 표시한다. 모든 아이가 sent이면 반 카드를 done으로 닫는다.
+**알림장.** 상태 값 `draft`·`needs_check`·`ready`·`sent`는 T04 6장의 `note_drafted`·`note_needs_check`·`note_ready`·`note_sent`와 뜻이 같다. 알림장 표가 따로 있어서 앞의 `note_`만 뺐다. MVP는 반 전체를 한 번에 보내고, 반에 `needs_check`가 하나라도 있으면 보내기를 잠근다. 잠금은 두 겹이다. **아이별로는 DB CHECK가** `open_checks`가 남은 알림장을 `sent`로 바꾸지 못하게 막고, **반 단위 잠금은 API 트랜잭션이** 맡는다. API는 그 반·그날의 알림장을 모두 잠근 뒤, 하나라도 `ready`가 아니면 아무것도 보내지 않고 409 `NOTE_BATCH_BLOCKED`로 답한다(FR-10, AC-04). `ready`·`sent`로 저장하려면 교사 확인(`confirmed_by`·`confirmed_at`)도 있어야 한다(NFR-03). `content`에는 식단·일정을 `documents`에서, 투약·귀가 줄을 `requests`에서 가져와 넣는다. 초안 뒤 접수된 당일 보호자 투약·귀가는 입력→아이 알림장 순서로 같은 잠금을 잡고 `request_missed`·`request_id`를 붙인다. ready도 확인자·시각을 비우고 needs_check로 되돌리며 기존 returned 이력을 남긴다. sent는 보존하고 반 카드 담당자에게 new_card 알림만 보낸다. 전입 아이처럼 알림장 행이 없는 현재 반 아이도 API가 발송을 막고 카드 조회에서 missing으로 표시한다. 모든 아이가 sent이면 반 카드를 done으로 닫는다.
 
 `child_memos`는 입력한 메모 원문을 보관한다. DB는 배열인지와 NOT NULL만 검사한다. 아이 ID, 메모 길이(1~500자), 같은 아이가 두 번 들어갔는지, 그 아이가 그 반 소속인지는 API가 검사한다(API 설계 문서). 0002를 0001로 되돌리면 이 컬럼과 CHECK가 없어지므로 저장한 메모도 함께 사라지고, 다른 입력 칸은 그대로 남는다. 0003을 되돌리면 `ai_original`과 알림장 이력 연결(`events.daily_note_id`), 알림장 이력 네 종류가 사라진다.
 
@@ -1388,7 +1388,7 @@ T50이 붙기 전까지는 사진을 올린 사람이 아이를 직접 표시한
 | children.profile_photo_path | NULL 허용 text. MEDIA_DIR 안 상대 경로 `profiles/<child_id>.jpg`. 없으면 화면은 이름 글자를 보여 준다. 퇴소 작업이 NULL로 비우고 파일을 지운다 |
 | meal_photos | PK (org_id, meal_date), org_id는 organizations FK. main_dish, storage_path(`meals/<org_id>/<날짜>.webp`), media_type(jpeg·png·webp), size_bytes(1 이상), created_at |
 
-사진은 모두 AI로 만든 가상 사진이다. 아이 사진은 `data/fixtures/kg-demo-01/profile_photos`(가상 정면 얼굴 21장), 급식 사진은 같은 원 식단표 점심을 바탕으로 만든 `meal_photos`(38장)에서 기동 시드가 넣는다. 데모 원과 사람별 QA 원이 같은 사진을 쓰고, 이미 있는 행·파일은 덮지 않는다. 두 폴더 모두 MEDIA_DIR 하위 폴더라 고아 사진 점검(`media_sweep`) 대상이 아니다.
+사진은 모두 AI로 만든 가상 사진이다. 아이 사진은 `data/fixtures/kg-demo-01/profile_photos`(가상 정면 얼굴 21장), 급식 사진은 같은 원 식단표 점심을 바탕으로 만든 `meal_photos`(38장)에서 기동 시드가 넣는다. 데모 원과 사람별 QA 원이 같은 사진을 쓰고, 이미 있는 행·파일은 덮지 않는다. 고아 사진 점검(`media_sweep`)은 `profiles/` 파일을 `children.profile_photo_path`와 대조해, 퇴소 때 파일 삭제가 실패했거나 복원 뒤 다시 적용으로 경로가 비워진 파일을 찾는다. `meals/`는 점검 대상이 아니다.
 조회 권한은 API 설계 문서 3.41을 따른다. 아이 사진은 `child_in_scope`(보호자·현재 담임·같은 기관 원장)로 막고 범위 밖은 404와 permission_denied 이력이다. 급식 사진은 같은 기관 사용자 누구나 본다.
 퇴소 작업은 프로필 경로를 비우고 파일도 지운다. 시드는 퇴소 이력이 있는 아이의 사진을 다시 넣지 않는다(`db/test_photos.py::test_withdraw_removes_profile_photo_and_seed_keeps_it_removed`). 이 표·열이 더해지며 FK 74·컬럼 328이 됐다.
 

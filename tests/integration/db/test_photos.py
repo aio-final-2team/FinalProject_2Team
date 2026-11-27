@@ -1,5 +1,6 @@
 """[TEST] 아이 프로필 사진·급식 참고 사진(API 75~77)이 범위대로 보이고, 퇴소하면 사라지는지 본다."""
 
+import os
 from dataclasses import replace
 
 import pytest
@@ -8,7 +9,7 @@ from sqlalchemy import text
 from app import backend
 from app.core import media, users
 from app.core.auth import issue_token
-from app.maintenance import withdraw_child
+from app.maintenance import media_sweep, withdraw_child
 from app.mock import seed
 from app.modules.photos import photos as db_photos
 
@@ -88,3 +89,13 @@ def test_meal_photos_list_and_file_are_org_scoped(media_root, db_client, seeded_
         assert db_client.get(f"{BASE}/meal-photos", params=query, headers=auth(seed.PARENT)).status_code == 422
     with seeded_db.connect() as connection:
         assert connection.scalar(text("SELECT count(*) FROM meal_photos WHERE org_id=:org"), {"org": seed.ORG}) == 38
+
+
+def test_sweep_finds_profile_files_left_without_a_child_path(media_root, seeded_db):
+    stray = media_root / "profiles" / "left-after-failed-delete.jpg"
+    stray.write_bytes(b"x")
+    for path in (stray, media_root / f"profiles/{seed.CHILD}.jpg"):
+        os.utime(path, (1, 1))
+    assert media_sweep.sweep() == ["profiles/left-after-failed-delete.jpg"]
+    assert media_sweep.sweep(apply=True) == ["profiles/left-after-failed-delete.jpg"]
+    assert not stray.exists() and (media_root / f"profiles/{seed.CHILD}.jpg").exists()

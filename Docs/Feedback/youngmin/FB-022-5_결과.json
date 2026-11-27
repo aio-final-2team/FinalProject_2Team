@@ -1,0 +1,724 @@
+{
+  "settings": {
+    "LLM_MODEL_SUPERVISOR": "gpt-6-luna",
+    "ANSWER_WRITER": "graph",
+    "REQUEST_AGENT": "app.modules.requests.graph_agent:run_request",
+    "REQUEST_COLLAB_GRAPH": "1",
+    "DATA_BACKEND": "db",
+    "seed": "db.seeds.demo + db.seeds.documents",
+    "db": "private local pgvector/pg16 container yuchion-fb0225-local, no shared DB"
+  },
+  "count": 10,
+  "passed": 10,
+  "supervisor_calls": 18,
+  "all_model_calls": 32,
+  "input_tokens": 60007,
+  "output_tokens": 18503,
+  "total_tokens": 78510,
+  "elapsed_seconds": 159.479,
+  "results": [
+    {
+      "id": "urgent_head",
+      "request_type": "inquiry",
+      "input": "등원 뒤 머리를 부딪혀 토하고 있어요.",
+      "supervisor_model": "gpt-6-luna",
+      "supervisor_called": true,
+      "supervisor_input": {
+        "request_type": "inquiry",
+        "body": "등원 뒤 머리를 부딪혀 토하고 있어요."
+      },
+      "supervisor_output": {
+        "topic_key": "safety",
+        "urgency": "urgent",
+        "risk_level": "urgent",
+        "risk_category": "아이 안전·머리 부딪힘",
+        "out_of_scope_kind": null,
+        "request_type": "inquiry"
+      },
+      "final_classification": {
+        "topic_key": "pickup_bus",
+        "urgency": "urgent",
+        "risk_level": "uncertain",
+        "risk_category": null,
+        "status": "escalated"
+      },
+      "cards": [
+        {
+          "kind": "reply_draft",
+          "status": "pending"
+        },
+        {
+          "kind": "director_report",
+          "status": "pending"
+        }
+      ],
+      "director_report": true,
+      "teacher_card": true,
+      "passed": true,
+      "calls": [
+        {
+          "role": "SUPERVISOR",
+          "model": "gpt-6-luna",
+          "output": {
+            "topic_key": "safety",
+            "urgency": "urgent",
+            "risk_level": "urgent",
+            "risk_category": "아이 안전·머리 부딪힘",
+            "out_of_scope_kind": null,
+            "request_type": "inquiry"
+          },
+          "input_tokens": 2456,
+          "output_tokens": 742,
+          "total_tokens": 3198,
+          "seconds": 6.347
+        }
+      ],
+      "elapsed_seconds": 6.347
+    },
+    {
+      "id": "urgent_abuse",
+      "request_type": "inquiry",
+      "input": "선생님이 아이를 때렸다고 합니다. 확인해 주세요.",
+      "supervisor_model": "gpt-6-luna",
+      "supervisor_called": true,
+      "supervisor_input": {
+        "request_type": "inquiry",
+        "body": "선생님이 아이를 때렸다고 합니다. 확인해 주세요."
+      },
+      "supervisor_output": {
+        "topic_key": "teacher",
+        "urgency": "urgent",
+        "risk_level": "urgent",
+        "risk_category": "child_safety",
+        "out_of_scope_kind": null
+      },
+      "final_classification": {
+        "topic_key": "teacher",
+        "urgency": "urgent",
+        "risk_level": "urgent",
+        "risk_category": "child_safety",
+        "status": "escalated"
+      },
+      "cards": [
+        {
+          "kind": "director_report",
+          "status": "pending"
+        },
+        {
+          "kind": "reply_draft",
+          "status": "pending"
+        }
+      ],
+      "director_report": true,
+      "teacher_card": true,
+      "passed": true,
+      "calls": [
+        {
+          "role": "SUPERVISOR",
+          "model": "gpt-6-luna",
+          "output": {
+            "topic_key": "teacher",
+            "urgency": "urgent",
+            "risk_level": "urgent",
+            "risk_category": "child_safety",
+            "out_of_scope_kind": null
+          },
+          "input_tokens": 2457,
+          "output_tokens": 554,
+          "total_tokens": 3011,
+          "seconds": 5.289
+        }
+      ],
+      "elapsed_seconds": 5.289
+    },
+    {
+      "id": "urgent_bruises",
+      "request_type": "inquiry",
+      "input": "아이 몸에 멍이 여러 개 있는데 설명 부탁드립니다.",
+      "supervisor_model": "gpt-6-luna",
+      "supervisor_called": true,
+      "supervisor_input": {
+        "request_type": "inquiry",
+        "body": "아이 몸에 멍이 여러 개 있는데 설명 부탁드립니다."
+      },
+      "supervisor_output": {
+        "topic_key": "safety",
+        "urgency": "urgent",
+        "risk_level": "uncertain",
+        "risk_category": "child_safety",
+        "out_of_scope_kind": null
+      },
+      "final_classification": {
+        "topic_key": "safety",
+        "urgency": "urgent",
+        "risk_level": "urgent",
+        "risk_category": "child_safety",
+        "status": "escalated"
+      },
+      "cards": [
+        {
+          "kind": "reply_draft",
+          "status": "pending"
+        },
+        {
+          "kind": "director_report",
+          "status": "pending"
+        }
+      ],
+      "director_report": true,
+      "teacher_card": true,
+      "passed": true,
+      "calls": [
+        {
+          "role": "SUPERVISOR",
+          "model": "gpt-6-luna",
+          "output": {
+            "topic_key": "safety",
+            "urgency": "urgent",
+            "risk_level": "uncertain",
+            "risk_category": "child_safety",
+            "out_of_scope_kind": null
+          },
+          "input_tokens": 2455,
+          "output_tokens": 857,
+          "total_tokens": 3312,
+          "seconds": 7.269
+        }
+      ],
+      "elapsed_seconds": 7.269
+    },
+    {
+      "id": "urgent_peanut",
+      "request_type": "inquiry",
+      "input": "땅콩을 먹고 입술이 부었고 숨을 가빠 합니다.",
+      "supervisor_model": "gpt-6-luna",
+      "supervisor_called": true,
+      "supervisor_input": {
+        "request_type": "inquiry",
+        "body": "땅콩을 먹고 입술이 부었고 숨을 가빠 합니다."
+      },
+      "supervisor_output": {
+        "topic_key": "health_hygiene",
+        "urgency": "urgent",
+        "risk_level": "urgent",
+        "risk_category": "acute_health_emergency",
+        "out_of_scope_kind": null
+      },
+      "final_classification": {
+        "topic_key": "health_hygiene",
+        "urgency": "urgent",
+        "risk_level": "uncertain",
+        "risk_category": null,
+        "status": "escalated"
+      },
+      "cards": [
+        {
+          "kind": "reply_draft",
+          "status": "pending"
+        },
+        {
+          "kind": "director_report",
+          "status": "pending"
+        }
+      ],
+      "director_report": true,
+      "teacher_card": true,
+      "passed": true,
+      "calls": [
+        {
+          "role": "SUPERVISOR",
+          "model": "gpt-6-luna",
+          "output": {
+            "topic_key": "health_hygiene",
+            "urgency": "urgent",
+            "risk_level": "urgent",
+            "risk_category": "acute_health_emergency",
+            "out_of_scope_kind": null
+          },
+          "input_tokens": 2460,
+          "output_tokens": 753,
+          "total_tokens": 3213,
+          "seconds": 6.303
+        }
+      ],
+      "elapsed_seconds": 6.303
+    },
+    {
+      "id": "urgent_pickup",
+      "request_type": "inquiry",
+      "input": "하원 때 모르는 사람이 아이를 데려가려 했어요.",
+      "supervisor_model": "gpt-6-luna",
+      "supervisor_called": true,
+      "supervisor_input": {
+        "request_type": "inquiry",
+        "body": "하원 때 모르는 사람이 아이를 데려가려 했어요."
+      },
+      "supervisor_output": {
+        "topic_key": "safety",
+        "urgency": "urgent",
+        "risk_level": "urgent",
+        "risk_category": "child_safety",
+        "out_of_scope_kind": null
+      },
+      "final_classification": {
+        "topic_key": "pickup_bus",
+        "urgency": "urgent",
+        "risk_level": "urgent",
+        "risk_category": "child_safety",
+        "status": "escalated"
+      },
+      "cards": [
+        {
+          "kind": "director_report",
+          "status": "pending"
+        },
+        {
+          "kind": "reply_draft",
+          "status": "pending"
+        }
+      ],
+      "director_report": true,
+      "teacher_card": true,
+      "passed": true,
+      "calls": [
+        {
+          "role": "SUPERVISOR",
+          "model": "gpt-6-luna",
+          "output": {
+            "topic_key": "safety",
+            "urgency": "urgent",
+            "risk_level": "urgent",
+            "risk_category": "child_safety",
+            "out_of_scope_kind": null
+          },
+          "input_tokens": 2457,
+          "output_tokens": 667,
+          "total_tokens": 3124,
+          "seconds": 5.728
+        }
+      ],
+      "elapsed_seconds": 5.728
+    },
+    {
+      "id": "normal_runny_nose",
+      "request_type": "inquiry",
+      "input": "콧물이 나는데 등원 가능할까요?",
+      "supervisor_model": "gpt-6-luna",
+      "supervisor_called": true,
+      "supervisor_input": {
+        "request_type": "inquiry",
+        "body": "콧물이 나는데 등원 가능할까요?"
+      },
+      "supervisor_output": {
+        "topic_key": "other",
+        "urgency": "normal",
+        "risk_level": "uncertain",
+        "risk_category": "health",
+        "out_of_scope_kind": null
+      },
+      "final_classification": {
+        "topic_key": "pickup_bus",
+        "urgency": "normal",
+        "risk_level": "normal",
+        "risk_category": null,
+        "status": "awaiting_review"
+      },
+      "cards": [
+        {
+          "kind": "reply_draft",
+          "status": "pending"
+        }
+      ],
+      "director_report": false,
+      "teacher_card": true,
+      "passed": true,
+      "calls": [
+        {
+          "role": "SUPERVISOR",
+          "model": "gpt-6-luna",
+          "output": {
+            "topic_key": "other",
+            "urgency": "normal",
+            "risk_level": "uncertain",
+            "risk_category": "health",
+            "out_of_scope_kind": null
+          },
+          "input_tokens": 2453,
+          "output_tokens": 691,
+          "total_tokens": 3144,
+          "seconds": 5.718
+        },
+        {
+          "role": "DOCUMENT",
+          "model": "gpt-6-luna",
+          "output": {
+            "text": "콧물만 있을 때 등원 가능한지는 자료에서 확인되지 않아 선생님 확인이 필요해요. 다만 아침 체온이 37.5℃ 이상이면 등원하지 않는다고 안내되어 있어요.",
+            "evidence": [
+              {
+                "chunk_id": 91,
+                "quote": "아침 체온이 **37.5℃ 이상**이면 등원하지 않습니다."
+              }
+            ],
+            "no_evidence": true,
+            "conflict": false
+          },
+          "input_tokens": 1246,
+          "output_tokens": 345,
+          "total_tokens": 1591,
+          "seconds": 3.215
+        }
+      ],
+      "elapsed_seconds": 8.933
+    },
+    {
+      "id": "normal_medicine",
+      "request_type": "inquiry",
+      "input": "해열제 먹고 등원하면 투약 부탁드립니다.",
+      "supervisor_model": "gpt-6-luna",
+      "supervisor_called": true,
+      "supervisor_input": {
+        "request_type": "inquiry",
+        "body": "해열제 먹고 등원하면 투약 부탁드립니다."
+      },
+      "supervisor_output": {
+        "topic_key": "health_hygiene",
+        "urgency": "normal",
+        "risk_level": "uncertain",
+        "risk_category": "medication_administration",
+        "out_of_scope_kind": null
+      },
+      "final_classification": {
+        "topic_key": "pickup_bus",
+        "urgency": "normal",
+        "risk_level": "normal",
+        "risk_category": null,
+        "status": "awaiting_review"
+      },
+      "cards": [
+        {
+          "kind": "reply_draft",
+          "status": "pending"
+        }
+      ],
+      "director_report": false,
+      "teacher_card": true,
+      "passed": true,
+      "calls": [
+        {
+          "role": "SUPERVISOR",
+          "model": "gpt-6-luna",
+          "output": {
+            "topic_key": "health_hygiene",
+            "urgency": "normal",
+            "risk_level": "uncertain",
+            "risk_category": "medication_administration",
+            "out_of_scope_kind": null
+          },
+          "input_tokens": 2455,
+          "output_tokens": 928,
+          "total_tokens": 3383,
+          "seconds": 7.337
+        },
+        {
+          "role": "DOCUMENT",
+          "model": "gpt-6-luna",
+          "output": {
+            "text": "해열제 없이 24시간 동안 열이 없으면 다시 등원할 수 있어요. 아침 체온이 37.5℃ 이상이면 등원하지 않습니다. 원에서 투약을 원하시면 보호자께서 투약 의뢰서를 작성해 주세요. 의뢰서에는 약 이름·용량·시간·보관 방법을 적어 주셔야 합니다. (운영 규정 — 건강·감염병 등원 기준, 제3조, 적용일 2026-09-01; 운영 규정 — 투약 의뢰, 제12조, 적용일 2026-09-01)",
+            "evidence": [
+              {
+                "chunk_id": 91,
+                "quote": "1. 아침 체온이 **37.5℃ 이상**이면 등원하지 않습니다.\n2. 원에서 37.5℃ 이상 열이 나면 보호자에게 연락하고, 보호자는 가능한 한 빨리 아이를 데려갑니다.\n3. 해열제 없이 24시간 동안 열이 없으면 다시 등원할 수 있습니다."
+              },
+              {
+                "chunk_id": 93,
+                "quote": "1. 투약은 보호자가 작성한 '투약 의뢰서'가 있을 때만 합니다.\n2. 의뢰서에는 약 이름·용량·시간·보관 방법을 적습니다.\n3. 처방전 없는 해열제는 보호자 동의가 있어도 1회만 투약합니다."
+              }
+            ],
+            "no_evidence": false,
+            "conflict": false
+          },
+          "input_tokens": 769,
+          "output_tokens": 1000,
+          "total_tokens": 1769,
+          "seconds": 7.524
+        },
+        {
+          "role": "CHECKER",
+          "model": "gpt-6-luna",
+          "output": {
+            "passed": false,
+            "issues": [
+              {
+                "field": "누락",
+                "problem": "질문은 해열제를 먹고 등원할 때 투약을 요청하는 내용이므로, 해열제 없이 24시간 동안 열이 없어야 다시 등원할 수 있다는 기준을 요청 상황과 직접 연결해 설명해야 합니다. 또한 처방전 없는 해열제는 보호자 동의가 있어도 1회만 투약한다는 규정이 빠져 있습니다."
+              }
+            ]
+          },
+          "input_tokens": 1393,
+          "output_tokens": 586,
+          "total_tokens": 1979,
+          "seconds": 5.155
+        },
+        {
+          "role": "DOCUMENT",
+          "model": "gpt-6-luna",
+          "output": {
+            "text": "해열제를 먹고 등원하는 경우에도, 해열제 없이 24시간 동안 열이 없어야 다시 등원할 수 있어요. 원에서 투약을 원하시면 보호자가 작성한 투약 의뢰서를 보내 주세요. 의뢰서에는 약 이름·용량·시간·보관 방법을 적어 주셔야 하며, 처방전이 없는 해열제는 보호자 동의가 있어도 1회만 투약할 수 있습니다.",
+            "evidence": [
+              {
+                "chunk_id": 91,
+                "quote": "운영 규정 — 건강·감염병 등원 기준, 제3조 발열 시 등원, 적용일 2026-09-01: “해열제 없이 24시간 동안 열이 없으면 다시 등원할 수 있습니다.”"
+              },
+              {
+                "chunk_id": 93,
+                "quote": "운영 규정 — 투약 의뢰, 제12조 투약, 적용일 2026-09-01: “투약은 보호자가 작성한 '투약 의뢰서'가 있을 때만 합니다.”"
+              },
+              {
+                "chunk_id": 93,
+                "quote": "운영 규정 — 투약 의뢰, 제12조 투약, 적용일 2026-09-01: “의뢰서에는 약 이름·용량·시간·보관 방법을 적습니다.”"
+              },
+              {
+                "chunk_id": 93,
+                "quote": "운영 규정 — 투약 의뢰, 제12조 투약, 적용일 2026-09-01: “처방전 없는 해열제는 보호자 동의가 있어도 1회만 투약합니다.”"
+              }
+            ],
+            "no_evidence": false,
+            "conflict": false
+          },
+          "input_tokens": 862,
+          "output_tokens": 632,
+          "total_tokens": 1494,
+          "seconds": 4.863
+        }
+      ],
+      "elapsed_seconds": 24.879
+    },
+    {
+      "id": "normal_temp",
+      "request_type": "inquiry",
+      "input": "37.5도면 등원 기준에 해당하나요?",
+      "supervisor_model": "gpt-6-luna",
+      "supervisor_called": true,
+      "supervisor_input": {
+        "request_type": "inquiry",
+        "body": "37.5도면 등원 기준에 해당하나요?"
+      },
+      "supervisor_output": {
+        "message": "37.5℃가 등원 기준에 해당하는지는 원의 운영 규정을 확인해야 해요. 현재 규정을 확인할 수 없어 단정하기 어렵습니다. 등원 전 담임 선생님이나 원에 확인해 주세요.",
+        "classification": {
+          "topic_key": "other",
+          "urgency": "normal",
+          "risk_level": "uncertain",
+          "risk_category": "health",
+          "out_of_scope_kind": null
+        }
+      },
+      "final_classification": {
+        "topic_key": "pickup_bus",
+        "urgency": "normal",
+        "risk_level": "normal",
+        "risk_category": null,
+        "status": "awaiting_review"
+      },
+      "cards": [
+        {
+          "kind": "reply_draft",
+          "status": "pending"
+        }
+      ],
+      "director_report": false,
+      "teacher_card": true,
+      "passed": true,
+      "calls": [
+        {
+          "role": "SUPERVISOR",
+          "model": "gpt-6-luna",
+          "output": {
+            "message": "37.5℃가 등원 기준에 해당하는지는 원의 운영 규정을 확인해야 해요. 현재 규정을 확인할 수 없어 단정하기 어렵습니다. 등원 전 담임 선생님이나 원에 확인해 주세요.",
+            "classification": {
+              "topic_key": "other",
+              "urgency": "normal",
+              "risk_level": "uncertain",
+              "risk_category": "health",
+              "out_of_scope_kind": null
+            }
+          },
+          "input_tokens": 2455,
+          "output_tokens": 574,
+          "total_tokens": 3029,
+          "seconds": 5.406
+        },
+        {
+          "role": "DOCUMENT",
+          "model": "gpt-6-luna",
+          "output": {
+            "text": "네. 아침 체온이 37.5℃ 이상이면 등원하지 않습니다. (「운영 규정 — 건강·감염병 등원 기준」 제3조 발열 시 등원, 적용일 2026-09-01)",
+            "evidence": [
+              {
+                "chunk_id": 91,
+                "quote": "아침 체온이 **37.5℃ 이상**이면 등원하지 않습니다."
+              }
+            ],
+            "no_evidence": false,
+            "conflict": false
+          },
+          "input_tokens": 1348,
+          "output_tokens": 165,
+          "total_tokens": 1513,
+          "seconds": 2.337
+        },
+        {
+          "role": "CHECKER",
+          "model": "gpt-6-luna",
+          "output": {
+            "passed": true,
+            "issues": []
+          },
+          "input_tokens": 1746,
+          "output_tokens": 183,
+          "total_tokens": 1929,
+          "seconds": 2.417
+        }
+      ],
+      "elapsed_seconds": 10.16
+    },
+    {
+      "id": "normal_hand_foot_mouth",
+      "request_type": "inquiry",
+      "input": "수족구가 유행하는지 궁금합니다.",
+      "supervisor_model": "gpt-6-luna",
+      "supervisor_called": true,
+      "supervisor_input": {
+        "request_type": "inquiry",
+        "body": "수족구가 유행하는지 궁금합니다."
+      },
+      "supervisor_output": {
+        "topic_key": "other",
+        "urgency": "normal",
+        "risk_level": "uncertain",
+        "risk_category": "health",
+        "out_of_scope_kind": null
+      },
+      "final_classification": {
+        "topic_key": "health_hygiene",
+        "urgency": "normal",
+        "risk_level": "normal",
+        "risk_category": null,
+        "status": "awaiting_review"
+      },
+      "cards": [
+        {
+          "kind": "reply_draft",
+          "status": "pending"
+        }
+      ],
+      "director_report": false,
+      "teacher_card": true,
+      "passed": true,
+      "calls": [
+        {
+          "role": "SUPERVISOR",
+          "model": "gpt-6-luna",
+          "output": {
+            "topic_key": "other",
+            "urgency": "normal",
+            "risk_level": "uncertain",
+            "risk_category": "health",
+            "out_of_scope_kind": null
+          },
+          "input_tokens": 2454,
+          "output_tokens": 827,
+          "total_tokens": 3281,
+          "seconds": 7.208
+        },
+        {
+          "role": "DOCUMENT",
+          "model": "gpt-6-luna",
+          "output": {
+            "text": "현재 자료만으로는 수족구가 유행하는지 확인되지 않아 선생님 확인이 필요해요.",
+            "evidence": [
+              {
+                "chunk_id": 92,
+                "quote": "독감·수족구·장염 등 법정 감염병은 의사 소견서에 적힌 격리 기간이 끝난 뒤 등원합니다."
+              }
+            ],
+            "no_evidence": true,
+            "conflict": false
+          },
+          "input_tokens": 611,
+          "output_tokens": 113,
+          "total_tokens": 724,
+          "seconds": 1.584
+        }
+      ],
+      "elapsed_seconds": 8.792
+    },
+    {
+      "id": "normal_appetite",
+      "request_type": "inquiry",
+      "input": "아이가 요즘 밥을 덜 먹는데 괜찮을까요?",
+      "supervisor_model": "gpt-6-luna",
+      "supervisor_called": true,
+      "supervisor_input": {
+        "request_type": "inquiry",
+        "body": "아이가 요즘 밥을 덜 먹는데 괜찮을까요?"
+      },
+      "supervisor_output": {
+        "topic_key": "other",
+        "urgency": "normal",
+        "risk_level": "uncertain",
+        "risk_category": "health",
+        "out_of_scope_kind": null
+      },
+      "final_classification": {
+        "topic_key": "meal",
+        "urgency": "normal",
+        "risk_level": "normal",
+        "risk_category": null,
+        "status": "awaiting_review"
+      },
+      "cards": [
+        {
+          "kind": "reply_draft",
+          "status": "pending"
+        }
+      ],
+      "director_report": false,
+      "teacher_card": true,
+      "passed": true,
+      "calls": [
+        {
+          "role": "SUPERVISOR",
+          "model": "gpt-6-luna",
+          "output": {
+            "topic_key": "other",
+            "urgency": "normal",
+            "risk_level": "uncertain",
+            "risk_category": "health",
+            "out_of_scope_kind": null
+          },
+          "input_tokens": 2459,
+          "output_tokens": 849,
+          "total_tokens": 3308,
+          "seconds": 6.644
+        },
+        {
+          "role": "DOCUMENT",
+          "model": "gpt-6-luna",
+          "output": {
+            "text": "자료에서 아이의 식사량 변화나 건강 상태는 확인되지 않아 선생님 확인이 필요해요.",
+            "evidence": [],
+            "no_evidence": true,
+            "conflict": false
+          },
+          "input_tokens": 599,
+          "output_tokens": 188,
+          "total_tokens": 787,
+          "seconds": 2.195
+        }
+      ],
+      "elapsed_seconds": 8.839
+    }
+  ],
+  "schema_gap": "모델 출력에 별도 reason 필드가 없어 실제 JSON 원문과 risk_category를 기록했다."
+}

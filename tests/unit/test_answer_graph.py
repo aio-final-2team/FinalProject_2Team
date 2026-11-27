@@ -334,3 +334,37 @@ def test_model_saying_no_evidence_is_not_asked_again():
     writer = Writers({"text": "", "evidence": [], "no_evidence": True, "conflict": False})
     result = draft_answer("열이 나면", lambda t, q: [LINES] if t == "policy" else [], writer, Checker())
     assert writer.calls == 1 and result["no_evidence"]
+
+
+class Recorder:
+    """받은 시스템 프롬프트와 입력을 그대로 남긴다."""
+
+    def __init__(self, answer):
+        self.answer, self.seen = answer, []
+
+    def json(self, system, user):
+        self.seen.append((system, json.loads(user)))
+        return self.answer
+
+
+def test_writer_and_checker_get_the_day_the_question_was_asked():
+    # 공통 규칙의 '오늘' 칸이 비어 있으면 모델이 자료의 "내일 준비물"을 그대로 내일 일로 믿는다(11/27 QA).
+    from datetime import date
+    writer = Recorder({"text": "12월 24일부터예요.", "evidence": [{"chunk_id": 1, "quote": "12월 24일부터"}],
+                       "no_evidence": False, "conflict": False})
+    checker = Recorder({"passed": True, "issues": []})
+    draft_answer("내일 준비물 있나요?", search, writer, checker, today=date(2026, 11, 18))
+    for system, payload in [*writer.seen, *checker.seen]:
+        assert "{today}" not in system
+        assert "오늘: 2026-11-18(수)" in system
+        assert payload["today"] == "2026-11-18(수)"
+    assert "today 기준 날짜로 바꿔 읽는다" in writer.seen[0][0]
+
+
+def test_today_defaults_to_korea_date(monkeypatch):
+    from datetime import datetime
+    import agents.graphs.answer as answer
+    monkeypatch.setattr(answer, "datetime", type("Fixed", (), {
+        "now": staticmethod(lambda tz=None: datetime(2026, 11, 26, 16, 0, tzinfo=tz))}))
+    assert answer.day_label() == "2026-11-26(목)"
+    assert answer.day_label(datetime(2026, 11, 27).date()) == "2026-11-27(금)"

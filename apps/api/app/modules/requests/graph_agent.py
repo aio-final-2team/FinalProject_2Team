@@ -52,7 +52,7 @@ def _prepare_card(request_id, route, answer=None, classification=None):
 def _request_context(request_id):
     with transaction() as connection:
         return connection.execute(text("""
-            SELECT r.type,r.body,r.org_id,r.classroom_id,r.requester_id,r.child_id,
+            SELECT r.type,r.body,r.org_id,r.classroom_id,r.requester_id,r.child_id,r.created_at,
                    (SELECT s.user_id FROM classroom_staff s
                     JOIN users u ON (u.id,u.org_id)=(s.user_id,s.org_id)
                     WHERE s.org_id=r.org_id AND s.classroom_id=r.classroom_id
@@ -117,7 +117,7 @@ def _load_request_memory(request_id):
 
 def _write_request(state):
     from agents.graphs import answer as answer_graph
-    from app.modules.documents.answer import graph_enabled
+    from app.modules.documents.answer import asked_on, graph_enabled
     from app.modules.memories.saved_answers import find_saved_answer
 
     req = _request_context(state["request_id"])
@@ -126,7 +126,7 @@ def _write_request(state):
     chunks = state["parallel"]["chunks"]
     prompt = answer_graph._prompt("documents.md", "## 입력", "## 알림장 초안 쓰기") + answer_graph.WRITE_FORMAT
     # 보호자 글은 문의 답변 그래프(answer.py)처럼 가려서 모델에 보낸다(T55 G-5). 원 자료 조각은 그대로 둔다.
-    payload = {"question": mask_sensitive(req["body"]), "chunks": chunks, "memories": state["parallel"].get("memories", []),
+    payload = {"question": mask_sensitive(req["body"]), "today": answer_graph.day_label(asked_on(req)), "chunks": chunks, "memories": state["parallel"].get("memories", []),
                "prior_answer": find_saved_answer(req),
                "review_issues": state.get("issues", [])}
     from app.modules.memories.memories import load_preferences, load_child_notes
@@ -145,13 +145,13 @@ def _write_request(state):
 
 def _check_request(state):
     from agents.graphs import answer as answer_graph
-    from app.modules.documents.answer import graph_enabled
+    from app.modules.documents.answer import asked_on, graph_enabled
 
     req = _request_context(state["request_id"])
     if req["type"] == "inquiry" and not graph_enabled():
         return {"passed": True, "issues": []}
     issues = answer_graph._review(answer_graph.OpenAIModel("CHECKER"), mask_sensitive(req["body"]), state["draft"],
-                                  state["parallel"]["chunks"], state.get("attempt", 0) + 1, [])
+                                  state["parallel"]["chunks"], state.get("attempt", 0) + 1, [], asked_on(req))
     if issues is None:
         return {"passed": False, "issues": [{"field": "출처", "problem": "검사하지 못했어요."}],
                 "attempt": 2}

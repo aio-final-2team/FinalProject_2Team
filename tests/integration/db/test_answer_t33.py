@@ -232,3 +232,24 @@ def test_hybrid_score_uses_matching_vector(seeded_db, monkeypatch):
     user = SimpleNamespace(id=seed.PARENT, org_id=seed.ORG, role="parent")
     result = search_documents(user, str(seed.ORG), "notice", "겨울방학", classroom_id=seed.CLASS_STAR)["chunks"]
     assert result and result[0]["score"] > 0.5
+
+
+def test_next_day_processing_reads_today_as_the_day_asked(seeded_db, monkeypatch):
+    """[TEST] 접수 다음 날 처리돼도 답변 AI의 오늘·내일은 접수한 날 기준이에요(기본 요청 처리 경로)."""
+    import json
+    from datetime import datetime, timedelta
+    from agents.graphs.answer import day_label
+    from app.core.schedule import KST
+    from app.modules.requests import agent_stub
+    setup_graph(seeded_db, monkeypatch, {"text": "추측", "evidence": [], "no_evidence": True, "conflict": False})
+    asked = datetime.now(KST) - timedelta(days=1)
+    with seeded_db.begin() as connection:
+        request_id = connection.scalar(text("""
+            INSERT INTO requests (org_id,classroom_id,child_id,requester_id,client_request_id,type,body,title,created_at)
+            VALUES (:org,:class,:child,:parent,:key,'inquiry',:body,:body,:at) RETURNING id
+        """), {"org": seed.ORG, "class": seed.CLASS_STAR, "child": seed.CHILD, "parent": seed.PARENT,
+               "key": str(uuid4()), "body": "[TEST] 내일 준비물 있나요?", "at": asked})
+    agent_stub.run_request(request_id)
+    payloads = [json.loads(user) for role, user in Writer.calls if role != "CHECKER"]
+    assert payloads and all(p.get("today") == day_label(asked.date()) for p in payloads if "today" in p)
+    assert any("today" in p for p in payloads)

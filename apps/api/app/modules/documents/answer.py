@@ -13,6 +13,12 @@ from agents.graphs.answer import draft_answer, fallback
 from app.modules.documents.search import search_documents
 
 
+def asked_on(req):
+    """질문을 받은 날(한국 시각). 답변 AI는 이 날을 기준으로 오늘·내일을 읽는다."""
+    created = req.get("created_at")
+    return created.astimezone(KST).date() if isinstance(created, datetime) else None
+
+
 def daily_note_chunks(req):
     from agents.graphs.answer import child_day_question, note_chunk
     if req["type"] != "inquiry" or not req.get("child_id") or not child_day_question(req["body"]):
@@ -58,7 +64,8 @@ def answer_for_request(req, writer=None, checker=None, forecast=None):
         except Exception:  # 기억 조회 실패가 이번 답변을 막지 않아요
             preferences, child_notes = [], []
         return draft_answer(req["body"], search, writer=writer, checker=checker, memories=memories,
-                            prior_answer=find_saved_answer(req), preferences=preferences, child_notes=child_notes)
+                            prior_answer=find_saved_answer(req), preferences=preferences, child_notes=child_notes,
+                            today=asked_on(req))
     except Exception:  # 모델·자료 오류가 카드 생성을 막지 않도록 한다
         return fallback(["search", "write"])
 

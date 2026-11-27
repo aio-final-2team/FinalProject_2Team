@@ -1194,7 +1194,7 @@ HTTP/1.1 200 OK
 | `child_memos[].memo` | 생성 본문 | string | 항목마다 필수 | 빈 문자열 불가 | 1~500자 | 모의 생성은 원문을 그대로 child 줄에 넣고, 공백뿐이면 줄을 만들지 않는다 |
 | `draft_status`·`error` | 응답 | string·object | 항상 | error는 null 가능 | queued·running·succeeded·failed; 오류는 {code, message} | 실패 조회도 200, 모의 오류 코드는 UPSTREAM_UNAVAILABLE |
 
-초안을 만드는 입구 함수의 전체 입력은 `{ input_id, note_date, classroom, activities, supplies, children, roster_names, menu }`이고, 이 중 `menu`는 `{ document_id, title, text }` 또는 null이다. `roster_names`는 반 전체 아이 이름이며, 부분 재생성으로 `children`을 걸러도 유지한다(3.26). 아이별 입력은 `{ child_id, display_name, memo, requests: [{ request_id, type, text }] }`다. `requests`는 클라이언트가 보내지 않고 서버가 모은다. 같은 기관·반·아이의 보호자가 보낸 `medication`·`pickup`·`inquiry` 요청 가운데 `created_at`의 한국 날짜가 `note_date`인 것을 모으며, 해당 요청이 없으면 빈 목록이다. 각 항목의 `text`에는 보호자 요청 본문이 들어간다. DB 모드의 실행기(runner)도 이 입구를 같은 모양으로 부른다.
+초안을 만드는 입구 함수의 전체 입력은 `{ input_id, note_date, classroom, activities, supplies, children, roster_names, menu }`이고, 이 중 `menu`는 `{ document_id, title, text }` 또는 null이다. `roster_names`는 반 전체 아이 이름이며, 부분 재생성으로 `children`을 걸러도 유지한다(3.26). 아이별 입력은 `{ child_id, display_name, memo, requests: [{ request_id, type, text }] }`다. `requests`는 클라이언트가 보내지 않고 서버가 모은다. 같은 기관·반·아이의 보호자가 보낸 `medication`·`pickup` 요청 가운데 `created_at`의 한국 날짜가 `note_date`인 것을 모으며, 해당 요청이 없으면 빈 목록이다. 문의·상담·민원은 답이 있어야 끝나는 일이라 알림장에 넣지 않고 받은함에서만 다룬다(알림장은 아이의 하루·식사·투약·귀가·준비물, 기획서 FR-14). 각 항목의 `text`에는 보호자 요청 본문이 들어간다. DB 모드의 실행기(runner)도 이 입구를 같은 모양으로 부른다.
 
 모의 초안은 요청 원문을 `source: { type: request, request_id }` 줄에 넣는다. 하늘의 "기침해요"와 다른 귀가 요청은 반영하지만, 노을의 고정 귀가 요청(…70a) 하나만은 일부러 빼서 `request_missed`를 보여 준다. 이 항목은 `item_key: pickup`, `sentence: null`, `request_id: …70a`다. 교사는 요청을 확인한 뒤 기존 PATCH의 `resolved_checks`로 해결한다. 미해결 항목이 남아 있으면 확인·발송을 막는 규칙도 기존과 같다.
 
@@ -1305,7 +1305,7 @@ HTTP/1.1 200 OK
 | 발송 막힘 | 지아를 확인하기 전 반 발송은 409 `NOTE_BATCH_BLOCKED`(`blocked`에 지아만). 지아의 항목을 모두 풀어도 확인 전이면 409. 확인 뒤 200 `sent_count=20`, 확인 카드 `done` |
 | 학부모 쪽 | `parent01`이 하늘 알림장(`sent`)을 받았고, 담임이 고친 줄이 그대로 보였다. 알림 1건 |
 
-초안 저장 뒤 같은 기관·반·아이의 당일 보호자 투약·귀가·문의가 새로 접수되면 기존 본문은 유지하고 `request_missed` 확인 항목을 해당 `request_id`와 함께 붙인다. `draft`·`needs_check`는 `needs_check`가 되고, `ready`도 확인자·확인 시각을 비우고 `needs_check`로 돌아간다. 이미 `sent`면 내용·확인 항목·상태는 유지한다. 두 경우 모두 반 카드 담당자에게 기존 `new_card` 알림을 보내며 `subject_type=daily_note`·`subject_id=아이 알림장 ID`로 알림장 화면에 연결하고, 같은 요청 재전송에는 확인·알림을 늘리지 않는다. 본문과 알림 제목에 보호자 원문을 복사하지 않는다. 다른 날짜·다른 반과 상담·민원은 이 처리에서 제외한다. 작성기가 입력을 읽은 뒤 저장하기 전 접수된 요청도 저장 직전 다시 읽어 `request_missed`로 남긴다.
+초안 저장 뒤 같은 기관·반·아이의 당일 보호자 투약·귀가가 새로 접수되면 기존 본문은 유지하고 `request_missed` 확인 항목을 해당 `request_id`와 함께 붙인다. `draft`·`needs_check`는 `needs_check`가 되고, `ready`도 확인자·확인 시각을 비우고 `needs_check`로 돌아간다. 이미 `sent`면 내용·확인 항목·상태는 유지한다. 두 경우 모두 반 카드 담당자에게 기존 `new_card` 알림을 보내며 `subject_type=daily_note`·`subject_id=아이 알림장 ID`로 알림장 화면에 연결하고, 같은 요청 재전송에는 확인·알림을 늘리지 않는다. 본문과 알림 제목에 보호자 원문을 복사하지 않는다. 다른 날짜·다른 반과 문의·상담·민원은 이 처리에서 제외한다. 작성기가 입력을 읽은 뒤 저장하기 전 접수된 요청도 저장 직전 다시 읽어 `request_missed`로 남긴다.
 
 ### 3.20 알림장 보기 — `GET /api/v1/daily-notes`
 
@@ -1810,7 +1810,7 @@ GET `/api/v1/me`와 로그인 응답의 user.consents_complete도 같은 판·�
 | ③ 경로·쿼리 | 경로 변수 없음. from·to 둘 다 필수이며 기존 날짜 쿼리처럼 YYYY-MM-DD로 보낸다. |
 | ④ 요청 본문 | 없음. |
 | ⑤ 검증·권한 | 자기 기관만 조회한다. 원장은 기관 전체, 담임은 현재 담당 반, 학부모는 현재 연결된 아이의 반 자료를 본다. 대상 반이 없는 기관 전체 자료는 모두 볼 수 있다. 학부모에게 staff 자료는 제외한다. 목록에서 반·공개 범위 밖 자료는 조용히 제외하고 permission_denied 이력을 만들지 않는다. 다른 기관 자료는 읽지 않는다. |
-| ⑥ 정상 응답 | 200 `{items:[{date,end_date,title,document_id,document_title,location}]}`. 없으면 items=[]. |
+| ⑥ 정상 응답 | 200 `{items:[{date,end_date,title,document_id,document_title,location,sources:[{document_id,document_title,location}],conflict,conflict_dates}]}`. 없으면 items=[]. |
 | ⑦ 오류 응답 | 로그인 없음·무효는 401 UNAUTHENTICATED. 날짜 생략·잘못된 날짜·from>to는 422 VALIDATION_FAILED. 공통 오류 형식은 1.4와 같다. |
 | ⑧ 실행 규칙 | status=active·ingest_status=succeeded인 schedule·notice만 대상으로 기존 extract_facts를 재사용한다. 날짜 사실만 쓰며 AI·임베딩은 호출하지 않는다. 자료의 시행 전 일정도 조회할 수 있다. |
 
@@ -1822,11 +1822,14 @@ GET `/api/v1/me`와 로그인 응답의 user.consents_complete도 같은 판·�
 | 출력 | items[].title | string. extract_facts가 정규화한 일정 이름. |
 | 출력 | items[].document_id, document_title | UUID string·string. 일정의 원 자료 ID와 제목. |
 | 출력 | items[].location | string. extract_facts의 근거 위치 그대로. 위치가 없는 조각은 빈 문자열. |
+| 출력 | items[].sources[] | array. 같은 일정을 적은 자료 전부 `{document_id,document_title,location}`. 첫 항목이 위 document_id·document_title·location과 같다. |
+| 출력 | items[].conflict | boolean. 조회 구간 안에서 같은 이름의 일정이 자료마다 다른 날에 시작하면 true. |
+| 출력 | items[].conflict_dates | date array. conflict가 true일 때 그 이름의 시작일들(오름차순). 아니면 빈 배열. |
 
-기간과 조회 구간이 하루라도 겹치면 원래 시작·종료일을 유지해 반환한다. 예를 들어 12/28 하루 조회에도 12/24~1/3 방학을 포함한다. date·title·document_title·location 오름차순이며, 자료마다 겨울방학이 12/24·12/26으로 다르면 각각 반환한다. 합치거나 한 날짜를 선택하지 않는다. 새 DB 표·마이그레이션은 없다.
+기간과 조회 구간이 하루라도 겹치면 원래 시작·종료일을 유지해 반환한다. 예를 들어 12/28 하루 조회에도 12/24~1/3 방학을 포함한다. date·title·document_title·location 오름차순이다. 시작일·종료일이 같고 이름이 띄어쓰기만 다른 일정은 한 항목으로 합치고, 기존 칸은 이 순서의 첫 자료로 채우며 모든 자료를 sources에 담는다. 자료마다 겨울방학이 12/24·12/26으로 다르면 어느 쪽이 맞는지 알 수 없으므로 각각 반환하고, 두 항목 모두 conflict=true·conflict_dates=[12/24, 12/26]으로 표시한다. 한 날짜를 선택하지 않는다. 새 DB 표·마이그레이션은 없다.
 
 ```json
-{"items":[{"date":"2026-12-24","end_date":"2027-01-03","title":"겨울방학","document_id":"00000000-0000-4000-8000-000000000b02","document_title":"[가상] 겨울방학 안내","location":"1쪽 겨울방학 기간"}]}
+{"items":[{"date":"2026-12-24","end_date":"2027-01-03","title":"겨울방학","document_id":"00000000-0000-4000-8000-000000000b02","document_title":"[가상] 겨울방학 안내","location":"1쪽 겨울방학 기간","sources":[{"document_id":"00000000-0000-4000-8000-000000000b02","document_title":"[가상] 겨울방학 안내","location":"1쪽 겨울방학 기간"}],"conflict":true,"conflict_dates":["2026-12-24","2026-12-26"]}]}
 ```
 
 ### 3.36 [제안] 개인 알림 시간 — API 64·65
@@ -2195,7 +2198,7 @@ def decide(card_id: UUID, body: CardDecision, user: User = Depends(current_staff
 | `activities`·`supplies` | string | 필수 | 반 활동(1~2,000자)·준비물(빈 문자열 가능) |
 | `menu` | string 또는 null | 필수 | 그날 쓸 식단 본문. 없으면 null |
 | `child_name`·`child_memo` | string | 필수 | 아이 표시 이름과 담임 메모. 메모가 없으면 `""` |
-| `requests[]` | object[] | 필수 | `{ request_id, type, text }`. `type`은 `medication`·`pickup`·`inquiry` |
+| `requests[]` | object[] | 필수 | `{ request_id, type, text }`. `type`은 `medication`·`pickup`(서버가 문의는 보내지 않는다) |
 | `review_issues[]` | object[] | 필수 | 검사 AI가 돌려보낸 확인 항목. 처음에는 `[]` |
 
 결과는 `{"child": "아이 메모 줄 또는 null", "requests": [{"request_id", "value", "answered"}]}`이다. 코드는 이 결과를 아이 메모 줄(출처 `teacher_input`)과 보호자 요청 줄(출처 `request`)로 바꾸고, 입력에 없는 `request_id`는 버린다. 반 공통 줄(`day`·`supplies`·`meal`)은 모델이 아니라 코드가 만든다. 저장하고 나면 결과 ID는 아이별 알림장 ID(3.20 `items[].id`)가 된다. 상태는 확인 항목이 있으면 `needs_check`, 없으면 `draft`다. 업무상으로는 담임이 고치고 확인할 초안이 생겼다는 뜻이다.

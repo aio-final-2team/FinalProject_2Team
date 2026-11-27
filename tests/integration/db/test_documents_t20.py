@@ -94,8 +94,9 @@ def test_fixture_documents_load_with_locations_and_classrooms(seeded_db, docs):
 
 
 def test_reseed_keeps_replaced_virtual_document_superseded(seeded_db, docs):
-    source = next((FIXTURES / "notice").glob("*.md"))
-    parsed = parse_document(source.read_text(encoding="utf-8"))
+    # 반이 시드에 없어 건너뛴 문서(예: NT-2026-31)를 집으면 원 문서가 없어요. 넣은 문서 중 하나를 골라요(glob 순서는 환경마다 달라요).
+    parsed = next(parsed for path in sorted((FIXTURES / "notice").glob("*.md"))
+                  if (parsed := parse_document(path.read_text(encoding="utf-8"))).meta.id in docs["added"])
     with seeded_db.begin() as connection:
         old_id = connection.scalar(text("""
             SELECT id FROM documents WHERE org_id=:org AND content_sha256=:sha
