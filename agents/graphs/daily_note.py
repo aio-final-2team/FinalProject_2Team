@@ -18,7 +18,7 @@ from agents.guardrails.sensitive import mask_sensitive
 from agents.llm import JsonModel, ModelError, OpenAIModel, feature, keep_trace
 
 PROMPTS = Path(__file__).resolve().parents[1] / "prompts"
-RETURN_KINDS = {"not_in_memo", "request_missed"}       # 자료 AI가 고칠 수 있는 문제
+RETURN_KINDS = {"not_in_memo", "request_missed", "memo_missing"}  # 자료 AI가 고칠 수 있는 문제
 MODEL_KINDS = {"not_in_memo", "sensitive", "other_child", "date_check", "absent"}  # 검사 AI가 낼 수 있는 값
 MAX_RETURNS = 2
 REQUEST_KEY = {"medication": "medication", "pickup": "pickup", "inquiry": "inquiry"}  # 계약 v0.4.1(#282)
@@ -30,9 +30,9 @@ PROBLEM = {
     "return_limit": "AI가 두 번 고쳐도 남은 문제가 있어요. 직접 확인해 주세요.",
     "request_missed": "보호자 요청이 초안에 없어요. 요청 내용을 넣어 주세요.",
     "other_child": "다른 아이 이름이 들어 있어요. 이 아이 알림장에서는 빼 주세요.",
-    "memo_left_out": "선생님 메모를 알림장에 옮기지 않았어요. 메모를 보고 직접 확인해 주세요.",
+    "memo_missing": "선생님 관찰 메모가 알림장에 빠졌어요. 메모를 보고 한 줄 써 주세요.",
     "medication": "보호자 투약 요청이에요. 보내기 전에 직접 확인해 주세요.",
-    "unanswered": "보호자 문의에 선생님 답이 필요해요. 메모에 답할 내용이 없었어요.",
+    "request_unanswered": "보호자 문의에 선생님 답이 필요해요. 메모에 답할 내용이 없었어요.",
 }
 
 WRITE_FORMAT = """
@@ -211,7 +211,7 @@ def unanswered(own: list[dict]) -> list[dict]:
     found = []
     for line in own:
         if line.pop("_unanswered", False):
-            found.append(new_check(line["key"], "sensitive", problem=PROBLEM["unanswered"],
+            found.append(new_check(line["key"], "request_unanswered",
                                    sentence=line["value"], request_id=line["source"]["request_id"]))
     return found
 
@@ -240,9 +240,10 @@ def memo_left_out(memo: str, own: list[dict], found: list[dict]) -> list[dict]:
     """안전장치: 메모가 있는데 아이 메모 줄이 없고 아이 메모 확인도 없으면 선생님 확인을 남긴다."""
     if not memo or any(line["key"] == "child" for line in own):
         return []
-    if any(f["item_key"] == "child" and f["kind"] in MODEL_KINDS for f in found):
+    if any(f["item_key"] == "child" and f["kind"] in {"sensitive", "other_child", "date_check", "absent"}
+           for f in found):
         return []
-    return [new_check("child", "sensitive", problem=PROBLEM["memo_left_out"])]
+    return [new_check("child", "memo_missing")]
 
 
 def review(model: JsonModel, payload, child, own) -> list[dict]:

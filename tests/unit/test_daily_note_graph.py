@@ -211,10 +211,33 @@ def test_eval_request_score_needs_line_key_and_teacher_check():
 
 
 def test_memo_left_out_without_check_gets_teacher_check():
-    [note] = draft_daily_notes(payload([kid("a", "다온", "내일 상담 때 이야기")]), Script({"child": None}), Script(OK))
+    writer = Script({"child": None})
+    [note] = draft_daily_notes(payload([kid("a", "다온", "블록을 친구와 나누어 쌓음")]), writer, Script(OK))
+    assert writer.calls == MAX_RETURNS + 1
     assert "child" not in keys(note)
-    [check] = note["open_checks"]
-    assert check["kind"] == "sensitive" and check["item_key"] == "child"
+    assert [c["kind"] for c in note["open_checks"]] == ["memo_missing", "return_limit"]
+    check = note["open_checks"][0]
+    assert check["item_key"] == "child" and check["sentence"] is None
+    assert "블록" not in check["problem"]
+
+
+def test_memo_left_out_is_returned_then_fixed():
+    writer = Script({"child": None}, {"child": "친구와 블록을 나누어 쌓았어요."})
+    [note] = draft_daily_notes(payload([kid("a", "다온", "블록을 친구와 나누어 쌓음")]), writer, Script(OK))
+    assert writer.calls == 2 and "child" in keys(note) and note["open_checks"] == []
+
+
+def test_memo_left_out_preserves_sensitive_check():
+    checker = Script({"checks": [{"item_key": "child", "kind": "sensitive", "problem": "다침", "sentence": None}]})
+    [note] = draft_daily_notes(payload([kid("a", "다온", "무릎을 다침")]), Script({"child": None}), checker)
+    assert [c["kind"] for c in note["open_checks"]] == ["sensitive"]
+
+
+def test_not_in_memo_check_does_not_hide_missing_child_line():
+    checker = Script({"checks": [{"item_key": "child", "kind": "not_in_memo", "problem": "근거 없음", "sentence": None}]})
+    [note] = draft_daily_notes(payload([kid("a", "다온", "블록을 친구와 나누어 쌓음")]),
+                               Script({"child": None}), checker)
+    assert [c["kind"] for c in note["open_checks"]] == ["not_in_memo", "memo_missing", "return_limit"]
 
 
 def test_memo_left_out_with_checker_kind_adds_nothing_more():
@@ -298,7 +321,7 @@ def test_unanswered_inquiry_keeps_text_and_asks_teacher():
     line = next(item for item in note["content"]["items"] if item["source"]["type"] == "request")
     assert line["value"] == "기침을 한다고 알려 주셨어요." and "_unanswered" not in line
     [check] = note["open_checks"]
-    assert check["kind"] == "sensitive" and check["request_id"] == "r1" and check["item_key"] == "inquiry"
+    assert check["kind"] == "request_unanswered" and check["request_id"] == "r1" and check["item_key"] == "inquiry"
 
 
 def test_request_line_repeating_child_line_becomes_request_text():
@@ -308,7 +331,7 @@ def test_request_line_repeating_child_line_becomes_request_text():
     [note] = draft_daily_notes(payload([kid("a", "윤슬", "친구에게 먼저 사과함", [req])]), writer, Script(OK))
     line = next(item for item in note["content"]["items"] if item["source"]["type"] == "request")
     assert line["value"] == "보호자 요청: 요즘 친구랑 잘 지내나요?"
-    assert [c["kind"] for c in note["open_checks"]] == ["sensitive"]
+    assert [c["kind"] for c in note["open_checks"]] == ["request_unanswered"]
 
 
 def test_eval_memo_score_ignores_request_checks():
@@ -319,6 +342,26 @@ def test_eval_memo_score_ignores_request_checks():
     note = {"content": {"items": [{"key": "child", "value": "블록놀이를 했어요.", "source": {"type": "teacher_input"}}]},
             "open_checks": [{"kind": "sensitive", "item_key": "day", "request_id": "GR-14"}]}
     assert score(case, note)["pass"] is True
+
+
+def test_eval_memo_score_rejects_unexpected_memo_missing():
+    from tools.eval_daily_note import score
+
+    case = {"id": "ND-03", "category": "지어내기", "must_not_include": [], "expect_flag": False,
+            "flag_kind": None, "must_include": []}
+    note = {"content": {"items": []}, "open_checks": [{"kind": "memo_missing", "item_key": "child"}]}
+    assert score(case, note)["pass"] is False
+
+
+def test_eval_request_score_accepts_request_unanswered():
+    from tools.eval_daily_note import score_request
+
+    req = {"request_key": "r1", "type": "inquiry", "expect": {"line_key": "inquiry",
+           "must_not_include": [], "teacher_check": "request_unanswered"}}
+    line = {"key": "inquiry", "value": "보호자 문의를 확인했어요.",
+            "source": {"type": "request", "request_id": "r1"}}
+    note = {"content": {"items": [line]}, "open_checks": [{"kind": "request_unanswered", "request_id": "r1"}]}
+    assert score_request(req, note)["pass"] is True
 
 
 def test_model_retries_only_retryable_errors_with_backoff():
