@@ -49,7 +49,7 @@ def test_child_requests_input_and_demo_omission(client, teacher):
         elif note["child_id"] == str(seed.demo_id("503")):
             assert lines == [] and note["status"] == "needs_check"
             assert missed == [{"id": f"request-{seed.REQUEST_PICKUP}", "item_key": "pickup",
-                               "kind": "request_missed", "problem": "보호자 요청을 초안에 반영해 주세요",
+                               "kind": "request_missed", "problem": "보호자 요청을 초안에 반영해 주세요", "action": None,
                                "sentence": None, "request_id": str(seed.REQUEST_PICKUP)}]
         else:
             child_requests = mock_notes.requests_for_child(

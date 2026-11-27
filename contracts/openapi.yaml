@@ -6941,9 +6941,17 @@ components:
           - request_missed
           - return_limit
           title: Kind
+          description: 화면에 띄울 행동 버튼 종류. 무엇이 문제인지는 problem이 말해요
         problem:
           type: string
           title: Problem
+          description: 무엇이 문제인지 한 줄. 화면 제목으로 그대로 보여요
+        action:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Action
+          description: 선생님이 할 일 한 줄(검사 AI나 코드가 써요, 없으면 null)
         sentence:
           anyOf:
           - type: string

@@ -15,7 +15,7 @@ import { Icon } from "@/components/Icon";
 import { Sheet } from "@/components/Sheet";
 import { useToast } from "@/components/Toast";
 import { useAllCards } from "@/api/cards";
-import { CHECK_KIND, COMMON_KEYS, NOTE_STATUS, dateLabel, itemLabel, nameI, noMd, todayKST, type DailyNote, type NoteItem } from "@/domain/notes";
+import { COMMON_KEYS, NOTE_STATUS, checkTitle, dateLabel, itemLabel, nameI, noMd, todayKST, type DailyNote, type NoteItem } from "@/domain/notes";
 import { RecordSheet } from "@/features/records/RecordSheet";
 import { useRecords } from "@/features/records/store";
 
@@ -492,7 +492,7 @@ function Review({ notes }: { notes: DailyNote[] }) {
       {!allSent && flagged.length > 0 && (
         <>
           <Label right={<span>{flagged.length}명</span>}>먼저 확인할 아이</Label>
-          <ul className="overflow-hidden rounded-lg bg-card shadow-card">{flagged.map((n) => row(n, n.open_checks.map((o) => CHECK_KIND[o.kind]?.short ?? o.problem).join(" · ")))}</ul>
+          <ul className="overflow-hidden rounded-lg bg-card shadow-card">{flagged.map((n) => row(n, n.open_checks.map(checkTitle).join(" · ")))}</ul>
         </>
       )}
 
