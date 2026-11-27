@@ -10,7 +10,7 @@ from app.core.constants import NOTIFICATION_TITLES
 from app.core.db import transaction
 from app.core.errors import ApiError
 from app.core.schedule import KST, deliver_after
-from app.modules.consultations.slots import find_consult_slots
+from app.modules.consultations.slots import find_consult_slots, slot_rules
 from app.modules.consultations.bookings import lock_resources
 from app.modules.requests.events import record
 
@@ -79,10 +79,7 @@ def supersede(connection, booking, kind, keys):
 
 
 def alternatives(connection, booking, until, now):
-    rules = connection.scalars(text("""
-        SELECT rule_json FROM memory_rules WHERE org_id=:org AND owner_id=:teacher
-          AND status='active' AND reason_code='slot_unavailable' ORDER BY created_at,id
-    """), {"org": booking["org_id"], "teacher": booking["teacher_id"]}).all()
+    rules = slot_rules(connection, booking["org_id"], booking["teacher_id"])
     result = []
     for offset in range(14):
         result.extend(find_consult_slots(connection, booking["teacher_id"], now.date()+timedelta(days=offset),

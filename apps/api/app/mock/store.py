@@ -451,24 +451,27 @@ def slot_conflicts(org_id, teacher, room, period):
 
 
 def _propose_slots(card: Card, teacher: UUID | None, round_no: int = 1, *, preferred_times=None, count=3) -> list[Slot]:
-    """평일 15:00·16:00 중 확정·살아 있는 체크와 겹치지 않는 세 칸을 골라요."""
-    from app.modules.consultations.slots import preference_key
+    """평일 15:00·16:00 중 확정·살아 있는 체크·켠 상담 시간 규칙과 맞지 않는 칸을 빼고 세 칸을 골라요."""
+    from app.mock.memories import active_rules
+    from app.modules.consultations.slots import fallback_preference, preference_key, preferred_or_memory, rule_bounds
     if preferred_times is None:
         preferred_times = next((e.detail["preferred_times"] for e in reversed(events_of(card.request_id))
                                 if "preferred_times" in e.detail), None)
     if preferred_times is None and card.request_id in _state.requests:
         preferred_times = _state.requests[card.request_id].body  # 첫 후보는 요청 글의 희망을 읽어요(DB판과 같음)
+    preference = fallback_preference(preferred_times, now())  # 모의엔 AI가 없어 정규식 대역만 써요.
     if _state.memories and card.request_id in _state.requests:
         from app.mock.memories import load_preferences
-        from app.modules.consultations.slots import preferred_or_memory
         req = _state.requests[card.request_id]
-        preferred_times = preferred_or_memory(preferred_times, load_preferences(req.org_id, req.requester_id))
+        preference = preferred_or_memory(preference, load_preferences(req.org_id, req.requester_id))
     first = _next_weekday(now().date())
     room = next(iter(_state.rooms))
     teacher = teacher or seed.TEACHER
+    rules = [rule["rule_json"] for rule in active_rules(card.org_id, teacher, ("slot_unavailable",))]
     candidates = []
     day = first
     while day <= now().date()+timedelta(days=14):
+        lower, upper = rule_bounds(rules, day, datetime.combine(day, time(), KST), datetime.combine(day, time.max, KST))
         for hour in (15, 16):
             start = datetime.combine(day, time(hour), KST)
             end = start + timedelta(minutes=30)
@@ -476,7 +479,7 @@ def _propose_slots(card: Card, teacher: UUID | None, round_no: int = 1, *, prefe
             def overlaps(period):
                 return start < period["end"] and period["start"] < end
 
-            if slot_conflicts(card.org_id, teacher, room, {"start": start, "end": end}):
+            if start < lower or end > upper or slot_conflicts(card.org_id, teacher, room, {"start": start, "end": end}):
                 continue
             if any(s.org_id == card.org_id and overlaps(s.period) and (
                     _state.cards[s.card_id].request_id == card.request_id
@@ -486,7 +489,7 @@ def _propose_slots(card: Card, teacher: UUID | None, round_no: int = 1, *, prefe
             candidates.append({"start": start, "end": end})
         day = _next_weekday(day)
     out = []
-    for rank, period in enumerate(sorted(candidates, key=preference_key(preferred_times, now()))[:count], 1):
+    for rank, period in enumerate(sorted(candidates, key=preference_key(preference, now()))[:count], 1):
         slot = Slot(id=_state.next_int(), card_id=card.id, org_id=card.org_id, teacher_id=teacher,
                     room_id=room, period=period, round=round_no, rank=rank)
         _state.slots[slot.id] = slot

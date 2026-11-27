@@ -53,11 +53,11 @@ def test_memory_parent_pending_dedupe_and_preference(memory_backend):
         assert backend.memories.load_preferences(seed.ORG, seed.PARENT)[0]['structured']['after'] == '16:00'
 
 
-def test_memory_parent_rejects_temporary_diagnosis_other_child_and_sensitive(memory_backend):
+def test_memory_parent_lines_block_diagnosis_sensitive_paraphrase_and_care_as_preference(memory_backend):
+    """[TEST] AI가 고른 후보여도 진단·민감정보·원문 아님·돌봄을 선호로 돌린 것은 코드 선이 막아요.
+    일회성·다른 아이 판단은 AI 몫이라, 낱말 대역은 tests/unit/test_memory_rules.py에서 따로 봐요."""
     from sqlalchemy import text
-    for body, content in [('오늘만 낮잠 전에 책을 읽어 주세요.','낮잠 전에 책을 읽어 주세요.'),
-                          ('ADHD 진단으로 낮잠이 어려워요.','낮잠이 어려워요.'),
-                          ('친구는 견과류 알레르기가 있어요.',CARE['content']),
+    for body, content in [('ADHD 진단으로 낮잠이 어려워요.','낮잠이 어려워요.'),
                           ('낮잠 연락은 010-1234-5678로 해요.','낮잠 연락은 010-1234-5678로 해요.'),
                           ('견과류 알레르기는 없어요.',CARE['content'])]:
         save(memory_backend, [dict(kind='care_note',content=content)],body)
@@ -169,3 +169,31 @@ def test_memory_parent_needs_consent_for_each_kind(memory_backend, withdrawn, ki
     else:
         assert sorted(m.kind for m in store.state().memories.values()) == kinds
         assert not [n for n in store.state().notifications.values() if n.kind == 'memory_candidate']
+
+
+def test_memory_parent_follows_ai_preference_without_repeat_words(memory_backend):
+    """[TEST] 반복 낱말이 없어도 기억 AI가 선호로 고르면 선만 지나 저장해요."""
+    body = '[TEST] 상담 연락은 문자로 받고 싶어요.'
+    save(memory_backend, [dict(kind='preference', content=body)], body)
+    if memory_backend == 'db':
+        with transaction() as c:
+            assert backend.memories.load_preferences(c, seed.ORG, seed.PARENT)[0]['content'] == body
+    else:
+        assert backend.memories.load_preferences(seed.ORG, seed.PARENT)[0]['content'] == body
+
+
+def test_mock_after_request_uses_model_absent_fallback(memory_backend):
+    """[TEST] 모의엔 기억 AI가 없어 DB '모델 없음' 대역과 같은 낱말 후보를 같은 선으로 저장해요."""
+    if memory_backend != 'mock':
+        pytest.skip('DB 모델 없음 대역은 tests/integration/db/test_memory_parent.py에서 봐요')
+    care = '[TEST] 평소 낮잠 전에 책을 읽어 줘요.'
+    req = store.state().requests[seed.DEMO_NOTE_REQUESTS[0]['id']]
+    req.body, req.status = care + ' ' + PREF['content'], 'completed'
+    backend.memories.after_request(req.id)
+    rows = sorted((m.kind, m.confirm_status, m.content) for m in store.state().memories.values())
+    assert rows == [('care_note', 'pending', care), ('preference', 'confirmed', PREF['content'])]
+    req.body = '[TEST] 오늘만 ' + care
+    for m in list(store.state().memories):
+        del store.state().memories[m]
+    backend.memories.after_request(req.id)
+    assert not store.state().memories

@@ -40,6 +40,8 @@ def install_memory(monkeypatch, result):
             assert role == "MEMORY"
         def json(self, system, user):
             value = json.loads(user)
+            if "parent_body" in value:
+                return {"candidates": []}  # 같은 기억 모델이 보호자 기억도 판단해요. 이 시험은 말투만 봐요.
             self.inputs.append(value)
             # 새 연결로 봐도 이미 승인과 발송이 커밋돼 있어야 해요.
             with transaction() as connection:

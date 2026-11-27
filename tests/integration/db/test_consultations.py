@@ -354,7 +354,8 @@ def test_preferred_candidates_use_closest_available_times_when_no_overlap(seeded
         early = find(connection, day)
         assert early[0]["start"] == at(day, 9)
         result = slots.find_consult_slots(connection, seed.TEACHER, day, org_id=seed.ORG,
-                                   rules=[{"before": "12:00"}], preferred_times=f"[TEST] {day} 16:00~17:00")
+                                   rules=[{"before": "12:00"}],
+                                   preference={"date_from": str(day), "date_to": str(day), "after": "16:00", "before": "17:00"})
         assert [s["start"] for s in result] == [at(day, 11, 30), at(day, 11), at(day, 10, 30)]
 
 
