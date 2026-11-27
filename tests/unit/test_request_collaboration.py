@@ -121,6 +121,47 @@ def test_memory_failure_keeps_draft_and_marks_warning():
     assert answers[0]["check_result"]["memory_unavailable"] is True
 
 
+def test_partial_answer_reaches_teacher_card_with_evidence_and_warning():
+    from agents.graphs.answer import draft_answer
+
+    question = "재롱잔치 날짜랑 준비물이랑 그날 하원 시간 바뀌는지 알려주세요"
+    chunks = [{"chunk_id": 21, "content": "재롱잔치는 12월 12일이고 준비물은 흰 양말입니다.", "score": 0.9}]
+
+    class Writer:
+        def json(self, *_):
+            return {"text": "재롱잔치는 12월 12일이고 준비물은 흰 양말이에요.",
+                    "evidence": [{"chunk_id": 21, "quote": chunks[0]["content"]}],
+                    "facts": [{"text": "재롱잔치는 12월 12일이고 준비물은 흰 양말이에요.",
+                               "evidence": [{"chunk_id": 21, "quote": chunks[0]["content"]}]}],
+                    "no_evidence": True, "conflict": False, "partial": True,
+                    "unanswered": ["그날 하원 시간 바뀌는지"]}
+
+    class Checker:
+        def json(self, *_):
+            return {"passed": True, "issues": []}
+
+    draft = draft_answer(question, lambda *_: chunks, Writer(), Checker())
+    cards = []
+    graph = build_graph(
+        InMemorySaver(), lambda _: "inquiry",
+        lambda _id, route, answer, _fields: cards.append((route, answer)) or "card-1",
+        lambda _: "done", search=lambda _: chunks, load_memory=lambda _: [],
+        write=lambda _: {"draft": draft},
+        check=lambda state: {"passed": state["draft"]["check_result"]["passed"], "issues": []},
+    )
+
+    result = graph.invoke({"request_id": "request-1"}, {"configurable": {"thread_id": "partial"}})
+
+    assert result["__interrupt__"] and not result.get("handoff")
+    route, answer = cards[0]
+    assert route == "inquiry"
+    assert answer["partial"] and answer["no_evidence"]
+    assert answer["evidence"] == draft["evidence"]
+    assert "재롱잔치는 12월 12일" in answer["text"]
+    assert "선생님이 확인한 뒤 알려 드릴게요." in answer["text"]
+    assert answer["check_result"]["passed"]
+
+
 @pytest.mark.parametrize("question, reply, expected_count", [
     ("겨울방학은 언제부터 언제까지예요?", {"text": "날짜가 달라요", "no_evidence": False,
       "conflict": True, "evidence": [{"chunk_id": 1, "quote": "12월 24일"},

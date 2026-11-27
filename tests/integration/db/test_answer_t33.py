@@ -112,7 +112,7 @@ def test_duplicate_citation_saves_one_evidence_row(db_client, seeded_db, monkeyp
 
 
 @pytest.mark.parametrize("request_type", ["inquiry", "complaint"])
-@pytest.mark.parametrize("result_kind", ["passed", "failed", "handoff"])
+@pytest.mark.parametrize("result_kind", ["passed", "failed", "handoff", "partial"])
 def test_graph_card_adapter_preserves_check_and_merges_duplicate_chunks(
         db_client, seeded_db, monkeypatch, request_type, result_kind):
     from app.core.request_rules import classify
@@ -128,7 +128,7 @@ def test_graph_card_adapter_preserves_check_and_merges_duplicate_chunks(
         """), {"org": seed.ORG, "class": seed.CLASS_STAR, "child": seed.CHILD,
                "parent": seed.PARENT, "key": str(uuid4()), "type": request_type,
                "body": "[TEST] 준비물 안내를 확인해 주세요."})
-    check = {"passed": result_kind == "passed", "attempt": 3, "memory_unavailable": True,
+    check = {"passed": result_kind in ("passed", "partial"), "attempt": 3, "memory_unavailable": True,
              "issues": [] if result_kind == "passed" else [{"field": "출처", "problem": "[TEST] 출처 확인 필요"}]}
     answer = {"text": "[TEST] 그래프 초안", "no_evidence": False, "conflict": False, "check_result": check,
               "evidence": [{"chunk_id": chunks[0], "score": 0.8, "quote": "[TEST] 첫 근거"},
@@ -136,6 +136,8 @@ def test_graph_card_adapter_preserves_check_and_merges_duplicate_chunks(
                            {"chunk_id": chunks[1], "score": 0.7, "quote": "[TEST] 둘째 근거"}]}
     if result_kind == "handoff":
         answer.update(handoff=True, text="", evidence=[], no_evidence=True)
+    elif result_kind == "partial":
+        answer.update(partial=True, no_evidence=True)
     card_id = _prepare_card(str(request_id), request_type, answer,
                             classify(request_type, "[TEST] 준비물 안내를 확인해 주세요."))
     with seeded_db.connect() as connection:
@@ -148,12 +150,17 @@ def test_graph_card_adapter_preserves_check_and_merges_duplicate_chunks(
     assert card["graph_thread_id"] == f"request:{request_id}"
     assert card["check_result"] == check
     assert card["draft"]["text"] == answer["text"]
+    if result_kind == "partial":
+        assert card["draft"]["no_evidence"] is True
+        assert "partial" not in card["draft"]
     assert [dict(e) for e in evidence] == ([] if result_kind == "handoff" else [
         {"chunk_id": chunks[0], "rank": 1, "quote": "[TEST] 첫 근거", "score": 0.8},
         {"chunk_id": chunks[1], "rank": 2, "quote": "[TEST] 둘째 근거", "score": 0.7}])
     response = db_client.get(f"/api/v1/cards/{card_id}", headers=teacher_headers())
     assert response.status_code == 200, response.text
     assert response.json()["card"]["check_result"] == check
+    if result_kind == "partial":
+        assert "no_evidence" in response.json()["warnings"]
 
 
 def teacher_headers():
