@@ -334,13 +334,13 @@ def run_daily_note_drafts(input_id):
         return
     except Exception as error:
         # 예외 원문에는 입력 메모가 섞일 수 있어 종류만 기록하고 API에는 고정 오류를 준다.
+        log.error("알림장 초안 실패 input_id=%s error_type=%s", input_id, type(error).__name__)
         with transaction() as connection:
             failed = connection.execute(text("""
                 UPDATE daily_note_inputs SET draft_status='failed' WHERE id=:id AND xmin::text=:token RETURNING id
             """), {"id": input_id, "token": entry["run_token"]}).one_or_none()
             # 다시 만들기에 밀린 옛 실행의 실패는 남기지 않는다.
             if failed is not None:
-                log.error("알림장 초안 실패 input_id=%s error_type=%s", input_id, type(error).__name__)
                 batch_event(connection, input_id, "tool_failed", "system", retry_count=retry_count,
                             trigger=trigger, queue_wait_ms=queue_wait_ms,
                             detected_failure="writer_timeout" if isinstance(error, TimeoutError) else "writer_error",

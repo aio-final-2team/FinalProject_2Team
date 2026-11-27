@@ -33,9 +33,6 @@ def reset(user, classroom_id, note_date):
         for memory in state.memories.values():
             if memory.org_id == user.org_id and memory.source_card_id in cards:
                 memory.source_card_id = None
-        for answer in state.saved_answers.values():
-            if answer["org_id"] == user.org_id and answer["source_card_id"] in cards:
-                answer["source_card_id"] = None
         store.add_event(None, "tool_called", org_id=user.org_id, actor_type="user", actor_id=user.id,
                         tool="qa_daily_note_reset", classroom_id=str(classroom_id),
                         note_date=note_date.isoformat(), deleted=deleted)

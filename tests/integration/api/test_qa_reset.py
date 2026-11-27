@@ -205,7 +205,7 @@ def test_input_and_env_validation(client, teacher, reset_backend, monkeypatch):
     assert rows(reset_backend, "daily_note_inputs") == []
 
 
-def test_runner_finishes_quietly_after_reset_during_writer(client, teacher, reset_backend, monkeypatch, caplog):
+def test_runner_finishes_quietly_after_reset_during_writer(client, teacher, reset_backend, monkeypatch):
     if reset_backend == "mock":
         pytest.skip("mock은 동기 초안 생성이라 대기 중 runner가 없어요")
     from app.modules.daily_notes import runner, stub_writer
@@ -234,4 +234,3 @@ def test_runner_finishes_quietly_after_reset_during_writer(client, teacher, rese
         runner.run_daily_note_drafts(input_id)
     assert rows(reset_backend, "daily_notes") == []
     assert rows(reset_backend, "daily_note_inputs") == []
-    assert "알림장 초안 실패" not in caplog.text

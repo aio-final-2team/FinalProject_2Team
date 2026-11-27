@@ -38,11 +38,10 @@ def reset(user, classroom_id, note_date):
             count = connection.execute(text(f"DELETE FROM {table} WHERE org_id=:org AND ({condition})"), values).rowcount
             if table in ("notifications", "events"):
                 deleted[table] = count
-        for table in ("memories", "saved_answers"):
-            # shortcut: 0001의 saved_answers 참조는 NOT NULL. 실제 참조가 있으면 전체 롤백;
-            # nullable로 바꾸는 별도 스키마 작업 때 해소해요(알림장 카드는 승인 답 저장 대상이 아님).
-            connection.execute(text(f"UPDATE {table} SET source_card_id=NULL "
-                                    "WHERE org_id=:org AND source_card_id=ANY(CAST(:cards AS uuid[]))"), values)
+        # 승인 답(saved_answers)은 문의 답변 카드에서만 생겨 알림장 묶음 카드를 가리키지 않아요.
+        connection.execute(text("""
+            UPDATE memories SET source_card_id=NULL WHERE org_id=:org AND source_card_id=ANY(CAST(:cards AS uuid[]))
+        """), values)
         for table, ids in (("cards", "cards"), ("daily_notes", "notes"), ("daily_note_inputs", "inputs")):
             connection.execute(text(f"DELETE FROM {table} WHERE org_id=:org AND id=ANY(CAST(:{ids} AS uuid[]))"), values)
         detail = {"tool": "qa_daily_note_reset", "classroom_id": str(classroom_id),
