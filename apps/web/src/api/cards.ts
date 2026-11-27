@@ -26,7 +26,7 @@ type CardList = {
 };
 type CardDetail = {
   card: { id: string; kind: string; status: string; version: number; summary: string; draft: Record<string, unknown>; check_result: { passed?: boolean; issues?: unknown[]; note?: string; attempt?: number } | null; check_attempts: number };
-  request: null | { child_name?: string | null; requester_name?: string | null; id: string; type: ApiRequestType | "pickup"; title: string | null; body: string; status: Status; risk_level: string | null; risk_category: string | null; repeat_count: number | null; parent_confirmed_at: string | null; classroom_id: string; created_at: string; updated_at: string };
+  request: null | { child_name?: string | null; requester_name?: string | null; id: string; type: ApiRequestType | "pickup"; title: string | null; body: string; status: Status; risk_level: string | null; risk_category: string | null; repeat_count: number | null; parent_confirmed_at: string | null; source_note?: { note_id: string; note_date: string } | null; classroom_id: string; created_at: string; updated_at: string };
   evidence: Array<{ document_title: string; location: string | null; effective_from: string | null; quote: string; is_current: boolean }>;
   warnings: string[];
   messages?: Array<{ id: number; sender_type: string; sender_role?: string | null; body: string; created_at: string }>;
@@ -82,7 +82,7 @@ const cardFromDetail = (data: CardDetail): Card => {
   const history: HistoryItem[] = data.timeline.map((e) => ({ at: e.created_at, who: actorName(e.actor_type, e.agent_name, e.action), what: actionLabel(e.action) }));
   const draft = typeof data.card.draft.text === "string" ? data.card.draft.text : undefined;
   return {
-    id: data.card.id, version: data.card.version, kind: data.card.kind, requestId: req?.id ?? "-", type: requestType(req?.type),
+    id: data.card.id, version: data.card.version, kind: data.card.kind, requestId: req?.id ?? "-", sourceNote: req?.source_note ?? undefined, type: requestType(req?.type),
     status: req?.status ?? (data.card.status === "done" ? "completed" : "awaiting_review"), risk: risk(req?.risk_level),
     urgentReason: riskLabel(req?.risk_category), title: req?.title ?? data.card.summary, childName: req?.child_name ?? "", guardianName: req?.requester_name ?? "보호자", requesterName: req?.requester_name ?? undefined,
     className: "", createdAt: req?.created_at ?? new Date().toISOString(), original: req?.body ?? data.card.summary,

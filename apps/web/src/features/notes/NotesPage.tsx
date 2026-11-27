@@ -7,12 +7,14 @@ import { Link, useNavigate } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "@/api/client";
 import { QueryState } from "@/components/QueryState";
-import { loadInputId, saveInputId, useChildren, useCreateDraft, useDraftJob, useNotes, usePatchNote, useRegenerate, useSendNotes } from "@/api/notes";
+import { loadInputId, saveInputId, useChildren, useCreateDraft, useDraftJob, useNotes, usePatchNote, useRegenerate, useResetNotes, useSendNotes } from "@/api/notes";
 import { useSession } from "@/app/session";
+import { Button } from "@/components/Button";
 import { Dock, PrimaryButton, SubButton } from "@/components/Dock";
 import { Icon } from "@/components/Icon";
 import { Sheet } from "@/components/Sheet";
 import { useToast } from "@/components/Toast";
+import { useAllCards } from "@/api/cards";
 import { CHECK_KIND, NOTE_STATUS, dateLabel, itemLabel, nameI, noMd, todayKST, type DailyNote, type NoteItem } from "@/domain/notes";
 import { RecordSheet } from "@/features/records/RecordSheet";
 import { useRecords } from "@/features/records/store";
@@ -30,6 +32,12 @@ export function NotesPage() {
   /* 알림장이 아직 없는데 이 기기에 접수한 작업이 있으면 그 진행 상태를 이어서 본다 (API 23). 새로고침해도 입력을 다시 쓰지 않는다 */
   const stored = !notes.data?.length ? loadInputId(cid, date) : null;
   const resume = useDraftJob(stored ?? undefined);
+  /* QA 초기화가 끝나면 보던 진행 화면을 닫고 처음 화면(활동 입력)으로 돌아간다 */
+  useEffect(() => {
+    const h = () => setJobId(undefined);
+    window.addEventListener("yuchion:notes-reset", h);
+    return () => window.removeEventListener("yuchion:notes-reset", h);
+  }, []);
 
   if (notes.isLoading || (notes.isError && notes.data === undefined))
     return (
@@ -54,7 +62,44 @@ function Frame({ title = "오늘 알림장", sub, children }: { title?: string; 
       <ScreenTop title={nb?.title ?? title} sub={sub ?? `${user?.display_name} · ${dateLabel(todayKST())} · 17:00까지`} />
       {nb?.top}
       {children}
+      {QA_TOOLS && <QaReset />}
     </div>
+  );
+}
+
+/** 시연 계정이 켜진 빌드(QA·시연 서버)에서만 보인다. 최종 제출본(VITE_DEMO_ACCOUNTS=false)에서는 나오지 않는다 */
+const QA_TOOLS = import.meta.env.VITE_DEMO_ACCOUNTS !== "false";
+
+/** QA 전용: 오늘 알림장을 모두 지우고 처음부터 다시 시험한다(API 71). 서버의 QA 도구가 꺼져 있으면 쓸 수 없다고 알려 준다 */
+function QaReset() {
+  const { user } = useSession();
+  const cid = user?.classroom_ids[0];
+  const date = todayKST();
+  const reset = useResetNotes(cid, date);
+  const toast = useToast();
+  const [open, setOpen] = useState(false);
+  const run = () =>
+    reset.mutate(undefined, {
+      onSuccess: (r) => {
+        setOpen(false);
+        toast({ kind: "ok", title: "알림장을 처음 상태로 돌렸어요", sub: `알림장 ${r.deleted.notes}개와 관련 카드 ${r.deleted.cards}개를 지웠어요` });
+      },
+      onError: (e) => {
+        setOpen(false);
+        const s = e instanceof ApiError ? e.status : 0;
+        toast({ kind: "error", title: s === 404 ? "이 서버에서는 쓸 수 없어요" : s === 403 ? "담임 선생님만 쓸 수 있어요" : "초기화하지 못했어요", sub: s === 404 ? "QA 서버에서만 켜져 있어요" : s ? undefined : "연결을 확인하고 다시 눌러 주세요" });
+      },
+    });
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)} className="mt-8 inline-flex h-9 items-center rounded-md px-2.5 text-footnote font-semibold text-ink2 active:scale-[.97]">알림장 다시 시험하기 (QA)</button>
+      <Sheet open={open} onClose={() => setOpen(false)} title="알림장을 처음부터 다시 시험할까요?">
+        <p className="text-callout text-ink">{dateLabel(date)} 알림장과 그에 딸린 카드·알림이 모두 지워져요. 이미 보낸 알림장도 포함돼요. 지운 뒤에는 되돌릴 수 없어요.</p>
+        <p className="text-footnote text-ink2">시험용 서버에서만 쓸 수 있어요. 학부모 답장은 남고, 어느 알림장의 답장인지만 비워져요.</p>
+        <Button variant="danger" loading={reset.isPending} onClick={run}>지우고 다시 시작</Button>
+        <Button variant="plain" size="sm" onClick={() => setOpen(false)}>취소</Button>
+      </Sheet>
+    </>
   );
 }
 
@@ -351,18 +396,35 @@ function Review({ notes }: { notes: DailyNote[] }) {
     });
   };
 
+  /* 답장의 요청 ID로 받은함 카드를 찾는다. 아직 목록에 없으면 받은함으로 보낸다 */
+  const allCards = useAllCards();
+  const replyCard = (requestId: string) => {
+    const card = allCards.find((c) => c.requestId === requestId);
+    return card ? `/teacher/inbox/${card.id}` : "/teacher/inbox";
+  };
+
   const row = (n: DailyNote, sub: string, right?: React.ReactNode) => {
     const st = NOTE_STATUS[n.status];
     return (
       <li key={n.id} className="flex min-h-14 items-center gap-3 px-3 py-2 [&+&]:border-t [&+&]:border-sep">
         <ChildAvatar name={names[n.child_id] ?? "?"} photo={photos[n.child_id]} childId={n.child_id} size={32} textClass="text-footnote" rounded="rounded-sm" />
-        <Link to={`/teacher/notes/${n.id}`} className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1">
+        <Link to={`/teacher/notes/${n.id}`} className="block">
           <span className="flex items-baseline gap-2">
             <b className="text-headline font-semibold">{names[n.child_id] ?? "아이"}</b>
             {!(allSent && n.status === "sent") && <span className={`text-caption font-bold ${st.cls}`}>{st.label}</span>}
+            {n.supplies_checked_at && <span className="shrink-0 rounded-full bg-ok-tint px-2 py-0.5 text-caption font-bold text-ok">준비물 챙김</span>}
           </span>
           <span className="block truncate text-footnote text-ink2">{sub}</span>
         </Link>
+          {!!n.replies?.length && (
+            /* 학부모 답장은 새 문의로 접수되어 받은함 카드로 온다. 누르면 그 카드로 간다 */
+            <Link to={replyCard(n.replies[n.replies.length - 1].request_id)} className="mt-0.5 flex items-center gap-1.5 text-footnote">
+              <span className="shrink-0 rounded-full bg-tint px-2 py-0.5 text-caption font-bold text-accent-ink">답장 {n.replies.length}</span>
+              <span className="min-w-0 truncate font-semibold text-accent-ink">{n.replies[n.replies.length - 1].body}</span>
+            </Link>
+          )}
+        </div>
         {right ?? <Icon name="chevR" className="size-4 text-ink2" />}
       </li>
     );

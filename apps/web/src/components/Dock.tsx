@@ -7,7 +7,7 @@ import { Icon } from "./Icon";
  */
 export function Dock({ children, reason, reasonIcon = "lock" }: { children: ReactNode; reason?: string; reasonIcon?: "lock" | "check" }) {
   return (
-    <div data-bottom-bar className="glass fixed inset-x-0 bottom-[calc(64px+env(safe-area-inset-bottom))] z-20 border-t border-sep bg-bar px-4 py-2.5 backdrop-blur-xl lg:sticky lg:bottom-0 lg:mt-6">
+    <div data-bottom-bar className="glass fixed inset-x-0 bottom-[calc(64px+env(safe-area-inset-bottom))] z-20 border-t border-sep bg-bar px-4 pb-[calc(10px+var(--tab-lift,0px))] pt-2.5 backdrop-blur-xl lg:sticky lg:bottom-0 lg:mt-6">
       <div className="mx-auto grid max-w-[680px] gap-1.5">
         {reason && (
           <p className="flex items-center justify-center gap-1.5 text-footnote font-semibold text-ink2">
