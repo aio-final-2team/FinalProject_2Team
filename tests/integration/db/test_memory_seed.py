@@ -57,14 +57,16 @@ def test_owner_only_api_and_completed_history(db_client, memory_seed, monkeypatc
     for owner, expected in ((seed.TEACHER, 30), (seed.TEACHER_OTHER, 16)):
         response = db_client.get(BASE + "/memories?size=100", headers=auth(owner))
         assert response.status_code == 200, response.text
-        rows = response.json()["items"]
-        assert len(rows) == response.json()["total"] == expected
+        # 기억 목록에 승인한 답·규칙이 같이 오는 판(#377)에서도 개인 기억 행만 센다.
+        rows = [row for row in response.json()["items"] if row.get("source", "memory") == "memory"]
+        assert len(rows) == expected
         with memory_seed.connect() as connection:
             owned = set(connection.scalars(text("SELECT id FROM memories WHERE owner_id=:owner"), {"owner": owner}))
         assert {row["id"] for row in rows} == owned
-    # 현재 경로는 담임만 허용해요. 시드 범위에서는 권한을 바꾸지 않고 403 경계를 명시해요.
+    # 세 역할 내 기억 API(#377)부터 학부모도 목록을 봐요. 학부모에게는 자기 선호 기억만 보여요.
     response = db_client.get(BASE + "/memories?size=100", headers=auth(seed.PARENT))
-    assert response.status_code == 403 and response.json()["error"]["code"] == "FORBIDDEN_ROLE"
+    assert response.status_code == 200, response.text
+    assert {row["kind"] for row in response.json()["items"]} == {"preference"}
     from app.core.users import get_user
     rows = module.list_memories(get_user(seed.PARENT), None, 1, 100, "-created_at")["items"]
     assert len(rows) == 2 and {row["kind"] for row in rows} == {"preference"}
@@ -104,7 +106,12 @@ def test_active_rule_restricts_real_consultation_candidates(db_client, memory_se
                                   org_id=seed.ORG, rules=rules, preferred_times="17:30 이후")
         assert late and all(row["end"].astimezone(KST).hour*60+row["end"].minute <= 17*60 for row in late)
     # 활성 규칙을 끄면 같은 계산이 오전 후보를 다시 내놓아요.
+    # 담임 바쁜 시간 시드(#378)의 오전 수업과 학부모 선호 기억(#377, parent01 '월요일 15시 이후')이 있으면
+    # 규칙과 상관없이 오후가 나오므로, 이 비교에서는 둘 다 비운다.
     with memory_seed.begin() as connection:
+        connection.execute(text("DELETE FROM staff_busy_blocks WHERE user_id=:owner"), {"owner": seed.TEACHER})
+        connection.execute(text("UPDATE memories SET deleted_at=now() WHERE owner_id=:owner AND kind='preference'"),
+                           {"owner": seed.PARENT})
         connection.execute(text("UPDATE memory_rules SET status='off' WHERE owner_id=:owner "
                                 "AND reason_code='slot_unavailable'"), {"owner": seed.TEACHER})
     _, cid = create(db_client, "consultation")
