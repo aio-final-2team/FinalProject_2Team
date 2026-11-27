@@ -433,7 +433,7 @@ function Review({ notes }: { notes: DailyNote[] }) {
 
   const preview = notes.find((n) => hasChild(n)) ?? notes[0];
   /* 보내기 전 확인에는 아이 이름 없이 반 활동·식단·준비물 같은 공통 내용만 보여 준다 */
-  const common = (preview?.content.items ?? []).filter((it) => COMMON_KEYS.includes(it.key) && it.value.trim());
+  const common = (preview?.content.items ?? []).filter((it) => it.source.type !== "request" && COMMON_KEYS.includes(it.key) && it.value.trim());
   return (
     <Frame title="알림장 확인" sub={`${user?.display_name} · ${notes.length}명${allSent ? "" : " · 17:00까지"}`}>
       {!allSent && <section className="mt-4 rounded-lg bg-card p-3 shadow-card">
@@ -577,7 +577,7 @@ function Review({ notes }: { notes: DailyNote[] }) {
         <p className="text-footnote text-ink2">반 전체 {notes.length}명에게 보내요. 아이별 내용은 그 아이의 보호자에게만 가요. 보낸 뒤에는 정정으로만 고칠 수 있어요</p>
         {common.length > 0 && (
           <div className="grid gap-1 rounded-lg bg-g p-3 text-callout">
-            <b className="text-headline">모든 가정에 들어가는 내용</b>
+            <b className="text-headline">함께 보낼 공통 내용</b>
             {common.map((it, i) => (
               <span key={i}>
                 <b className="mr-1.5 text-footnote text-ink2">{itemLabel(it)}</b>

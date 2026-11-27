@@ -84,6 +84,14 @@ function Detail({ note, notes, name, names }: { note: DailyNote; notes: DailyNot
     save({ content: { items: nextItems }, resolved_checks: [c.id] }, "문장을 뺐어요");
   };
   const keep = (c: OpenCheck) => save({ resolved_checks: [c.id] }, "확인할 곳을 해결했어요");
+  /* 답이 필요한 요청은 그 줄을 고치기 상태로 열어 담임이 사실만 한 줄 채우게 한다 */
+  const writeAnswer = (c: OpenCheck) => {
+    const i = items.findIndex((it) => it.key === c.item_key);
+    if (i < 0) return;
+    setEditing(i);
+    setDraftText(items[i].value);
+    window.setTimeout(() => document.querySelector<HTMLTextAreaElement>(`textarea[aria-label="${itemLabel(items[i])} 고치기"]`)?.focus(), 0);
+  };
   /* 빠진 보호자 요청은 요청 원문을 읽어 그 줄(귀가·투약·오늘 하루)로 넣는다 */
   const missed = open.find((c) => c.kind === "request_missed" && c.request_id);
   const req = useQuery({
@@ -176,7 +184,12 @@ function Detail({ note, notes, name, names }: { note: DailyNote; notes: DailyNot
                         {req.isLoading ? "요청을 불러오는 중…" : `요청 내용 넣기${req.data ? ` · “${req.data.request.title}”` : ""}`}
                       </SubButton>
                     )}
-                    {k.fix && c.sentence && (
+                    {c.kind === "request_unanswered" && (
+                      <SubButton small onClick={() => writeAnswer(c)} disabled={patch.isPending}>
+                        {k.fix}
+                      </SubButton>
+                    )}
+                    {c.kind !== "request_unanswered" && k.fix && c.sentence && (
                       <SubButton small onClick={() => removeSentence(c)} disabled={patch.isPending}>
                         {k.fix}
                       </SubButton>

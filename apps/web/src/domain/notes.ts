@@ -13,6 +13,7 @@ export type CheckKind =
   | "absent"
   | "draft_failed"
   | "check_failed"
+  | "request_unanswered"
   | "request_missed"
   | "return_limit";
 
@@ -72,6 +73,8 @@ export const CHECK_KIND: Record<CheckKind, { title: string; short: string; fix?:
   absent: { title: "결석한 아이예요", short: "결석", keep: "확인했어요" },
   draft_failed: { title: "이 아이 초안을 만들지 못했어요", short: "초안 실패", keep: "직접 쓰고 확인할게요" },
   check_failed: { title: "검사를 하지 못했어요", short: "검사 실패", keep: "직접 읽고 확인했어요" },
+  /* 서버(검사 AI)가 이 종류를 보내기 전에는 나타나지 않는다. 종류 이름은 영민님과 맞춰야 한다 */
+  request_unanswered: { title: "보호자 요청에 답이 필요해요", short: "답변 필요", fix: "답 한 줄 쓰기" },
   request_missed: { title: "보호자 요청이 빠졌어요", short: "보호자 요청 누락", keep: "넣지 않기" },
   return_limit: { title: "AI가 고쳐도 남은 문제가 있어요", short: "남은 문제", keep: "직접 확인했어요" },
 };
