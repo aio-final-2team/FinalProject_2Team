@@ -160,7 +160,7 @@ function issueText(i: unknown): string {
 }
 
 /** 반려 이유 칩 → API 이유 코드 (문서 4.1). 칩에 없는 이유는 other + reason_text */
-const REASON_CODE: Record<string, string> = { "개인정보 요청": "privacy", "원 운영 범위 밖": "policy" };
+const REASON_CODE: Record<string, string> = { "개인정보 요청": "privacy", "원 운영 범위 밖": "policy", "연장반 당번": "slot_unavailable" };
 type ActionResponse = { card?: { id?: string; status?: string; version?: number } };
 
 /** 카드 행동을 API 계약의 기능별 엔드포인트와 요청 본문으로 변환한다. */

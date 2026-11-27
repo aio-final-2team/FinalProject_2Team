@@ -250,3 +250,25 @@ def test_ai_rule_judges_sameness_and_model_failure_uses_fixed_fallback(db_client
         assert texts == ([] if expected is None else [REJECTION_RULE_TEXTS[code] if expected == "fallback" else expected])
         assert connection.scalar(text("""SELECT count(*) FROM events WHERE action='tool_failed'
                                          AND detail->>'tool'='suggest_rule'""")) == (1 if failed else 0)
+
+
+def test_rule_suggestion_model_runs_after_the_rejection_commits(db_client, seeded_db, monkeypatch):
+    """[TEST] 거절 규칙 제안 AI는 거절이 커밋된 뒤에 불려요. 카드·요청 잠금을 잡은 채 모델을 기다리지 않아요."""
+    from types import SimpleNamespace
+    from app.modules.memories import memories
+    monkeypatch.setenv("LLM_MODEL_MEMORY", "fake-memory")
+    visible = []
+
+    def answer(system, user):
+        with seeded_db.connect() as connection:  # 다른 연결에서 세 번째 거절이 이미 보여야 해요
+            visible.append(connection.scalar(text(
+                "SELECT count(*) FROM memories WHERE kind='rejection_reason' AND reason_code='tone'")))
+        return {"rule": {"rule_text": "[TEST] 답을 더 짧게 써요", "rule_json": {}}}
+    monkeypatch.setattr(memories, "OpenAIModel", lambda role: SimpleNamespace(json=answer))
+    for _ in range(3):
+        reject_with(db_client, "tone", "[TEST] 답을 더 짧게 해 주세요")
+    assert visible == [3]
+    with seeded_db.connect() as connection:
+        assert connection.scalars(text("SELECT rule_text FROM memory_rules WHERE reason_code='tone'")).all() == [
+            "[TEST] 답을 더 짧게 써요"]
+        assert connection.scalar(text("SELECT count(*) FROM cards WHERE kind='rule_proposal'")) == 1

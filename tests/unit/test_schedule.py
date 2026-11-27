@@ -126,7 +126,7 @@ def test_ai_preference_is_used_and_model_failure_falls_back(monkeypatch):
     monkeypatch.setenv("LLM_MODEL_SUPERVISOR", "fake-model")
 
     def model(reply):
-        return lambda role, timeout=None: SimpleNamespace(json=lambda system, user: seen.append(user) or (
+        return lambda role, timeout=None, retry_delays=None: SimpleNamespace(json=lambda system, user: seen.append(user) or (
             reply() if callable(reply) else reply))
     monkeypatch.setattr(slots, "OpenAIModel", model({"date_from": "2026-12-02", "date_to": "2026-12-02",
                                                       "weekdays": [], "part_of_day": None, "after": "16:00", "before": None}))

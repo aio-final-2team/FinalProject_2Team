@@ -97,11 +97,12 @@ def retryable(error: Exception) -> bool:
 class OpenAIModel:
     """JSON 한 덩어리를 돌려받는 호출."""
 
-    def __init__(self, role: str, timeout: float = TIMEOUT_SECONDS, sleep=time.sleep):
+    def __init__(self, role: str, timeout: float = TIMEOUT_SECONDS, sleep=time.sleep, retry_delays=RETRY_DELAYS):
         self.role = role
         self.name = model_name(role)
         self.timeout = timeout
         self.sleep = sleep
+        self.retry_delays = retry_delays  # 잠금을 잡은 채 부르는 짧은 호출은 ()로 다시 하지 않아요
 
     def _call(self, system: str, user: str) -> str:
         from openai import OpenAI
@@ -115,13 +116,13 @@ class OpenAIModel:
         return response.choices[0].message.content
 
     def json(self, system: str, user: str) -> dict:
-        for attempt in range(len(RETRY_DELAYS) + 1):
+        for attempt in range(len(self.retry_delays) + 1):
             try:
                 text = self._call(system, user)
                 break
             except Exception as error:  # noqa: BLE001 - 종류를 보고 다시 할지 정한다
-                if attempt < len(RETRY_DELAYS) and retryable(error):
-                    self.sleep(RETRY_DELAYS[attempt])
+                if attempt < len(self.retry_delays) and retryable(error):
+                    self.sleep(self.retry_delays[attempt])
                     continue
                 raise ModelError(type(error).__name__) from error
         try:

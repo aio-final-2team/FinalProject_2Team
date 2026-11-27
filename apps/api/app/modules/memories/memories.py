@@ -257,16 +257,13 @@ def propose_rule(connection, owner_id, reason_code, rule_text, rule_json, *, org
 
 
 def remember_rejection(connection, user, card, decision, reason_code, reason_text):
+    """거절 이유를 기억으로 남겨요. 같은 이유가 세 건 쌓였고 기억 AI가 켜져 있으면, 커밋 뒤 부를 일을 돌려줘요.
+    AI 호출을 거절 트랜잭션(카드·요청 잠금) 안에서 하지 않으려는 거예요. 모델이 꺼져 있으면 고정 문장 대역을 바로 저장해요."""
     if user.role != "teacher":
-        return
+        return None
     connection.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))"),
                        {"key": f"memory-rule:{user.org_id}:{user.id}:{reason_code}"})
-    classroom_id = connection.scalar(text("SELECT classroom_id FROM requests WHERE id=:id AND org_id=:org"),
-                                     {"id": card["request_id"], "org": user.org_id})
-    name_query = "SELECT display_name FROM children WHERE org_id=:org"
-    if classroom_id is not None:
-        name_query += " AND classroom_id=:class"
-    names = list(connection.scalars(text(name_query), {"org": user.org_id, "class": classroom_id}))
+    names = _rejection_names(connection, user, card)
     content = mask_child_names(reason_text or "거절 이유: " + reason_code, names)
     connection.execute(text("""
         INSERT INTO memories (org_id,owner_id,kind,reason_code,content,structured,source_card_id,created_at)
@@ -274,7 +271,58 @@ def remember_rejection(connection, user, card, decision, reason_code, reason_tex
     """), {"org": user.org_id, "owner": user.id, "code": reason_code,
            "content": content,
            "structured": json.dumps({"decision": decision, "card_version": card["version"]}), "card": card["id"]})
-    proposal = _rule_proposal(connection, user, card, reason_code, names)
+    if _rule_texts(connection, user, reason_code) is None:
+        return None
+    if os.getenv("LLM_MODEL_MEMORY", "").strip():
+        return lambda: suggest_rule_after_commit(user, dict(card), reason_code)
+    _save_proposal(connection, user, card, reason_code, _fallback_rule(reason_code))
+    return None
+
+
+def suggest_rule_after_commit(user, card, reason_code):
+    """커밋 뒤: 기억 AI가 쌓인 거절 글로 규칙을 제안해요. 저장 때 propose_rule이 세 건·열린 규칙을 다시 세요."""
+    with transaction() as connection:
+        texts = _rule_texts(connection, user, reason_code)
+        names = _rejection_names(connection, user, card)
+    if texts is None:
+        return
+    failed = False
+    try:
+        proposal = suggest_rule(reason_code, texts, names)  # AI가 공통 규칙이 없다고 하면 None으로 제안하지 않아요.
+    except Exception:
+        proposal, failed = _fallback_rule(reason_code), True
+    with transaction() as connection:
+        if failed:
+            events.record(connection, None, "tool_failed", card=card, actor_type="agent", agent_name="memory",
+                          tool="suggest_rule", code="SAVE_FAILED")
+        _save_proposal(connection, user, card, reason_code, proposal)
+
+
+def _rejection_names(connection, user, card):
+    classroom_id = connection.scalar(text("SELECT classroom_id FROM requests WHERE id=:id AND org_id=:org"),
+                                     {"id": card["request_id"], "org": user.org_id})
+    name_query = "SELECT display_name FROM children WHERE org_id=:org"
+    if classroom_id is not None:
+        name_query += " AND classroom_id=:class"
+    return list(connection.scalars(text(name_query), {"org": user.org_id, "class": classroom_id}))
+
+
+def _rule_texts(connection, user, reason_code):
+    """세 건이 쌓였고 열린 규칙이 없을 때만 거절 글 목록을 돌려줘요. 아니면 None이라 모델을 부르지 않아요."""
+    texts = rejections_since_decision(connection, user.org_id, user.id, reason_code)
+    if len(texts) < REJECTION_RULE_THRESHOLD or open_rule(connection, user.org_id, user.id, reason_code) is not None:
+        return None
+    return texts
+
+
+def _fallback_rule(reason_code):
+    """대역은 other 자유 글을 같은 이유로 단정하지 않고, 민감한 글을 규칙에 옮기지 않아요."""
+    if reason_code not in REJECTION_RULE_TEXTS:
+        return None
+    return REJECTION_RULE_TEXTS[reason_code], {"reason_code": reason_code}
+
+
+def _save_proposal(connection, user, card, reason_code, proposal):
     if proposal is None:
         return
     for attempt in range(2):
@@ -288,24 +336,6 @@ def remember_rejection(connection, user, card, decision, reason_code, reason_tex
                 events.record(connection, None, "tool_failed", card=card, actor_type="agent", agent_name="memory",
                               tool="propose_rule", code="VALIDATION_FAILED" if invalid else "SAVE_FAILED")
                 break
-
-
-def _rule_proposal(connection, user, card, reason_code, names):
-    """세 건이 쌓였을 때만 (규칙 문장, rule_json)을 정해요. 모델이 없거나 실패하면 코드별 고정 문장 대역이에요."""
-    texts = rejections_since_decision(connection, user.org_id, user.id, reason_code)
-    # propose_rule이 다시 세요. 여기서 먼저 보는 건 세 건 전·열린 규칙이 있을 때 모델을 부르지 않으려는 거예요.
-    if len(texts) < REJECTION_RULE_THRESHOLD or open_rule(connection, user.org_id, user.id, reason_code) is not None:
-        return None
-    if os.getenv("LLM_MODEL_MEMORY", "").strip():
-        try:
-            return suggest_rule(reason_code, texts, names)  # AI가 공통 규칙이 없다고 하면 None으로 제안하지 않아요.
-        except Exception:
-            events.record(connection, None, "tool_failed", card=card, actor_type="agent", agent_name="memory",
-                          tool="suggest_rule", code="SAVE_FAILED")
-    # 대역은 other 자유 글을 같은 이유로 단정하지 않고, 민감한 글을 규칙에 옮기지 않아요.
-    if reason_code not in REJECTION_RULE_TEXTS:
-        return None
-    return REJECTION_RULE_TEXTS[reason_code], {"reason_code": reason_code}
 
 
 def list_memories(user, kind, page, size, sort):

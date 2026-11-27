@@ -108,13 +108,14 @@ def fallback_preference(preferred_times, now):
 
 @feature("상담 희망 시간")
 def read_preference(preferred_times, now, model=None):
-    """희망 시간 글을 구조값으로 읽어요. 감독 모델이 켜져 있으면 작은 AI 호출 하나, 없거나 실패하면 정규식 대역이에요."""
+    """희망 시간 글을 구조값으로 읽어요. 감독 모델이 켜져 있으면 작은 AI 호출 하나, 없거나 실패하면 정규식 대역이에요.
+    부르는 쪽이 요청·카드 잠금 안이라 8초 한 번만 묻고(다시 묻지 않음) 넘으면 대역으로 가요."""
     if not preferred_times or not preferred_times.strip():
         return None
     if model is not None or os.getenv("LLM_MODEL_SUPERVISOR"):
         try:
             today = now.astimezone(KST).date()
-            return checked_preference((model or OpenAIModel("SUPERVISOR", timeout=10.0)).json(
+            return checked_preference((model or OpenAIModel("SUPERVISOR", timeout=8.0, retry_delays=())).json(
                 PREFERENCE_PROMPT, json.dumps({"today": f"{today} ({'월화수목금토일'[today.weekday()]})",
                                                "text": mask_sensitive(preferred_times),
                                                "untrusted_data_fields": ["text"]}, ensure_ascii=False)))
