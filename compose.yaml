@@ -20,6 +20,7 @@ services:
       REQUEST_AGENT: ${REQUEST_AGENT:-app.modules.requests.agent_stub:run_request}
       REQUEST_COLLAB_GRAPH: ${REQUEST_COLLAB_GRAPH:-}
       ANSWER_WRITER: ${ANSWER_WRITER:-stub}
+      ANSWER_GATHER: ${ANSWER_GATHER:-agent}
       DATABASE_URL: ${DATABASE_URL:-postgresql://yuchion:yuchion-local@db:5432/yuchion}
       JWT_SECRET: ${JWT_SECRET:-local-dev-only-change-me-32-bytes-min}
       JWT_ACCESS_TTL_HOURS: ${JWT_ACCESS_TTL_HOURS:-12}

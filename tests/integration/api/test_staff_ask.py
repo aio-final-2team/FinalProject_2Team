@@ -71,6 +71,7 @@ def staff_ask_backend(request, monkeypatch, _reset_store):
     monkeypatch.setattr(backend, "staff_ask", staff_ask)
     monkeypatch.setattr(backend, "consents", consents)
     monkeypatch.setattr("agents.graphs.answer.OpenAIModel", Model)
+    monkeypatch.setenv("ANSWER_GATHER", "fixed")  # 고정 검색과 자료·검사 두 모델 순서를 보는 시험이에요(자료 찾는 AI는 tests/unit/test_gather.py)
     monkeypatch.setattr("app.modules.documents.embedding.enabled", lambda: False)
     Model.calls, Model.bad = [], False
     return mode
@@ -256,3 +257,27 @@ def test_staff_ask_requires_current_consent_before_model(client, teacher, staff_
     err(client.post(BASE + "/staff/ask", headers=teacher, json={"question": "[TEST] 겨울방학 언제예요?"}),
         403, "CONSENT_REQUIRED")
     assert Model.calls == []
+
+
+def test_staff_ask_gathers_with_documents_tool_and_masks(client, teacher, staff_ask_backend, monkeypatch):
+    doc = add_doc(staff_ask_backend, "준비물은 수건, 연락 010-0000-0000")
+    seen = []
+
+    class Gather(Model):
+        def json(self, system, user):
+            if self.role != "GATHER":
+                return super().json(system, user)
+            payload = json.loads(user)
+            seen.append(payload)
+            # 교직원 도구는 문서 검색 하나뿐이고 아이 도구는 없어요.
+            assert [tool["name"] for tool in payload["tools"]] == ["documents"]
+            return {"calls": [] if payload["found"] else [{"tool": "documents", "args": {"doc_type": "notice", "query": "준비물"}}],
+                    "done": bool(payload["found"])}
+
+    monkeypatch.setenv("ANSWER_GATHER", "agent")
+    monkeypatch.setattr("agents.graphs.answer.OpenAIModel", Gather)
+    r = client.post(BASE + "/staff/ask", headers=teacher, json={"question": "준비물 010-0000-0000"})
+    assert r.status_code == 200 and r.json()["evidence"][0]["document_id"] == doc
+    assert len(seen) == 2 and seen[1]["found"][0]["count"] == 1
+    assert all("010-0000-0000" not in json.dumps(p, ensure_ascii=False) for p in seen)
+    assert "010-0000-0000" not in Model.calls[0] and "[전화번호]" in Model.calls[0]

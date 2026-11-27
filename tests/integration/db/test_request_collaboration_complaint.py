@@ -43,6 +43,7 @@ def setup(seeded_db, monkeypatch, *, enabled=True, no_evidence=False, checker_re
     FakeModel.no_evidence = no_evidence
     FakeModel.checker_results = list(checker_results or [])
     from agents.graphs import answer
+    monkeypatch.setenv("ANSWER_GATHER", "fixed")  # 고정 검색과 자료·검사 두 모델 순서를 보는 시험이에요(자료 찾는 AI는 tests/unit/test_gather.py)
     monkeypatch.setattr(answer, "OpenAIModel", FakeModel)
     monkeypatch.setattr(runner, "settings", replace(runner.settings,
         request_agent="app.modules.requests.graph_agent:run_request"))

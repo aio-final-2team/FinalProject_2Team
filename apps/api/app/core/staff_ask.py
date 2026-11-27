@@ -4,6 +4,7 @@ from agents.graphs import answer as graph
 from agents.guardrails.sensitive import mask_sensitive
 from agents.llm import ModelError
 from app.core.errors import ApiError
+from app.modules.documents.tools import StaffToolbox
 
 
 class MaskedModel:
@@ -31,7 +32,7 @@ def respond(question, search, sources, writer=None, checker=None):
         writer = MaskedModel(writer if writer is not None else graph.OpenAIModel("DOCUMENT"))
         checker = MaskedModel(checker if checker is not None else graph.OpenAIModel("CHECKER"))
         draft = graph.draft_answer(mask_sensitive(question), safe_search,
-                                  writer=writer, checker=checker)
+                                  writer=writer, checker=checker, gather_tools=StaffToolbox(safe_search))
     except ApiError:
         raise
     except Exception as error:

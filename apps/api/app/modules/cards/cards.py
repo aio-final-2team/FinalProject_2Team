@@ -188,8 +188,8 @@ def decide(user, card_id, body, background_tasks=None):
             raise ApiError(409, "REASON_REQUIRED")
         content = body.edited_content if choice == "edit_approve" else card["draft"]
         original_card = deepcopy(card)
-        if choice == "edit_approve":  # 수정 승인 뒤에도 알림장·관찰 기록 근거를 유지해요
-            content = {**content, **{key: card["draft"][key] for key in ("note_evidence", "record_evidence")
+        if choice == "edit_approve":  # 수정 승인 뒤에도 알림장·관찰 기록·투약·귀가 근거를 유지해요
+            content = {**content, **{key: card["draft"][key] for key in ("note_evidence", "record_evidence", "care_evidence")
                                      if card["draft"].get(key)}}
         if choice in ("approve", "edit_approve") and (
             not isinstance(content.get("text"), str) or not content["text"].strip()

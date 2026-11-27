@@ -70,6 +70,7 @@ class ForecastModel:
 def test_forecast_is_cited_and_fetched_once(db_client, seeded_db, monkeypatch):
     enable(monkeypatch)
     monkeypatch.setenv("ANSWER_WRITER", "graph")
+    monkeypatch.setenv("ANSWER_GATHER", "fixed")  # 고정 검색과 자료·검사 두 모델 순서를 보는 시험이에요(자료 찾는 AI는 tests/unit/test_gather.py)
     with seeded_db.begin() as connection:
         seed_documents(connection)
     from app.modules.documents import public_sources

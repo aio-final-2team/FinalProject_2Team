@@ -1,6 +1,7 @@
 """문의 자료를 찾고, 인용과 답변을 검사한 뒤 담임에게 초안을 넘긴다."""
 
 import json
+import os
 import re
 from datetime import date, datetime
 from pathlib import Path
@@ -15,13 +16,15 @@ PROMPTS = Path(__file__).resolve().parents[1] / "prompts"
 WRITE_FORMAT = "\nJSON 하나로 답한다: {\"text\": str, \"evidence\": [{\"chunk_id\": int, \"quote\": str}], \"facts\": [{\"text\": str, \"evidence\": [{\"chunk_id\": int, \"quote\": str}]}], \"no_evidence\": bool, \"conflict\": bool, \"partial\": bool, \"unanswered\": [str]}"
 WRITE_FORMAT += '\n보낸 알림장 인용은 {"chunk_id": null, "source": "daily_note", "note_id": "입력의 UUID", "quote": "원문 구절"}로 적는다. 기억은 사실 근거가 아니다.'
 WRITE_FORMAT += '\n담임 관찰 기록 인용은 {"chunk_id": null, "source": "daily_record", "record_id": "입력의 UUID", "quote": "원문 구절"}로 적는다. quote는 원문 그대로, text는 담임 메모 말투 대신 보호자에게 보낼 말로 쓴다.'
+WRITE_FORMAT += '\n투약·귀가 요청 인용은 {"chunk_id": null, "source": "care_request", "request_id": "입력의 UUID", "quote": "원문 구절"}로 적는다. quote는 원문 그대로 적는다.'
 CHECK_FORMAT = "\nJSON 하나로 답한다: {\"passed\": bool, \"issues\": [{\"field\": \"출처|날짜|대상|누락|민감정보\", \"problem\": str}]}"
 CHECK_FIELDS = {"출처", "날짜", "대상", "누락", "민감정보"}
 MAX_REWRITES = 2
 KST = ZoneInfo("Asia/Seoul")
 WEEKDAYS = "월화수목금토일"
 # 문서 조각이 아닌 아이 개인 근거. card_evidence 대신 카드 초안에 남기고 이 칸들로 원 후보와 대조해요.
-PERSONAL = {"daily_note": ("note_id", "note_date"), "daily_record": ("record_id", "record_date")}
+PERSONAL = {"daily_note": ("note_id", "note_date"), "daily_record": ("record_id", "record_date"),
+            "care_request": ("request_id", "request_date")}
 WRITE_FORMAT += "\n입력의 today는 이 질문을 받은 날이다. 질문과 자료에 나오는 오늘·내일·이번 주는 today 기준 날짜로 바꿔 읽는다."
 
 
@@ -52,6 +55,11 @@ def record_chunk(record_id, record_date, body):
     day = date.fromisoformat(str(record_date))
     return {"chunk_id": None, "source": "daily_record", "record_id": str(record_id), "record_date": str(day),
             "title": f"{day.month}월 {day.day}일 관찰 기록", "quote": quote, "content": quote, "score": 1.0}
+
+
+def gather_on():
+    """ANSWER_GATHER=agent(기본)면 자료 찾는 AI가 근거를 모으고, fixed면 질문 문장으로 고정 검색한다."""
+    return os.getenv("ANSWER_GATHER", "agent") == "agent"
 
 
 def _evidence_key(item):
@@ -197,6 +205,7 @@ def _review(model, question, draft, candidates, attempt, trace, today=None):
     prompt = _common(today) + _prompt("checker.md", "## 입력", "## 알림장: 메모와 대조한다") + CHECK_FORMAT
     prompt += "\nsource=daily_note는 요청 아이에게 실제 보낸 알림장 근거다. note_id와 note_date·quote를 대조하고 다른 날짜의 일을 오늘 일로 단정하지 않는다."
     prompt += "\nsource=daily_record는 담임이 그 아이에 대해 남긴 관찰 기록이다. record_id와 record_date·quote를 대조하고 기록에 없는 일을 초안이 덧붙였는지 본다."
+    prompt += "\nsource=care_request는 그 아이 보호자가 낸 투약·귀가 요청과 처리 상태다. request_id와 request_date·quote를 대조하고 요청·처리 상태에 없는 일을 초안이 덧붙였는지 본다."
     if draft.get("partial"):
         prompt += ("\n부분 답변에서는 unanswered에 든 질문 항목이 고정 담임 확인 문구와 함께 남아 있으면 그 항목의 미답 자체는 누락 오류로 돌려보내지 않는다. "
                    "facts의 각 사실 문장을 같은 facts 항목의 evidence 인용과 따로 대조하고, 인용이 없거나 실제 조각이 뒷받침하지 않는 사실은 통과시키지 않는다. "
@@ -237,20 +246,27 @@ def _check_result(passed, issues, attempt):
 
 @feature("문의 답변 초안")
 def draft_answer(question: str, search, writer=None, checker=None, *, memories=(), prior_answer=None, preferences=(), child_notes=(),
-                 today: date | None = None) -> dict:
+                 today: date | None = None, gather_tools=None) -> dict:
+    """gather_tools가 있고 ANSWER_GATHER가 agent(기본)면 자료 찾는 AI가 도구로 근거를 모은다.
+    못 모았거나(None) 하나도 없으면([]) 아래 고정 검색 그대로 간다."""
     trace = []
-    candidates = []
-    for doc_type in ("notice", "schedule", "menu", "policy"):
-        for attempt in range(2):
-            try:
-                candidates.extend(search(doc_type, question))
-                break
-            except Exception:  # 검색 도구 오류는 한 번 다시 시도한다
-                if attempt:
-                    return fallback([*trace, "search"])
-    trace.append("search")
-    candidates = sorted((item for item in candidates if not suspicious_chunk(item["content"])),
-                        key=lambda item: (item.get("source") in PERSONAL, item["score"]), reverse=True)[:8]
+    candidates = None
+    if gather_tools is not None and gather_on():
+        from agents.graphs.gather import gather
+        candidates = gather(question, gather_tools, OpenAIModel("GATHER"), today=today, trace=trace) or None
+    if candidates is None:
+        candidates = []
+        for doc_type in ("notice", "schedule", "menu", "policy"):
+            for attempt in range(2):
+                try:
+                    candidates.extend(search(doc_type, question))
+                    break
+                except Exception:  # 검색 도구 오류는 한 번 다시 시도한다
+                    if attempt:
+                        return fallback([*trace, "search"])
+        trace.append("search")
+        candidates = sorted((item for item in candidates if not suspicious_chunk(item["content"])),
+                            key=lambda item: (item.get("source") in PERSONAL, item["score"]), reverse=True)[:8]
     if not candidates:
         return fallback(trace)
     common = _common(today)

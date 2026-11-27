@@ -32,7 +32,7 @@ class JsonModel(Protocol):
 
 
 def model_name(role: str) -> str:
-    """role: SUPERVISOR·DOCUMENT·MEMORY·CHECKER. 비어 있으면 LLM_MODEL_DEFAULT."""
+    """role: SUPERVISOR·DOCUMENT·MEMORY·CHECKER·GATHER. 비어 있으면 LLM_MODEL_DEFAULT."""
     return os.getenv(f"LLM_MODEL_{role}") or os.getenv("LLM_MODEL_DEFAULT", "gpt-6-luna")
 
 

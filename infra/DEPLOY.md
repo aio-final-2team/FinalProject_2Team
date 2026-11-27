@@ -91,6 +91,7 @@
 | `DAILY_NOTE_WRITER_TIMEOUT` | 초안 함수 대기 제한 | 기본 300초 | 서버 `.env.server` |
 | `NOTE_DRAFT_CONCURRENCY` | 아이별 초안 동시 실행 수 | 기본 5, 지원하는 그래프에서 사용 | 서버 `.env.server` |
 | `ANSWER_WRITER` | 문의 답변 초안(요청 처리 AI) | 기본 `stub`(대역 문장), 모델을 쓰면 `graph`. 켜고 끄는 법은 5-4 | 서버 `.env.server` |
+| `ANSWER_GATHER` | 답변 근거 모으기 | 기본 `agent`(자료 찾는 AI가 범위가 정해진 도구로 모으고, 실패하면 고정 검색). `fixed`면 질문 문장으로 문서 4종 고정 검색. 모델은 `LLM_MODEL_DEFAULT` | 서버 `.env.server` |
 | `OPENAI_API_KEY` | OpenAI 호출 | `graph`를 선택할 때 팀 키 | 서버 `.env.server` |
 | `LLM_MODEL_DEFAULT`·`LLM_MODEL_*` | 그래프 모델 선택 | 팀에서 정한 모델, 역할별 값은 예시 파일 참고 | 서버 `.env.server` |
 | `REQUEST_AGENT` | 요청 처리 입구 | 기본은 대역(`agent_stub`). 그래프·체크포인트·승인 대기는 `app.modules.requests.graph_agent:run_request`. 5-5 | 서버 `.env.server` |
