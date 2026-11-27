@@ -10,7 +10,7 @@
 prior_answer·preferences·child_notes·memories는 표현과 맞춤 참고용이며 사실 근거가 아니다. 사실은 chunks 인용으로만 쓴다. chunks와 다르면 chunks를 따른다.
 source=daily_note인 chunks는 요청 아이에게 실제 보낸 최근 알림장이다. note_id·note_date를 지켜 원문 quote를 인용하고, 다른 날의 일을 오늘 일로 단정하지 않는다.
 - 질문 원문, 감독 AI 분류 결과
-- 담임 말투 기억(있으면): memories
+- 담임 말투 기억(있으면): memories — `kind=tone`은 담임 말투, `kind=rule`은 담임이 켠 답변 규칙이다. 규칙은 사실 근거가 아니지만 답 쓰는 방식으로 따른다
 - 검사 AI가 돌려보낸 문제(있으면): review_issues
 
 ## 할 일

@@ -121,13 +121,19 @@ def _search_request(request_id):
     return sorted(chunks, key=lambda item: (item.get("source") in PERSONAL, item["score"]), reverse=True)[:8]
 
 
+ANSWER_RULE_CODES = ("wrong_fact", "tone", "missing_info", "privacy", "policy", "other")  # 상담 시간 규칙(slot·room)은 상담 후보 쪽에서 읽어요
+
+
 def _load_request_memory(request_id):
-    from app.modules.memories.memories import load_tones
+    """담임 말투 기억과, 담임이 켠 답변 규칙(거절 이유가 쌓여 기억 AI가 제안한 것)을 답변 AI에 맞춤 참고로 줘요."""
+    from app.modules.memories.memories import active_rules, load_tones
     req = _request_context(request_id)
     if req["teacher_id"] is None:
         return []
     with transaction() as connection:
-        return load_tones(connection, req["org_id"], req["teacher_id"])
+        rules = active_rules(connection, req["org_id"], req["teacher_id"], ANSWER_RULE_CODES)
+        return load_tones(connection, req["org_id"], req["teacher_id"]) + [
+            {"kind": "rule", "content": rule["rule_text"]} for rule in rules]
 
 
 def _write_request(state):
