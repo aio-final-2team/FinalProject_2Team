@@ -1,6 +1,5 @@
 """T46 동시 완료·감사 실패 롤백과 0008 되돌리기를 실제 임시 DB에서 검사해요."""
 
-from alembic.script import ScriptDirectory
 from concurrent.futures import ThreadPoolExecutor
 from threading import Event
 
