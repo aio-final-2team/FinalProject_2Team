@@ -1563,6 +1563,8 @@ API 69 `PATCH /saved-answers/{answer_id}`는 `{status:"off"|"active"}`를 받는
 
 아이 개인의 하루를 묻는 문의는 현재 보호자 관계가 맞는 아이의 최근 3일(오늘 포함) sent 알림장도 chunks 후보로 찾는다. 미발송·다른 아이·지난 날짜는 제외한다. 후보는 `{chunk_id:null,source:"daily_note",note_id,note_date,title:"M월 D일 알림장",quote}`이며 작성 입력에는 content·score도 있다. 인용은 note_id와 원문을 대조하고 검사 AI도 받는다. 개인 기억과 달리 실제 보낸 알림장은 사실 근거다. card_evidence.chunk_id는 NOT NULL이라 카드 상세의 `card.draft.note_evidence[]`에 이 목록을 보이고, 문서 evidence[]는 기존 모양을 유지한다. 수정 승인 뒤에도 목록을 유지한다. 일반 원 자료 질문은 기존 검색 그대로다. 아이 알림장이 들어간 답은 saved_answers에 저장하지 않는다.
 
+아이의 몸·마음·친구·식사·낮잠을 묻는 문의는 같은 보호자 확인으로 질문이 가리키는 날(오늘·어제·그제, 날짜 말이 없으면 질문 받은 날)의 담임 관찰 기록(daily_records, 삭제 제외, 날마다 최근 3개)도 후보로 넣는다. 후보는 `{chunk_id:null,source:"daily_record",record_id,record_date,title:"M월 D일 관찰 기록",quote}`(민감정보 형식 가림)이고 카드 상세의 `card.draft.record_evidence[]`에 같은 방식으로 보인다. 관찰 기록은 보호자에게 바로 보이지 않는 메모라 담임 검토 초안에만 쓰고, 학부모 sources에는 넣지 않으며 saved_answers에도 저장하지 않는다.
+
 ### 3.26 알림장 다시 만들기 — `POST /api/v1/daily-notes/drafts/{input_id}/regenerate`
 
 | 항목 | 내용 |
