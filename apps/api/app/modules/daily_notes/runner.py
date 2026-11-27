@@ -268,7 +268,7 @@ def run_daily_note_drafts(input_id):
         rows = _validated(_write(payload, entry["run_token"]), payload) if payload["children"] else []
         with transaction() as connection:
             current = connection.execute(text("SELECT xmin::text FROM daily_note_inputs WHERE id=:id FOR UPDATE"),
-                                         {"id": input_id}).scalar_one()
+                                         {"id": input_id}).scalar_one_or_none()
             if current != entry["run_token"]:
                 return
             edited = edited_child_ids(connection, input_id)
