@@ -125,12 +125,13 @@ def test_classroom_children_sorted_complete_and_director_allowed(client, teacher
     assert [child["display_name"] for child in children] == sorted(child["display_name"] for child in children)
     assert {child["id"] for child in children} == {
         str(child["id"]) for child in seed.CHILDREN if child["classroom_id"] == seed.CLASS_STAR}
-    assert all(set(child) == {"id", "display_name", "classroom_id"} for child in children)
+    assert all(set(child) == {"id", "display_name", "classroom_id", "profile_photo"} for child in children)
     assert all(child["classroom_id"] == str(seed.CLASS_STAR) for child in children)
     assert client.get(url, headers=director).json() == response.json()
     other_url = f"{BASE}/classrooms/{seed.CLASS_SUN}/children"
     assert client.get(other_url, headers=teacher_other).json() == {"items": [
-        {"id": str(seed.CHILD_OTHER), "display_name": "바다", "classroom_id": str(seed.CLASS_SUN)}]}
+        {"id": str(seed.CHILD_OTHER), "display_name": "바다", "classroom_id": str(seed.CLASS_SUN),
+         "profile_photo": {"file_url": f"{BASE}/children/{seed.CHILD_OTHER}/profile-photo"}}]}
 
 
 def test_classroom_children_role_scope_and_auth(client, teacher, teacher_other, parent, director):
