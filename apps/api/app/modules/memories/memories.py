@@ -4,6 +4,8 @@ import os
 from datetime import datetime
 from pathlib import Path
 
+import agents
+
 from sqlalchemy import text
 
 from app.core import scope
@@ -22,7 +24,8 @@ from app.modules.requests.events import record
 from app.modules.memories.saved_answers import set_status as set_saved_status  # noqa: F401  라우트가 backend.memories.set_saved_status로 부름
 
 log = logging.getLogger(__name__)
-PROMPT = Path(__file__).resolve().parents[5] / "agents/prompts/memory.md"
+# 저장소와 이미지(/app)의 폴더 깊이가 달라서 agents 패키지 위치로 찾아요.
+PROMPT = Path(agents.__file__).resolve().parent / "prompts" / "memory.md"
 RULE_INPUT_LIMIT = 10  # 기억 AI에 넘기는 최근 거절 글 수
 VISIBLE_MEMORY = """m.org_id=:org AND m.deleted_at IS NULL AND (
     (m.owner_id=:owner AND m.child_id IS NULL AND (NOT :parent OR m.kind='preference'))
