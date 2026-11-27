@@ -1812,7 +1812,7 @@ GET `/api/v1/me`와 로그인 응답의 user.consents_complete도 같은 판·�
 | ③ 경로·쿼리 | 경로 변수 없음. from·to 둘 다 필수이며 기존 날짜 쿼리처럼 YYYY-MM-DD로 보낸다. |
 | ④ 요청 본문 | 없음. |
 | ⑤ 검증·권한 | 자기 기관만 조회한다. 원장은 기관 전체, 담임은 현재 담당 반, 학부모는 현재 연결된 아이의 반 자료를 본다. 대상 반이 없는 기관 전체 자료는 모두 볼 수 있다. 학부모에게 staff 자료는 제외한다. 목록에서 반·공개 범위 밖 자료는 조용히 제외하고 permission_denied 이력을 만들지 않는다. 다른 기관 자료는 읽지 않는다. |
-| ⑥ 정상 응답 | 200 `{items:[{date,end_date,title,document_id,document_title,location}]}`. 없으면 items=[]. |
+| ⑥ 정상 응답 | 200 `{items:[{date,end_date,title,document_id,document_title,location,sources:[{document_id,document_title,location}],conflict,conflict_dates}]}`. 없으면 items=[]. |
 | ⑦ 오류 응답 | 로그인 없음·무효는 401 UNAUTHENTICATED. 날짜 생략·잘못된 날짜·from>to는 422 VALIDATION_FAILED. 공통 오류 형식은 1.4와 같다. |
 | ⑧ 실행 규칙 | status=active·ingest_status=succeeded인 schedule·notice만 대상으로 기존 extract_facts를 재사용한다. 날짜 사실만 쓰며 AI·임베딩은 호출하지 않는다. 자료의 시행 전 일정도 조회할 수 있다. |
 
@@ -1824,11 +1824,14 @@ GET `/api/v1/me`와 로그인 응답의 user.consents_complete도 같은 판·�
 | 출력 | items[].title | string. extract_facts가 정규화한 일정 이름. |
 | 출력 | items[].document_id, document_title | UUID string·string. 일정의 원 자료 ID와 제목. |
 | 출력 | items[].location | string. extract_facts의 근거 위치 그대로. 위치가 없는 조각은 빈 문자열. |
+| 출력 | items[].sources[] | array. 같은 일정을 적은 자료 전부 `{document_id,document_title,location}`. 첫 항목이 위 document_id·document_title·location과 같다. |
+| 출력 | items[].conflict | boolean. 조회 구간 안에서 같은 이름의 일정이 자료마다 다른 날에 시작하면 true. |
+| 출력 | items[].conflict_dates | date array. conflict가 true일 때 그 이름의 시작일들(오름차순). 아니면 빈 배열. |
 
-기간과 조회 구간이 하루라도 겹치면 원래 시작·종료일을 유지해 반환한다. 예를 들어 12/28 하루 조회에도 12/24~1/3 방학을 포함한다. date·title·document_title·location 오름차순이며, 자료마다 겨울방학이 12/24·12/26으로 다르면 각각 반환한다. 합치거나 한 날짜를 선택하지 않는다. 새 DB 표·마이그레이션은 없다.
+기간과 조회 구간이 하루라도 겹치면 원래 시작·종료일을 유지해 반환한다. 예를 들어 12/28 하루 조회에도 12/24~1/3 방학을 포함한다. date·title·document_title·location 오름차순이다. 시작일·종료일이 같고 이름이 띄어쓰기만 다른 일정은 한 항목으로 합치고, 기존 칸은 이 순서의 첫 자료로 채우며 모든 자료를 sources에 담는다. 자료마다 겨울방학이 12/24·12/26으로 다르면 어느 쪽이 맞는지 알 수 없으므로 각각 반환하고, 두 항목 모두 conflict=true·conflict_dates=[12/24, 12/26]으로 표시한다. 한 날짜를 선택하지 않는다. 새 DB 표·마이그레이션은 없다.
 
 ```json
-{"items":[{"date":"2026-12-24","end_date":"2027-01-03","title":"겨울방학","document_id":"00000000-0000-4000-8000-000000000b02","document_title":"[가상] 겨울방학 안내","location":"1쪽 겨울방학 기간"}]}
+{"items":[{"date":"2026-12-24","end_date":"2027-01-03","title":"겨울방학","document_id":"00000000-0000-4000-8000-000000000b02","document_title":"[가상] 겨울방학 안내","location":"1쪽 겨울방학 기간","sources":[{"document_id":"00000000-0000-4000-8000-000000000b02","document_title":"[가상] 겨울방학 안내","location":"1쪽 겨울방학 기간"}],"conflict":true,"conflict_dates":["2026-12-24","2026-12-26"]}]}
 ```
 
 ### 3.36 [제안] 개인 알림 시간 — API 64·65
