@@ -64,6 +64,25 @@ def classroom_ids_of(teacher_id: UUID, on: date | None = None) -> list[UUID]:
         """), {"id": teacher_id, "on": on or datetime.now(KST).date()}))
 
 
+def teachers_of(org_id: UUID, on: date | None = None) -> list[dict]:
+    """같은 기관의 활성 선생님과 오늘 맡은 반(70번 API). 연락처·로그인 ID는 넣지 않아요."""
+    with transaction() as connection:
+        rows = connection.execute(text("""
+            SELECT u.id, u.display_name,
+                   coalesce(json_agg(json_build_object('id', c.id, 'name', c.name) ORDER BY c.name COLLATE "C", c.id)
+                            FILTER (WHERE c.id IS NOT NULL), CAST('[]' AS json)) AS classrooms
+            FROM users u
+            LEFT JOIN classroom_staff s ON (s.user_id, s.org_id)=(u.id, u.org_id)
+              AND (s.valid_from IS NULL OR s.valid_from<=:on)
+              AND (s.valid_to IS NULL OR s.valid_to>=:on)
+            LEFT JOIN classrooms c ON (c.id, c.org_id)=(s.classroom_id, s.org_id)
+            WHERE u.org_id=:org AND u.role='teacher' AND u.is_active
+            GROUP BY u.id, u.display_name
+            ORDER BY u.display_name COLLATE "C", u.id
+        """), {"org": org_id, "on": on or datetime.now(KST).date()}).mappings()
+        return [dict(row) for row in rows]
+
+
 def children_of(parent_id: UUID) -> list[SimpleNamespace]:
     with transaction() as connection:
         rows = connection.execute(text("""
