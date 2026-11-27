@@ -39,7 +39,8 @@ export function ConsentsPage() {
           <b className="block text-callout">외부 처리 업체</b>
           <ul className="mt-1.5 grid gap-1 text-footnote text-ink2">
             <li>OpenAI(미국): 쓴 글의 AI 처리</li>
-            <li>AWS(서울): 사진에서 아이 얼굴 찾기</li>
+            <li>LangSmith(미국): AI 처리 기록 점검(14일 보관)</li>
+            <li>AWS(서울): 서버·자료 보관, 사진에서 아이 얼굴 찾기</li>
           </ul>
         </section>
       )}

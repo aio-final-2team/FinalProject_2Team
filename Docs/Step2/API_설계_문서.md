@@ -1660,17 +1660,17 @@ HTTP/1.1 200 OK
 | ① 호출 목적 | 로그인한 사람이 역할별 필수 항목에 전부 동의하고, 원장·담임은 아이별 보호자의 완료 현황을 확인한다(API 53~55). |
 | ② 요청 헤더 | Authorization 필수, X-Request-ID 권장. POST는 Content-Type: application/json. |
 | ③ 경로·쿼리 | GET·POST `/api/v1/consents`는 경로·쿼리가 없다. GET `/api/v1/classrooms/{classroom_id}/consents`는 반 UUID를 받는다. |
-| ④ 요청 본문 | POST만 `{"items":["terms","privacy","ai_processing"],"terms_version":"2026-11-24"}`. 교사·원장 예시이며 보호자는 아래 세 항목도 전부 보낸다. |
+| ④ 요청 본문 | POST만 `{"items":["terms","privacy","ai_processing"],"terms_version":"2026-11-26"}`. 교사·원장 예시이며 보호자는 아래 세 항목도 전부 보낸다. |
 | ⑤ 검증·권한 | 내 동의는 로그인한 사람만 저장·조회한다. 반 현황은 같은 원의 원장·현재 그 반 담임만 조회하며 다른 반 담임·학부모는 403, 없는 반·다른 원은 404다. |
 | ⑥ 정상 응답 | 내 동의는 200 `{terms_version,complete,items:[{item,label,required:true,agreed_at}]}`. 반 현황은 200 `{items:[{child_id,display_name,guardians_total,guardians_complete,complete}]}`. |
 | ⑦ 오류 응답 | 401 UNAUTHENTICATED. 필수 항목 누락은 422 CONSENT_INCOMPLETE(`details.missing_items`), 다른 역할 항목·모르는 항목·허용되지 않은 본문 키는 422 VALIDATION_FAILED, 판 불일치는 409 CONSENT_VERSION_MISMATCH(`details.terms_version`은 현재 판). |
-| ⑧ 실행 규칙 | 현재 판은 코드 상수 CONSENT_VERSION="2026-11-24" 하나로 둔다. 같은 요청은 최초 agreed_at·응답을 유지하고 이력도 중복하지 않는다. 새 기록을 넣었을 때만 consent_agreed 한 줄을 함께 남긴다. 이전 판 기록은 보존한다. |
+| ⑧ 실행 규칙 | 현재 판은 코드 상수 CONSENT_VERSION="2026-11-26" 하나로 둔다. 같은 요청은 최초 agreed_at·응답을 유지하고 이력도 중복하지 않는다. 새 기록을 넣었을 때만 consent_agreed 한 줄을 함께 남긴다. 이전 판 기록은 보존한다. |
 
 | 항목 키 | 표시 문구 | 적용 역할 | required |
 | --- | --- | --- | --- |
 | terms | 이용약관 | 보호자·교사·원장 | true |
 | privacy | 개인정보 수집·이용 | 보호자·교사·원장 | true |
-| ai_processing | 쓴 글이 AI 처리를 위해 국외 AI 사업자에게 전송됨 | 보호자·교사·원장 | true |
+| ai_processing | 쓴 글이 AI 처리를 위해 국외 AI 사업자(OpenAI, 미국)에게 전송되고, 처리 기록은 점검을 위해 LangSmith(미국)에 14일 보관됨 | 보호자·교사·원장 | true |
 | child_info | 자녀 개인정보 | 보호자 | true |
 | child_health | 자녀 건강·투약 정보 | 보호자 | true |
 | child_face | 자녀 얼굴로 찾기 | 보호자 | true |
