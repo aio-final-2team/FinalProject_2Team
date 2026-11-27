@@ -191,6 +191,8 @@ class _State:
         self.feed_posts = {}
         self.feed_photos = {}
         self.memories = {}
+        self.saved_answers = {}
+        self.saved_answer_sources = {}
         self.consents = {}
         self._seq = 1000
 
@@ -440,6 +442,11 @@ def _propose_slots(card: Card, teacher: UUID | None, round_no: int = 1, *, prefe
                                 if "preferred_times" in e.detail), None)
     if preferred_times is None and card.request_id in _state.requests:
         preferred_times = _state.requests[card.request_id].body  # 첫 후보는 요청 글의 희망을 읽어요(DB판과 같음)
+    if _state.memories and card.request_id in _state.requests:
+        from app.mock.memories import load_preferences
+        from app.modules.consultations.slots import preferred_or_memory
+        req = _state.requests[card.request_id]
+        preferred_times = preferred_or_memory(preferred_times, load_preferences(req.org_id, req.requester_id))
     first = _next_weekday(now().date())
     room = next(iter(_state.rooms))
     teacher = teacher or seed.TEACHER

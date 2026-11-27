@@ -1,16 +1,18 @@
-import { BackLink } from "@/components/BackLink";
+import { ScreenTop } from "@/components/ScreenTop";
 import { useMemo, useState } from "react";
 import { QueryState } from "@/components/QueryState";
 import { Link, useNavigate, useParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { ApiError, api } from "@/api/client";
 import { useChildren, useNotes, usePatchNote } from "@/api/notes";
+import { CorrectSheet } from "./CorrectSheet";
 import { useSession } from "@/app/session";
 import { Dock, PrimaryButton, SubButton } from "@/components/Dock";
 import { Icon } from "@/components/Icon";
 import { useToast } from "@/components/Toast";
 import { useRecords } from "@/features/records/store";
-import { CHECK_KIND, NOTE_STATUS, SOURCE_LABEL, dateLabel, nameI, todayKST, type DailyNote, type NoteItem, type OpenCheck } from "@/domain/notes";
+import { fmtDateTime } from "@/domain/datetime";
+import { CHECK_KIND, NOTE_STATUS, SOURCE_LABEL, dateLabel, itemLabel, nameI, todayKST, type DailyNote, type NoteItem, type OpenCheck } from "@/domain/notes";
 
 /**
  * 아이별 알림장 (API 25 PATCH). 줄마다 출처, 검사 AI가 짚은 곳(open_checks[].kind),
@@ -36,7 +38,7 @@ export function NoteDetail() {
     return (
       <div className="mx-auto max-w-[680px] px-4 pt-10">
         <p className="text-callout text-ink2">이 알림장을 찾지 못했어요.</p>
-        <Link to="/teacher/notes" className="mt-3 inline-block font-semibold text-accent">
+        <Link to="/teacher/notes?tab=notes" className="mt-3 inline-block font-semibold text-accent">
           오늘 알림장으로
         </Link>
       </div>
@@ -57,6 +59,7 @@ function Detail({ note, notes, name, names }: { note: DailyNote; notes: DailyNot
   const [err, setErr] = useState("");
   const open = note.open_checks;
   const locked = note.status === "sent";
+  const [correcting, setCorrecting] = useState(false);
   const next = notes.find((n) => n.status === "needs_check" && n.id !== note.id);
   const { records } = useRecords(cid, date);
   const entries = records[note.child_id] ?? [];
@@ -114,7 +117,7 @@ function Detail({ note, notes, name, names }: { note: DailyNote; notes: DailyNot
             action: { label: "되돌리기", run: () => patch.mutate({ id: note.id, body: { confirm: false } }) },
           });
           if (next) nav(`/teacher/notes/${next.id}`);
-          else nav("/teacher/notes");
+          else nav("/teacher/notes?tab=notes");
         },
         onError: (e) => setErr(e instanceof ApiError ? e.message : "확인하지 못했어요. 다시 눌러 주세요."),
       },
@@ -122,12 +125,9 @@ function Detail({ note, notes, name, names }: { note: DailyNote; notes: DailyNot
 
   const st = NOTE_STATUS[note.status];
   return (
-    <div className="mx-auto max-w-[680px] px-4 pb-48 pt-2 lg:pb-10 lg:pt-6">
-      <BackLink to="/teacher/notes" label="오늘 알림장" />
-      <h1 className="text-large-title font-bold tracking-[-0.025em]">{nameI(name)} 알림장</h1>
-      <p className="mb-4 mt-0.5 text-footnote font-medium text-ink2">
-        {user?.display_name} · {dateLabel(note.note_date)} · <span className={`font-bold ${st.cls}`}>{st.label}</span>
-      </p>
+    <div className="mx-auto max-w-[680px] px-4 pb-48 lg:pb-10 lg:pt-6">
+      <ScreenTop back={{ to: "/teacher/notes?tab=notes", label: "오늘 알림장" }} title={`${nameI(name)} 알림장`} sub={<>{user?.display_name} · {dateLabel(note.note_date)} · <span className={`font-bold ${st.cls}`}>{st.label}</span></>} />
+      <div className="mb-4" />
 
       <div className="mb-2 px-1 text-footnote font-semibold text-ink2">오늘 기록</div>
       <div className="mb-4 rounded-lg bg-g px-3 py-2.5 text-callout">
@@ -143,7 +143,7 @@ function Detail({ note, notes, name, names }: { note: DailyNote; notes: DailyNot
         ) : memoLine ? (
           <span>{memoLine}</span>
         ) : (
-          <span className="text-ink2">기록 없음 · 반 활동만 들어갔어요</span>
+          <span className="text-ink2">기록이 없어서 반 활동만 들어갔어요</span>
         )}
       </div>
 
@@ -196,14 +196,14 @@ function Detail({ note, notes, name, names }: { note: DailyNote; notes: DailyNot
 
       <div className="mb-2 px-1 text-footnote font-semibold text-ink2">보호자에게 보낼 내용</div>
       <section className="rounded-lg rounded-tr-xs border-[1.5px] border-accent bg-card p-3">
-        <span className="text-caption font-bold text-accent-ink">AI 초안 · 고칠 수 있음</span>
+        <span className="text-caption font-bold text-accent-ink">AI 초안, 고칠 수 있어요</span>
         {items.map((it, i) => {
           const bad = open.some((c) => c.item_key === it.key && c.sentence && it.value.includes(c.sentence));
           const src = it.source.type === "document" ? it.source.document_title ?? "원 자료" : SOURCE_LABEL[it.source.type];
           return (
             <div key={i} className={`py-2.5 ${i ? "border-t border-sep" : ""}`}>
               <div className="flex items-center justify-between gap-2">
-                <span className="text-footnote font-semibold text-ink2">{it.key === "child" ? `${nameI(name)}의 오늘` : it.label}</span>
+                <span className="text-footnote font-semibold text-ink2">{it.key === "child" ? `${nameI(name)}의 오늘` : itemLabel(it)}</span>
                 {!locked && editing !== i && (
                   <button
                     className="text-footnote font-semibold text-accent"
@@ -223,7 +223,7 @@ function Detail({ note, notes, name, names }: { note: DailyNote; notes: DailyNot
                     onChange={(e) => setDraftText(e.target.value)}
                     rows={3}
                     autoFocus
-                    aria-label={`${it.label} 고치기`}
+                    aria-label={`${itemLabel(it)} 고치기`}
                     className="resize-none rounded-md border-[1.5px] border-accent bg-card px-3 py-2 text-body outline-none shadow-[0_0_0_3px_var(--tint)]"
                   />
                   <div className="flex justify-end gap-2">
@@ -249,15 +249,22 @@ function Detail({ note, notes, name, names }: { note: DailyNote; notes: DailyNot
         </p>
       )}
 
+      {locked && (
+        <div className="mt-4 grid gap-2">
+          <p className="rounded-md bg-tint p-3 text-footnote text-accent-ink">{note.corrected_at ? `${fmtDateTime(note.corrected_at)}에 정정했어요` : "보낸 알림장이에요"}</p>
+          <SubButton tone="gray" className="h-[52px] w-full" onClick={() => setCorrecting(true)}>잘못된 내용 정정하기</SubButton>
+          <CorrectSheet note={note} open={correcting} onClose={() => setCorrecting(false)} cid={cid} date={date} />
+        </div>
+      )}
       {!locked && (
-        <Dock reason={open.length ? `확인할 곳 ${open.length}개를 먼저 정리해 주세요` : note.status === "ready" ? "확인했어요 · 반 전체를 보낼 때 함께 나가요" : undefined} reasonIcon={open.length ? "lock" : "check"}>
+        <Dock reason={open.length ? `확인할 곳 ${open.length}개를 먼저 정리해 주세요` : note.status === "ready" ? "확인했어요. 반 전체를 보낼 때 함께 나가요" : undefined} reasonIcon={open.length ? "lock" : "check"}>
           {note.status === "ready" ? (
             <SubButton tone="gray" className="h-[52px] w-full" onClick={() => save({ confirm: false }, "확인을 취소했어요")}>
               확인 취소하기
             </SubButton>
           ) : (
             <PrimaryButton disabled={open.length > 0} loading={patch.isPending} onClick={confirm}>
-              다 읽었어요 · 확인
+              확인하기
             </PrimaryButton>
           )}
         </Dock>

@@ -106,7 +106,7 @@ def detail(user, card_id):
         warnings = []
         if any(not e["is_current"] for e in evidence):
             warnings.append("stale_evidence")
-        if not evidence or card.draft.get("no_evidence"):
+        if (not evidence and not card.draft.get("note_evidence")) or card.draft.get("no_evidence"):
             warnings.append("no_evidence")
         if card.draft.get("law_unchecked"):
             warnings.append("law_unchecked")

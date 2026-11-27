@@ -1,12 +1,12 @@
 import { useState } from "react";
-import { NavLink, Outlet, useNavigate } from "react-router";
-import { Sheet } from "@/components/Sheet";
-import { SubButton } from "@/components/Dock";
+import { Link, Outlet, useLocation, useNavigate } from "react-router";
+import { MeSheet } from "@/components/MeSheet";
+import { TabBar, tabOn } from "@/components/TabBar";
 import { useCards } from "@/api/cards";
 import { useNotes } from "@/api/notes";
 import { todayKST } from "@/domain/notes";
 import { useSession } from "@/app/session";
-import { Wordmark, SymbolMark } from "@/components/Brand";
+import { MainLogo } from "@/components/Brand";
 import { Icon } from "@/components/Icon";
 import type { Role } from "@/domain/types";
 
@@ -26,42 +26,37 @@ export function StaffLayout({ role }: { role: Exclude<Role, "parent"> }) {
   const items =
     role === "teacher"
       ? [
-          { to: `${base}/home`, icon: "home", label: "홈", count: 0 },
-          { to: `${base}/records`, icon: "class", label: "관찰 기록", count: 0 },
+          { to: `${base}/home`, icon: "home", label: "홈", count: 0, also: [`${base}/care`, `${base}/class`, `${base}/feed`, `${base}/memory`, `${base}/notifications`, `${base}/soon`] },
           { to: `${base}/notes`, icon: "document", label: "알림장", count: noteLeft },
           { to: `${base}/inbox`, icon: "inbox", label: "받은함", count: review },
         ]
       : [
+          { to: `${base}/overview`, icon: "home", label: "현황", count: 0, also: [`${base}/care`, `${base}/notifications`] },
           { to: `${base}/inbox`, icon: "inbox", label: "받은함", count: review },
           { to: `${base}/feed`, icon: "class", label: "원 소식", count: 0 },
         ];
   const [me, setMe] = useState(false);
-  const logout = () => {
-    signOut();
-    nav("/login");
-  };
+  const { pathname } = useLocation();
 
   return (
     <div className="min-h-full lg:grid lg:grid-cols-[232px_1fr]">
       <aside className="sticky top-0 hidden h-dvh flex-col gap-6 border-r border-sep bg-card px-4 py-6 lg:flex">
-        <div className="flex items-center gap-2 px-2">
-          <SymbolMark className="size-7" />
-          <Wordmark className="h-[18px]" />
+        <div className="px-2">
+          <MainLogo className="h-10" />
         </div>
         <div className="px-2 text-sub text-ink2">{user?.display_name ?? (role === "teacher" ? "선생님" : "원장")}</div>
         <nav className="grid gap-1" aria-label="주 메뉴">
           {items.map((it) => (
-            <NavLink
+            <Link
               key={it.to}
               to={it.to}
-              className={({ isActive }) =>
-                `flex items-center gap-3 rounded-xl px-3 py-2.5 text-body font-semibold transition-colors ${isActive ? "bg-tint text-accent-ink" : "text-ink hover:bg-fill"}`
-              }
+              aria-current={tabOn(pathname, it) ? "page" : undefined}
+              className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-body font-semibold transition-colors ${tabOn(pathname, it) ? "bg-tint text-accent-ink" : "text-ink hover:bg-fill"}`}
             >
               <Icon name={it.icon} className="size-5" />
               <span className="flex-1">{it.label}</span>
               {it.count > 0 && <span className="rounded-full bg-accent px-2 text-cap font-bold text-on-accent tabular-nums">{it.count}</span>}
-            </NavLink>
+            </Link>
           ))}
         </nav>
         <button
@@ -80,25 +75,8 @@ export function StaffLayout({ role }: { role: Exclude<Role, "parent"> }) {
         <Outlet />
       </main>
 
-      <Sheet open={me} onClose={() => setMe(false)} title="내 정보">
-        <p className="text-callout"><b>{user?.display_name}</b> · {role === "teacher" ? "담임 교사" : "원장"}</p>
-        <SubButton tone="gray" className="h-[52px] w-full" onClick={logout}>로그아웃</SubButton>
-      </Sheet>
-      <nav className="glass fixed inset-x-0 bottom-0 z-30 grid grid-flow-col bg-bar pb-[max(10px,env(safe-area-inset-bottom))] pt-2 shadow-[0_-1px_0_var(--sep)] backdrop-blur-xl backdrop-saturate-[1.8] lg:hidden" aria-label="주 메뉴">
-          {items.map((it) => (
-            <NavLink key={it.to} to={it.to} className={({ isActive }) => `relative grid justify-items-center gap-0.5 text-caption font-semibold ${isActive ? "text-accent" : "text-ink2"}`}>
-              <span className="relative">
-                <Icon name={it.icon} className="size-6" />
-                {it.count > 0 && <span className="absolute -right-2.5 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-accent px-1 text-caption font-bold text-on-accent ring-2 ring-card">{it.count}</span>}
-              </span>
-              {it.label}
-            </NavLink>
-          ))}
-          <button type="button" onClick={() => setMe(true)} className="relative grid justify-items-center gap-0.5 text-caption font-semibold text-ink2">
-            <Icon name="profile" className="size-6" />
-            내 정보
-          </button>
-        </nav>
+      <MeSheet open={me} onClose={() => setMe(false)} />
+      <TabBar className="max-w-none lg:hidden" items={items.map((it) => ({ to: it.to, icon: it.icon, label: it.label, count: it.count, also: it.also }))} extra={{ icon: "profile", label: "내 정보", onClick: () => setMe(true) }} />
     </div>
   );
 }

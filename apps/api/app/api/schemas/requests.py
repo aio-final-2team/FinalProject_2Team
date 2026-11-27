@@ -174,6 +174,12 @@ class SourceOut(BaseModel):
     effective_from: date | None = None
 
 
+class MemoryCandidateOut(BaseModel):
+    id: int
+    child_name: str
+    content: str
+
+
 class RequestDetailOut(BaseModel):
     """학부모용. 위험 등급·보류 이유·도구 호출·처리한 교직원은 넣지 않는다(계약표 2.1)."""
 
@@ -184,3 +190,4 @@ class RequestDetailOut(BaseModel):
     rejection: RejectionOut | None = None
     sources: list[SourceOut] = Field(default_factory=list)
     care: CareOut | None = None
+    memory_candidates: list[MemoryCandidateOut] = Field(default_factory=list)

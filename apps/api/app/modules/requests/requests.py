@@ -80,13 +80,25 @@ def create(user, *, background_tasks, client_request_id, type, body, child_id, p
     return req, True
 
 
-def _expire(connection, req):
-    expired = connection.scalar(text("""
-        SELECT EXISTS (SELECT 1 FROM cards c WHERE c.request_id=:id AND
-          ((c.status='on_hold' AND c.hold_until<=CURRENT_DATE) OR EXISTS (
+# 보류가 끝났거나 학부모가 고른 상담 후보가 24시간 넘게 확정되지 않은 카드. 목록은 이 조건으로 한 번에 골라요.
+EXPIRE_DUE = """((c.status='on_hold' AND c.hold_until<=CURRENT_DATE) OR EXISTS (
             SELECT 1 FROM consultation_slots s WHERE s.card_id=c.id AND s.status='chosen_by_parent'
               AND s.chosen_at<=now()-interval '24 hours'
-              AND EXISTS (SELECT 1 FROM requests r WHERE r.id=c.request_id AND r.status='awaiting_review'))))
+              AND EXISTS (SELECT 1 FROM requests r WHERE r.id=c.request_id AND r.status='awaiting_review')))"""
+
+
+def _expire_due(connection, org_id, request_ids):
+    if not request_ids:
+        return set()
+    return set(connection.scalars(text(f"""
+        SELECT DISTINCT c.request_id FROM cards c
+        WHERE c.org_id=:org AND c.request_id=ANY(CAST(:ids AS uuid[])) AND {EXPIRE_DUE}
+    """), {"org": org_id, "ids": [str(i) for i in request_ids]}))
+
+
+def _expire(connection, req):
+    expired = connection.scalar(text(f"""
+        SELECT EXISTS (SELECT 1 FROM cards c WHERE c.request_id=:id AND {EXPIRE_DUE})
     """), {"id": req["id"]})
     if not expired:
         return req
@@ -296,7 +308,8 @@ def listing(user, status, page, size, sort, answered_by=None, classroom_id=None,
             SELECT * FROM requests WHERE org_id=:org AND requester_id=:user
               ORDER BY id
         """), {"org": user.org_id, "user": user.id}).mappings().all()
-        requests = [_expire(connection, dict(row)) for row in rows]
+        due = _expire_due(connection, user.org_id, [row["id"] for row in rows])
+        requests = [_expire(connection, dict(row)) if row["id"] in due else dict(row) for row in rows]
         requests = [req for req in requests if status is None or req["status"] == status]
         requests.sort(key=lambda req: (req[sort.lstrip("-")], str(req["id"])), reverse=sort.startswith("-"))
         items = []
@@ -342,9 +355,12 @@ def staff_listing(user, status, page, size, sort, answered_by, classroom_id, typ
         """), {"org": user.org_id, "class": classroom_id, "type": type,
                "user": user.id, "director": user.role == "director"}).mappings().all()
         requests = []
+        # 요청마다 만료 조회를 따로 하지 않고, 만료될 요청만 한 번에 골라 처리해요(성주 #365 리뷰).
+        due = _expire_due(connection, user.org_id, [row["id"] for row in rows])
         for row in rows:
             req = dict(row)
-            req.update(_expire(connection, req))
+            if req["id"] in due:
+                req.update(_expire(connection, req))
             if (status is None or req["status"] == status) and (answered_by is None or req["answered_by"] == answered_by):
                 requests.append(req)
         requests.sort(key=lambda r: (r[sort.lstrip("-")], str(r["id"])), reverse=sort.startswith("-"))

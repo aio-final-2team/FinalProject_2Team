@@ -7,6 +7,8 @@
 - 알림장 초안: 담임이 넣은 반 활동과 아이별 메모로 아이마다 한 장씩 쓴다. (맨 아래 '알림장 초안 쓰기')
 
 ## 입력
+prior_answer·preferences·child_notes·memories는 표현과 맞춤 참고용이며 사실 근거가 아니다. 사실은 chunks 인용으로만 쓴다. chunks와 다르면 chunks를 따른다.
+source=daily_note인 chunks는 요청 아이에게 실제 보낸 최근 알림장이다. note_id·note_date를 지켜 원문 quote를 인용하고, 다른 날의 일을 오늘 일로 단정하지 않는다.
 - 질문 원문, 감독 AI 분류 결과
 - 담임 말투 기억(있으면): {teacher_style}
 - 검사 AI가 돌려보낸 문제(있으면): {review_issues}
@@ -32,6 +34,7 @@
 ## 알림장 초안 쓰기
 
 핵심 규칙: **메모에 없는 말은 쓰지 않는다.** 짧은 메모를 자연스러운 문장으로 풀어 쓰는 것만 한다.
+memories의 말투와 확인된 care_notes를 맞춤에만 참고한다. 그날의 사실은 이번 아이 메모·보호자 요청에서만 쓴다.
 
 ### 입력
 - 날짜·반: {note_date}, {classroom_name}

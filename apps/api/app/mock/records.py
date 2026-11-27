@@ -102,6 +102,7 @@ class Rule:
     rule_json: dict
     status: str = "proposed"
     decided_at: datetime | None = None
+    created_at: datetime = field(default_factory=lambda: datetime.now(KST))
 
 
 @dataclass
@@ -153,3 +154,6 @@ class Memory:
     created_at: datetime = field(default_factory=lambda: datetime.now(KST))
     deleted_at: datetime | None = None
     source_card_id: UUID | None = None
+    child_id: UUID | None = None
+    confirm_status: str = "confirmed"
+    confirmed_at: datetime | None = None

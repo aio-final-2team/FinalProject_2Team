@@ -7,7 +7,7 @@ import { Icon } from "./Icon";
  */
 export function Dock({ children, reason, reasonIcon = "lock" }: { children: ReactNode; reason?: string; reasonIcon?: "lock" | "check" }) {
   return (
-    <div className="glass fixed inset-x-0 bottom-[calc(64px+env(safe-area-inset-bottom))] z-20 border-t border-sep bg-bar px-4 py-2.5 backdrop-blur-xl lg:sticky lg:bottom-0 lg:mt-6">
+    <div data-bottom-bar className="glass fixed inset-x-0 bottom-[calc(64px+env(safe-area-inset-bottom))] z-20 border-t border-sep bg-bar px-4 py-2.5 backdrop-blur-xl lg:sticky lg:bottom-0 lg:mt-6">
       <div className="mx-auto grid max-w-[680px] gap-1.5">
         {reason && (
           <p className="flex items-center justify-center gap-1.5 text-footnote font-semibold text-ink2">
@@ -22,13 +22,13 @@ export function Dock({ children, reason, reasonIcon = "lock" }: { children: Reac
 }
 
 /** 주 버튼: 높이 52, 모서리 8, 브랜드 블루 채움 (7.1). 잠기면 회색 */
-export function PrimaryButton({ children, loading, ...rest }: React.ButtonHTMLAttributes<HTMLButtonElement> & { loading?: boolean }) {
+export function PrimaryButton({ children, loading, tone = "brand", ...rest }: React.ButtonHTMLAttributes<HTMLButtonElement> & { loading?: boolean; tone?: "brand" | "warm" }) {
   return (
     <button
       {...rest}
       disabled={rest.disabled || loading}
       aria-busy={loading || undefined}
-      className={`flex h-[52px] w-full items-center justify-center gap-2 rounded-md text-body font-semibold transition-[transform,filter] duration-100 ease-out active:scale-[.97] active:brightness-95 disabled:scale-100 disabled:bg-fill2 disabled:text-ink2 disabled:brightness-100 bg-brand-fill text-on-brand ${rest.className ?? ""}`}
+      className={`flex h-[52px] w-full items-center justify-center gap-2 rounded-md text-body font-semibold transition-[transform,filter] duration-100 ease-out active:scale-[.97] active:brightness-95 disabled:scale-100 disabled:bg-fill2 disabled:text-ink2 disabled:brightness-100 ${tone === "warm" ? "bg-warm-accent text-on-warm" : "bg-brand-fill text-on-brand"} ${rest.className ?? ""}`}
     >
       {loading && <span className="m-spin size-4 rounded-full border-2 border-current border-r-transparent" />}
       {children}
@@ -41,7 +41,7 @@ export function SubButton({ tone = "tint", small, children, ...rest }: React.But
   return (
     <button
       {...rest}
-      className={`inline-flex items-center justify-center gap-1.5 rounded-md font-semibold transition-transform duration-100 active:scale-[.97] disabled:opacity-50 ${small ? "h-8 px-2.5 text-footnote" : "h-11 px-4 text-callout"} ${tone === "tint" ? "bg-tint text-accent-ink" : "bg-fill text-ink"} ${rest.className ?? ""}`}
+      className={`inline-flex items-center justify-center gap-1.5 rounded-md font-semibold transition-transform duration-100 active:scale-[.97] disabled:opacity-50 ${small ? "relative h-8 px-2.5 text-footnote after:absolute after:inset-x-0 after:-inset-y-1.5 after:content-['']" : "h-11 px-4 text-callout"} ${tone === "tint" ? "bg-tint text-accent-ink" : "bg-fill text-ink"} ${rest.className ?? ""}`}
     >
       {children}
     </button>

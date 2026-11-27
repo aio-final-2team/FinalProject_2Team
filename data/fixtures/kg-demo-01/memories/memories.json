@@ -1,0 +1,932 @@
+{
+  "is_virtual": true,
+  "description": "유치온 개발·시연 전용 가상 기억입니다. 실제 기관·인물·아동 정보가 아닙니다.",
+  "memories": [
+    {
+      "owner": "teacher01",
+      "kind": "tone",
+      "content": "해요체로 짧게 세 문장 안에서 안내해요.",
+      "structured": {
+        "source": "edit_approve"
+      },
+      "source_answer": "memory-answer-01"
+    },
+    {
+      "owner": "teacher01",
+      "kind": "tone",
+      "content": "끝에 궁금한 점은 언제든 알려 주세요라는 인사를 붙여요.",
+      "structured": {
+        "source": "edit_approve"
+      },
+      "source_answer": "memory-answer-02"
+    },
+    {
+      "owner": "teacher01",
+      "kind": "tone",
+      "content": "아이를 부를 때 이름 뒤에 이를 자연스럽게 붙여요.",
+      "structured": {
+        "source": "edit_approve"
+      },
+      "source_answer": "memory-answer-03"
+    },
+    {
+      "owner": "teacher01",
+      "kind": "tone",
+      "content": "질문에 대한 답을 먼저 쓰고 설명을 덧붙여요.",
+      "structured": {
+        "source": "edit_approve"
+      },
+      "source_answer": "memory-answer-04"
+    },
+    {
+      "owner": "teacher01",
+      "kind": "tone",
+      "content": "부탁할 때 꼭 하세요보다 챙겨 주세요라고 써요.",
+      "structured": {
+        "source": "edit_approve"
+      },
+      "source_answer": "memory-answer-05"
+    },
+    {
+      "owner": "teacher01",
+      "kind": "tone",
+      "content": "안내를 시작할 때 따뜻한 인사를 건네요.",
+      "structured": {
+        "source": "edit_approve"
+      },
+      "source_answer": "memory-answer-06"
+    },
+    {
+      "owner": "teacher01",
+      "kind": "tone",
+      "content": "어려운 행정 용어 대신 쉬운 말을 써요.",
+      "structured": {
+        "source": "edit_approve"
+      },
+      "source_answer": "memory-answer-07"
+    },
+    {
+      "owner": "teacher01",
+      "kind": "tone",
+      "content": "걱정하는 문의에는 먼저 마음을 헤아리는 말을 써요.",
+      "structured": {
+        "source": "edit_approve"
+      },
+      "source_answer": "memory-answer-08"
+    },
+    {
+      "owner": "teacher01",
+      "kind": "tone",
+      "content": "느낌표를 반복하지 않고 차분하게 마무리해요.",
+      "structured": {
+        "source": "edit_approve"
+      },
+      "source_answer": "memory-answer-09"
+    },
+    {
+      "owner": "teacher01",
+      "kind": "tone",
+      "content": "안내 항목이 여럿이면 문장을 나누어 읽기 쉽게 써요.",
+      "structured": {
+        "source": "edit_approve"
+      },
+      "source_answer": "memory-answer-10"
+    },
+    {
+      "owner": "teacher02",
+      "kind": "tone",
+      "content": "짧은 해요체 문장으로 안내해요.",
+      "structured": {}
+    },
+    {
+      "owner": "teacher02",
+      "kind": "tone",
+      "content": "첫 문장에 문의한 내용을 다시 짚어요.",
+      "structured": {}
+    },
+    {
+      "owner": "teacher02",
+      "kind": "tone",
+      "content": "인사말은 간단하게 쓰고 답을 바로 안내해요.",
+      "structured": {}
+    },
+    {
+      "owner": "teacher02",
+      "kind": "tone",
+      "content": "준비물은 줄을 나누어 보여 줘요.",
+      "structured": {}
+    },
+    {
+      "owner": "teacher02",
+      "kind": "tone",
+      "content": "부탁하는 문장은 확인해 주세요로 끝내요.",
+      "structured": {}
+    },
+    {
+      "owner": "teacher02",
+      "kind": "tone",
+      "content": "확인되지 않은 내용은 단정하지 않아요.",
+      "structured": {}
+    },
+    {
+      "owner": "teacher01",
+      "kind": "preference",
+      "content": "상담 후보는 오후 시간부터 확인해요.",
+      "structured": {
+        "after": "14:00"
+      }
+    },
+    {
+      "owner": "teacher01",
+      "kind": "preference",
+      "content": "상담은 늦은 오후 전에 마쳐요.",
+      "structured": {
+        "before": "17:00"
+      }
+    },
+    {
+      "owner": "teacher01",
+      "kind": "preference",
+      "content": "상담 일정은 주중 중간 요일을 선호해요.",
+      "structured": {
+        "weekday": 2
+      }
+    },
+    {
+      "owner": "teacher01",
+      "kind": "preference",
+      "content": "문의 내용은 앱 메시지로 먼저 확인해요.",
+      "structured": {
+        "contact_method": "app"
+      }
+    },
+    {
+      "owner": "teacher01",
+      "kind": "preference",
+      "content": "업무 안내는 항목별로 정리해요.",
+      "structured": {
+        "format": "bullets"
+      }
+    },
+    {
+      "owner": "teacher01",
+      "kind": "preference",
+      "content": "확인할 자료 제목을 함께 안내해요.",
+      "structured": {
+        "include_source_title": true
+      }
+    },
+    {
+      "owner": "teacher02",
+      "kind": "preference",
+      "content": "상담은 오후부터 잡는 편이에요.",
+      "structured": {
+        "after": "15:00"
+      }
+    },
+    {
+      "owner": "teacher02",
+      "kind": "preference",
+      "content": "상담은 주 후반을 선호해요.",
+      "structured": {
+        "weekday": 3
+      }
+    },
+    {
+      "owner": "teacher02",
+      "kind": "preference",
+      "content": "안내 전 필요한 준비물을 먼저 확인해요.",
+      "structured": {
+        "priority": "preparations"
+      }
+    },
+    {
+      "owner": "teacher02",
+      "kind": "preference",
+      "content": "상담 전에 질문을 앱으로 받아요.",
+      "structured": {
+        "contact_method": "app"
+      }
+    },
+    {
+      "owner": "teacher01",
+      "kind": "rejection_reason",
+      "content": "오전에는 수업이 있어 상담 후보를 받을 수 없어요.",
+      "structured": {
+        "decision": "reject"
+      },
+      "reason_code": "slot_unavailable"
+    },
+    {
+      "owner": "teacher01",
+      "kind": "rejection_reason",
+      "content": "수업을 마친 오후부터 상담하고 싶어요.",
+      "structured": {
+        "decision": "reject"
+      },
+      "reason_code": "slot_unavailable"
+    },
+    {
+      "owner": "teacher01",
+      "kind": "rejection_reason",
+      "content": "늦은 오후 이후 후보는 업무 정리와 겹쳐요.",
+      "structured": {
+        "decision": "reject"
+      },
+      "reason_code": "slot_unavailable"
+    },
+    {
+      "owner": "teacher01",
+      "kind": "rejection_reason",
+      "content": "말투가 딱딱해서 부드러운 해요체로 고쳤어요.",
+      "structured": {
+        "decision": "reject"
+      },
+      "reason_code": "tone"
+    },
+    {
+      "owner": "teacher01",
+      "kind": "rejection_reason",
+      "content": "답이 길어 핵심 안내만 짧게 남겼어요.",
+      "structured": {
+        "decision": "reject"
+      },
+      "reason_code": "tone"
+    },
+    {
+      "owner": "teacher01",
+      "kind": "rejection_reason",
+      "content": "끝 인사를 자연스럽게 붙여서 보냈어요.",
+      "structured": {
+        "decision": "reject"
+      },
+      "reason_code": "tone"
+    },
+    {
+      "owner": "teacher01",
+      "kind": "rejection_reason",
+      "content": "준비물 안내가 빠져 있어서 확인을 요청했어요.",
+      "structured": {
+        "decision": "reject"
+      },
+      "reason_code": "missing_info"
+    },
+    {
+      "owner": "teacher01",
+      "kind": "rejection_reason",
+      "content": "신청 방법을 함께 안내해야 해요.",
+      "structured": {
+        "decision": "reject"
+      },
+      "reason_code": "missing_info"
+    },
+    {
+      "owner": "teacher01",
+      "kind": "rejection_reason",
+      "content": "근거 자료의 위치가 빠져 있어 보완을 요청했어요.",
+      "structured": {
+        "decision": "reject"
+      },
+      "reason_code": "missing_info"
+    },
+    {
+      "owner": "teacher01",
+      "kind": "rejection_reason",
+      "content": "담임 확인 전 상담 확정으로 안내하면 안 돼요.",
+      "structured": {
+        "decision": "reject"
+      },
+      "reason_code": "policy"
+    },
+    {
+      "owner": "teacher01",
+      "kind": "rejection_reason",
+      "content": "앱에서 결제할 수 있다는 안내는 원 방침과 달라요.",
+      "structured": {
+        "decision": "reject"
+      },
+      "reason_code": "policy"
+    },
+    {
+      "owner": "teacher01",
+      "kind": "rejection_reason",
+      "content": "정해진 귀가 확인 절차를 먼저 안내해 주세요.",
+      "structured": {
+        "decision": "reject"
+      },
+      "reason_code": "policy"
+    },
+    {
+      "owner": "teacher01",
+      "kind": "rejection_reason",
+      "content": "다른 반 행사 내용을 그대로 쓰면 안 돼요.",
+      "structured": {
+        "decision": "reject"
+      },
+      "reason_code": "wrong_fact"
+    },
+    {
+      "owner": "teacher01",
+      "kind": "rejection_reason",
+      "content": "다른 아이 정보를 포함한 문장은 빼야 해요.",
+      "structured": {
+        "decision": "reject"
+      },
+      "reason_code": "privacy"
+    },
+    {
+      "owner": "teacher02",
+      "kind": "rejection_reason",
+      "content": "오전 후보는 수업과 겹쳐요.",
+      "structured": {
+        "decision": "reject"
+      },
+      "reason_code": "slot_unavailable"
+    },
+    {
+      "owner": "teacher02",
+      "kind": "rejection_reason",
+      "content": "상담은 오후 수업 정리 뒤에 가능해요.",
+      "structured": {
+        "decision": "reject"
+      },
+      "reason_code": "slot_unavailable"
+    },
+    {
+      "owner": "teacher02",
+      "kind": "rejection_reason",
+      "content": "이른 오후에는 상담을 잡기 어려워요.",
+      "structured": {
+        "decision": "reject"
+      },
+      "reason_code": "slot_unavailable"
+    },
+    {
+      "owner": "teacher02",
+      "kind": "rejection_reason",
+      "content": "문서의 반 대상을 다시 확인해 주세요.",
+      "structured": {
+        "decision": "reject"
+      },
+      "reason_code": "wrong_fact"
+    },
+    {
+      "owner": "teacher02",
+      "kind": "rejection_reason",
+      "content": "해당 상담실은 다른 업무로 사용 중이에요.",
+      "structured": {
+        "decision": "reject"
+      },
+      "reason_code": "room_unavailable"
+    },
+    {
+      "owner": "teacher02",
+      "kind": "rejection_reason",
+      "content": "짧고 쉬운 표현으로 고쳐 주세요.",
+      "structured": {
+        "decision": "reject"
+      },
+      "reason_code": "tone"
+    },
+    {
+      "owner": "parent01",
+      "kind": "preference",
+      "content": "상담은 평일 오후의 전화 상담을 선호해요.",
+      "structured": {
+        "weekday": 0,
+        "after": "15:00",
+        "contact_method": "phone"
+      }
+    },
+    {
+      "owner": "parent01",
+      "kind": "preference",
+      "content": "일반 안내는 앱으로 받고 저녁에 확인하는 편이에요.",
+      "structured": {
+        "contact_method": "app",
+        "notification_time": "18:00"
+      }
+    },
+    {
+      "owner": "parent02",
+      "kind": "preference",
+      "content": "상담은 평일 오후의 전화 상담을 선호해요.",
+      "structured": {
+        "weekday": 1,
+        "after": "16:00",
+        "contact_method": "phone"
+      }
+    },
+    {
+      "owner": "parent02",
+      "kind": "preference",
+      "content": "일반 안내는 앱으로 받고 저녁에 확인하는 편이에요.",
+      "structured": {
+        "contact_method": "app",
+        "notification_time": "18:30"
+      }
+    },
+    {
+      "owner": "parent-c4-01",
+      "kind": "preference",
+      "content": "상담은 평일 오후의 전화 상담을 선호해요.",
+      "structured": {
+        "weekday": 2,
+        "after": "17:00",
+        "contact_method": "phone"
+      }
+    },
+    {
+      "owner": "parent-c4-01",
+      "kind": "preference",
+      "content": "일반 안내는 앱으로 받고 저녁에 확인하는 편이에요.",
+      "structured": {
+        "contact_method": "app",
+        "notification_time": "19:00"
+      }
+    },
+    {
+      "owner": "parent-c4-02",
+      "kind": "preference",
+      "content": "상담은 평일 오후의 전화 상담을 선호해요.",
+      "structured": {
+        "weekday": 3,
+        "after": "15:00",
+        "contact_method": "phone"
+      }
+    },
+    {
+      "owner": "parent-c4-02",
+      "kind": "preference",
+      "content": "일반 안내는 앱으로 받고 저녁에 확인하는 편이에요.",
+      "structured": {
+        "contact_method": "app",
+        "notification_time": "18:00"
+      }
+    },
+    {
+      "owner": "parent-c4-04",
+      "kind": "preference",
+      "content": "상담은 평일 오후의 전화 상담을 선호해요.",
+      "structured": {
+        "weekday": 4,
+        "after": "16:00",
+        "contact_method": "phone"
+      }
+    },
+    {
+      "owner": "parent-c4-04",
+      "kind": "preference",
+      "content": "일반 안내는 앱으로 받고 저녁에 확인하는 편이에요.",
+      "structured": {
+        "contact_method": "app",
+        "notification_time": "18:30"
+      }
+    },
+    {
+      "owner": "parent-c4-05",
+      "kind": "preference",
+      "content": "상담은 평일 오후의 전화 상담을 선호해요.",
+      "structured": {
+        "weekday": 0,
+        "after": "17:00",
+        "contact_method": "phone"
+      }
+    },
+    {
+      "owner": "parent-c4-05",
+      "kind": "preference",
+      "content": "일반 안내는 앱으로 받고 저녁에 확인하는 편이에요.",
+      "structured": {
+        "contact_method": "app",
+        "notification_time": "19:00"
+      }
+    },
+    {
+      "owner": "parent-c4-06",
+      "kind": "preference",
+      "content": "상담은 평일 오후의 전화 상담을 선호해요.",
+      "structured": {
+        "weekday": 1,
+        "after": "15:00",
+        "contact_method": "phone"
+      }
+    },
+    {
+      "owner": "parent-c4-06",
+      "kind": "preference",
+      "content": "일반 안내는 앱으로 받고 저녁에 확인하는 편이에요.",
+      "structured": {
+        "contact_method": "app",
+        "notification_time": "18:00"
+      }
+    },
+    {
+      "owner": "parent-c4-07",
+      "kind": "preference",
+      "content": "상담은 평일 오후의 전화 상담을 선호해요.",
+      "structured": {
+        "weekday": 2,
+        "after": "16:00",
+        "contact_method": "phone"
+      }
+    },
+    {
+      "owner": "parent-c4-07",
+      "kind": "preference",
+      "content": "일반 안내는 앱으로 받고 저녁에 확인하는 편이에요.",
+      "structured": {
+        "contact_method": "app",
+        "notification_time": "18:30"
+      }
+    },
+    {
+      "owner": "parent-c4-08",
+      "kind": "preference",
+      "content": "상담은 평일 오후의 전화 상담을 선호해요.",
+      "structured": {
+        "weekday": 3,
+        "after": "17:00",
+        "contact_method": "phone"
+      }
+    },
+    {
+      "owner": "parent-c4-08",
+      "kind": "preference",
+      "content": "일반 안내는 앱으로 받고 저녁에 확인하는 편이에요.",
+      "structured": {
+        "contact_method": "app",
+        "notification_time": "19:00"
+      }
+    },
+    {
+      "owner": "parent-c4-09",
+      "kind": "preference",
+      "content": "상담은 평일 오후의 전화 상담을 선호해요.",
+      "structured": {
+        "weekday": 4,
+        "after": "15:00",
+        "contact_method": "phone"
+      }
+    },
+    {
+      "owner": "parent-c4-09",
+      "kind": "preference",
+      "content": "일반 안내는 앱으로 받고 저녁에 확인하는 편이에요.",
+      "structured": {
+        "contact_method": "app",
+        "notification_time": "18:00"
+      }
+    },
+    {
+      "owner": "director01",
+      "kind": "preference",
+      "content": "원 전체 안내는 핵심 내용을 먼저 정리해요.",
+      "structured": {
+        "format": "summary_first"
+      }
+    },
+    {
+      "owner": "director01",
+      "kind": "preference",
+      "content": "행정 문의는 담당 부서 안내를 함께 확인해요.",
+      "structured": {
+        "include_department": true
+      }
+    },
+    {
+      "owner": "director01",
+      "kind": "preference",
+      "content": "교직원 검토 사항은 앱에서 모아 확인해요.",
+      "structured": {
+        "contact_method": "app"
+      }
+    }
+  ],
+  "rules": [
+    {
+      "key": "memory-rule-teacher01-slot_unavailable",
+      "owner": "teacher01",
+      "reason_code": "slot_unavailable",
+      "status": "active",
+      "rule_text": "상담은 오후 14:00부터 17:00 사이에만 후보를 받아요.",
+      "rule_json": {
+        "after": "14:00",
+        "before": "17:00"
+      }
+    },
+    {
+      "key": "memory-rule-teacher01-tone",
+      "owner": "teacher01",
+      "reason_code": "tone",
+      "status": "active",
+      "rule_text": "해요체로 짧게 쓰고 끝 인사를 붙여요.",
+      "rule_json": {
+        "reason_code": "tone"
+      }
+    },
+    {
+      "key": "memory-rule-teacher01-missing_info",
+      "owner": "teacher01",
+      "reason_code": "missing_info",
+      "status": "proposed",
+      "rule_text": "빠진 신청 방법과 준비물 근거를 확인한 뒤 초안을 제안해 주세요.",
+      "rule_json": {
+        "reason_code": "missing_info"
+      }
+    },
+    {
+      "key": "memory-rule-teacher01-policy",
+      "owner": "teacher01",
+      "reason_code": "policy",
+      "status": "declined",
+      "rule_text": "업무 안내를 전부 원장 확인 뒤 보내자는 제안은 적용하지 않아요.",
+      "rule_json": {
+        "reason_code": "policy"
+      }
+    },
+    {
+      "key": "memory-rule-teacher02-slot_unavailable",
+      "owner": "teacher02",
+      "reason_code": "slot_unavailable",
+      "status": "active",
+      "rule_text": "상담은 15:00부터 17:30 사이에만 후보를 받아요.",
+      "rule_json": {
+        "after": "15:00",
+        "before": "17:30"
+      }
+    }
+  ],
+  "saved_answers": [
+    {
+      "key": "memory-answer-01",
+      "classroom": "C4",
+      "document": "notice/NT-2026-20.md",
+      "question": "등원은 몇 시까지 하면 되나요?",
+      "answer": "등원은 오전 8:50 ~ 9:20에 해 주세요. 궁금한 점은 언제든 알려 주세요.",
+      "quote": "등원 시간: 오전 8:50 ~ 9:20",
+      "edit": true
+    },
+    {
+      "key": "memory-answer-02",
+      "classroom": "C4",
+      "document": "notice/NT-2026-20.md",
+      "question": "교육과정 하원 시각이 궁금해요.",
+      "answer": "교육과정 하원은 오후 2:00예요. 궁금한 점은 언제든 알려 주세요.",
+      "quote": "하원 시간: 오후 2:00(교육과정)",
+      "edit": true
+    },
+    {
+      "key": "memory-answer-03",
+      "classroom": "C4",
+      "document": "notice/NT-2026-20.md",
+      "question": "방과후 과정은 몇 시까지 하나요?",
+      "answer": "방과후 과정은 오후 6:00까지예요. 궁금한 점은 언제든 알려 주세요.",
+      "quote": "방과후 과정은 오후 6:00까지",
+      "edit": true
+    },
+    {
+      "key": "memory-answer-04",
+      "classroom": "C4",
+      "document": "notice/NT-2026-20.md",
+      "question": "여벌옷에는 이름을 적어야 하나요?",
+      "answer": "여벌옷 1벌에 이름을 꼭 적어 보내 주세요. 궁금한 점은 언제든 알려 주세요.",
+      "quote": "개인 물품(여벌옷 1벌, 양치 도구)에 이름을 꼭 적어 보내 주세요.",
+      "edit": true
+    },
+    {
+      "key": "memory-answer-05",
+      "classroom": "C4",
+      "document": "notice/NT-2026-20.md",
+      "question": "양치 도구를 보낼 때 무엇을 확인하나요?",
+      "answer": "양치 도구에 이름을 꼭 적어 보내 주세요. 궁금한 점은 언제든 알려 주세요.",
+      "quote": "개인 물품(여벌옷 1벌, 양치 도구)에 이름을 꼭 적어 보내 주세요.",
+      "edit": true
+    },
+    {
+      "key": "memory-answer-06",
+      "classroom": "C4",
+      "document": "notice/NT-2026-30.md",
+      "question": "별빛반 김장 체험은 언제 하나요?",
+      "answer": "김장 체험은 2026년 11월 27일(금) 오전 10:00에 해요. 궁금한 점은 언제든 알려 주세요.",
+      "quote": "2026년 11월 27일(금) 오전 10:00",
+      "edit": true
+    },
+    {
+      "key": "memory-answer-07",
+      "classroom": "C4",
+      "document": "notice/NT-2026-30.md",
+      "question": "별빛반 김장 체험 장소가 어디인가요?",
+      "answer": "김장 체험은 원 실내 놀이실에서 해요. 궁금한 점은 언제든 알려 주세요.",
+      "quote": "장소: 원 실내 놀이실",
+      "edit": true
+    },
+    {
+      "key": "memory-answer-08",
+      "classroom": "C4",
+      "document": "notice/NT-2026-30.md",
+      "question": "김장 체험에 무엇을 준비하나요?",
+      "answer": "앞치마와 팔토시를 챙겨 주세요. 궁금한 점은 언제든 알려 주세요.",
+      "quote": "앞치마, 팔토시 (없으면 원에서 빌려 드려요)",
+      "edit": true
+    },
+    {
+      "key": "memory-answer-09",
+      "classroom": "C4",
+      "document": "notice/NT-2026-30.md",
+      "question": "앞치마와 팔토시가 없으면 어떻게 하나요?",
+      "answer": "앞치마와 팔토시가 없으면 원에서 빌려 드려요. 궁금한 점은 언제든 알려 주세요.",
+      "quote": "앞치마, 팔토시 (없으면 원에서 빌려 드려요)",
+      "edit": true
+    },
+    {
+      "key": "memory-answer-10",
+      "classroom": "C4",
+      "document": "notice/NT-2026-28.md",
+      "question": "재롱잔치 의상을 따로 준비해야 하나요?",
+      "answer": "의상은 원에서 준비해요. 흰 양말만 챙겨 주세요. 궁금한 점은 언제든 알려 주세요.",
+      "quote": "의상은 원에서 준비합니다. 흰 양말만 챙겨 주세요.",
+      "edit": true
+    },
+    {
+      "key": "memory-answer-11",
+      "classroom": "C4",
+      "document": "notice/NT-2026-28.md",
+      "question": "재롱잔치 날 아이는 어디로 등원하나요?",
+      "answer": "재롱잔치 당일에도 평소처럼 원으로 등원해 주세요. 궁금한 점은 언제든 알려 주세요.",
+      "quote": "당일 아이들은 평소처럼 원으로 등원합니다.",
+      "edit": false
+    },
+    {
+      "key": "memory-answer-12",
+      "classroom": "C4",
+      "document": "notice/NT-2026-28.md",
+      "question": "재롱잔치는 어디에서 하나요?",
+      "answer": "재롱잔치는 햇살 구민회관 소강당(가상)에서 해요. 궁금한 점은 언제든 알려 주세요.",
+      "quote": "장소: 햇살 구민회관 소강당(가상)",
+      "edit": false
+    },
+    {
+      "key": "memory-answer-13",
+      "classroom": "C4",
+      "document": "notice/NT-2026-28.md",
+      "question": "재롱잔치에 가족 몇 명이 갈 수 있나요?",
+      "answer": "가족은 아이 1명당 2명까지 입장할 수 있어요. 궁금한 점은 언제든 알려 주세요.",
+      "quote": "가족 입장은 아이 1명당 2명까지 가능합니다.",
+      "edit": false
+    },
+    {
+      "key": "memory-answer-14",
+      "classroom": "C4",
+      "document": "notice/NT-2026-27.md",
+      "question": "별빛반 상담은 어떻게 신청하나요?",
+      "answer": "유치온 앱의 상담 신청이나 담임에게 알림장으로 신청해 주세요. 궁금한 점은 언제든 알려 주세요.",
+      "quote": "유치온 앱 '상담 신청' 또는 담임에게 알림장으로 신청",
+      "edit": false
+    },
+    {
+      "key": "memory-answer-15",
+      "classroom": "C4",
+      "document": "notice/NT-2026-27.md",
+      "question": "상담은 전화로도 할 수 있나요?",
+      "answer": "상담은 대면 또는 전화로 진행해요. 1회 30분이에요. 궁금한 점은 언제든 알려 주세요.",
+      "quote": "방법: 대면 또는 전화, 1회 30분",
+      "edit": false
+    },
+    {
+      "key": "memory-answer-16",
+      "classroom": "C4",
+      "document": "notice/NT-2026-27.md",
+      "question": "이번 2학기 상담 주간은 언제였나요?",
+      "answer": "이번 상담 주간은 2026년 11월 16일(월) ~ 20일(금)이었어요. 궁금한 점은 언제든 알려 주세요.",
+      "quote": "2026년 11월 16일(월) ~ 20일(금)",
+      "edit": false
+    },
+    {
+      "key": "memory-answer-17",
+      "classroom": "C4",
+      "document": "notice/NT-2026-27.md",
+      "question": "앱에서 상담 시간을 고르면 바로 예약되나요?",
+      "answer": "앱에서 고른 시간은 신청 단계예요. 담임 선생님이 확정해야 예약돼요. 궁금한 점은 언제든 알려 주세요.",
+      "quote": "앱에서 고른 시간은 '신청'이며, **담임 선생님이 확정해야 예약이 됩니다.**",
+      "edit": false
+    },
+    {
+      "key": "memory-answer-18",
+      "classroom": "C4",
+      "document": "notice/NT-2026-27.md",
+      "question": "오전에도 자유롭게 상담을 신청할 수 있나요?",
+      "answer": "오전(9:30~12:00)은 수업 시간이라 원칙적으로 상담이 어려워요. 담임이 예외로 열어 둔 시간만 신청할 수 있어요. 궁금한 점은 언제든 알려 주세요.",
+      "quote": "오전(9:30~12:00)은 수업 시간이라 원칙적으로 상담이 어렵습니다. 담임이 수업 일정에 따라 예외로 열어 둔 시간만 신청할 수 있어요.",
+      "edit": false
+    },
+    {
+      "key": "memory-answer-19",
+      "classroom": "C4",
+      "document": "menu/MN-2026-11-SNACK.md",
+      "question": "11월 월요일 오전 간식은 무엇인가요?",
+      "answer": "월요일 오전 간식은 소고기 야채죽이에요. 궁금한 점은 언제든 알려 주세요.",
+      "quote": "| 월 | 죽(소고기 야채죽) |",
+      "edit": false
+    },
+    {
+      "key": "memory-answer-20",
+      "classroom": "C4",
+      "document": "menu/MN-2026-11-SNACK.md",
+      "question": "11월 수요일 오전 간식이 궁금해요.",
+      "answer": "수요일 오전 간식은 두유와 떡이에요. 궁금한 점은 언제든 알려 주세요.",
+      "quote": "| 수 | 두유⑤, 떡 |",
+      "edit": false
+    },
+    {
+      "key": "memory-answer-21",
+      "classroom": null,
+      "document": "policy/PL-FEES.md",
+      "question": "원비는 매월 언제까지 내나요?",
+      "answer": "원비는 매월 10일까지 납부해 주세요. 궁금한 점은 언제든 알려 주세요.",
+      "quote": "원비는 매월 10일까지 지정 계좌로 납부합니다(가상 계좌).",
+      "edit": false
+    },
+    {
+      "key": "memory-answer-22",
+      "classroom": null,
+      "document": "policy/PL-FEES.md",
+      "question": "원비 환불 문의는 어디에 하나요?",
+      "answer": "원비 납부와 환불 문의는 행정실에서 안내해 드려요. 궁금한 점은 언제든 알려 주세요.",
+      "quote": "원비 납부·환불 문의는 행정실에서 안내합니다. 유치온 앱에서는 결제를 받지 않습니다.",
+      "edit": false
+    },
+    {
+      "key": "memory-answer-23",
+      "classroom": null,
+      "document": "policy/PL-FEES.md",
+      "question": "방과후 과정비는 매달 청구되나요?",
+      "answer": "방과후 과정비는 신청한 달에만 청구해요. 궁금한 점은 언제든 알려 주세요.",
+      "quote": "방과후 과정비는 신청한 달에만 청구합니다.",
+      "edit": false
+    },
+    {
+      "key": "memory-answer-24",
+      "classroom": null,
+      "document": "policy/PL-PICKUP.md",
+      "question": "다른 사람이 데리러 오면 언제 알려야 하나요?",
+      "answer": "다른 사람이 데리러 오는 날은 당일 오후 1시까지 앱 또는 전화로 알려 주세요. 궁금한 점은 언제든 알려 주세요.",
+      "quote": "다른 사람이 데리러 오는 날은 **당일 오후 1시까지** 앱 또는 전화로 이름·관계·연락처를 알려 주세요.",
+      "edit": false
+    },
+    {
+      "key": "memory-answer-25",
+      "classroom": null,
+      "document": "policy/PL-PICKUP.md",
+      "question": "등록되지 않은 사람이 오면 바로 인계하나요?",
+      "answer": "등록되지 않은 사람이 오면 보호자에게 전화로 확인한 뒤 인계해요. 궁금한 점은 언제든 알려 주세요.",
+      "quote": "등록되지 않은 사람이 오면 보호자에게 전화로 확인한 뒤 인계합니다.",
+      "edit": false
+    },
+    {
+      "key": "memory-answer-26",
+      "classroom": null,
+      "document": "policy/PL-PICKUP.md",
+      "question": "귀가할 때 누구에게 아이를 인계하나요?",
+      "answer": "아이는 입학 때 등록한 보호자에게만 인계해요. 궁금한 점은 언제든 알려 주세요.",
+      "quote": "아이는 입학 때 등록한 보호자에게만 인계합니다.",
+      "edit": false
+    },
+    {
+      "key": "memory-answer-27",
+      "classroom": null,
+      "document": "policy/PL-PRIVACY.md",
+      "question": "원아와 보호자 정보는 누가 볼 수 있나요?",
+      "answer": "원아와 보호자 정보는 해당 보호자와 담당 교직원만 볼 수 있어요. 궁금한 점은 언제든 알려 주세요.",
+      "quote": "원아·보호자 정보는 해당 보호자와 담당 교직원만 볼 수 있습니다.",
+      "edit": false
+    },
+    {
+      "key": "memory-answer-28",
+      "classroom": null,
+      "document": "policy/PL-PRIVACY.md",
+      "question": "다른 아이 정보를 문의해도 되나요?",
+      "answer": "다른 반과 다른 아이의 정보는 안내해 드릴 수 없어요. 궁금한 점은 언제든 알려 주세요.",
+      "quote": "다른 반·다른 아이의 정보는 안내하지 않습니다.",
+      "edit": false
+    },
+    {
+      "key": "memory-answer-29",
+      "classroom": null,
+      "document": "policy/PL-PRIVACY.md",
+      "question": "활동 사진은 모든 아이를 올리나요?",
+      "answer": "활동 사진은 공개 동의를 한 아이만 올려요. 궁금한 점은 언제든 알려 주세요.",
+      "quote": "활동 사진은 공개 동의를 한 아이만 올립니다.",
+      "edit": false
+    },
+    {
+      "key": "memory-answer-30",
+      "classroom": null,
+      "document": "policy/PL-PRIVACY.md",
+      "question": "사진 공개에 동의하지 않으면 어떻게 되나요?",
+      "answer": "공개에 동의하지 않은 아이의 얼굴은 가리거나 사진에서 빼요. 궁금한 점은 언제든 알려 주세요.",
+      "quote": "동의하지 않은 아이의 얼굴은 가리거나 사진에서 뺍니다.",
+      "edit": false
+    }
+  ]
+}

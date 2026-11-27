@@ -221,10 +221,11 @@ curl -s -o /dev/null -w '%{http_code} %{time_total}s\n' -H "Authorization: Beare
 | `DAILY_NOTE_WRITER` | `graph` | 알림장 초안이 대역 문장 |
 | `ANSWER_WRITER` | `graph` | 문의·민원 답변 초안이 대역 문장 |
 | `LLM_MODEL_SUPERVISOR` | 모델 이름(지금 `gpt-6-luna`) | 위험·주제를 낱말 규칙만으로 나눠요. 돌려 말한 위험 글을 놓칠 수 있어요 |
+| `LLM_MODEL_MEMORY` | 말투 추출에 쓸 모델 이름 | 수정 승인 뒤 말투를 추출·저장하지 않아요(기존 기억 조회는 유지) |
 | `REQUEST_AGENT` | `app.modules.requests.graph_agent:run_request` | 그래프·체크포인트·승인 대기(`interrupt`) 없이 대역 입구로 처리 |
 | `LAW_GO_KR_OC` | 신청 ID | 법령 조문 근거 없음 |
 | `REQUEST_COLLAB_GRAPH` | (비움, 11/24 기준) | 기존 요청 그래프(감독 → 자료 → 검사 한 줄). 켜면 협업 그래프인데, 자료가 충돌할 때 카드에 근거·충돌 표시가 남지 않아 #349가 풀릴 때까지 꺼 둬요 |
-| `EMBEDDING_MODEL` | `BAAI/bge-m3` | 자료를 낱말 점수로만 찾아요 |
+| `EMBEDDING_MODEL` | `BAAI/bge-m3` | 자료를 낱말 점수로만 찾아요. 승인 답 저장·유사 질문 재사용도 하지 않아요 |
 | `LANGSMITH_TRACING`·`LANGSMITH_API_KEY` | `true`와 키(11/25부터) | 추적 없음. 기능은 그대로 돌아요 |
 
 값을 바꾼 뒤에는 5-4처럼 api·worker만 다시 만들고 `printenv`로 들어갔는지 봐요. 그다음 학부모 계정으로 문의·권한 밖 요청·위험 민원·상담을 한 건씩 넣어 카드와 원장 보고가 생기는지 확인하고, 확인용 요청은 지워요.

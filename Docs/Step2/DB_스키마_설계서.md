@@ -4,11 +4,11 @@
 | --- | --- |
 | 작업 | T09 데이터베이스 스키마 설계서 (#166) |
 | 작성 · 검토 | 태웅 · 영민 |
-| 판 | v0.25 · 2026-11-26 (판마다 바뀐 내용은 맨 끝 변경 이력에 있다) |
+| 판 | v0.26 · 2026-11-27 (판마다 바뀐 내용은 맨 끝 변경 이력에 있다) |
 | 2차 검토 링크 | `develop` 브랜치의 [DB 스키마 설계서](https://github.com/aio-final-2team/FinalProject_2Team/blob/develop/Docs/Step2/DB_스키마_설계서.md) |
 | 시연 코드 기준 커밋 | 레포 [README](../../README.md#2차-검토-문서)의 '시연 코드 기준 커밋' 한 줄을 본다(11/24 밤 기준 develop `641591f`, 흐름 고치기 #338까지 팀 서버에 배포). 팀 서버를 다시 배포하면 README 그 한 줄만 고친다 |
 | 대상 DB | PostgreSQL 16 + pgvector 0.8 (`compose.yaml`의 `pgvector/pgvector:pg16`). Supabase를 쓰지 않는 이유는 5.1에 있다 |
-| DDL | 최종 모양은 [`db_schema_draft.sql`](db_schema_draft.sql)에 있고, 실제 DB에는 `apps/api/migrations`의 0001~0016·0018·0019를 적용한다(0018은 임시 down 0016이며 #377 머지 뒤 0017로 바꿀 것) |
+| DDL | 최종 모양은 [`db_schema_draft.sql`](db_schema_draft.sql)에 있고, 실제 DB에는 `apps/api/migrations`의 0001~0019를 차례로 적용한다 |
 | 함께 보는 문서 | 기획서 11/23 develop 판(`8f45d51`, #319) 3장(FR-01~FR-13)·4장(NFR)·6장(공통 상태)·7장, T04 흐름·권한 명세, [입출력 계약표 v0.21](입출력_계약표_초안.md), [API 설계 문서 v0.13](API_설계_문서.md) |
 
 **1차 검토 뒤 보완.** 1차 검토 뒤에 바뀐 내용과 그 내용을 지키는 시험을 표 하나에 모았다. 시험은 모두 시연 코드 기준 커밋에서 `tools/test_db.sh`로 다시 돌려 통과했다. 표의 시험 파일은 모두 `tests/integration/`(DB는 `db/`, HTTP는 `api/`) 아래에 있고, `api/` 시험은 모의·시험 PG 두 모드에서 모두 돈다. 반영 커밋 칸에는 develop에 합쳐진 커밋을 적었다.
@@ -52,7 +52,7 @@ ERD는 피드·앨범 표 3개(맨 끝 절)를 뺀 표 29개를 여섯 영역으
 | ② 요청·카드·승인 | `requests` `request_messages` `cards` `approvals` `card_evidence` `events` | 19 |
 | ③ 자료·검색 | `documents` `document_chunks` `document_classrooms` | 6 |
 | ④ 상담 | `rooms` `staff_busy_blocks` `consultation_slots` `consultation_bookings` | 10 |
-| ⑤ 기억·원에 남은 답 | `memories` `memory_rules` `saved_answers` `saved_answer_sources` | 8 |
+| ⑤ 기억·원에 남은 답 | `memories` `memory_rules` `saved_answers` `saved_answer_sources` | 9 |
 | ⑥ 알림장·알림·평가 | `daily_records` `daily_note_inputs` `daily_notes` `notifications` `eval_runs`(기관에 속하지 않는 평가 기록이라 선 없음) | 13 |
 
 
@@ -171,7 +171,9 @@ erDiagram
     classrooms { uuid id PK }
     documents { uuid id PK }
     users { uuid id PK }
+    children { uuid id PK }
     users ||--o{ memories : "owner_id"
+    children |o--o{ memories : "child_id"
     cards |o--o{ memories : "source_card_id"
     users ||--o{ memory_rules : "owner_id"
     users ||--o{ saved_answers : "approved_by"
@@ -275,13 +277,14 @@ erDiagram
 | 58 | `daily_notes` | 0..1 : N | `events` | `events.(daily_note_id, org_id)` → `daily_notes.(id, org_id)` |
 | 59 | `organizations` | 1 : N | `user_consents` | `user_consents.org_id` → `organizations.id` |
 | 60 | `users` | 1 : N | `user_consents` | `user_consents.(user_id, org_id)` → `users.(id, org_id)` |
-| 61 | `organizations` | 1 : N | `daily_records` | `daily_records.org_id` → `organizations.id` |
-| 62 | `classrooms` | 1 : N | `daily_records` | `daily_records.(classroom_id, org_id)` → `classrooms.(id, org_id)` |
-| 63 | `children` | 1 : N | `daily_records` | `daily_records.(child_id, org_id)` → `children.(id, org_id)` |
-| 64 | `users` | 1 : N | `daily_records` | `daily_records.(author_id, org_id)` → `users.(id, org_id)` |
-| 65 | `daily_notes` | 0..1 : N | `requests` | `requests.(source_note_id, org_id)` → `daily_notes.(id, org_id)` |
+| 61 | `children` | 0..1 : N | `memories` | `memories.(child_id, org_id)` → `children.(id, org_id)` |
+| 62 | `organizations` | 1 : N | `daily_records` | `daily_records.org_id` → `organizations.id` |
+| 63 | `classrooms` | 1 : N | `daily_records` | `daily_records.(classroom_id, org_id)` → `classrooms.(id, org_id)` |
+| 64 | `children` | 1 : N | `daily_records` | `daily_records.(child_id, org_id)` → `children.(id, org_id)` |
+| 65 | `users` | 1 : N | `daily_records` | `daily_records.(author_id, org_id)` → `users.(id, org_id)` |
+| 66 | `daily_notes` | 0..1 : N | `requests` | `requests.(source_note_id, org_id)` → `daily_notes.(id, org_id)` |
 
-**ERD 선 수 = 표 행 수 = 65.** 같은 부모와 자식 사이에 FK가 둘 이상 있으면(예: `requests`의 `requester_id`·`assignee_id` → `users`) 선과 행을 FK마다 따로 센다. DDL에 있는 FK 제약은 모두 71개인데, 이 중 6개는 맨 끝 피드·앨범 절의 표에 걸려 있어서 이 그림과 표에는 넣지 않았다. FK 제약 수는 DB 카탈로그에서 센다(9장 C3).
+**ERD 선 수 = 표 행 수 = 66.** 같은 부모와 자식 사이에 FK가 둘 이상 있으면(예: `requests`의 `requester_id`·`assignee_id` → `users`) 선과 행을 FK마다 따로 센다. DDL에 있는 FK 제약은 모두 72개인데, 이 중 6개는 맨 끝 피드·앨범 절의 표에 걸려 있어서 이 그림과 표에는 넣지 않았다. FK 제약 수는 DB 카탈로그에서 센다(9장 C3).
 
 
 FK를 걸 수 없는 참조가 두 곳 있다. `cards.subject_id`와 `notifications.subject_id`는 대상 종류(`subject_type`)에 따라 가리키는 표가 달라지므로 FK를 두지 않았다. 대신 저장하기 전에 API가 대상이 같은 기관에 있는지 확인한다.
@@ -380,7 +383,7 @@ FK를 걸 수 없는 참조가 두 곳 있다. `cards.subject_id`와 `notificati
 
 **[제안] 가입 필수 동의(API 3.31).** `user_consents`는 (org_id,user_id,item,terms_version)이 유일하다. 모든 역할은 terms·privacy·ai_processing에, 보호자는 child_info·child_health·child_face에도 전부 동의한다. ai_processing은 쓴 글을 AI 처리를 위해 국외 AI 사업자에게 전송함을 알린다. 현재 판은 코드 상수 CONSENT_VERSION이며, 이전 판도 기록으로 보존한다. 다시 동의해도 최초 agreed_at을 바꾸지 않는다. 현재 판의 역할별 항목이 전부 있어야 완료다. 반 현황은 아이마다 연결된 보호자 수·완료한 수를 세고 한 명 이상 완료하면 complete=true다.
 
-0016은 표와 `consent_agreed` 이력의 CHECK 허용 값만 만든다. 동의 행은 넣지 않는다. 데모 시드는 mock의 모든 계정을 현재 판으로 채우며 기존 기록을 유지한다. 새 동의와 행위자·약관 판·항목 목록·trace_id를 담은 이력 한 줄은 같은 트랜잭션이다. 반복 요청은 이력도 중복하지 않는다. 0015로 내리면 동의 표가 사라지므로 기록 백업이 필요하다. 이미 남긴 consent_agreed 이력은 0012와 같은 NOT VALID 방식으로 보존한다. 최신 head 카탈로그는 표 32·뷰 2·트리거 2·FK 71·컬럼 312이다(0018 하루 중 기록·0019 답장·준비물 확인 포함).
+0016은 표와 `consent_agreed` 이력의 CHECK 허용 값만 만든다. 동의 행은 넣지 않는다. 데모 시드는 mock의 모든 계정을 현재 판으로 채우며 기존 기록을 유지한다. 새 동의와 행위자·약관 판·항목 목록·trace_id를 담은 이력 한 줄은 같은 트랜잭션이다. 반복 요청은 이력도 중복하지 않는다. 0015로 내리면 동의 표가 사라지므로 기록 백업이 필요하다. 이미 남긴 consent_agreed 이력은 0012와 같은 NOT VALID 방식으로 보존한다. 최신 head 카탈로그는 표 32·뷰 2·트리거 2·FK 72·컬럼 315이다(0018 하루 중 기록·0019 답장·준비물 확인 포함).
 
 ### 2.2 요청·카드·승인·이력
 
@@ -632,7 +635,10 @@ FK를 걸 수 없는 참조가 두 곳 있다. `cards.subject_id`와 `notificati
 | `memories` | `id` | `bigint` / PK, 자동 증가 | 기억 ID |
 | `memories` | `org_id` | `uuid` / NOT NULL, 기관 짝 FK에 들어감 | 기관(경계 짝) |
 | `memories` | `owner_id` | `uuid` / NOT NULL, FK (owner_id, org_id) → users | 기억 주인 |
-| `memories` | `kind` | `text` / NOT NULL, 값: rejection_reason·preference·tone | 거절 이유·선호·말투 |
+| `memories` | `kind` | `text` / NOT NULL, 값: rejection_reason·preference·tone·care_note | 거절 이유·선호·말투·돌봄 메모 |
+| `memories` | `child_id` | `uuid` / NULL, (child_id, org_id) → children | 돌봄 메모의 아이 |
+| `memories` | `confirm_status` | `text` / 기본 confirmed, pending·confirmed·discarded | 보호자 확인 전에는 AI 입력 금지 |
+| `memories` | `confirmed_at` | `timestamptz` / NULL | 보호자가 기억해 달라고 한 시각 |
 | `memories` | `reason_code` | `text` / NULL 허용 | 거절 이유면 그 코드 |
 | `memories` | `content` | `text` / NOT NULL | 기억 내용(사람이 읽는 문장) |
 | `memories` | `structured` | `jsonb` / NOT NULL, 기본값 '{}' | 코드가 쓰는 형태 |
@@ -1384,7 +1390,7 @@ T50이 붙기 전까지는 사진을 올린 사람이 아이를 직접 표시한
 
 이력(`events`)은 지우지 않는다. `detail`에는 비밀값과 불필요한 개인정보를 넣지 않는다는 규칙(2.2)이 있어서, 피드 이력에 들어가는 값은 글·사진·아이 ID와 공개 범위 값, 퇴소 표시(`withdrawn`), 추적 ID뿐이다.
 
-**기억.** `memories`는 담임 본인의 거절 이유·선호 기록이고, 보호자가 지우는 기능은 없다. 담임이 지우면(API 3.25) 내용(`content`)과 구조화 값(`structured`)을 그 자리에서 비우고 지운 시각만 남긴다. 그 반 아이 이름은 저장할 때부터 가린다. 기억이 아이와 이어지는 길은 하나뿐이다. `source_card_id`로 카드를 찾고, 그 카드가 가리키는 요청의 `child_id`를 따라가야 한다. 퇴소 관리 작업도 위 4번에서 같은 방식으로 비운다. 내용은 비우고 `deleted_at`은 채운다.
+**기억.** `memories`는 개인의 거절 이유·선호·말투와 아이 돌봄 메모를 담는다. 돌봄 메모는 보호자 확인 뒤에만 작성에 쓴다. 담임이 지우면(API 3.25) 내용(`content`)과 구조화 값(`structured`)을 그 자리에서 비우고 지운 시각만 남긴다. 그 반 아이 이름은 저장할 때부터 가린다. 돌봄 메모는 `child_id`로, 담임 기억은 `source_card_id`의 요청 아이로 연결한다. 퇴소 관리 작업도 위 4번에서 같은 방식으로 비운다. 내용은 비우고 `deleted_at`은 채운다.
 
 **파일 삭제가 실패할 때.** 글을 지우면 먼저 `feed_posts.deleted_at`과 `feed_post_deleted` 이력을 한 트랜잭션으로 커밋한다. 커밋되는 순간부터 API는 그 글과 사진을 어디에서도 돌려주지 않고, 파일은 그다음에 지운다. 파일 삭제가 실패해도 응답은 204다. 파일은 그대로 남고 `feed_photo_delete_failed photo_id=…` 경고 로그만 찍힌다(`test_feed.py::test_disk_delete_failure_leaves_only_orphan_file_after_commit`). 남은 파일은 `python -m app.maintenance.media_sweep`으로 정리한다. 고아 파일은 `MEDIA_DIR` 바로 아래에 있지만, 지우지 않은 글(`deleted_at IS NULL`)의 `feed_photos.storage_path` 어디에도 나오지 않는 파일이다. 피드 사진은 그 자리에만 저장되므로 하위 폴더는 보지 않는다. 모의 모드의 `mock/`, 다른 기능이 쓰는 폴더(예: 성장 영상 `videos/`)가 여기에 들고, 링크도 건너뛴다(`test_maintenance.py::test_sweep_lists_only_orphans_and_deletes_them_only_with_apply`). 10분 안의 파일은 아직 올리는 중일 수 있어서 함께 건너뛴다. 그냥 돌리면 목록만 출력하고, `--apply`를 붙여야 지운다. 지울 경로가 `MEDIA_DIR` 밖을 가리키면 지우지 않고 거부한다(`test_maintenance.py::test_sweep_lists_only_orphans_and_deletes_them_only_with_apply`, `test_paths_outside_media_dir_are_refused`). 지운 글의 `feed_photos`·`feed_photo_children` 행은 DB에 남지만 API가 읽지 않는다.
 
@@ -1463,17 +1469,19 @@ MVP에서 이미 적용되는 삭제는 담임 기억의 내용 비우기·`dele
 | v0.22 | 2026-11-24 | 2차 의견 DB 1~3 반영. 공개 전 복원 확인·아이별 T58 복구 기준과 현 집계 차이·시험 수치의 실행 기준을 적고 권한·마이그레이션을 다시 확인함 | 태웅 |
 | v0.23 | 2026-11-24 | 요청 흐름 끝까지 점검(11/24) 반영. 0012: 이력 동작 7종(추가 글·권한 밖 안내·취소·돌봄 수정·알림장 정정·충돌 재제안·보고 확인)과 알림 종류 6종을 더하고, 투약·귀가 입력을 이력 detail에서 `requests.care_detail`로 옮김(되돌리기 가능). 0013: 원장 확인을 기다리는 회신 카드는 담임 받은함에서 '진행 중'. 0014: 상담 원장 보고 확인(`acknowledge`) 결정. 0015: 보낸 알림장 정정 판(`daily_notes.version`)·정정 시각(`corrected_at`). 머리의 '11/27 시연' 문구를 뺌 | 태웅 |
 | v0.24 | 2026-11-24 | [제안] 0016 필수 동의 원장(user_consents)·현재 판 완료 판단·consent_agreed 이력·멱등 데모 시드·반 보호자 동의 현황을 추가함. | 태웅 |
-| v0.25 | 2026-11-26 | [제안] 0018 하루 중 기록 표·기관 복합 FK·활성 인덱스·soft delete·알림장 메모 우선순위를 추가함. | 태웅 |
+| v0.25 | 2026-11-26 | 0017 돌봄 메모·보호자 확인 상태와 확인 시각·아이 기관 짝 FK·확인 후보 알림을 더함. | 태웅 |
+| v0.26 | 2026-11-27 | [제안] 0018 하루 중 기록 표·기관 복합 FK·활성 인덱스·soft delete·알림장 메모 우선순위를 추가함. | 태웅 |
 
 ## 부록. 가이드 제출 전 체크리스트
 
 | 체크리스트(가이드 22쪽) | 이 문서 |
 | --- | --- |
-| ERD 그림과 관계 명세 표가 서로 일치한다 | 1.2·1.3. ERD 선 65개 = 관계 표 65행 = DDL FK 제약 71개 중 피드·앨범 표의 6개를 뺀 65개(1.3) |
-| 모든 컬럼에 타입·제약·의미가 적혀 있다 | 2장과 맨 끝 [제안] 피드·앨범 절. 최신 head의 컬럼은 312개이며 하루 중 기록 아홉 컬럼과 0019의 답장·준비물 확인 두 컬럼을 포함함 |
+| ERD 그림과 관계 명세 표가 서로 일치한다 | 1.2·1.3. ERD 선 66개 = 관계 표 66행 = DDL FK 제약 72개 중 피드·앨범 표의 6개를 뺀 66개(1.3) |
+| 모든 컬럼에 타입·제약·의미가 적혀 있다 | 2장과 맨 끝 [제안] 피드·앨범 절. 최신 head의 컬럼은 315개이며 필수 동의 여섯 컬럼·0017 돌봄 메모 세 컬럼·하루 중 기록 아홉 컬럼·0019의 답장·준비물 확인 두 컬럼을 포함함 |
 | 모든 테이블에 기본키와 created_at이 있다 | 2장. 기존 표 27개(9장 C1·C2). 필수 동의 시각은 agreed_at이며, 피드·앨범 표 중 feed_photo_children에는 created_at이 없다 |
 | API 설계 문서와 필드명·ID 형식이 같다 | 2.0 ID 형식 표. 필드와 DB 컬럼 대응표는 API 설계 문서 7장 |
 | 벡터 차원, 인덱스 연산자, 임베딩 모델이 적혀 있다 | 3장 |
 | 테이블마다 역할별 권한 표가 있다 | 4.2. PostgreSQL RLS 대신 API가 검사함(4.1) |
 | Redis 키 이름 규칙과 TTL이 적혀 있다 | 5.3. 해당 없음(Redis를 쓰지 않음) |
 | 문서의 SQL을 실제로 실행해 확인했다 | 9장·9.1(과거 SQL 기록, 실행 커밋·원 명령 미확인), 9.2(마이그레이션 적용 기록), 6.2(실행 계획), 3.3(검색 SQL) |
+
