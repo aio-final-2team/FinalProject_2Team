@@ -4377,6 +4377,20 @@ components:
         location:
           type: string
           title: Location
+        sources:
+          items:
+            $ref: '#/components/schemas/CalendarSource'
+          type: array
+          title: Sources
+        conflict:
+          type: boolean
+          title: Conflict
+        conflict_dates:
+          items:
+            type: string
+            format: date
+          type: array
+          title: Conflict Dates
       type: object
       required:
       - date
@@ -4385,6 +4399,9 @@ components:
       - document_id
       - document_title
       - location
+      - sources
+      - conflict
+      - conflict_dates
       title: CalendarItem
     CalendarOut:
       properties:
@@ -4397,6 +4414,24 @@ components:
       required:
       - items
       title: CalendarOut
+    CalendarSource:
+      properties:
+        document_id:
+          type: string
+          format: uuid
+          title: Document Id
+        document_title:
+          type: string
+          title: Document Title
+        location:
+          type: string
+          title: Location
+      type: object
+      required:
+      - document_id
+      - document_title
+      - location
+      title: CalendarSource
     CardDetail:
       properties:
         card:
