@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>유치온 QA 도구</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --ink:#1d2330; --muted:#5b6474; --line:#dfe3ea; --acc:#2f6fdb; --warn:#b4451f; --ok:#1f7a4d; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#14171c; --card:#1c2027; --ink:#e7eaf0; --muted:#9aa3b2; --line:#2e3440; --acc:#7aa7ff; --warn:#ff9b74; --ok:#6fd19f; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.6 system-ui, -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif; }
+  main { max-width:760px; margin:0 auto; padding:28px 18px 60px; display:grid; gap:16px; }
+  h1 { font-size:22px; margin:0; }
+  h2 { font-size:16px; margin:0 0 6px; }
+  p { margin:0 0 10px; color:var(--muted); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px 18px; }
+  .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+  label { font-size:13px; color:var(--muted); display:grid; gap:4px; }
+  input, select { font:inherit; color:inherit; background:transparent; border:1px solid var(--line); border-radius:8px; padding:7px 10px; min-width:160px; }
+  button { font:inherit; border:0; border-radius:8px; padding:8px 14px; background:var(--acc); color:#fff; cursor:pointer; }
+  button.danger { background:var(--warn); }
+  button.plain { background:transparent; color:var(--acc); border:1px solid var(--line); }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  button:focus-visible, input:focus-visible, select:focus-visible { outline:2px solid var(--acc); outline-offset:2px; }
+  .mono { font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:13px; }
+  .msg { margin-top:10px; font-size:14px; }
+  .msg.ok { color:var(--ok); } .msg.err { color:var(--warn); }
+  table { width:100%; border-collapse:collapse; font-size:13px; margin-top:8px; }
+  th, td { text-align:left; border-top:1px solid var(--line); padding:6px 4px; vertical-align:top; }
+  details { margin-top:8px; } pre { white-space:pre-wrap; word-break:break-all; margin:6px 0 0; }
+  .locked { opacity:.55; pointer-events:none; }
+</style>
+</head>
+<body>
+<main>
+  <header class="card">
+    <h1>유치온 QA 도구</h1>
+    <p>QA 서버에서만 열리는 페이지예요. 화면 QA는 <a href="/" target="_blank" rel="noopener">웹 화면</a>에서 내 QA 계정으로 하고, 여기서는 처음으로 되돌리기와 오류 찾기만 해요.</p>
+    <div id="info" class="mono" aria-live="polite">서버 판을 읽는 중이에요…</div>
+  </header>
+
+  <section class="card" aria-labelledby="h-login">
+    <h2 id="h-login">1. 로그인</h2>
+    <p>웹 화면과 같은 QA 계정으로 들어가요. 예: <span class="mono">sj.teacher01</span></p>
+    <form id="login" class="row">
+      <label>아이디 <input name="login_id" autocomplete="username" required></label>
+      <label>비밀번호 <input name="password" type="password" autocomplete="current-password" required></label>
+      <button type="submit">로그인</button>
+      <button type="button" class="plain" id="logout" hidden>로그아웃</button>
+    </form>
+    <div id="who" class="msg" aria-live="polite"></div>
+  </section>
+
+  <section class="card needs-login locked" aria-labelledby="h-org">
+    <h2 id="h-org">2. 내 원 처음으로</h2>
+    <p>내 QA 원의 요청·카드·알림장·기억·소식을 모두 지우고 시드 상태로 다시 채워요. 다른 사람 원과 시연 원은 그대로예요.</p>
+    <button class="danger" id="reset-org">내 원 처음으로 되돌리기</button>
+    <div id="org-msg" class="msg" aria-live="polite"></div>
+  </section>
+
+  <section class="card needs-login locked" aria-labelledby="h-note">
+    <h2 id="h-note">3. 알림장만 다시 시험하기</h2>
+    <p>한 반·한 날짜의 알림장 입력·아이별 알림장·확인 카드·알림만 지워요. 학부모 답장 문의는 남아요. 그 반 담임과 원장만 돼요.</p>
+    <div class="row">
+      <label>반 <select id="note-class"></select></label>
+      <label>날짜 <input id="note-date" type="date"></label>
+      <button class="danger" id="reset-note">알림장 지우기</button>
+    </div>
+    <div id="note-msg" class="msg" aria-live="polite"></div>
+  </section>
+
+  <section class="card needs-login locked" aria-labelledby="h-trace">
+    <h2 id="h-trace">4. 요청 ID로 오류 찾기</h2>
+    <p>화면에서 이상하면 개발자 도구 → 네트워크 → 그 요청의 응답 헤더 <span class="mono">X-Request-ID</span>를 붙여 넣어요. 오류 응답이면 본문 <span class="mono">error.trace_id</span>도 같은 값이에요.</p>
+    <form id="trace" class="row">
+      <label>요청 ID <input id="trace-id" class="mono" required maxlength="128"></label>
+      <button type="submit">찾기</button>
+    </form>
+    <div id="trace-out" aria-live="polite"></div>
+  </section>
+</main>
+<script>
+const API = "/api/v1";
+const $ = (id) => document.getElementById(id);
+let token = sessionStorage.getItem("qa_token") || "";
+let me = JSON.parse(sessionStorage.getItem("qa_me") || "null");
+
+function today() {
+  const kst = new Date(Date.now() + 9 * 3600 * 1000);
+  return kst.toISOString().slice(0, 10);
+}
+function esc(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+async function call(method, path, body) {
+  const headers = {"Content-Type": "application/json"};
+  if (token) headers.Authorization = "Bearer " + token;
+  const res = await fetch(API + path, {method, headers, body: body === undefined ? undefined : JSON.stringify(body)});
+  const traceId = res.headers.get("X-Request-ID");
+  let data = null;
+  try { data = await res.json(); } catch (_) { data = null; }
+  if (!res.ok) {
+    const code = data && data.error ? data.error.code : res.status;
+    const err = new Error(`${code} (요청 ID ${traceId || "-"})`);
+    err.status = res.status;
+    throw err;
+  }
+  return data;
+}
+function show(el, text, ok) {
+  el.className = "msg " + (ok ? "ok" : "err");
+  el.textContent = text;
+}
+function detailsOf(data) {
+  return `<details><summary>자세히</summary><pre class="mono">${esc(JSON.stringify(data, null, 2))}</pre></details>`;
+}
+
+async function loadInfo() {
+  try {
+    const info = await call("GET", "/qa/info");
+    $("info").textContent = `서버 판 ${info.commit ? info.commit.slice(0, 7) : "모름"} · 배포 ${info.deployed_at || "모름"} · 마이그레이션 ${info.migration || "-"}`;
+  } catch (err) {
+    $("info").textContent = "서버 판을 못 읽었어요: " + err.message;
+  }
+}
+
+function render() {
+  const logged = Boolean(token && me);
+  document.querySelectorAll(".needs-login").forEach((el) => el.classList.toggle("locked", !logged));
+  $("logout").hidden = !logged;
+  $("who").className = "msg";
+  $("who").textContent = logged ? `${me.org_name || "내 원"} · ${me.display_name} 계정으로 들어와 있어요.` : "로그인하면 아래 기능을 쓸 수 있어요.";
+  const select = $("note-class");
+  select.innerHTML = "";
+  for (const room of (logged && me.classrooms) || []) {
+    const option = document.createElement("option");
+    option.value = room.id;
+    option.textContent = room.name || room.id;
+    select.appendChild(option);
+  }
+  $("reset-note").disabled = !select.options.length;
+}
+
+async function loadClassrooms() {
+  // 내 원의 반 이름은 /qa/info에 로그인 토큰을 붙이면 같이 와요(me.classrooms).
+  try {
+    const info = await call("GET", "/qa/info");
+    me.org_name = info.me ? info.me.org_name : null;
+    const all = info.me ? info.me.classrooms : (me.classroom_ids || []).map((id) => ({id, name: id}));
+    // 담임은 자기 반만 지울 수 있어서 맡은 반만 보여 줘요. 원장은 원의 모든 반이에요.
+    me.classrooms = me.role === "teacher" ? all.filter((room) => (me.classroom_ids || []).includes(room.id)) : all;
+  } catch (_) {
+    me.classrooms = (me.classroom_ids || []).map((id) => ({id, name: id}));
+  }
+  sessionStorage.setItem("qa_me", JSON.stringify(me));
+}
+
+$("login").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = new FormData(event.target);
+  try {
+    token = "";
+    const out = await call("POST", "/auth/login", {login_id: form.get("login_id"), password: form.get("password")});
+    token = out.access_token;
+    me = out.user;
+    sessionStorage.setItem("qa_token", token);
+    await loadClassrooms();
+    event.target.reset();
+    render();
+  } catch (err) {
+    show($("who"), "로그인하지 못했어요: " + err.message, false);
+  }
+});
+$("logout").addEventListener("click", () => {
+  token = ""; me = null;
+  sessionStorage.removeItem("qa_token"); sessionStorage.removeItem("qa_me");
+  render();
+});
+
+$("reset-org").addEventListener("click", async () => {
+  const name = me.org_name || "내 QA 원";
+  if (!confirm(`${name}의 요청·카드·알림장·기억·소식을 모두 지우고 처음 상태로 돌려요. 계속할까요?`)) return;
+  const button = $("reset-org"); button.disabled = true;
+  try {
+    const out = await call("POST", "/qa/sandbox/reset");
+    show($("org-msg"), `${out.org_name}을(를) 처음 상태로 돌렸어요. 다시 로그인할 필요는 없어요.`, true);
+    $("org-msg").insertAdjacentHTML("beforeend", detailsOf(out));
+  } catch (err) {
+    show($("org-msg"), err.status === 404 ? "QA 원 계정에서만 쓸 수 있어요(시연 원은 안 돼요)." : "되돌리지 못했어요: " + err.message, false);
+  } finally { button.disabled = false; }
+});
+
+$("reset-note").addEventListener("click", async () => {
+  const select = $("note-class");
+  const room = select.options[select.selectedIndex];
+  const day = $("note-date").value || today();
+  if (!confirm(`${room.textContent} · ${day} 알림장을 지워요. 계속할까요?`)) return;
+  const button = $("reset-note"); button.disabled = true;
+  try {
+    const out = await call("POST", "/qa/daily-notes/reset", {classroom_id: room.value, note_date: day});
+    const d = out.deleted;
+    show($("note-msg"), `지웠어요: 입력 ${d.inputs} · 알림장 ${d.notes} · 카드 ${d.cards} · 알림 ${d.notifications} · 이력 ${d.events}. 이제 같은 날짜로 다시 만들 수 있어요.`, true);
+  } catch (err) {
+    show($("note-msg"), "지우지 못했어요: " + err.message, false);
+  } finally { button.disabled = false; }
+});
+
+$("trace").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const id = $("trace-id").value.trim();
+  const out = $("trace-out");
+  try {
+    const data = await call("GET", "/qa/traces/" + encodeURIComponent(id));
+    const events = data.events.map((e) => `<tr><td class="mono">${esc(e.created_at)}</td><td>${esc(e.action)}</td><td>${esc(e.actor_type)}${e.agent_name ? " · " + esc(e.agent_name) : ""}</td></tr>`).join("");
+    const errors = data.errors.map((e) => `<tr><td class="mono">${esc(e.at)}</td><td>${esc(e.method)} ${esc(e.path)} → ${esc(e.status)}</td><td class="mono">${esc(e.error_type)} · ${esc(e.where)}</td></tr>`).join("");
+    out.innerHTML =
+      (data.errors.length ? `<h2 style="margin-top:12px">서버 오류 ${data.errors.length}건</h2><table><tr><th>시각</th><th>요청</th><th>어디서</th></tr>${errors}</table>`
+                          : `<p class="msg ok">서버 오류는 없어요. 4xx 응답이면 응답 본문의 error.code가 원인이에요.</p>`) +
+      (data.events.length ? `<h2 style="margin-top:12px">처리 이력 ${data.events.length}건</h2><table><tr><th>시각</th><th>무엇</th><th>누가</th></tr>${events}</table>`
+                          : `<p>이 요청 ID로 남은 처리 이력은 없어요(내 원 것만 보여요).</p>`) +
+      detailsOf(data);
+  } catch (err) {
+    out.innerHTML = `<p class="msg err">${esc("찾지 못했어요: " + err.message)}</p>`;
+  }
+});
+
+$("note-date").value = today();
+loadInfo();
+render();
+</script>
+</body>
+</html>

@@ -3,7 +3,7 @@
 import os
 import re
 from math import isfinite
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, time
 
 _MOCK_JWT_SECRET = "local-dev-only-change-me-32-bytes-min"
@@ -27,6 +27,7 @@ class Settings:
     run_in: str = "api"
     celery_broker_url: str = "redis://redis:6379/0"
     qa_tools: bool = False
+    qa_password: str = field(default="", repr=False)
 
 
 def load_settings() -> Settings:
@@ -69,6 +70,7 @@ def load_settings() -> Settings:
         run_in=run_in,
         celery_broker_url=os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0"),
         qa_tools=os.getenv("QA_TOOLS", "") in ("true", "1"),
+        qa_password=os.getenv("QA_PASSWORD", ""),
     )
 
 

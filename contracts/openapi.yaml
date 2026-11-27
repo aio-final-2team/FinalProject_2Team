@@ -3904,6 +3904,96 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
       security:
       - HTTPBearer: []
+  /api/v1/qa/sandbox/reset:
+    post:
+      tags:
+      - '[QA 전용] 사람별 QA 원'
+      summary: Reset
+      operationId: reset_api_v1_qa_sandbox_reset_post
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SandboxResetOut'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security:
+      - HTTPBearer: []
+  /api/v1/qa/traces/{trace_id}:
+    get:
+      tags:
+      - '[QA 전용] 사람별 QA 원'
+      summary: Traces
+      operationId: traces_api_v1_qa_traces__trace_id__get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: trace_id
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 128
+          title: Trace Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TraceOut'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+  /api/v1/qa/info:
+    get:
+      tags:
+      - '[QA 전용] 사람별 QA 원'
+      summary: Info
+      operationId: info_api_v1_qa_info_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QAInfo'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security:
+      - HTTPBearer: []
   /health:
     get:
       tags:
@@ -6896,6 +6986,98 @@ components:
       - created_at
       - photos
       title: PostView
+    QAClassroom:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        name:
+          type: string
+          title: Name
+      type: object
+      required:
+      - id
+      - name
+      title: QAClassroom
+    QAInfo:
+      properties:
+        commit:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Commit
+        deployed_at:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Deployed At
+        migration:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Migration
+        data_backend:
+          type: string
+          title: Data Backend
+        switches:
+          $ref: '#/components/schemas/Switches'
+        qa_orgs:
+          items:
+            $ref: '#/components/schemas/QAOrg'
+          type: array
+          title: Qa Orgs
+        me:
+          anyOf:
+          - $ref: '#/components/schemas/QAMe'
+          - type: 'null'
+      type: object
+      required:
+      - commit
+      - deployed_at
+      - migration
+      - data_backend
+      - switches
+      - qa_orgs
+      title: QAInfo
+    QAMe:
+      properties:
+        role:
+          type: string
+          title: Role
+        org_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Org Name
+        classrooms:
+          items:
+            $ref: '#/components/schemas/QAClassroom'
+          type: array
+          title: Classrooms
+      type: object
+      required:
+      - role
+      - org_name
+      - classrooms
+      title: QAMe
+    QAOrg:
+      properties:
+        tag:
+          type: string
+          title: Tag
+        name:
+          type: string
+          title: Name
+        login_prefix:
+          type: string
+          title: Login Prefix
+      type: object
+      required:
+      - tag
+      - name
+      - login_prefix
+      title: QAOrg
     ReassignIn:
       properties:
         assignee_id:
@@ -7447,6 +7629,27 @@ components:
       - rule_text
       - status
       title: RuleView
+    SandboxResetOut:
+      properties:
+        org_name:
+          type: string
+          title: Org Name
+        deleted:
+          additionalProperties:
+            type: integer
+          type: object
+          title: Deleted
+        seeded:
+          additionalProperties:
+            type: integer
+          type: object
+          title: Seeded
+      type: object
+      required:
+      - org_name
+      - deleted
+      - seeded
+      title: SandboxResetOut
     SavedAnswerResponse:
       properties:
         saved_answer:
@@ -7948,6 +8151,33 @@ components:
       required:
       - supplies_checked_at
       title: SuppliesCheckOut
+    Switches:
+      properties:
+        daily_note_writer:
+          type: string
+          title: Daily Note Writer
+        answer_writer:
+          type: string
+          title: Answer Writer
+        request_agent:
+          type: string
+          title: Request Agent
+        embedding:
+          type: boolean
+          title: Embedding
+        llm_models:
+          additionalProperties:
+            type: string
+          type: object
+          title: Llm Models
+      type: object
+      required:
+      - daily_note_writer
+      - answer_writer
+      - request_agent
+      - embedding
+      - llm_models
+      title: Switches
     TeacherClassroom:
       properties:
         id:
@@ -8007,6 +8237,107 @@ components:
       - label
       - at
       title: TimelineItem
+    TraceError:
+      properties:
+        at:
+          type: string
+          format: date-time
+          title: At
+        method:
+          type: string
+          title: Method
+        path:
+          type: string
+          title: Path
+        status:
+          type: integer
+          title: Status
+        error_type:
+          type: string
+          title: Error Type
+        where:
+          type: string
+          title: Where
+      type: object
+      required:
+      - at
+      - method
+      - path
+      - status
+      - error_type
+      - where
+      title: TraceError
+    TraceEvent:
+      properties:
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        action:
+          type: string
+          title: Action
+        actor_type:
+          type: string
+          title: Actor Type
+        agent_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Agent Name
+        request_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Request Id
+        card_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Card Id
+        daily_note_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Daily Note Id
+        detail:
+          additionalProperties: true
+          type: object
+          title: Detail
+      type: object
+      required:
+      - created_at
+      - action
+      - actor_type
+      - agent_name
+      - request_id
+      - card_id
+      - daily_note_id
+      - detail
+      title: TraceEvent
+    TraceOut:
+      properties:
+        trace_id:
+          type: string
+          title: Trace Id
+        events:
+          items:
+            $ref: '#/components/schemas/TraceEvent'
+          type: array
+          title: Events
+        errors:
+          items:
+            $ref: '#/components/schemas/TraceError'
+          type: array
+          title: Errors
+      type: object
+      required:
+      - trace_id
+      - events
+      - errors
+      title: TraceOut
     UserOut:
       properties:
         id:

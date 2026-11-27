@@ -11,6 +11,9 @@ if [[ "${DATA_BACKEND:-mock}" == "db" ]]; then
         python -m db.seeds.documents
         python -m db.seeds.memories
     fi
+    if [[ "${QA_TOOLS:-false}" == "true" || "${QA_TOOLS:-false}" == "1" ]]; then
+        python -m db.seeds.qa_orgs
+    fi
 fi
 
 # 종료 신호를 uvicorn에 바로 전달해요. API 프로세스는 하나만 띄워요.
