@@ -25,6 +25,7 @@ CLASS_STAR = demo_id("101")              # CL-DEMO-01 만 4세 별빛반
 CLASS_SUN = demo_id("102")               # CL-DEMO-02 만 5세 햇님반
 TEACHER = demo_id("201")                 # T-DEMO-01 우리 반 담임
 TEACHER_OTHER = demo_id("202")           # T-DEMO-02 다른 반 교사
+TEACHER_AIDE = demo_id("203")            # 맡은 반이 없는 보조 교사(재배정 시험용)
 DIRECTOR = demo_id("301")                # D-DEMO-01 원장
 PARENT = demo_id("401")                  # P-DEMO-01 우리 아이 학부모
 PARENT_OTHER = demo_id("402")            # P-DEMO-02 다른 아이 학부모
@@ -55,6 +56,7 @@ CLASSROOMS = [
 USERS = [
     {"id": TEACHER, "role": "teacher", "login_id": "teacher01", "display_name": "별빛반 선생님"},
     {"id": TEACHER_OTHER, "role": "teacher", "login_id": "teacher02", "display_name": "햇님반 선생님"},
+    {"id": TEACHER_AIDE, "role": "teacher", "login_id": "teacher03", "display_name": "보조 선생님"},
     {"id": DIRECTOR, "role": "director", "login_id": "director01", "display_name": "원장님"},
     {"id": PARENT, "role": "parent", "login_id": "parent01", "display_name": "하늘이 보호자"},
     {"id": PARENT_OTHER, "role": "parent", "login_id": "parent02", "display_name": "바다 보호자"},

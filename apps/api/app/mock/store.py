@@ -251,6 +251,16 @@ def classroom_ids_of(teacher_id: UUID, on: date | None = None) -> list[UUID]:
     return out
 
 
+def teachers_of(org_id: UUID, on: date | None = None) -> list[dict]:
+    """같은 기관의 활성 선생님과 오늘 맡은 반(70번 API). 연락처·로그인 ID는 넣지 않아요."""
+    teachers = sorted((u for u in _state.users.values() if u.org_id == org_id and u.role == "teacher" and u.is_active),
+                      key=lambda u: (u.display_name, u.id))
+    return [{"id": u.id, "display_name": u.display_name,
+             "classrooms": sorted(({"id": c, "name": _state.classrooms[c].name} for c in set(classroom_ids_of(u.id, on))),
+                                  key=lambda c: (c["name"], c["id"]))}
+            for u in teachers]
+
+
 def homeroom_teacher(classroom_id: UUID) -> UUID | None:
     return next((s.user_id for s in _state.classroom_staff if s.classroom_id == classroom_id
                  and classroom_id in classroom_ids_of(s.user_id)), None)
