@@ -28,7 +28,7 @@
 | **초안 실패 뒤 처리 — 알림장.** 작업 전체가 실패하면 `draft_status = failed`와 `error`로 알리고, 아이 한 명만 실패하면 그 아이에게만 확인 항목 `draft_failed`를 단다. 어느 쪽이든 반 발송은 막힌다. 다시 만들기까지의 복구 이력은 DB 설계서 2.6에 있다 | [3.19.1](#3191-접수부터-결과-조회까지-한-번에-따라가기), [3.26](#326-알림장-다시-만들기--post-apiv1daily-notesdraftsinput_idregenerate), DB 설계서 [2.6](DB_스키마_설계서.md#26-알림장알림평가) | `api/test_daily_notes.py::test_failed_writer_job_is_queryable_without_partial_notes`, `db/test_daily_notes_runner.py::test_one_child_failure_keeps_other_children_and_blocks_batch`, `db/test_daily_note_recovery.py::test_timeout_then_regenerate_is_one_recovered_incident_with_times`, `db/test_daily_note_recovery.py::test_failed_retry_is_handed_off_then_partial_template_is_fallback` | [`c80ee67`](https://github.com/aio-final-2team/FinalProject_2Team/commit/c80ee67), [`bf75f8f`](https://github.com/aio-final-2team/FinalProject_2Team/commit/bf75f8f) |
 | **초안 실패 뒤 처리 — 요청 처리 3분 마감.** 3분이 지나면 초안 없는 사람 카드로 넘기고(`ai_timeout`), 처리 중에 예외가 나면 `ai_failed`로 넘긴다. 코드 규칙으로 위험·주제를 다시 저장하고 유효한 담임에게 배정한다. 긴급·판단 필요면 원장 보고와 담임·원장 위험 알림도 남긴다. 모델 응답을 기다리는 동안에는 요청 행 잠금도 DB 연결도 잡지 않는다. 늦게 끝난 결과는 저장 직전에 다시 확인해서 버린다 | [6.1](#61-타임아웃), [6.3](#63-202로-접수하는-작업의-상태-조회) | `db/test_request_lock_timeout.py::test_answer_models_run_outside_request_row_lock`, `db/test_request_lock_timeout.py::test_ai_timeout_hands_off_empty_card_and_drops_late_draft`, `db/test_request_lock_timeout.py::test_timeout_error_raised_by_agent_is_ai_failed` | [`ab58b7c`](https://github.com/aio-final-2team/FinalProject_2Team/commit/ab58b7c) |
 | **초안 실패 뒤 처리 — 거절 뒤 재초안.** 담임이 회신 초안을 거절하면 새 회신 카드에는 초안 문장도 검사 결과도 없다. 그래서 그대로 승인하면 409가 나고, 담임이 직접 쓴 글(`edit_approve`)만 나간다 | [3.3](#33-카드-결정--post-apiv1cardscard_iddecisions) '결정마다 바뀌는 것' | `api/test_cards.py::test_reject_redraft_has_no_text_and_needs_teacher_text` | [`ab58b7c`](https://github.com/aio-final-2team/FinalProject_2Team/commit/ab58b7c) |
-| 첫 시연 순서, API 52개 목록의 상태 칸(DB 연결·모의만·제안) | [2](#2-api-목록), [2.1](#21-첫-시연-흐름의-연결표와-실제-연결-범위) | `api/test_openapi.py::test_all_52_documented_endpoints_exist`(목록 52행이 앱 경로와 같은지) | [`c80ee67`](https://github.com/aio-final-2team/FinalProject_2Team/commit/c80ee67) |
+| 첫 시연 순서, API 목록의 상태 칸(DB 연결·모의만·제안. 보완 당시 52개, 지금 70개) | [2](#2-api-목록), [2.1](#21-첫-시연-흐름의-연결표와-실제-연결-범위) | `api/test_openapi.py::test_all_documented_endpoints_exist`(목록 행이 앱 경로와 같은지) | [`c80ee67`](https://github.com/aio-final-2team/FinalProject_2Team/commit/c80ee67) |
 | 요청은 접수됐지만 인계 카드 저장에 실패한 경우 | [5.5.3](#553-사람-인계-카드--create_card), [6.7](#67-대표-사례-대조--화면apidb가-같은-상태로-보이는지) | `db/test_requests.py::test_agent_failure_preserves_request_and_hands_off_without_private_error`, `db/test_requests.py::test_sweep_exact_age_states_card_exclusion_and_concurrent_idempotency` | [`c80ee67`](https://github.com/aio-final-2team/FinalProject_2Team/commit/c80ee67) |
 | 기획서·계약표·DB 설계서와 맞춘 기준 판, 생성물이 앱 계약과 같은지 | 위 기준 판 표 | `api/test_openapi.py::test_contract_matches_application` | [`c80ee67`](https://github.com/aio-final-2team/FinalProject_2Team/commit/c80ee67) |
 
@@ -250,10 +250,10 @@ SSE 두 개(6번·14번)는 실시간 진행 화면(NFR-10)에서 쓴다. 투약
 
 | 단계 | 연결할 것 | 지금 상태 | 근거 |
 | --- | --- | --- | --- |
-| A 화면 계약 | 웹 화면 ↔ API | 확인 안 됨. 웹 코드(`apps/web/src/api/notes.ts`)는 3.19·3.20·3.21·3.24·3.6을 부르지만, 화면 표시는 첫 시연에서 점검한다 | 화면 점검 전 |
+| A 화면 계약 | 웹 화면 ↔ API | 화면으로 확인함(11/27). 확인·고치기·발송 잠금·반 발송·학부모 홈을 웹 화면에서 끝까지 눌러 봤다. 초안 만들기는 메모 17개를 손으로 넣지 않으려고 같은 API로 보내서, 화면의 진행 표시와 '관찰 기록'은 아직 화면으로 보지 않았다 | FB-021-1(`49edbe5`, 별빛반 20명, 담임 `teacher01`·학부모 `parent01`) |
 | B 저장 | API ↔ 시험 DB | 실제로 확인함 | 49개를 DB 모드로 불러 501이 없음, `tools/test_db.sh`의 DB 시험 290개 통과(과거 기준: 2026-11-23, `24258f2`, 0010, `tools/test_db.sh`; 이번 결과는 2.2) |
 | C 외부 연동 | 외부 API | 해당 없음. 알림장 흐름은 외부 API를 부르지 않는다 | — |
-| D 모델 | 그래프 ↔ 모델 ↔ 저장 | 모의 연동 성공 / 실제 연동 대기. 기본 작성기는 모델을 부르지 않는 대역이고, 그래프는 가짜 모델로 단위 시험을 통과했다. 실제 모델로 앱을 거친 실행은 이 판에서 확인하지 않았다 | `tests/unit/test_daily_note_graph.py` 27개 통과(과거 기준: 2026-11-23, `24258f2`, 0010 호환·DB 미사용, `python -m pytest tests/unit/test_daily_note_graph.py`; 이번 결과는 2.2) |
+| D 모델 | 그래프 ↔ 모델 ↔ 저장 | 실제 연동 확인함(11/27). 팀 서버 `DAILY_NOTE_WRITER=graph`·`RUN_IN=worker`, gpt-6-luna로 20명 초안 16초, 확인 필요 4명(민감 3·다른 아이 1). 코드 기본 작성기는 여전히 모델을 부르지 않는 대역이다 | FB-021-1(`49edbe5`). 단위 시험: `tests/unit/test_daily_note_graph.py` 27개 통과(과거 기준: 2026-11-23, `24258f2`, 0010 호환·DB 미사용, `python -m pytest tests/unit/test_daily_note_graph.py`; 이번 결과는 2.2) |
 
 **재현과 증빙.** 검토자는 아래 조건으로 같은 결과를 다시 볼 수 있다.
 
@@ -294,7 +294,7 @@ SSE 두 개(6번·14번)는 실시간 진행 화면(NFR-10)에서 쓴다. 투약
 
 ## 3. 엔드포인트 상세 명세
 
-API 56개를 가이드의 여덟 칸으로 쓴다. 필드 표의 '빈값'은 그 필드가 `""`이나 `null`을 받아도 되는지를 뜻한다. 예시의 고정 ID는 부록 A의 데모 ID이고, 3.8 이후 예시는 주요 응답 필드와 목록 첫 항목만 남겨 줄여 보인다. 토큰과 새로 발급한 ID도 `…`로 줄인다. 경로의 `{card_id}`·`{input_id}`·`{note_id}`에는 앞선 응답에서 받은 값을 넣는다.
+API 70개를 가이드의 여덟 칸으로 쓴다. 필드 표의 '빈값'은 그 필드가 `""`이나 `null`을 받아도 되는지를 뜻한다. 예시의 고정 ID는 부록 A의 데모 ID이고, 3.8 이후 예시는 주요 응답 필드와 목록 첫 항목만 남겨 줄여 보인다. 토큰과 새로 발급한 ID도 `…`로 줄인다. 경로의 `{card_id}`·`{input_id}`·`{note_id}`에는 앞선 응답에서 받은 값을 넣는다.
 
 ### 3.1 요청 만들기 — `POST /api/v1/requests`
 
@@ -2524,4 +2524,4 @@ MVP 설정값은 서버 설정(`.env`)으로 관리한다. `.env.example`에는 
 | v0.13.2 | 2026-11-26 | 카드 목록·상세·재분류에 아이·보호자 이름을 더해요. GET /requests를 담임·원장에게 열고 담당 반·유형·답변 주체로 걸러요. 학부모 응답은 유지해요(3.7·3.9). | 태웅 |
 | v0.13.3 | 2026-11-26 | [제안] 하루 중 기록 API 56~58·3.33과 API 22의 서버 기록 메모 fallback을 추가함. 기존 초안 요청·응답 칸은 유지함. | 태웅 |
 | v0.13.4 | 2026-11-27 | [제안] 원 일정 API 63(3.35)·개인 알림 시간 API 64~65(3.36)·교직원 AI 질문 API 66(3.37)을 더함. 미동의 차단에 교직원 AI 질문을 넣어 일곱 경로. 목록 69개(DB 연결 35·제안 34) | 태웅 |
-| v0.13.5 | 2026-11-27 | [제안] 재배정할 선생님 목록 API 70(3.38)을 더함. 원장만, 같은 기관 활성 선생님의 이름·지금 맡은 반만. 데모 시드에 반 없는 보조 교사 `teacher03`(…0203)을 더함. 목록 70개(DB 연결 35·제안 35) | 태웅 |
+| v0.13.5 | 2026-11-27 | [제안] 재배정할 선생님 목록 API 70(3.38)을 더함. 원장만, 같은 기관 활성 선생님의 이름·지금 맡은 반만. 데모 시드에 반 없는 보조 교사 `teacher03`(…0203)을 더함. 목록 70개(DB 연결 35·제안 35) 지혜님 백엔드 정리 PM 체크: 본문 옛 숫자(52·56개)를 고치고 2.1의 A 화면·D 모델 칸을 11/27 리허설 기록(FB-021-1)으로 채움. | 태웅 |
