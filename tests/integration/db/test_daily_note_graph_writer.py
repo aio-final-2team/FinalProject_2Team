@@ -61,8 +61,10 @@ def batch():
 
 
 def todays_requests():
+    """그날 투약·귀가 요청만 알림장 재료예요. 문의는 받은함에서만 다뤄요."""
     now = datetime.now(KST)
-    return [r for r in seed.DEMO_NOTE_REQUESTS if r.get("created_at", now).astimezone(KST).date() == now.date()]
+    return [r for r in seed.DEMO_NOTE_REQUESTS if r["type"] in ("medication", "pickup")
+            and r.get("created_at", now).astimezone(KST).date() == now.date()]
 
 
 def draft(db_client, teacher, memos=()):
