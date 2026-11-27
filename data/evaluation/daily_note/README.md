@@ -1,9 +1,9 @@
-# 알림장 AI 초안 함정 평가 문항 (v0.1)
+# 알림장 AI 초안 함정 평가 문항 (v0.2)
 
 | 항목 | 내용 |
 | --- | --- |
 | 목표 | 11/20 팀 결정 ① "메모에 없는 말은 쓰지 않는 알림장 AI"가 정말 그런지 숫자로 보여 준다 |
-| 작성 | 영민 · v0.1 · 2026-11-20 |
+| 작성 | 영민 · v0.2 · 2026-11-27 · #406 문의 기대 반영 |
 | 입력 | [`data/fixtures/kg-demo-01/daily_notes/`](../../fixtures/kg-demo-01/daily_notes/README.md) 명단·반 공통 입력·아이별 메모 |
 | 기계 판독용 | [`daily_note_trap_cases.json`](./daily_note_trap_cases.json) (이 문서와 같은 내용) |
 
@@ -74,3 +74,9 @@ AI가 아이별 메모를 문장으로 풀 때 흔히 생기는 실수 9가지�
 `PYTHONPATH=apps/api:. python tools/eval_daily_note.py --model echo --record --out runs/note.json`처럼 `--record`를 붙이면 `DATABASE_URL`의 기존 `eval_runs`에 실행마다 한 줄을 저장합니다. 옵션이 없으면 DB 접속 없이 기존 출력·JSON·종료 동작을 유지합니다.
 
 `suite=service`, `total`·`passed`는 메모 함정 20개와 보호자 요청 20개의 합계입니다. `note` JSON에는 도구 이름, 검사 모델, `memo`·`requests` 각각의 통과/전체를 남깁니다. `requested_model`은 `echo` 또는 실제 작성 모델(`LLM_MODEL_DOCUMENT` → `LLM_MODEL_DEFAULT` → 기본 모델), 검사 모델은 `LLM_MODEL_CHECKER` → 기본 모델 설정입니다. `started_at`은 평가 시작 시각이고 `report_url`은 `--out` 경로(없으면 NULL)입니다. 응답 모델 ID는 수집하지 않아 `returned_model=NULL`, 채점 실패는 실행 오류가 아니므로 `errors=0`입니다. 기록 실패는 오류로 종료하고 이미 쓴 결과 파일은 유지합니다.
+
+## 5. 보호자 요청 평가의 #406 기준
+
+`guardian_requests.json`의 문의 GR-13~GR-20은 알림장에 해당 요청의 `source.request_id` 줄이 **없어야 통과**해요. 문의 본문을 옮기거나 답하는 것도 알림장 기대가 아니며, 문의 때문에 생기는 확인 항목도 채점하지 않아요. 문의는 받은함에서만 다룹니다. 기존 문의 `expect.must_include`, `must_not_include`, `teacher_check` 값은 과거 요청 줄 기대라 현재 알림장 채점에서는 사용하지 않아요.
+
+투약 GR-01~GR-05와 귀가 GR-06~GR-12는 기존 줄·금지어·교사 확인 기대를 그대로 채점해요. ND-01~ND-20은 메모 함정 문항이며 문의 요청 줄 기대를 포함하지 않아요. #406 반영으로 문항 ID나 원시 입력 자료는 바꾸지 않았고, 평가 입력과 채점에서 유형별 처리를 반영했어요.
