@@ -210,15 +210,14 @@ def test_eval_request_score_needs_line_key_and_teacher_check():
     assert score_request(req, {"content": {"items": []}, "open_checks": [{"kind": "request_missed"}]})["covered"] is False
 
 
-def test_memo_left_out_without_check_gets_teacher_check():
+def test_memo_left_out_without_check_returns_then_hands_off():
     writer = Script({"child": None})
     [note] = draft_daily_notes(payload([kid("a", "다온", "블록을 친구와 나누어 쌓음")]), writer, Script(OK))
     assert writer.calls == MAX_RETURNS + 1
     assert "child" not in keys(note)
-    assert [c["kind"] for c in note["open_checks"]] == ["memo_missing", "return_limit"]
-    check = note["open_checks"][0]
-    assert check["item_key"] == "child" and check["sentence"] is None
-    assert "블록" not in check["problem"]
+    assert [c["kind"] for c in note["open_checks"]] == ["return_limit"]
+    assert note["end"] == "handoff" and note["handoff_reason"] == "return_limit"
+    assert note["trace"][-2]["memo_left_out"] is True
 
 
 def test_memo_left_out_is_returned_then_fixed():
@@ -237,7 +236,13 @@ def test_not_in_memo_check_does_not_hide_missing_child_line():
     checker = Script({"checks": [{"item_key": "child", "kind": "not_in_memo", "problem": "근거 없음", "sentence": None}]})
     [note] = draft_daily_notes(payload([kid("a", "다온", "블록을 친구와 나누어 쌓음")]),
                                Script({"child": None}), checker)
-    assert [c["kind"] for c in note["open_checks"]] == ["not_in_memo", "memo_missing", "return_limit"]
+    assert [c["kind"] for c in note["open_checks"]] == ["not_in_memo", "return_limit"]
+
+
+def test_memo_rewrite_signal_is_not_exposed_when_checker_fails():
+    [note] = draft_daily_notes(payload([kid("a", "다온", "블록 놀이")]),
+                               Script({"child": None}), Script(ModelError))
+    assert [c["kind"] for c in note["open_checks"]] == ["check_failed"]
 
 
 def test_memo_left_out_with_checker_kind_adds_nothing_more():
@@ -313,15 +318,14 @@ def test_same_line_same_kind_checks_are_merged():
     assert check["kind"] == "sensitive" and check["request_id"] == "r1"
 
 
-def test_unanswered_inquiry_keeps_text_and_asks_teacher():
+def test_unanswered_inquiry_keeps_text_without_code_check():
     req = {"request_id": "r1", "type": "inquiry", "text": "기침해요. 낮잠 때 잘 봐 주세요."}
     writer = Script({"child": "블록 놀이를 했어요.",
                      "requests": [{"request_id": "r1", "value": "기침을 한다고 알려 주셨어요.", "answered": False}]})
     [note] = draft_daily_notes(payload([kid("a", "새봄", "블록놀이", [req])]), writer, Script(OK))
     line = next(item for item in note["content"]["items"] if item["source"]["type"] == "request")
     assert line["value"] == "기침을 한다고 알려 주셨어요." and "_unanswered" not in line
-    [check] = note["open_checks"]
-    assert check["kind"] == "request_unanswered" and check["request_id"] == "r1" and check["item_key"] == "inquiry"
+    assert note["open_checks"] == []
 
 
 def test_request_line_repeating_child_line_becomes_request_text():
@@ -331,7 +335,7 @@ def test_request_line_repeating_child_line_becomes_request_text():
     [note] = draft_daily_notes(payload([kid("a", "윤슬", "친구에게 먼저 사과함", [req])]), writer, Script(OK))
     line = next(item for item in note["content"]["items"] if item["source"]["type"] == "request")
     assert line["value"] == "보호자 요청: 요즘 친구랑 잘 지내나요?"
-    assert [c["kind"] for c in note["open_checks"]] == ["request_unanswered"]
+    assert note["open_checks"] == []
 
 
 def test_eval_memo_score_ignores_request_checks():
@@ -344,24 +348,14 @@ def test_eval_memo_score_ignores_request_checks():
     assert score(case, note)["pass"] is True
 
 
-def test_eval_memo_score_rejects_unexpected_memo_missing():
+def test_eval_memo_score_rejects_missing_child_line_without_safety_reason():
     from tools.eval_daily_note import score
 
-    case = {"id": "ND-03", "category": "지어내기", "must_not_include": [], "expect_flag": False,
-            "flag_kind": None, "must_include": []}
-    note = {"content": {"items": []}, "open_checks": [{"kind": "memo_missing", "item_key": "child"}]}
-    assert score(case, note)["pass"] is False
-
-
-def test_eval_request_score_accepts_request_unanswered():
-    from tools.eval_daily_note import score_request
-
-    req = {"request_key": "r1", "type": "inquiry", "expect": {"line_key": "inquiry",
-           "must_not_include": [], "teacher_check": "request_unanswered"}}
-    line = {"key": "inquiry", "value": "보호자 문의를 확인했어요.",
-            "source": {"type": "request", "request_id": "r1"}}
-    note = {"content": {"items": [line]}, "open_checks": [{"kind": "request_unanswered", "request_id": "r1"}]}
-    assert score_request(req, note)["pass"] is True
+    case = {"id": "ND-03", "category": "지어내기", "memo": "블록 놀이", "must_not_include": [],
+            "expect_flag": False, "flag_kind": None, "must_include": []}
+    note = {"content": {"items": []}, "open_checks": [{"kind": "return_limit", "item_key": "child"}]}
+    result = score(case, note)
+    assert result["pass"] is False and result["banned_hits"] == ["(child 줄 없음)"]
 
 
 def test_model_retries_only_retryable_errors_with_backoff():
