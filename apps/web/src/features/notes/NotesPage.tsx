@@ -15,7 +15,7 @@ import { Icon } from "@/components/Icon";
 import { Sheet } from "@/components/Sheet";
 import { useToast } from "@/components/Toast";
 import { useAllCards } from "@/api/cards";
-import { CHECK_KIND, NOTE_STATUS, dateLabel, itemLabel, nameI, noMd, todayKST, type DailyNote, type NoteItem } from "@/domain/notes";
+import { CHECK_KIND, COMMON_KEYS, NOTE_STATUS, dateLabel, itemLabel, nameI, noMd, todayKST, type DailyNote, type NoteItem } from "@/domain/notes";
 import { RecordSheet } from "@/features/records/RecordSheet";
 import { useRecords } from "@/features/records/store";
 
@@ -198,8 +198,9 @@ function Compose({ onStarted }: { onStarted: (id: string) => void }) {
       </Label>
       <div className="flex flex-wrap gap-1.5">
         <span className="rounded-sm bg-ok-tint px-2 py-1 text-caption font-semibold text-ok">오늘 식단표</span>
-        <span className="rounded-sm bg-lav-tint px-2 py-1 text-caption font-semibold text-lav">오늘 접수한 보호자 요청</span>
+        <span className="rounded-sm bg-lav-tint px-2 py-1 text-caption font-semibold text-lav">오늘 접수한 투약·귀가 요청</span>
       </div>
+      <p className="mt-2 px-1 text-footnote text-ink2">식단표는 모든 가정의 식사 줄에 들어가요. 투약·귀가 요청은 그 아이 알림장의 투약·귀가 줄에 들어가고, 보내기 전에 선생님이 확인해요.</p>
 
       <Dock>
         <PrimaryButton onClick={submit} loading={create.isPending}>
@@ -431,6 +432,8 @@ function Review({ notes }: { notes: DailyNote[] }) {
   };
 
   const preview = notes.find((n) => hasChild(n)) ?? notes[0];
+  /* 보내기 전 확인에는 아이 이름 없이 반 활동·식단·준비물 같은 공통 내용만 보여 준다 */
+  const common = (preview?.content.items ?? []).filter((it) => it.source.type !== "request" && COMMON_KEYS.includes(it.key) && it.value.trim());
   return (
     <Frame title="알림장 확인" sub={`${user?.display_name} · ${notes.length}명${allSent ? "" : " · 17:00까지"}`}>
       {!allSent && <section className="mt-4 rounded-lg bg-card p-3 shadow-card">
@@ -571,13 +574,13 @@ function Review({ notes }: { notes: DailyNote[] }) {
 
       {/* A-07 일괄 발송 시트 */}
       <Sheet open={sheet} onClose={() => setSheet(false)} title={`${notes.length}명에게 한 번에 보내기`}>
-        <p className="text-footnote text-ink2">반 전체 {notes.length}명에게 보내요. 보낸 뒤에는 정정으로만 고칠 수 있어요</p>
-        {preview && (
+        <p className="text-footnote text-ink2">반 전체 {notes.length}명에게 보내요. 아이별 내용은 그 아이의 보호자에게만 가요. 보낸 뒤에는 정정으로만 고칠 수 있어요</p>
+        {common.length > 0 && (
           <div className="grid gap-1 rounded-lg bg-g p-3 text-callout">
-            <b className="text-headline">{nameI(names[preview.child_id] ?? "아이")}의 오늘</b>
-            {preview.content.items.filter((it) => it.value.trim()).map((it, i) => (
+            <b className="text-headline">함께 보낼 공통 내용</b>
+            {common.map((it, i) => (
               <span key={i}>
-                <b className="mr-1.5 text-footnote text-ink2">{it.key === "child" ? "아이 이야기" : itemLabel(it)}</b>
+                <b className="mr-1.5 text-footnote text-ink2">{itemLabel(it)}</b>
                 {noMd(it.value)}
               </span>
             ))}

@@ -7,7 +7,7 @@ import { dateLabel } from "@/domain/notes";
 
 const DAYS = 45;
 /** 문서에서 일정을 찾은 위치. 본문이면 알려 줄 게 없어서 숨긴다 */
-const place = (i: CalendarItem) => (i.location === "본문" ? "" : i.location);
+const place = (i: CalendarItem) => (i.location === "본문" || /^\d+\s*쪽$/.test(i.location) ? "" : i.location);
 
 /** 원 일정. 오늘부터 45일 동안 원 자료에 적힌 일정을 날짜순으로 보여 준다 */
 export function CalendarPage() {

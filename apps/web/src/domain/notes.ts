@@ -2,6 +2,8 @@
 
 export type NoteStatus = "draft" | "needs_check" | "ready" | "sent";
 export type ItemKey = "day" | "meal" | "medication" | "pickup" | "supplies" | "child";
+/** 모든 가정에 같은 내용이 가는 줄. 나머지(아이의 오늘·투약·귀가·보호자 요청)는 아이별이라 담임이 확인한다 */
+export const COMMON_KEYS: string[] = ["day", "meal", "supplies"];
 export type SourceType = "teacher_input" | "document" | "request";
 export type CheckKind =
   | "not_in_memo"
@@ -11,6 +13,7 @@ export type CheckKind =
   | "absent"
   | "draft_failed"
   | "check_failed"
+  | "request_unanswered"
   | "request_missed"
   | "return_limit";
 
@@ -66,11 +69,13 @@ export const CHECK_KIND: Record<CheckKind, { title: string; short: string; fix?:
   not_in_memo: { title: "메모에 없는 말이 들어갔어요", short: "메모에 없는 말", fix: "이 문장 빼기", keep: "실제로 있었던 일이에요" },
   sensitive: { title: "민감한 정보가 들어갔어요", short: "민감 정보", fix: "이 문장 빼기", keep: "보내도 되는 내용이에요" },
   other_child: { title: "다른 아이 이야기가 들어갔어요", short: "다른 아이 이름", fix: "이 문장 빼기", keep: "그대로 두기" },
-  date_check: { title: "날짜를 확인해 주세요", short: "날짜 확인", keep: "적힌 날짜가 맞아요" },
+  date_check: { title: "날짜를 확인해 주세요", short: "날짜 확인", keep: "확인했어요" },
   absent: { title: "결석한 아이예요", short: "결석", keep: "확인했어요" },
   draft_failed: { title: "이 아이 초안을 만들지 못했어요", short: "초안 실패", keep: "직접 쓰고 확인할게요" },
   check_failed: { title: "검사를 하지 못했어요", short: "검사 실패", keep: "직접 읽고 확인했어요" },
-  request_missed: { title: "보호자 요청이 빠졌어요", short: "보호자 요청 누락", keep: "빼고 보내기" },
+  /* 서버(검사 AI)가 이 종류를 보내기 전에는 나타나지 않는다. 종류 이름은 영민님과 맞춰야 한다 */
+  request_unanswered: { title: "보호자 요청에 답이 필요해요", short: "답변 필요", fix: "답 한 줄 쓰기" },
+  request_missed: { title: "보호자 요청이 빠졌어요", short: "보호자 요청 누락", keep: "넣지 않기" },
   return_limit: { title: "AI가 고쳐도 남은 문제가 있어요", short: "남은 문제", keep: "직접 확인했어요" },
 };
 

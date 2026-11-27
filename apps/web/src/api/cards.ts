@@ -39,7 +39,7 @@ type CardDetail = {
 /** 서버의 위험 분류 코드를 교사가 읽는 말로 바꾼다 (API RiskCategory) */
 const RISK: Record<string, string> = { child_safety: "아이 안전", staff_attack: "교직원 대상 폭언", legal_external: "법적·외부 대응", privacy_leak: "개인정보 유출" };
 const riskLabel = (c?: string | null) => (c ? (RISK[c] ?? c) : undefined);
-export type TypeFilter = "all" | "complaint" | "consultation" | "inquiry";
+export type TypeFilter = "all" | "complaint" | "consultation" | "inquiry" | "rule";
 export type CardsResult = { items: Card[]; counts: Record<InboxFilter, number>; typeCounts: Record<TypeFilter, number> };
 const UI_TO_API_FILTER: Record<InboxFilter, ApiInboxFilter> = { review: "needs_review", judge: "uncertain", unassigned: "unassigned", hold: "on_hold", progress: "in_progress", done: "done" };
 const API_TO_UI_FILTER: Record<ApiInboxFilter, InboxFilter> = { needs_review: "review", uncertain: "judge", unassigned: "unassigned", on_hold: "hold", in_progress: "progress", done: "done" };
@@ -106,15 +106,27 @@ export const useCards = (filter: InboxFilter, type: TypeFilter = "all") => {
       const apiFilter = UI_TO_API_FILTER[filter];
       /* 교사는 원장 보고 카드를 처리하지 못한다(API 403). 같은 요청의 답장 카드와 겹쳐 두 줄로 보이므로 목록에서 뺀다.
          빼고 나면 서버가 준 종류별 숫자가 맞지 않아서, 교사는 종류 없이 받아 온 뒤 화면에서 나누고 숫자도 다시 센다 */
-      const result = await api<CardList>(`/api/v1/cards?filter=${apiFilter}&size=100${type === "all" || teacher ? "" : `&request_type=${type}`}`);
+      const result = await api<CardList>(`/api/v1/cards?filter=${apiFilter}&size=100${type === "all" || type === "rule" || teacher ? "" : `&request_type=${type}`}`);
       const counts = Object.fromEntries(Object.entries(result.counts).map(([key, value]) => [API_TO_UI_FILTER[key as ApiInboxFilter], value])) as Record<InboxFilter, number>;
-      const typeCounts = { all: 0, complaint: 0, consultation: 0, inquiry: 0, ...((result as { type_counts?: Partial<Record<TypeFilter, number>> }).type_counts ?? {}) };
+      const typeCounts = { all: 0, complaint: 0, consultation: 0, inquiry: 0, rule: 0, ...((result as { type_counts?: Partial<Record<TypeFilter, number>> }).type_counts ?? {}) };
       if (!teacher) return { items: result.items.map((item) => cardFromItem(item, filter)), counts, typeCounts };
       const own = result.items.filter((item) => item.kind !== "director_report");
-      const byType = (t: TypeFilter) => own.filter((item) => item.request_type === t).length;
-      const recount = { all: own.length, complaint: byType("complaint"), consultation: byType("consultation"), inquiry: byType("inquiry") };
-      const shown = type === "all" ? own : own.filter((item) => item.request_type === type);
-      return { items: shown.map((item) => cardFromItem(item, filter)), counts: { ...counts, [filter]: own.length }, typeCounts: recount };
+      /* 규칙 제안 카드는 학부모 문의가 아니라서 문의·상담·민원 숫자에 넣지 않고 따로 센다 */
+      const isRule = (item: CardItem) => item.kind === "rule_proposal";
+      /* 화면은 민원·상담이 아닌 요청을 모두 문의로 보여 주므로(requestType) 숫자도 같은 기준으로 센다 */
+      const typeOf = (item: CardItem) => requestType(item.request_type);
+      const byType = (t: Exclude<TypeFilter, "all" | "rule">) => own.filter((item) => !isRule(item) && typeOf(item) === (t === "consultation" ? "consult" : t)).length;
+      const recount = { all: own.length, complaint: byType("complaint"), consultation: byType("consultation"), inquiry: byType("inquiry"), rule: own.filter(isRule).length };
+      const shown = type === "all" ? own : type === "rule" ? own.filter(isRule) : own.filter((item) => !isRule(item) && typeOf(item) === (type === "consultation" ? "consult" : type));
+      /* 서버가 주는 상태별 숫자는 원장 보고 카드를 포함한다. 교사 목록과 맞도록 다른 상태도 같은 기준으로 다시 센다 */
+      const others = await Promise.all(
+        ALL_FILTERS.filter((f) => f !== filter).map((f) =>
+          api<CardList>(`/api/v1/cards?filter=${UI_TO_API_FILTER[f]}&size=100`)
+            .then((r) => [f, r.items.filter((item) => item.kind !== "director_report").length] as const)
+            .catch(() => [f, counts[f]] as const),
+        ),
+      );
+      return { items: shown.map((item) => cardFromItem(item, filter)), counts: { ...counts, ...Object.fromEntries(others), [filter]: own.length } as Record<InboxFilter, number>, typeCounts: recount };
     },
   });
 };

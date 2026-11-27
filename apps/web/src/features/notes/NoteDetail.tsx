@@ -12,7 +12,7 @@ import { Icon } from "@/components/Icon";
 import { useToast } from "@/components/Toast";
 import { useRecords } from "@/features/records/store";
 import { fmtDateTime } from "@/domain/datetime";
-import { CHECK_KIND, NOTE_STATUS, SOURCE_LABEL, dateLabel, itemLabel, nameI, noMd, todayKST, type DailyNote, type NoteItem, type OpenCheck } from "@/domain/notes";
+import { CHECK_KIND, COMMON_KEYS, NOTE_STATUS, SOURCE_LABEL, dateLabel, itemLabel, nameI, noMd, todayKST, type DailyNote, type NoteItem, type OpenCheck } from "@/domain/notes";
 
 /**
  * 아이별 알림장 (API 25 PATCH). 줄마다 출처, 검사 AI가 짚은 곳(open_checks[].kind),
@@ -84,6 +84,14 @@ function Detail({ note, notes, name, names }: { note: DailyNote; notes: DailyNot
     save({ content: { items: nextItems }, resolved_checks: [c.id] }, "문장을 뺐어요");
   };
   const keep = (c: OpenCheck) => save({ resolved_checks: [c.id] }, "확인할 곳을 해결했어요");
+  /* 답이 필요한 요청은 그 줄을 고치기 상태로 열어 담임이 사실만 한 줄 채우게 한다 */
+  const writeAnswer = (c: OpenCheck) => {
+    const i = items.findIndex((it) => it.key === c.item_key);
+    if (i < 0) return;
+    setEditing(i);
+    setDraftText(items[i].value);
+    window.setTimeout(() => document.querySelector<HTMLTextAreaElement>(`textarea[aria-label="${itemLabel(items[i])} 고치기"]`)?.focus(), 0);
+  };
   /* 빠진 보호자 요청은 요청 원문을 읽어 그 줄(귀가·투약·오늘 하루)로 넣는다 */
   const missed = open.find((c) => c.kind === "request_missed" && c.request_id);
   const req = useQuery({
@@ -176,7 +184,12 @@ function Detail({ note, notes, name, names }: { note: DailyNote; notes: DailyNot
                         {req.isLoading ? "요청을 불러오는 중…" : `요청 내용 넣기${req.data ? ` · “${req.data.request.title}”` : ""}`}
                       </SubButton>
                     )}
-                    {k.fix && c.sentence && (
+                    {c.kind === "request_unanswered" && (
+                      <SubButton small onClick={() => writeAnswer(c)} disabled={patch.isPending}>
+                        {k.fix}
+                      </SubButton>
+                    )}
+                    {c.kind !== "request_unanswered" && k.fix && c.sentence && (
                       <SubButton small onClick={() => removeSentence(c)} disabled={patch.isPending}>
                         {k.fix}
                       </SubButton>
@@ -238,7 +251,14 @@ function Detail({ note, notes, name, names }: { note: DailyNote; notes: DailyNot
               ) : (
                 <p className={`mt-0.5 text-body ${bad ? "rounded-xs bg-tint" : ""}`}>{noMd(it.value)}</p>
               )}
-              <span className={`mt-1 inline-block rounded-sm px-2 py-0.5 text-caption font-semibold ${it.source.type === "document" ? "bg-ok-tint text-ok" : it.source.type === "request" ? "bg-lav-tint text-lav" : "bg-g text-ink2"}`}>{src}</span>
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                {/* 모든 가정에 같은 내용이 가는 줄(오늘 하루·식사·준비물)은 '선생님 입력' 대신 '반 공통'으로 알아보게 한다 */}
+                {COMMON_KEYS.includes(it.key) && <span className="inline-block rounded-sm bg-tint px-2 py-0.5 text-caption font-semibold text-accent-ink">반 공통</span>}
+                {/* 줄 이름과 출처가 같은 말이면(보호자 요청 / 보호자 요청) 배지는 숨긴다 */}
+                {src !== (it.key === "child" ? "" : itemLabel(it)) && !(COMMON_KEYS.includes(it.key) && it.source.type === "teacher_input") && (
+                  <span className={`inline-block rounded-sm px-2 py-0.5 text-caption font-semibold ${it.source.type === "document" ? "bg-ok-tint text-ok" : it.source.type === "request" ? "bg-lav-tint text-lav" : "bg-g text-ink2"}`}>{src}</span>
+                )}
+              </div>
             </div>
           );
         })}

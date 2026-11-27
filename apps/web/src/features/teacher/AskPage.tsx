@@ -11,7 +11,8 @@ import { useToast } from "@/components/Toast";
 type Turn = { q: string; a: StaffAnswer };
 const MAX = 2000;
 const STORE = (uid?: string) => `yuchion.ask.${uid ?? "-"}`;
-const EXAMPLES = ["12월 크리스마스 행사는 언제예요?", "이번 주 급식에 알레르기 식재료가 있나요?"];
+/** 시험해서 답이 나온 질문만 예시로 둔다. 날짜나 자료 이름이 들어 있어야 찾기 쉽다 */
+const EXAMPLES = ["12월 1일 점심 메뉴는요?", "12월 행사 일정이 어떻게 되나요?", "11월 4주 식단표를 알려 주세요"];
 
 /** 이 탭에서 나눈 대화는 화면을 옮겨 다녀도 남긴다. 저장이 막힌 브라우저면 이번 화면에서만 쓴다 */
 const load = (uid?: string): Turn[] => {
@@ -109,7 +110,20 @@ export function AskPage() {
           <Avatar />
           <div className="min-w-0">
             <span className="text-caption font-semibold text-ink2">유치온 AI</span>
-            <p className="mt-1 rounded-2xl rounded-tl-md bg-card px-3.5 py-2.5 text-callout shadow-card">궁금한 내용을 적어 주세요. 식단표, 가정통신문, 규정 같은 원 자료를 보고 답해요.</p>
+            <div className="mt-1 grid gap-2 rounded-2xl rounded-tl-md bg-card px-3.5 py-2.5 text-callout shadow-card">
+              <p>원 자료를 찾아서 답해요.</p>
+              <p>
+                <b className="font-semibold">물어볼 수 있는 것</b>
+                <br />
+                식단표, 가정통신문, 원 일정, 운영 안내, 상담 시간
+              </p>
+              <p>
+                <b className="font-semibold">답하지 못하는 것</b>
+                <br />
+                아이나 보호자가 보낸 글, 원 자료에 없는 내용
+              </p>
+              <p className="text-footnote text-ink2">“이번 주”보다 날짜나 자료 이름을 적으면 더 잘 찾아요. 앞에서 물은 내용은 기억하지 못해요.</p>
+            </div>
           </div>
         </div>
 
@@ -136,7 +150,7 @@ export function AskPage() {
                     ))}
                   </ul>
                 ) : (
-                  <p className="mt-1.5 px-1 text-caption text-ink2">근거로 찾은 문서가 없어요. 자료에서 직접 확인해 주세요.</p>
+                  <p className="mt-1.5 px-1 text-caption text-ink2">찾은 문서가 없어요. 날짜나 자료 이름을 넣어 다시 물어보거나 자료에서 직접 확인해 주세요.</p>
                 )}
               </div>
             </div>
@@ -184,7 +198,7 @@ export function AskPage() {
               rows={1}
               maxLength={MAX}
               aria-label="질문"
-              placeholder="궁금한 내용을 적어 주세요"
+              placeholder="예: 12월 1일 점심 메뉴는요?"
               onChange={(e) => setText(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
