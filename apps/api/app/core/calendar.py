@@ -63,12 +63,19 @@ CLASH_DAYS = 14  # 같은 행사를 이만큼 안의 다른 날로 적은 자료
 
 
 def clashing(by_day, day):
-    """반복 행사(매달 소방 훈련, 한 자료에 매주 적힌 행사)는 충돌이 아니에요.
-    다른 자료가 같은 행사를 2주 안의 다른 날로 적었을 때만 그 날짜들을 돌려줘요."""
-    near = sorted(d for d in by_day if abs((d - day).days) <= CLASH_DAYS)
-    seen = set()
-    for d in near:
-        if seen & by_day[d]:  # 한 자료가 두 날짜를 다 적었으면 반복 행사예요
-            return []
-        seen |= by_day[d]
-    return near if len(near) > 1 else []
+    """다른 자료가 같은 행사를 2주 안의 다른 날로 적었으면 그 날짜들을 돌려줘요.
+    한 자료 안의 날짜끼리(매주 숲 체험)나 두 자료가 똑같이 적은 반복 행사는 충돌이 아니에요.
+    자료마다 서로 가장 가까운 날짜끼리만 짝지어, 12/03·12/10을 적은 자료와 12/11을 적은 자료는 12/10·12/11만 충돌이에요."""
+    dates = {}
+    for d, docs in by_day.items():
+        for doc in docs:
+            dates.setdefault(doc, set()).add(d)
+
+    def nearest(doc, target):
+        gap = min(abs((d - target).days) for d in dates[doc])
+        return {d for d in dates[doc] if abs((d - target).days) == gap}
+
+    found = {d for d in by_day if d != day and abs((d - day).days) <= CLASH_DAYS
+             and any(d in nearest(there, day) and day in nearest(here, d)
+                     for here in by_day[day] - by_day[d] for there in by_day[d] - by_day[day])}
+    return sorted(found | {day}) if found else []

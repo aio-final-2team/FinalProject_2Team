@@ -99,6 +99,17 @@ def test_calendar_repeated_events_are_not_conflicts(client, teacher, calendar_ba
     assert not any(r["conflict"] or r["conflict_dates"] for r in rows)
 
 
+def test_calendar_flags_other_document_near_a_repeated_event(client, teacher, calendar_backend):
+    # 한 자료가 매주 적은 행사라도, 다른 자료가 그중 한 번을 다른 날로 적었으면 그 짝만 충돌이에요(#404 영민님 리뷰).
+    add(calendar_backend, "- 숲 체험: 2026-12-03\n- 숲 체험: 2026-12-10", title="[TEST] 12월 숲 체험 안내")
+    add(calendar_backend, "- 숲 체험: 2026-12-11", title="[TEST] 12월 학사 일정")
+    rows = client.get(BASE + "/calendar", headers=teacher, params=PERIOD).json()["items"]
+    assert [(r["date"], r["conflict"], r["conflict_dates"]) for r in rows if r["title"] == "숲 체험"] == [
+        ("2026-12-03", False, []),
+        ("2026-12-10", True, ["2026-12-10", "2026-12-11"]),
+        ("2026-12-11", True, ["2026-12-10", "2026-12-11"])]
+
+
 def test_calendar_scope_status_visibility_and_current_assignments(client, parent, teacher, director, calendar_backend):
     own = add(calendar_backend, targets=[seed.CLASS_STAR])
     other = add(calendar_backend, targets=[seed.CLASS_SUN])
