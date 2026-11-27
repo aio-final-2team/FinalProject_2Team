@@ -10,6 +10,7 @@ services:
     environment: &api-environment
       MEDIA_DIR: ${MEDIA_DIR:-/media}
       DATA_BACKEND: ${DATA_BACKEND:-mock}
+      QA_TOOLS: ${QA_TOOLS:-false}
       SEED_DEMO: ${SEED_DEMO:-true}
       RUN_IN: ${RUN_IN:-api}
       CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}

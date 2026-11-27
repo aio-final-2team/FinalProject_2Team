@@ -26,6 +26,7 @@ class Settings:
     request_agent: str = "app.modules.requests.agent_stub:run_request"
     run_in: str = "api"
     celery_broker_url: str = "redis://redis:6379/0"
+    qa_tools: bool = False
 
 
 def load_settings() -> Settings:
@@ -67,6 +68,7 @@ def load_settings() -> Settings:
         request_agent=os.getenv("REQUEST_AGENT", "app.modules.requests.agent_stub:run_request"),
         run_in=run_in,
         celery_broker_url=os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0"),
+        qa_tools=os.getenv("QA_TOOLS", "") in ("true", "1"),
     )
 
 

@@ -76,6 +76,7 @@
 |---|---|---|---|
 | `COMPOSE_PROJECT_NAME` | Compose 프로젝트 이름 | 배포마다 같은 이름 사용 | 서버 `.env.server` |
 | `DATA_BACKEND` | 데이터 저장 방식 | 서버 기본 `db`, 대역 시연은 `mock` | 서버 `.env.server` |
+| `QA_TOOLS` | QA 알림장 다시 시험하기 API | 기본 false. 팀 QA 서버만 true 또는 1, 운영 금지 | 서버 `.env.server` |
 | `SERVER_API_PORT`·`SERVER_WEB_PORT` | 기존 앞단이 연결할 포트 | 비어 있는 loopback 포트 | 서버 `.env.server` |
 | `POSTGRES_DB` | DB 이름 | yuchion | 서버 `.env.server` |
 | `POSTGRES_USER` | DB 사용자 | yuchion | 서버 `.env.server` |

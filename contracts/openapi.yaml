@@ -3859,6 +3859,51 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
       security:
       - HTTPBearer: []
+  /api/v1/qa/daily-notes/reset:
+    post:
+      tags:
+      - '[QA 전용] 알림장 다시 시험하기'
+      summary: Reset
+      operationId: reset_api_v1_qa_daily_notes_reset_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NoteResetIn'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NoteResetOut'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security:
+      - HTTPBearer: []
   /health:
     get:
       tags:
@@ -5115,6 +5160,31 @@ components:
       - status
       - expected_end_at
       title: DelayedBooking
+    DeletedNotes:
+      properties:
+        inputs:
+          type: integer
+          title: Inputs
+        notes:
+          type: integer
+          title: Notes
+        cards:
+          type: integer
+          title: Cards
+        notifications:
+          type: integer
+          title: Notifications
+        events:
+          type: integer
+          title: Events
+      type: object
+      required:
+      - inputs
+      - notes
+      - cards
+      - notifications
+      - events
+      title: DeletedNotes
     DocumentChunk:
       properties:
         index:
@@ -6266,6 +6336,43 @@ components:
       required:
       - request_id
       title: NoteReplyAccepted
+    NoteResetIn:
+      properties:
+        classroom_id:
+          type: string
+          format: uuid
+          title: Classroom Id
+        note_date:
+          type: string
+          format: date
+          title: Note Date
+      additionalProperties: false
+      type: object
+      required:
+      - classroom_id
+      title: NoteResetIn
+    NoteResetOut:
+      properties:
+        classroom_id:
+          type: string
+          format: uuid
+          title: Classroom Id
+        note_date:
+          type: string
+          format: date
+          title: Note Date
+        deleted:
+          $ref: '#/components/schemas/DeletedNotes'
+        unlinked_replies:
+          type: integer
+          title: Unlinked Replies
+      type: object
+      required:
+      - classroom_id
+      - note_date
+      - deleted
+      - unlinked_replies
+      title: NoteResetOut
     NoteResponse:
       properties:
         note:
