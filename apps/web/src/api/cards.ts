@@ -1,6 +1,6 @@
 import { useLiveStream } from "./stream";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { InboxFilter, RequestType, Status } from "@/domain/status";
+import type { InboxFilter, RequestIntent, RequestType, Status } from "@/domain/status";
 import type { Card, CardAction, HistoryItem, Role, Slot, Source } from "@/domain/types";
 import { useSession } from "@/app/session";
 import { api, uuid } from "./client";
@@ -19,6 +19,8 @@ type CardItem = {
   due_at: string | null; is_delayed: boolean; hold_until: string | null;
   /** 요청이 있는 카드에서만 온다. 서버가 아직 안 주면 없다 */
   child_name?: string | null; requester_name?: string | null;
+  /** 감독 AI가 정한 요청 의도(알림 notice·부탁 ask). 투약·귀가는 늘 ask, 값이 없으면 표시 안 함 */
+  intent?: RequestIntent | null;
 };
 type CardList = {
   total: number; page: number; size: number; items: CardItem[];
@@ -63,6 +65,7 @@ const cardFromItem = (item: CardItem, filter: InboxFilter): Card => ({
   repeatCount: item.repeat_count ?? undefined, escalated: item.risk_level === "urgent" || item.kind === "director_report",
   assignee: item.assignee ? { id: item.assignee.id, name: item.assignee.display_name } : undefined,
   assigned: !!item.assignee, slots: item.parent_choice_count ? [] : undefined, history: [],
+  intent: item.intent ?? undefined,
 });
 
 const formatPeriod = (period: Period) => new Date(period.start).toLocaleString("ko-KR", { month: "numeric", day: "numeric", weekday: "short", hour: "2-digit", minute: "2-digit" });

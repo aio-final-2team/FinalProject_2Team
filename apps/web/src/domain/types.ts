@@ -1,4 +1,4 @@
-import type { InboxFilter, RequestType, Risk, Status } from "./status";
+import type { InboxFilter, RequestIntent, RequestType, Risk, Status } from "./status";
 
 /** 필드 이름은 임시다. 11/18 T10 계약 회의에서 정한 이름으로 바꾼다. */
 export type Source = { doc: string; where: string; effective: string; old?: boolean };
@@ -8,6 +8,8 @@ export type Role = "parent" | "teacher" | "director";
 
 export type Card = {
   id: string;
+  /** 요청 의도(알림·부탁). 목록 응답에서만 온다 */
+  intent?: RequestIntent;
   version?: number;
   kind?: string;
   inboxFilter?: InboxFilter;

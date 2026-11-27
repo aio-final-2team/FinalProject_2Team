@@ -193,7 +193,8 @@ def masked(text):
 
 
 def masked_requests(child) -> list[dict]:
-    return [{**req, "text": masked(req.get("text"))} for req in child.get("requests") or []]
+    return [{**req, "text": masked(req.get("text")), "result_line": masked(req.get("result_line"))}
+            for req in child.get("requests") or []]
 
 
 def write(model: JsonModel, payload, child, issues) -> list[dict]:

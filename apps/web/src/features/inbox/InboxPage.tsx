@@ -7,7 +7,7 @@ import { dateLabel, todayKST } from "@/domain/notes";
 import { BackLink as SharedBackLink } from "@/components/BackLink";
 import { SkeletonRows, StateView } from "@/components/StateView";
 import { Pill, WeightIcon } from "@/components/Tags";
-import { INBOX_FILTERS, TYPE_LABEL, type InboxFilter } from "@/domain/status";
+import { INBOX_FILTERS, INTENT_LABEL, TYPE_LABEL, type InboxFilter } from "@/domain/status";
 import { reviewRank, type Card, type Role } from "@/domain/types";
 import { CardDetail } from "./CardDetail";
 
@@ -69,6 +69,7 @@ function Row({ c, active, to, role }: { c: Card; active: boolean; to: string; ro
           {role === "director" && <span className="mr-1 font-semibold text-ink">{c.className} ·</span>}
           {c.childName && <span className="mr-1 font-semibold text-ink">{c.childName} ·</span>}
           {c.risk === "judge" ? "판단 필요 · " : ""}{c.kind === "rule_proposal" ? "규칙 제안" : TYPE_LABEL[c.type]}
+          {c.intent && c.kind !== "rule_proposal" && <> · {INTENT_LABEL[c.intent]}</>}
           {showOriginal && <> · "{c.original}"</>}
         </span>
         {flags.length > 0 && (
