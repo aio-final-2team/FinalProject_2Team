@@ -25,9 +25,18 @@ export function CareSection({ classroomId, all }: { classroomId?: string; all?: 
   const [rejecting, setRejecting] = useState<CareItem | null>(null);
   const [reason, setReason] = useState("");
 
-  const open = (q.data ?? []).filter((c) => c.status === "received" || c.status === "assigned");
-  const closed = (q.data ?? []).filter((c) => c.status === "completed" || c.status === "rejected");
+  const [tab, setTab] = useState<"pickup" | "medication">("pickup");
+  const isOpen = (c: CareItem) => c.status === "received" || c.status === "assigned";
+  const everything = q.data ?? [];
+  const list = everything.filter((c) => c.type === tab);
+  const open = list.filter(isOpen);
+  const closed = list.filter((c) => c.status === "completed" || c.status === "rejected");
   const shown = more ? open : open.slice(0, FOLD);
+  const count = (t: "pickup" | "medication") => everything.filter((c) => c.type === t && isOpen(c)).length;
+  const TABS = [
+    { k: "pickup", label: "귀가", n: count("pickup") },
+    { k: "medication", label: "투약", n: count("medication") },
+  ] as const;
 
   const fail = (e: unknown, c: CareItem, what: string, retry: () => void) => {
     const conflict = e instanceof ApiError && e.status === 409;
@@ -45,7 +54,7 @@ export function CareSection({ classroomId, all }: { classroomId?: string; all?: 
     const what = c.next_action === "confirm" ? "확인" : "완료";
     setBusyId(c.id);
     decide.mutate(
-      { id: c.id, decision: c.next_action, version: c.version },
+      { id: c.id, decision: c.next_action, version: c.version, type: c.type },
       {
         onSuccess: () => toast({ kind: "ok", title: c.next_action === "confirm" ? "요청을 확인했어요" : "완료로 기록했어요", sub: c.next_action === "confirm" ? "보호자에게 확인했다는 알림이 가요" : "보호자에게 완료 알림이 가요" }),
         onError: (e) => fail(e, c, what, () => run(c)),
@@ -72,9 +81,16 @@ export function CareSection({ classroomId, all }: { classroomId?: string; all?: 
         <h2 className="text-footnote font-semibold text-ink2">오늘 들어온 귀가·투약 요청</h2>
         <span className="text-caption font-semibold text-ink2">{q.data ? `확인 필요 ${open.length}건` : ""}</span>
       </div>
+      <div className="mb-3 flex gap-2" role="tablist" aria-label="요청 종류">
+        {TABS.map((t) => (
+          <button key={t.k} type="button" role="tab" aria-selected={tab === t.k} onClick={() => { setTab(t.k); setMore(false); }} className={`h-9 rounded-full px-3.5 text-footnote font-semibold ${tab === t.k ? "bg-ink text-card" : "bg-card text-ink shadow-card"}`}>
+            {t.label} <span className="tabular-nums">{t.n}</span>
+          </button>
+        ))}
+      </div>
       <QueryState queries={[q]} skeleton={2} errorTitle="귀가·투약 요청을 불러오지 못했어요">
         {open.length === 0 ? (
-          <p className="rounded-lg bg-card p-4 text-center text-callout text-ink2 shadow-card">{closed.length ? `요청 ${closed.length}건을 모두 처리했어요` : "들어온 요청이 없어요"}</p>
+          <p className="rounded-lg bg-card p-4 text-center text-callout text-ink2 shadow-card">{closed.length ? `${TYPE[tab].label} 요청 ${closed.length}건을 모두 처리했어요` : `들어온 ${TYPE[tab].label} 요청이 없어요`}</p>
         ) : (
           <ul className="overflow-hidden rounded-lg bg-card shadow-card">
             {shown.map((c) => {

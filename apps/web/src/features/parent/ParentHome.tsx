@@ -47,7 +47,7 @@ export function ParentHome() {
           </div>
         </div>
         <div className="relative mx-auto max-w-[680px] pr-24 lg:pr-32">
-          <h1 className="mt-4 text-large-title font-bold tracking-[-0.025em]">{child ? `${nameI(child.display_name)}의 오늘` : "오늘"}</h1>
+          <h1 className="mt-4 text-large-title font-bold tracking-[-0.01em]">{child ? `${nameI(child.display_name)}의 오늘` : "오늘"}</h1>
           <p className="mt-0.5 text-footnote font-medium text-on-brand/80">{dateLabel(date)}</p>
           <p className="mt-2 text-callout font-medium text-on-brand/90">오늘도 아이의 하루를 함께 볼까요?</p>
           <Buddy face="basic" className="absolute -bottom-5 right-0 size-24 lg:-bottom-6 lg:size-28" />
@@ -62,7 +62,7 @@ export function ParentHome() {
               {todo.slice(0, 3).map((r) => (
                 <li key={r.id} className="[&+&]:border-t [&+&]:border-sep">
                   <Link to={`/parent/requests/${r.id}`} className="flex min-h-14 items-center gap-3 px-4 py-3 transition-colors active:bg-fill">
-                    <span aria-hidden className="grid size-9 shrink-0 place-items-center rounded-lg bg-tint text-caption font-bold text-accent-ink">{(TYPE_LABEL[r.type] ?? r.type).slice(0, 2)}</span>
+                    <span aria-hidden className="grid size-9 shrink-0 place-items-center rounded-lg bg-tint font-display text-caption font-bold text-accent-ink">{(TYPE_LABEL[r.type] ?? r.type).slice(0, 2)}</span>
                     <span className="min-w-0 flex-1">
                       <b className="block truncate text-headline font-semibold">{r.title ?? "제목 없음"}</b>
                       <span className="text-footnote font-bold text-lav">{term(r.status_label)}</span>
@@ -102,7 +102,7 @@ export function ParentHome() {
                 <p className="mb-1 text-footnote font-semibold text-ink2">오늘의 이야기</p>
                 {story.map((i, k) => (
                     <p key={k} className="mt-1 text-callout leading-relaxed">
-                      {i.source.type === "request" && <span className="mr-1.5 text-footnote font-semibold text-lav">내 요청</span>}
+                      {i.source.type === "request" && <span className="mr-1.5 font-display text-footnote font-semibold text-lav">내 요청</span>}
                       {i.value}
                     </p>
                   ))}
@@ -111,8 +111,8 @@ export function ParentHome() {
                 <dl className="mt-3 grid gap-2 text-callout sm:grid-cols-2">
                   {facts.map((f, k) => (
                     <div key={k} className="rounded-xl bg-tint px-3.5 py-3">
-                      <dt className="text-footnote font-bold text-accent-ink">{itemLabel(f)}</dt>
-                      <dd className="mt-0.5 min-w-0 leading-relaxed">{f.source.type === "request" && <span className="mr-1.5 text-footnote font-semibold text-lav">내 요청</span>}{f.value}</dd>
+                      <dt className="font-display text-footnote font-bold text-accent-ink">{itemLabel(f)}</dt>
+                      <dd className="mt-0.5 min-w-0 leading-relaxed">{f.source.type === "request" && <span className="mr-1.5 font-display text-footnote font-semibold text-lav">내 요청</span>}{f.value}</dd>
                     </div>
                   ))}
                 </dl>

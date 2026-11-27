@@ -75,6 +75,15 @@ export function OverviewPage() {
               <Icon name="chevR" className="size-4 shrink-0 text-ink2" />
             </Link>
 
+            <Link to="/director/class-consents" className="mt-3 flex items-center gap-3 rounded-lg bg-card p-3 shadow-card active:scale-[.99]">
+              <span className="grid size-10 shrink-0 place-items-center rounded-md bg-tint text-accent-ink"><Icon name="document" className="size-5" /></span>
+              <span className="min-w-0 flex-1">
+                <b className="block text-headline">보호자 동의 현황</b>
+                <span className="text-footnote text-ink2">반별로 아이마다 필수 동의를 확인해요</span>
+              </span>
+              <Icon name="chevR" className="size-4 shrink-0 text-ink2" />
+            </Link>
+
             <h2 className="mb-2 mt-6 px-1 text-footnote font-semibold text-ink2">담당 다시 정하기 기록</h2>
             {o.reassignments.length ? (
               <ul className="overflow-hidden rounded-lg bg-card shadow-card [&>li+li]:border-t [&>li+li]:border-sep">

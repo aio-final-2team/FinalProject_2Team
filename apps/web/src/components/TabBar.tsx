@@ -15,7 +15,7 @@ export const tabOn = (path: string, it: Pick<TabItem, "to" | "also" | "not">) =>
  */
 export function TabBar({ items, center, extra, className = "" }: { items: TabItem[]; center?: { to: string; label: string }; extra?: { icon: string; label: string; onClick: () => void }; className?: string }) {
   const { pathname } = useLocation();
-  const cell = "relative grid justify-items-center gap-0.5 text-caption font-semibold";
+  const cell = "relative grid justify-items-center gap-0.5 font-display text-caption font-semibold";
   const left = center ? items.slice(0, Math.ceil(items.length / 2)) : items;
   const right = center ? items.slice(Math.ceil(items.length / 2)) : [];
   const tab = (it: TabItem) => (
@@ -32,7 +32,7 @@ export function TabBar({ items, center, extra, className = "" }: { items: TabIte
       {left.map(tab)}
       {center && (
         <Link to={center.to} aria-label={center.label} className="grid justify-items-center">
-          <span className="-mt-5 grid size-[52px] place-items-center rounded-full bg-warm-accent text-on-warm shadow-float transition-transform duration-100 active:scale-95">
+          <span className="-mt-5 grid size-[52px] place-items-center rounded-full bg-brand-fill text-on-brand shadow-float active:scale-95">
             <Icon name="plus" className="size-6" />
           </span>
           <span className="sr-only">{center.label}</span>

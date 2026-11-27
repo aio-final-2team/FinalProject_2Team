@@ -39,8 +39,15 @@ export function useCareDecision() {
   const qc = useQueryClient();
   return useMutation({
     /* reject는 사유(reason_text 1~1000자)가 필요하고, 사유는 보호자에게 전달된다 */
-    mutationFn: (v: { id: string; decision: "confirm" | "complete" | "reject"; version: number; reason_text?: string }) =>
-      api(`/api/v1/requests/${v.id}/care-decisions`, { method: "POST", body: JSON.stringify({ decision: v.decision, version: v.version, ...(v.reason_text ? { reason_text: v.reason_text } : {}) }) }),
+    mutationFn: async (v: { id: string; decision: "confirm" | "complete" | "reject"; version: number; reason_text?: string; type?: CareType }) => {
+      /* 등록된 인계자로 접수된 귀가 요청은 confirm·complete에 같은 pickup_guardian_id를 다시 보낸다(문서 3.27). 미등록이면 생략한다 */
+      let guardian: string | undefined;
+      if (v.type === "pickup" && v.decision !== "reject") {
+        const d = await api<{ care?: { pickup_guardian_id?: string | null } | null }>(`/api/v1/requests/${v.id}`).catch(() => null);
+        guardian = d?.care?.pickup_guardian_id ?? undefined;
+      }
+      return api(`/api/v1/requests/${v.id}/care-decisions`, { method: "POST", body: JSON.stringify({ decision: v.decision, version: v.version, ...(guardian ? { pickup_guardian_id: guardian } : {}), ...(v.reason_text ? { reason_text: v.reason_text } : {}) }) });
+    },
     onSettled: () => qc.invalidateQueries({ queryKey: ["care-requests"] }),
   });
 }
