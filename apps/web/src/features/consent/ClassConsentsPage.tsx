@@ -59,7 +59,7 @@ export function ClassConsentsPage({ role }: { role: Exclude<Role, "parent"> }) {
             ))}
           </div>
           {rows.length === 0 ? (
-            <div className="mt-6"><StateView kind="empty" audience="staff" title="모든 보호자가 동의했어요" sub="미동의 아이가 없어요" /></div>
+            <div className="mt-6"><StateView kind="empty" audience="staff" title="모든 보호자가 동의했어요" sub="동의 전인 아이가 없어요" /></div>
           ) : (
             <ul className="mt-3 overflow-hidden rounded-lg bg-card shadow-card [&>li+li]:border-t [&>li+li]:border-sep">
               {rows.map((c) => (
