@@ -114,7 +114,7 @@ def test_request_graph_writer_and_checker_mask_guardian_body(monkeypatch):
     monkeypatch.setattr(answer_graph, "_ask_writer",
                         lambda model, prompt, payload, trace: sent.setdefault("write", payload) and None)
     monkeypatch.setattr(answer_graph, "_review",
-                        lambda model, question, draft, chunks, attempt, trace: sent.setdefault("check", question) and [])
+                        lambda model, question, draft, chunks, attempt, trace, today=None: sent.setdefault("check", question) and [])
     state = {"request_id": "r1", "parallel": {"chunks": []}, "draft": {"text": ""}}
     graph_agent._write_request(state)
     graph_agent._check_request(state)
