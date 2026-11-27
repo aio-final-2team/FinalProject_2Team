@@ -12,7 +12,7 @@ export function DocumentPage() {
   const d = q.data;
   return (
     <div className="mx-auto max-w-[680px] px-4 pb-10">
-      <ScreenTop back={{ to: "/teacher/class", label: "오늘 우리 반" }} title={d?.title ?? "자료"} sub={d ? `${DOC_TYPE_LABEL[d.doc_type] ?? "자료"} · ${d.effective_from}부터${d.effective_to ? ` ${d.effective_to}까지` : ""}` : undefined} />
+      <ScreenTop back={{ to: "/teacher/class", label: "식단표와 가정통신문" }} title={d?.title ?? "자료"} sub={d ? `${DOC_TYPE_LABEL[d.doc_type] ?? "자료"} · ${d.effective_from}부터${d.effective_to ? ` ${d.effective_to}까지` : ""}` : undefined} />
       <QueryState queries={[q]} skeleton={3} errorTitle="자료를 불러오지 못했어요">
         {d && (
           <div className="mt-4 grid grid-cols-[minmax(0,1fr)] gap-3">
