@@ -16,7 +16,7 @@ from app.core.schedule import KST, due_at
 from app.modules.requests.complaints import REPEAT_REPORT_AT, repeat_count
 from app.modules.requests.events import record, set_status
 from app.modules.consultations.slots import propose_slots
-from app.modules.documents.answer import answer_for_request, graph_enabled, save_evidence
+from app.modules.documents.answer import answer_for_request, asked_on, graph_enabled, save_evidence
 from app.modules.documents.public_sources import attach_law_evidence, forecast_evidence, prefetch_public
 
 
@@ -78,7 +78,8 @@ def run_request(request_id, prepared_answer=None, prepared_fields=None):
     # 법령·예보 공공 API(법령은 최악 약 20초)는 DB 연결을 잡기 전에 가져와 둔다(T52). 저장만 아래 트랜잭션에서 한다.
     first = prepared_fields if prepared_fields is not None else validate_proposal(initial["type"], initial["body"], proposal)
     notice = direct_notice_kind(initial["type"], initial["body"], first)
-    prefetched = {} if notice else prefetch_public(initial["type"], initial["body"], first["topic_key"], datetime.now(KST).date(),
+    prefetched = {} if notice else prefetch_public(initial["type"], initial["body"], first["topic_key"],
+                                 asked_on(initial) or datetime.now(KST).date(),
                                  with_forecast=graph_enabled() and prepared_answer is None and prepared_fields is None,
                                  risk_category=first.get("risk_category"))
     drafted = None if notice else (prepared_answer if prepared_answer is not None

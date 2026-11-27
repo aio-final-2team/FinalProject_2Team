@@ -105,7 +105,9 @@ def _search_request(request_id):
         if found:
             return Gathered(found, law_unchecked=tools.law_unchecked)
     # 고정 검색(대역)에서만 질문 낱말(event_day)로 예보를 가져와요. 외부 API는 트랜잭션 밖이에요.
-    forecast = question_forecast(req["org_id"], req["body"], datetime.now(KST).date()) if req["type"] == "inquiry" else None
+    # 날짜는 초안과 같이 질문 받은 날 기준이에요(전날 온 "내일 비 와요?"를 오늘 처리해도 접수 다음 날 예보).
+    forecast = (question_forecast(req["org_id"], req["body"], asked_on(req) or datetime.now(KST).date())
+                if req["type"] == "inquiry" else None)
     types = ("notice", "policy") if req["type"] == "complaint" else ("notice", "schedule", "menu", "policy")
     for doc_type in types:
         for attempt in range(2):

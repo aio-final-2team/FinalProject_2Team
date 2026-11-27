@@ -5,6 +5,7 @@ from dataclasses import replace
 from datetime import datetime, timedelta
 from uuid import uuid4
 
+import pytest
 from sqlalchemy import text
 
 from agents.llm import ModelError
@@ -212,3 +213,42 @@ def test_follow_up_redraft_failure_leaves_empty_card(db_client, seeded_db, monke
     after, _ = follow_up(db_client, card)
     assert after["draft"]["text"] == "" and after["draft"]["previous_text"] == "[TEST] 지난번 회신"
     assert after["check_result"] is None and after["version"] == card["version"] + 1
+
+
+class DayWeather(FakeWeather):
+    """예보를 어느 날로 불렀는지 남겨요."""
+    days = []
+
+    def get_daily_forecast(self, day=None, **kwargs):
+        DayWeather.days.append(day)
+        return super().get_daily_forecast(day=day, **kwargs)
+
+
+def yesterday_rain(seeded_db):
+    """어제 들어온 "내일 비 오나요?"를 오늘 처리하는 요청이에요."""
+    with seeded_db.begin() as connection:
+        return connection.scalar(text("""
+            INSERT INTO requests (org_id,classroom_id,child_id,requester_id,client_request_id,type,body,title,created_at)
+            VALUES (:org,:class,:child,:parent,:key,'inquiry',:body,:body,:at) RETURNING id
+        """), {"org": seed.ORG, "class": seed.CLASS_STAR, "child": seed.CHILD, "parent": seed.PARENT,
+               "key": str(uuid4()), "body": RAIN, "at": datetime.now(KST) - timedelta(days=1)})
+
+
+@pytest.mark.parametrize("path", ["agent_fallback", "fixed", "collab_graph"])
+def test_forecast_day_follows_the_day_the_question_came_in(db_client, seeded_db, monkeypatch, path):
+    """#410 영민님 리뷰: 고정 검색으로 넘어가도 예보 날은 처리한 날이 아니라 질문 받은 날의 다음 날이에요."""
+    from app.modules.requests import graph_agent
+    use_agent(monkeypatch, [], "예보", "강수확률 최대 60%", gather_error=ModelError("[TEST] 자료 찾기 실패"))
+    with seeded_db.begin() as connection:
+        seed_documents(connection)
+    monkeypatch.setattr(public_sources, "WeatherClient", DayWeather)
+    DayWeather.days = []
+    if path == "fixed":
+        monkeypatch.setenv("ANSWER_GATHER", "fixed")
+    request_id = yesterday_rain(seeded_db)
+    if path == "collab_graph":
+        graph_agent._search_request(str(request_id))  # 협업 그래프의 근거 찾기 노드
+    else:
+        agent_stub.run_request(request_id)
+    today = datetime.now(KST).date()
+    assert DayWeather.days == [today]  # 어제 기준 '내일' = 오늘. 처리일 기준이면 내일로 잘못 불러요

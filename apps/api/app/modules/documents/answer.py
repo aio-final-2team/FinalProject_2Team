@@ -149,7 +149,7 @@ def answer_for_request(req, writer=None, checker=None, forecast=None):
                                   classroom_id=req["classroom_id"], top_k=8)["chunks"]
         if doc_type == "schedule" and not late["tried"]:
             late["tried"] = True  # 자료 찾는 AI가 못 모아 고정 검색으로 왔어요. 외부 API는 트랜잭션 밖에서 한 번만
-            late["forecast"] = question_forecast(req["org_id"], req["body"], datetime.now(KST).date())
+            late["forecast"] = question_forecast(req["org_id"], req["body"], asked_on(req) or datetime.now(KST).date())
         if late["forecast"] and doc_type == "schedule":
             chunks = [{k: v for k, v in late["forecast"].items() if k != "quote"}, *chunks]
         if doc_type == "notice":
