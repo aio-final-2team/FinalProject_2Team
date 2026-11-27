@@ -224,7 +224,7 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
         <div className="flex gap-2.5 rounded-2xl bg-tint px-4 py-3 text-accent-ink">
           <Icon name="urgent" className="mt-0.5 size-5" />
           <p className="text-[14px]">
-            <b>AI 판단 불확실</b>
+            <b>분류 확인 필요</b>
             <br />
             교직원 비난인지 확신이 낮아요. 일반이나 긴급으로 다시 분류해 주세요.
           </p>
@@ -328,13 +328,30 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
 
       {c.history.length > 0 && (
         <Section title="처리 이력">
-          <ol className="grid gap-1.5 px-1 text-sub text-ink2">
-            {c.history.map((h, i) => (
+          {/* 처리 이력은 가장 최근 한 줄만 보이고 나머지는 접어 둔다 */}
+          {(() => {
+            const row = (h: (typeof c.history)[number], i: number) => (
               <li key={i}>
                 <b className="text-ink">{h.who}</b> · {h.what} · {fmtDateTime(h.at)}
               </li>
-            ))}
-          </ol>
+            );
+            const last = c.history[c.history.length - 1];
+            const before = c.history.slice(0, -1);
+            return (
+              <div className="grid gap-1.5 px-1 text-sub text-ink2">
+                <ol className="grid gap-1.5">{row(last, c.history.length - 1)}</ol>
+                {before.length > 0 && (
+                  <details className="group">
+                    <summary className="inline-flex min-h-9 cursor-pointer list-none items-center text-footnote font-semibold text-accent-ink marker:hidden [&::-webkit-details-marker]:hidden">
+                      <span className="group-open:hidden">앞의 이력 {before.length}건 보기</span>
+                      <span className="hidden group-open:inline">앞의 이력 접기</span>
+                    </summary>
+                    <ol className="mt-1.5 grid gap-1.5">{before.map(row)}</ol>
+                  </details>
+                )}
+              </div>
+            );
+          })()}
         </Section>
       )}
 

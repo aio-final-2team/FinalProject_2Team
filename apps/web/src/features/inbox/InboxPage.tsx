@@ -46,7 +46,7 @@ function Row({ c, active, to, role }: { c: Card; active: boolean; to: string; ro
   const showOriginal = !!c.original && !norm(c.original).startsWith(norm(c.title)) && !norm(c.title).startsWith(norm(c.original));
   const flags: { t: string; tone: "action" | "answered" | "done" | "wait" | "urgent" }[] = [];
   if (c.risk === "urgent") flags.push({ t: "초안 없음", tone: "urgent" });
-  if (c.risk === "judge") flags.push({ t: "AI 판단 불확실", tone: "action" });
+  if (c.risk === "judge") flags.push({ t: "분류 확인 필요", tone: "action" });
   if (c.repeatCount && c.repeatCount >= 3) flags.push({ t: `반복 ${c.repeatCount}번째`, tone: "action" });
   if (c.escalated) flags.push({ t: "원장 보고", tone: "wait" });
   if (c.parentConfirmedAt && c.status === "sent_or_booked") flags.push({ t: "처리 완료 대기", tone: "answered" });
@@ -68,7 +68,7 @@ function Row({ c, active, to, role }: { c: Card; active: boolean; to: string; ro
         <span className="text-[13px] text-ink2">
           {role === "director" && <span className="mr-1 font-semibold text-ink">{c.className} ·</span>}
           {c.childName && <span className="mr-1 font-semibold text-ink">{c.childName} ·</span>}
-          {c.risk === "judge" ? "판단 필요 · " : ""}{TYPE_LABEL[c.type]}
+          {c.risk === "judge" ? "판단 필요 · " : ""}{c.kind === "rule_proposal" ? "규칙 제안" : TYPE_LABEL[c.type]}
           {showOriginal && <> · "{c.original}"</>}
         </span>
         {flags.length > 0 && (
@@ -100,7 +100,7 @@ export function InboxPage({ role }: { role: Exclude<Role, "parent"> }) {
   const list = (data?.items ?? [])
     .sort((a, b) => (filter === "review" ? reviewRank(a) - reviewRank(b) : 0) || +new Date(a.createdAt) - +new Date(b.createdAt));
   const q = `?filter=${filter}${type === "all" ? "" : `&type=${type}`}`;
-  const TYPES: { key: TypeFilter; label: string }[] = [{ key: "all", label: "전체" }, { key: "complaint", label: "민원" }, { key: "consultation", label: "상담" }, { key: "inquiry", label: "문의" }];
+  const TYPES: { key: TypeFilter; label: string }[] = [{ key: "all", label: "전체" }, { key: "complaint", label: "민원" }, { key: "consultation", label: "상담" }, { key: "inquiry", label: "문의" }, ...(data?.typeCounts.rule || type === "rule" ? [{ key: "rule" as const, label: "규칙 제안" }] : [])];
   const base = `/${role}/inbox`;
   /* 상세에서 목록으로 돌아오면(휴대폰) 보던 위치로 되돌린다. 받은함을 완전히 떠나면 위치를 지운다 */
   useEffect(() => {
@@ -158,7 +158,7 @@ export function InboxPage({ role }: { role: Exclude<Role, "parent"> }) {
         {isError && (
           <StateView kind="error" audience="staff" title="카드를 불러오지 못했어요" sub={dataUpdatedAt ? `마지막으로 불러온 시각 ${new Date(dataUpdatedAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}` : "연결을 확인해 주세요"} action={{ label: "다시 시도", run: () => refetch() }} />
         )}
-        {data && list.length === 0 && <StateView kind="empty" audience="staff" title={EMPTY[filter]} sub="새 카드가 오면 숫자로 알려 드려요" />}
+        {data && list.length === 0 && <StateView kind="empty" audience="staff" title={EMPTY[filter]} sub="새 요청이 오면 숫자로 알려 드려요" />}
         {aiAnswered.length > 0 && (
           <section className="mt-4 grid gap-2" aria-label="바로 안내한 요청">
             <h3 className="px-1 text-sub font-medium text-ink2">바로 안내한 요청 <span className="tabular-nums">{aiAnswered.length}건</span></h3>
