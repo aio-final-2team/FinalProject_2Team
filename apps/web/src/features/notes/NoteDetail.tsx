@@ -12,10 +12,10 @@ import { Icon } from "@/components/Icon";
 import { useToast } from "@/components/Toast";
 import { useRecords } from "@/features/records/store";
 import { fmtDateTime } from "@/domain/datetime";
-import { CHECK_KIND, COMMON_KEYS, NOTE_STATUS, SOURCE_LABEL, dateLabel, itemLabel, nameI, noMd, todayKST, type DailyNote, type NoteItem, type OpenCheck } from "@/domain/notes";
+import { COMMON_KEYS, NOTE_STATUS, SOURCE_LABEL, checkActions, checkTitle, dateLabel, itemLabel, nameI, noMd, todayKST, type DailyNote, type NoteItem, type OpenCheck } from "@/domain/notes";
 
 /**
- * 아이별 알림장 (API 25 PATCH). 줄마다 출처, 검사 AI가 짚은 곳(open_checks[].kind),
+ * 아이별 알림장 (API 25 PATCH). 줄마다 출처, 검사 AI가 짚은 곳(제목=problem, 할 일=action, 버튼=kind),
  * AI 초안 테두리(디자인 시스템 7.16), 확인하면 ready, 보내기 전까지 되돌릴 수 있다.
  */
 export function NoteDetail() {
@@ -56,6 +56,8 @@ function Detail({ note, notes, name, names }: { note: DailyNote; notes: DailyNot
   const [items, setItems] = useState<NoteItem[]>(note.content.items);
   const [editing, setEditing] = useState<number | null>(null);
   const [draftText, setDraftText] = useState("");
+  /* 확인 항목에서 '직접 쓰기'로 새로 연 빈 아이 메모 줄. 취소하면 다시 뺀다 */
+  const [added, setAdded] = useState(false);
   const [err, setErr] = useState("");
   const open = note.open_checks;
   const locked = note.status === "sent";
@@ -84,13 +86,26 @@ function Detail({ note, notes, name, names }: { note: DailyNote; notes: DailyNot
     save({ content: { items: nextItems }, resolved_checks: [c.id] }, "문장을 뺐어요");
   };
   const keep = (c: OpenCheck) => save({ resolved_checks: [c.id] }, "확인할 곳을 해결했어요");
-  /* 답이 필요한 요청은 그 줄을 고치기 상태로 열어 담임이 사실만 한 줄 채우게 한다 */
-  const writeAnswer = (c: OpenCheck) => {
-    const i = items.findIndex((it) => it.key === c.item_key);
-    if (i < 0) return;
+  /* 짚은 줄을 고치기 상태로 열고 입력칸에 커서를 둔다(#407 '답 한 줄 쓰기' 동작). 아이 메모 줄이 빠졌으면 빈 줄을 하나 연다 */
+  const canEdit = (c: OpenCheck) => c.item_key === "child" || items.some((it) => it.key === c.item_key);
+  const editLine = (c: OpenCheck) => {
+    let list = items;
+    let i = items.findIndex((it) => it.key === c.item_key);
+    if (i < 0) {
+      if (c.item_key !== "child") return;
+      i = Math.min(1, items.length);
+      list = [...items.slice(0, i), { key: "child", label: "아이 메모", value: "", source: { type: "teacher_input" } }, ...items.slice(i)];
+      setItems(list);
+      setAdded(true);
+    }
     setEditing(i);
-    setDraftText(items[i].value);
-    window.setTimeout(() => document.querySelector<HTMLTextAreaElement>(`textarea[aria-label="${itemLabel(items[i])} 고치기"]`)?.focus(), 0);
+    setDraftText(list[i].value);
+    window.setTimeout(() => document.querySelector<HTMLTextAreaElement>(`textarea[aria-label="${itemLabel(list[i])} 고치기"]`)?.focus(), 0);
+  };
+  const cancelEdit = () => {
+    if (added && editing !== null) setItems(items.filter((_, j) => j !== editing));
+    setAdded(false);
+    setEditing(null);
   };
   /* 빠진 보호자 요청은 요청 원문을 읽어 그 줄(귀가·투약·오늘 하루)로 넣는다 */
   const missed = open.find((c) => c.kind === "request_missed" && c.request_id);
@@ -111,6 +126,7 @@ function Detail({ note, notes, name, names }: { note: DailyNote; notes: DailyNot
     const nextItems = items.map((it, j) => (j === i ? { ...it, value: draftText.trim() } : it));
     setItems(nextItems);
     setEditing(null);
+    setAdded(false);
     save({ content: { items: nextItems }, resolved_checks: open.filter((c) => c.item_key === items[i].key).map((c) => c.id) }, "고친 내용을 저장했어요");
   };
   const confirm = () =>
@@ -162,39 +178,41 @@ function Detail({ note, notes, name, names }: { note: DailyNote; notes: DailyNot
             <span>{open.length}개 남음</span>
           </div>
           {open.map((c) => {
-            const k = CHECK_KIND[c.kind] ?? { title: c.problem };
+            const k = checkActions(c);
             const named = c.kind === "other_child" ? Object.values(names).find((n) => c.sentence?.includes(n)) : undefined;
             return (
               <div key={c.id} className="grid gap-2 rounded-lg bg-card p-3 shadow-card">
                 <div className="flex gap-2">
                   <Icon name="ai" className="mt-0.5 size-5 shrink-0 text-accent" />
                   <div>
-                    <b className="text-callout">{k.title}</b>
-                    <p className="text-footnote text-ink2">
-                      {c.problem}
+                    {/* 제목은 무엇이 문제인지 한 줄(problem). 종류별 고정 제목은 problem이 없을 때만 */}
+                    <b className="text-callout">
+                      {checkTitle(c)}
                       {named ? ` (${named})` : ""}
-                    </p>
+                    </b>
                     {c.sentence && <p className="mt-1 rounded-sm bg-tint px-2 py-1 text-footnote">“{c.sentence}”</p>}
                   </div>
                 </div>
-                {!locked && (
-                  <div className="flex flex-wrap gap-2">
-                    {c.kind === "request_missed" && (
-                      <SubButton small onClick={() => addRequest(c)} disabled={patch.isPending || !req.data}>
+                {(c.action || !locked) && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    {/* 할 일 한 줄(action)은 버튼 옆에. 버튼은 kind로만 고른다 */}
+                    {c.action && <p className="mr-auto text-footnote font-semibold text-accent-ink">{c.action}</p>}
+                    {!locked && c.kind === "request_missed" && (
+                      <SubButton small onClick={() => addRequest(c)} disabled={patch.isPending || !req.data || added}>
                         {req.isLoading ? "요청을 불러오는 중…" : `요청 내용 넣기${req.data ? ` · “${req.data.request.title}”` : ""}`}
                       </SubButton>
                     )}
-                    {c.kind === "request_unanswered" && (
-                      <SubButton small onClick={() => writeAnswer(c)} disabled={patch.isPending}>
-                        {k.fix}
+                    {!locked && k.remove && c.sentence && (
+                      <SubButton small onClick={() => removeSentence(c)} disabled={patch.isPending || added}>
+                        {k.remove}
                       </SubButton>
                     )}
-                    {c.kind !== "request_unanswered" && k.fix && c.sentence && (
-                      <SubButton small onClick={() => removeSentence(c)} disabled={patch.isPending}>
-                        {k.fix}
+                    {!locked && k.edit && canEdit(c) && (
+                      <SubButton small onClick={() => editLine(c)} disabled={patch.isPending || editing !== null}>
+                        {k.edit}
                       </SubButton>
                     )}
-                    {k.keep && (
+                    {!locked && k.keep && (
                       <SubButton small tone="gray" onClick={() => keep(c)} disabled={patch.isPending}>
                         {k.keep}
                       </SubButton>
@@ -217,7 +235,7 @@ function Detail({ note, notes, name, names }: { note: DailyNote; notes: DailyNot
             <div key={i} className={`py-2.5 ${i ? "border-t border-sep" : ""}`}>
               <div className="flex items-center justify-between gap-2">
                 <span className="text-footnote font-semibold text-ink2">{it.key === "child" ? `${nameI(name)}의 오늘` : itemLabel(it)}</span>
-                {!locked && editing !== i && (
+                {!locked && editing !== i && !added && (
                   <button
                     className="text-footnote font-semibold text-accent"
                     onClick={() => {
@@ -240,7 +258,7 @@ function Detail({ note, notes, name, names }: { note: DailyNote; notes: DailyNot
                     className="resize-none rounded-md border-[1.5px] border-accent bg-card px-3 py-2 text-body outline-none shadow-[0_0_0_3px_var(--tint)]"
                   />
                   <div className="flex justify-end gap-2">
-                    <SubButton small tone="gray" onClick={() => setEditing(null)}>
+                    <SubButton small tone="gray" onClick={cancelEdit}>
                       취소
                     </SubButton>
                     <SubButton small onClick={() => saveEdit(i)} disabled={!draftText.trim()}>

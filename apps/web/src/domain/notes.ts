@@ -13,7 +13,6 @@ export type CheckKind =
   | "absent"
   | "draft_failed"
   | "check_failed"
-  | "request_unanswered"
   | "request_missed"
   | "return_limit";
 
@@ -28,7 +27,10 @@ export type OpenCheck = {
   id: string;
   item_key: ItemKey;
   kind: CheckKind;
+  /** 무엇이 문제인지 한 줄(검사 AI나 코드가 씀). 화면 제목으로 그대로 보여 준다 */
   problem: string;
+  /** 선생님이 할 일 한 줄. 없으면 null */
+  action?: string | null;
   sentence: string | null;
   request_id?: string | null;
 };
@@ -64,20 +66,26 @@ export const NOTE_STATUS: Record<NoteStatus, { label: string; cls: string }> = {
   sent: { label: "보냈어요", cls: "text-ok" },
 };
 
-/** 확인 항목 종류별 제목과 선생님이 고를 수 있는 일 */
-export const CHECK_KIND: Record<CheckKind, { title: string; short: string; fix?: string; keep?: string }> = {
-  not_in_memo: { title: "메모에 없는 말이 들어갔어요", short: "메모에 없는 말", fix: "이 문장 빼기", keep: "실제로 있었던 일이에요" },
-  sensitive: { title: "민감한 정보가 들어갔어요", short: "민감 정보", fix: "이 문장 빼기", keep: "보내도 되는 내용이에요" },
-  other_child: { title: "다른 아이 이야기가 들어갔어요", short: "다른 아이 이름", fix: "이 문장 빼기", keep: "그대로 두기" },
-  date_check: { title: "날짜를 확인해 주세요", short: "날짜 확인", keep: "확인했어요" },
-  absent: { title: "결석한 아이예요", short: "결석", keep: "확인했어요" },
-  draft_failed: { title: "이 아이 초안을 만들지 못했어요", short: "초안 실패", keep: "직접 쓰고 확인할게요" },
-  check_failed: { title: "검사를 하지 못했어요", short: "검사 실패", keep: "직접 읽고 확인했어요" },
-  /* 서버(검사 AI)가 이 종류를 보내기 전에는 나타나지 않는다. 종류 이름은 영민님과 맞춰야 한다 */
-  request_unanswered: { title: "보호자 요청에 답이 필요해요", short: "답변 필요", fix: "답 한 줄 쓰기" },
-  request_missed: { title: "보호자 요청이 빠졌어요", short: "보호자 요청 누락", keep: "넣지 않기" },
-  return_limit: { title: "AI가 고쳐도 남은 문제가 있어요", short: "남은 문제", keep: "직접 확인했어요" },
+type CheckActions = { title: string; remove?: string; edit?: string; keep?: string };
+/**
+ * 확인 항목 종류(kind)는 띄울 행동 버튼만 정한다. 제목은 서버가 준 problem, 할 일은 action 문장을 그대로 쓴다.
+ * title은 problem이 비었을 때만 쓰는 대체 문구다. remove=걸린 문장 빼기, edit=그 줄 고치기 열기, keep=그대로 두고 해결.
+ */
+export const CHECK_KIND: Record<CheckKind, CheckActions> = {
+  not_in_memo: { title: "메모에 없는 말이 들어갔어요", remove: "이 문장 빼기", edit: "직접 고치기", keep: "실제로 있었던 일이에요" },
+  sensitive: { title: "보내기 전에 확인할 내용이 있어요", remove: "이 문장 빼기", edit: "직접 고치기", keep: "보내도 되는 내용이에요" },
+  other_child: { title: "다른 아이 이야기가 들어갔어요", remove: "이 문장 빼기", edit: "직접 고치기", keep: "그대로 두기" },
+  date_check: { title: "날짜를 확인해 주세요", edit: "직접 고치기", keep: "확인했어요" },
+  absent: { title: "결석한 아이예요", edit: "직접 고치기", keep: "확인했어요" },
+  draft_failed: { title: "이 아이 초안을 만들지 못했어요", edit: "직접 쓰기", keep: "직접 쓰고 확인할게요" },
+  check_failed: { title: "검사를 하지 못했어요", edit: "직접 고치기", keep: "직접 읽고 확인했어요" },
+  request_missed: { title: "보호자 요청이 빠졌어요", keep: "넣지 않기" },
+  return_limit: { title: "AI가 고쳐도 남은 문제가 있어요", edit: "직접 고치기", keep: "직접 확인했어요" },
 };
+/** 화면이 모르는 종류: 제목은 problem, 버튼은 일반 확인 */
+export const GENERAL_CHECK: CheckActions = { title: "선생님 확인이 필요해요", edit: "직접 고치기", keep: "확인했어요" };
+export const checkActions = (c: OpenCheck): CheckActions => CHECK_KIND[c.kind] ?? GENERAL_CHECK;
+export const checkTitle = (c: OpenCheck) => c.problem?.trim() || checkActions(c).title;
 
 /** 서버는 투약 줄과 귀가 줄 이름을 둘 다 "보호자 요청"으로 준다. 무슨 요청인지 알 수 있게 종류로 바꾼다 */
 export const itemLabel = (it: { key: string; label: string }) => (it.key === "medication" ? "투약" : it.key === "pickup" ? "귀가" : it.label);

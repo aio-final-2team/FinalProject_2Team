@@ -118,8 +118,9 @@ def _validated(result, payload):
             for check in row["open_checks"]:
                 if (isinstance(check, dict) and isinstance(check.get("kind"), str)
                         and check["kind"] not in get_args(OpenCheck.model_fields["kind"].annotation)):
-                    log.warning("알림장 확인 종류 미지원 kind=%s", check["kind"])
-                    check = {**check, "kind": "check_failed"}
+                    # 모르는 행동 종류는 일반 확인(sensitive: 빼기·직접 고치기·그대로 보내기) 버튼으로 두고 problem·action은 살린다
+                    log.warning("알림장 확인 종류 미지원 kind=%s → sensitive", check["kind"])
+                    check = {**check, "kind": "sensitive"}
                 checks.append(OpenCheck.model_validate(check).model_dump(mode="json"))
             if len({c["id"] for c in checks}) != len(checks):
                 raise ValueError("확인 ID 중복")

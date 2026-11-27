@@ -732,10 +732,10 @@ T12 화면 지도에 나온 화면들이 조회 응답에서 쓰는 칸을 여�
 | `items[].source.type` | `teacher_input`·`document`·`request` | 순서대로 담임 입력(`daily_note_inputs`), 원 자료(식단·일정), 학부모 요청(문의·투약·귀가) |
 | `items[].source.document_id`·`document_title` | — | `document`일 때 |
 | `items[].source.request_id` | — | `request`일 때 |
-| `open_checks[] { id, item_key, kind, problem, sentence, request_id? }` | — | 확인할 항목. `id`·`item_key`·`kind`·`problem`은 필수이고, 그중 `problem`은 선생님이 읽는 설명이다. `sentence`는 문제가 걸린 초안 문장이며 없으면 null이다. `request_id`는 선택 칸(UUID)이라 생략하거나 null로 둘 수 있고, 보호자 요청 누락일 때 해당 요청 ID를 넣는다. `resolved_checks[]`에는 `id`만 보낸다 |
-| `open_checks[].kind` | `not_in_memo`·`sensitive`·`other_child`·`date_check`·`absent`·`draft_failed`·`check_failed`·`request_missed`·`return_limit` | 순서대로 메모에 없음·민감 정보·다른 아이·날짜 확인·결석·아이 초안 실패·검사 실패·보호자 요청 누락·AI 수정 한도 초과 |
+| `open_checks[] { id, item_key, kind, problem, action?, sentence, request_id? }` | — | 확인할 항목. `id`·`item_key`·`kind`·`problem`은 필수이고, 그중 `problem`은 무엇이 문제인지 한 줄로, 화면 제목으로 그대로 보인다. `action`은 선생님이 할 일 한 줄(선택, 없으면 null)이다. 둘 다 검사 AI가 자기 말로 쓰고, 코드가 만드는 확인은 코드 문구를 쓴다. `sentence`는 문제가 걸린 초안 문장이며 없으면 null이다. `request_id`는 선택 칸(UUID)이라 생략하거나 null로 둘 수 있고, 보호자 요청 누락일 때 해당 요청 ID를 넣는다. `resolved_checks[]`에는 `id`만 보낸다 |
+| `open_checks[].kind` | `not_in_memo`·`sensitive`·`other_child`·`date_check`·`absent`·`draft_failed`·`check_failed`·`request_missed`·`return_limit` | 화면에 띄울 행동 버튼 종류. 순서대로 메모에 없음·보내기 전 선생님 확인(일반)·다른 아이·날짜 확인·결석·아이 초안 실패·검사 실패·보호자 요청 누락·AI 수정 한도 초과. 무엇이 문제인지는 `problem`이 말한다 |
 
-`return_limit`의 `problem` 예시는 "AI가 두 번 고쳐도 남은 문제가 있어요. 직접 확인해 주세요"다. 다른 확인 항목과 함께 해결해야 `ready`로 확인하고 발송할 수 있다. 그래프가 백엔드에서 아직 지원하지 않는 문자열 종류를 주면 백엔드는 초안을 보존하고 그 항목의 `kind`만 `check_failed`로 바꾼다. 원래 종류 이름은 로그에만 남기고 `problem`에 붙이지 않는다. 나머지 형식·출처 검증은 그대로 적용하며 `end`·`handoff_reason`은 저장하지 않는다.
+`return_limit`의 `problem` 예시는 "AI가 두 번 고쳐도 남은 문제가 있어요", `action`은 "직접 확인해 주세요"다. 다른 확인 항목과 함께 해결해야 `ready`로 확인하고 발송할 수 있다. 그래프가 백엔드에서 아직 지원하지 않는 문자열 종류를 주면 백엔드는 초안을 보존하고 그 항목의 `kind`만 일반 확인인 `sensitive`로 바꾼다. `problem`·`action`은 그대로 살리고, 원래 종류 이름은 로그에만 남긴다. 나머지 형식·출처 검증은 그대로 적용하며 `end`·`handoff_reason`은 저장하지 않는다.
 
 학부모가 받는 알림장(`sent`)의 `open_checks`는 늘 빈 목록이다(DB 제약).
 
@@ -2226,18 +2226,18 @@ def decide(card_id: UUID, body: CardDecision, user: User = Depends(current_staff
 | `requests[]` | object[] | 필수 | 5.5.1과 같다 |
 | `draft[]` | object[] | 필수 | 5.5.1이 쓴 줄 `{ key, label, value, source }` |
 
-모델의 결과는 `{"checks": [{"item_key", "kind", "problem", "sentence"}]}`이고, `kind`는 `not_in_memo`·`sensitive`·`other_child`·`date_check`·`absent` 다섯 값만 받는다. 여기에 코드가 다른 아이 이름(`other_child`), 보호자 요청 누락(`request_missed`), 투약 요청·옮기지 않은 메모·답하지 못한 문의(`sensitive`)를 더한다. 이렇게 합친 항목을 `open_checks[] { id, item_key, kind, problem, sentence, request_id? }`로 저장한다. 결과 ID는 확인 항목 ID(`open_checks[].id`, 저장할 때 UUID로 바꾼다)이고, 항목이 하나라도 있으면 알림장 상태는 `needs_check`다. 업무상으로는 담임이 보내기 전에 꼭 봐야 할 곳이라는 뜻이다. 항목이 남아 있으면 발송이 잠긴다(3.19.1).
+모델의 결과는 `{"checks": [{"item_key", "kind", "problem", "action", "sentence"}]}`이다. `problem`(무엇이 문제인지)과 `action`(선생님이 할 일)은 검사 AI가 한 줄씩 자기 말로 쓰고, `kind`는 화면에 띄울 행동 버튼 종류로 `not_in_memo`·`sensitive`·`other_child`·`date_check`·`absent` 중에서 고른다. 여기에 코드가 다른 아이 이름(`other_child`), 보호자 요청 누락(`request_missed`), 투약 요청 사람 확인(`sensitive`, 제목은 투약 문장)을 더한다. 이렇게 합친 항목을 `open_checks[] { id, item_key, kind, problem, action?, sentence, request_id? }`로 저장한다. 결과 ID는 확인 항목 ID(`open_checks[].id`, 저장할 때 UUID로 바꾼다)이고, 항목이 하나라도 있으면 알림장 상태는 `needs_check`다. 업무상으로는 담임이 보내기 전에 꼭 봐야 할 곳이라는 뜻이다. 항목이 남아 있으면 발송이 잠긴다(3.19.1).
 
-`not_in_memo`는 검사 AI가 아이 메모 줄을 메모·반 공통·식단과 대조해 근거 없는 사실·이유·평가나 반 활동을 그 아이가 했다는 서술을 찾은 결과다. 병명·"괜찮아요" 같은 낱말을 고정 금지어 목록과 대조하는 코드는 없다. `code_checks()`는 메모·아이별 초안에 있는 다른 아이 이름과 요청별 출처 누락을 검사하고, 초안에 옮긴 투약 요청에는 `sensitive`를 남긴다. 메모 줄 누락과 답하지 못한 문의는 각각 `memo_left_out()`·`unanswered()`가 `sensitive`로 넘긴다. 쓰기·검사 실패는 `draft_failed`·`check_failed`이며, 백엔드는 작성기가 준 `return_limit`도 확인 항목으로 보존한다(3.7·3.20·3.21).
+`not_in_memo`는 검사 AI가 아이 메모 줄을 메모·반 공통·식단과 대조해 근거 없는 사실·이유·평가나 반 활동을 그 아이가 했다는 서술을 찾은 결과다. 병명·"괜찮아요" 같은 낱말을 고정 금지어 목록과 대조하는 코드는 없다. `code_checks()`는 메모·아이별 초안에 있는 다른 아이 이름과 요청별 출처 누락을 검사하고, 초안에 옮긴 투약 요청에는 `sensitive`를 남긴다. 메모 줄이 빠졌는데 빠질 이유(`sensitive`·`other_child`·`date_check`·`absent`)가 없거나, 요청 줄이 아이 메모 줄과 같은 문장이면 코드가 고쳐 쓰지 않고 내부 신호로 자료 AI에 돌려보낸다(최대 2번, 그 뒤 `return_limit`). 내부 신호는 `open_checks`에 넣지 않는다. 쓰기·검사 실패는 `draft_failed`·`check_failed`이며, 백엔드는 작성기가 준 `return_limit`도 확인 항목으로 보존한다(3.7·3.20·3.21).
 
 | 실패 구분 | 언제 | 다시 하나 | 최대 횟수 | 그 뒤 | 담임 화면 문구 |
 | --- | --- | --- | --- | --- | --- |
-| 일시 오류·요청 오류 | 5.5.1과 같다 | 5.5.1과 같다 | 5.5.1과 같다 | 검사를 통과로 치지 않고 `check_failed`를 남긴 채 담임에게 넘긴다. 이미 쓴 초안은 지우지 않는다 | "메모와 대조하는 검사가 끝나지 않았어요. 직접 읽고 확인해 주세요." |
+| 일시 오류·요청 오류 | 5.5.1과 같다 | 5.5.1과 같다 | 5.5.1과 같다 | 검사를 통과로 치지 않고 `check_failed`를 남긴 채 담임에게 넘긴다. 이미 쓴 초안은 지우지 않는다 | `problem` "메모와 대조하는 검사가 끝나지 않았어요." · `action` "직접 읽고 확인해 주세요." |
 | 형식 오류 | JSON이 아니거나 `checks` 목록이 없음 | 예 | 1번 더 묻는다 | 위와 같다 | 위와 같다 |
-| 허용 밖 값 | `kind`가 다섯 값 밖 | 아니요 | 0 | 그 항목만 버린다 | 없음 |
-| 고칠 수 있는 문제 | `not_in_memo`·`request_missed`가 나옴 | 예. 5.5.1로 돌려보낸다(5.4의 `return_to_step`) | 2번 | 그래도 남으면 확인 항목을 그대로 둔 채 넘긴다 | 항목마다 `problem` 문장 |
+| 허용 밖 값 | `kind`가 다섯 값 밖 | 아니요 | 0 | `problem`이 있으면 일반 확인(`sensitive`)으로 살리고, 없거나 코드 몫 종류(`request_missed`·실패·한도)면 그 항목만 버린다 | 검사 AI의 `problem` |
+| 고칠 수 있는 문제 | `not_in_memo`·`request_missed`가 나옴, 메모 줄이 이유 없이 빠짐, 요청 줄이 메모 줄과 같음 | 예. 5.5.1로 돌려보낸다(`review_issues`) | 2번 | 그래도 남으면 확인 항목에 `return_limit`을 더해 넘긴다 | 항목마다 `problem`·`action` 문장 |
 
-시험은 `test_checker_fails_twice_gives_check_failed_and_keeps_draft`, `test_returns_stop_after_two_and_leave_check`, `test_missing_request_is_returned_then_fixed`, `test_unknown_kind_from_checker_is_ignored`(`tests/unit/test_daily_note_graph.py`)다.
+시험은 `test_checker_fails_twice_gives_check_failed_and_keeps_draft`, `test_returns_stop_after_two_and_leave_check`, `test_missing_request_is_returned_then_fixed`, `test_unknown_kind_from_checker_keeps_problem_as_general_check`, `test_request_line_repeating_child_line_goes_back_to_writer_not_overwritten`(`tests/unit/test_daily_note_graph.py`)다.
 
 #### 5.5.3 사람 인계 카드 — `create_card`
 

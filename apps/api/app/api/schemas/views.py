@@ -318,8 +318,10 @@ class RegenerateResponse(DraftResponse):
 class OpenCheck(BaseModel):
     id: str
     item_key: str
-    kind: Literal["not_in_memo", "sensitive", "other_child", "date_check", "absent", "draft_failed", "check_failed", "request_missed", "return_limit"]
-    problem: str
+    kind: Literal["not_in_memo", "sensitive", "other_child", "date_check", "absent", "draft_failed", "check_failed", "request_missed", "return_limit"] = Field(
+        description="화면에 띄울 행동 버튼 종류. 무엇이 문제인지는 problem이 말해요")
+    problem: str = Field(description="무엇이 문제인지 한 줄. 화면 제목으로 그대로 보여요")
+    action: str | None = Field(default=None, description="선생님이 할 일 한 줄(검사 AI나 코드가 써요, 없으면 null)")
     sentence: str | None = None
     request_id: UUID | None = None
 

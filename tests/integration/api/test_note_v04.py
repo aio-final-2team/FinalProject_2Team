@@ -88,6 +88,7 @@ def test_open_check_has_nine_kinds_and_optional_request_id(client, teacher):
         "not_in_memo", "sensitive", "other_child", "date_check", "absent", "draft_failed", "check_failed", "request_missed", "return_limit"}
     assert "kind" in schema["required"]
     assert "request_id" not in schema["required"]
+    assert "action" not in schema["required"]  # 할 일 한 줄은 선택 칸이다
     check = {"id": "c1", "item_key": "child", "problem": "메모를 확인해 주세요"}
     with pytest.raises(ValidationError):
         OpenCheck.model_validate(check)
@@ -95,6 +96,8 @@ def test_open_check_has_nine_kinds_and_optional_request_id(client, teacher):
         OpenCheck.model_validate({**check, "kind": "unknown"})
     assert OpenCheck.model_validate({**check, "kind": "check_failed"}).sentence is None
     assert OpenCheck.model_validate({**check, "kind": "check_failed"}).request_id is None
+    assert OpenCheck.model_validate({**check, "kind": "check_failed"}).action is None
+    assert OpenCheck.model_validate({**check, "kind": "sensitive", "action": "[TEST] 확인해 주세요"}).action == "[TEST] 확인해 주세요"
     assert OpenCheck.model_validate({**check, "kind": "request_missed", "request_id": None}).request_id is None
     assert OpenCheck.model_validate({**check, "kind": "request_missed",
                                      "request_id": str(seed.REQUEST_PICKUP)}).request_id == seed.REQUEST_PICKUP
@@ -104,7 +107,7 @@ def test_open_check_has_nine_kinds_and_optional_request_id(client, teacher):
     checks = [check for note in note_list(client, teacher).json()["items"] for check in note["open_checks"]
               if check["kind"] == "date_check"]
     assert checks == [{"id": "c1", "item_key": "supplies", "kind": "date_check",
-                       "problem": "준비물 날짜를 확인해 주세요", "sentence": "내일 실내화", "request_id": None}]
+                       "problem": "준비물 날짜를 확인해 주세요", "action": None, "sentence": "내일 실내화", "request_id": None}]
 
 
 def test_child_line_rejects_non_teacher_source(client, teacher):
