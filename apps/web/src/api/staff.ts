@@ -60,3 +60,7 @@ export function useSaveNotificationSettings() {
 export type StaffEvidence = { document_id: string; title: string; location: string; effective_date: string | null };
 export type StaffAnswer = { answer: string; evidence: StaffEvidence[]; conflict?: boolean };
 export const useStaffAsk = () => useMutation({ mutationFn: (question: string) => api<StaffAnswer>("/api/v1/staff/ask", { method: "POST", body: JSON.stringify({ question }) }) });
+
+/** 재배정할 선생님 목록(원장 전용). 아직 맡은 카드가 없는 선생님과 반이 없는 보조 교사도 나온다 */
+export type TeacherItem = { id: string; display_name: string; classrooms: { id: string; name: string }[] };
+export const useTeachers = (enabled = true) => useQuery({ queryKey: ["staff", "teachers"], enabled, queryFn: () => api<{ items: TeacherItem[] }>("/api/v1/staff/teachers").then((r) => r.items), staleTime: 60_000 });

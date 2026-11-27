@@ -7,8 +7,9 @@ import { Link, useNavigate } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "@/api/client";
 import { QueryState } from "@/components/QueryState";
-import { loadInputId, saveInputId, useChildren, useCreateDraft, useDraftJob, useNotes, usePatchNote, useRegenerate, useSendNotes } from "@/api/notes";
+import { loadInputId, saveInputId, useChildren, useCreateDraft, useDraftJob, useNotes, usePatchNote, useRegenerate, useResetNotes, useSendNotes } from "@/api/notes";
 import { useSession } from "@/app/session";
+import { Button } from "@/components/Button";
 import { Dock, PrimaryButton, SubButton } from "@/components/Dock";
 import { Icon } from "@/components/Icon";
 import { Sheet } from "@/components/Sheet";
@@ -31,6 +32,12 @@ export function NotesPage() {
   /* 알림장이 아직 없는데 이 기기에 접수한 작업이 있으면 그 진행 상태를 이어서 본다 (API 23). 새로고침해도 입력을 다시 쓰지 않는다 */
   const stored = !notes.data?.length ? loadInputId(cid, date) : null;
   const resume = useDraftJob(stored ?? undefined);
+  /* QA 초기화가 끝나면 보던 진행 화면을 닫고 처음 화면(활동 입력)으로 돌아간다 */
+  useEffect(() => {
+    const h = () => setJobId(undefined);
+    window.addEventListener("yuchion:notes-reset", h);
+    return () => window.removeEventListener("yuchion:notes-reset", h);
+  }, []);
 
   if (notes.isLoading || (notes.isError && notes.data === undefined))
     return (
@@ -55,7 +62,44 @@ function Frame({ title = "오늘 알림장", sub, children }: { title?: string; 
       <ScreenTop title={nb?.title ?? title} sub={sub ?? `${user?.display_name} · ${dateLabel(todayKST())} · 17:00까지`} />
       {nb?.top}
       {children}
+      {QA_TOOLS && <QaReset />}
     </div>
+  );
+}
+
+/** 시연 계정이 켜진 빌드(QA·시연 서버)에서만 보인다. 최종 제출본(VITE_DEMO_ACCOUNTS=false)에서는 나오지 않는다 */
+const QA_TOOLS = import.meta.env.VITE_DEMO_ACCOUNTS !== "false";
+
+/** QA 전용: 오늘 알림장을 모두 지우고 처음부터 다시 시험한다(API 71). 서버의 QA 도구가 꺼져 있으면 쓸 수 없다고 알려 준다 */
+function QaReset() {
+  const { user } = useSession();
+  const cid = user?.classroom_ids[0];
+  const date = todayKST();
+  const reset = useResetNotes(cid, date);
+  const toast = useToast();
+  const [open, setOpen] = useState(false);
+  const run = () =>
+    reset.mutate(undefined, {
+      onSuccess: (r) => {
+        setOpen(false);
+        toast({ kind: "ok", title: "알림장을 처음 상태로 돌렸어요", sub: `알림장 ${r.deleted.notes}개와 관련 카드 ${r.deleted.cards}개를 지웠어요` });
+      },
+      onError: (e) => {
+        setOpen(false);
+        const s = e instanceof ApiError ? e.status : 0;
+        toast({ kind: "error", title: s === 404 ? "이 서버에서는 쓸 수 없어요" : s === 403 ? "담임 선생님만 쓸 수 있어요" : "초기화하지 못했어요", sub: s === 404 ? "QA 서버에서만 켜져 있어요" : s ? undefined : "연결을 확인하고 다시 눌러 주세요" });
+      },
+    });
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)} className="mt-8 inline-flex h-9 items-center rounded-md px-2.5 text-footnote font-semibold text-ink2 active:scale-[.97]">알림장 다시 시험하기 (QA)</button>
+      <Sheet open={open} onClose={() => setOpen(false)} title="알림장을 처음부터 다시 시험할까요?">
+        <p className="text-callout text-ink">{dateLabel(date)} 알림장과 그에 딸린 카드·알림이 모두 지워져요. 이미 보낸 알림장도 포함돼요. 지운 뒤에는 되돌릴 수 없어요.</p>
+        <p className="text-footnote text-ink2">시험용 서버에서만 쓸 수 있어요. 학부모 답장은 남고, 어느 알림장의 답장인지만 비워져요.</p>
+        <Button variant="danger" loading={reset.isPending} onClick={run}>지우고 다시 시작</Button>
+        <Button variant="plain" size="sm" onClick={() => setOpen(false)}>취소</Button>
+      </Sheet>
+    </>
   );
 }
 

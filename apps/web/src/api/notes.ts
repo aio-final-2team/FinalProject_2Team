@@ -81,6 +81,29 @@ export function loadInputId(cid: string | undefined, date: string): string | nul
   }
 }
 
+export function clearInputId(cid: string, date: string) {
+  try {
+    localStorage.removeItem(inKey(cid, date));
+    localStorage.removeItem(`yuchion.plainOk.${cid}.${date}`);
+  } catch {
+    /* 저장이 막힌 브라우저면 지울 것이 없다 */
+  }
+}
+
+/** QA 전용 API 71: 한 반·날짜의 알림장을 지우고 초안 만들기부터 다시 시험한다. 서버의 QA_TOOLS가 꺼져 있으면 404다 */
+export type NoteReset = { classroom_id: string; note_date: string; deleted: { inputs: number; notes: number; cards: number; notifications: number; events: number }; unlinked_replies: number };
+export function useResetNotes(classroomId: string | undefined, date: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api<NoteReset>("/api/v1/qa/daily-notes/reset", { method: "POST", body: JSON.stringify({ classroom_id: classroomId, note_date: date }) }),
+    onSuccess: () => {
+      if (classroomId) clearInputId(classroomId, date);
+      for (const k of ["notes", "draft-job", "cards", "notifications"]) qc.invalidateQueries({ queryKey: [k] });
+      window.dispatchEvent(new Event("yuchion:notes-reset"));
+    },
+  });
+}
+
 /** API 26(3.26): 저장해 둔 입력으로 아직 확인하지 않은 초안만 다시 만든다. 고친 알림장·확인한 알림장은 보존(kept_edited) */
 export function useRegenerate() {
   const qc = useQueryClient();
