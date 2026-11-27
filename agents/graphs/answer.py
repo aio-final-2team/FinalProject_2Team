@@ -12,7 +12,7 @@ from agents.guardrails.sensitive import SENSITIVE, mask_sensitive
 
 NO_ANSWER = "자료에서 확인되지 않아 선생님 확인이 필요해요."
 PROMPTS = Path(__file__).resolve().parents[1] / "prompts"
-WRITE_FORMAT = "\nJSON 하나로 답한다: {\"text\": str, \"evidence\": [{\"chunk_id\": int, \"quote\": str}], \"no_evidence\": bool, \"conflict\": bool}"
+WRITE_FORMAT = "\nJSON 하나로 답한다: {\"text\": str, \"evidence\": [{\"chunk_id\": int, \"quote\": str}], \"facts\": [{\"text\": str, \"evidence\": [{\"chunk_id\": int, \"quote\": str}]}], \"no_evidence\": bool, \"conflict\": bool, \"partial\": bool, \"unanswered\": [str]}"
 WRITE_FORMAT += '\n보낸 알림장 인용은 {"chunk_id": null, "source": "daily_note", "note_id": "입력의 UUID", "quote": "원문 구절"}로 적는다. 기억은 사실 근거가 아니다.'
 WRITE_FORMAT += '\n담임 관찰 기록 인용은 {"chunk_id": null, "source": "daily_record", "record_id": "입력의 UUID", "quote": "원문 구절"}로 적는다. quote는 원문 그대로, text는 담임 메모 말투 대신 보호자에게 보낼 말로 쓴다.'
 CHECK_FORMAT = "\nJSON 하나로 답한다: {\"passed\": bool, \"issues\": [{\"field\": \"출처|날짜|대상|누락|민감정보\", \"problem\": str}]}"
@@ -108,39 +108,104 @@ def _quoted(quote, content):
     return re.sub(r"\s+", "", quote) in body or (len(parts) > 1 and all(part in body for part in parts))
 
 
-def _verify(answer, candidates, trace):
-    by_id = {_evidence_key(chunk): chunk for chunk in candidates}
+def _verified_evidence(items, by_id, *, strict=False):
     evidence = []
     seen = set()
-    for item in answer["evidence"]:
+    valid = True
+    for item in items:
         if not isinstance(item, dict):
+            valid = False
             continue
         key = _evidence_key(item)
         chunk = by_id.get(key)
+        quote = item.get("quote")
+        if not chunk or not isinstance(quote, str) or not quote.strip() or not _quoted(quote, chunk["content"]):
+            valid = False
+            continue
         if key in seen:
             continue  # card_evidence PK가 (card_id, chunk_id)라 같은 조각은 한 번만 남긴다
-        quote = item.get("quote")
-        if chunk and isinstance(quote, str) and quote.strip() and _quoted(quote, chunk["content"]):
-            seen.add(key)
-            entry = {"chunk_id": chunk["chunk_id"], "quote": quote, "score": chunk["score"]}
-            if key[0] in PERSONAL:
-                entry.update({k: chunk[k] for k in ("source", *PERSONAL[key[0]], "title")})
-            evidence.append(entry)
-    no_evidence = bool(answer.get("no_evidence")) or not evidence
+        seen.add(key)
+        entry = {"chunk_id": chunk["chunk_id"], "quote": quote, "score": chunk["score"]}
+        if key[0] in PERSONAL:
+            entry.update({k: chunk[k] for k in ("source", *PERSONAL[key[0]], "title")})
+        evidence.append(entry)
+    return evidence, valid if strict else True
+
+
+def _single_sentence(text):
+    return len([part for part in re.split(r"[.!?。！？\n]+", text) if part.strip()]) == 1
+
+
+def _verify(answer, candidates, trace, question=None):
+    by_id = {_evidence_key(chunk): chunk for chunk in candidates}
+    evidence, _ = _verified_evidence(answer["evidence"], by_id)
     conflict = bool(answer.get("conflict"))
+    no_evidence = bool(answer.get("no_evidence")) or not evidence
+    unanswered = answer.get("unanswered")
+    question_text = re.sub(r"\s+", "", question or "")
+    unanswered = list(dict.fromkeys(
+        item.strip() for item in unanswered
+        if isinstance(item, str) and item.strip()
+        and re.sub(r"\s+", "", item.strip()) in question_text
+    )) if isinstance(unanswered, list) else []
+    raw_facts = answer.get("facts")
+    facts, facts_valid = [], isinstance(raw_facts, list) and bool(raw_facts)
+    if facts_valid:
+        for fact in raw_facts:
+            if (not isinstance(fact, dict) or not isinstance(fact.get("text"), str)
+                    or not fact["text"].strip() or not _single_sentence(fact["text"])
+                    or not isinstance(fact.get("evidence"), list)
+                    or not fact["evidence"]):
+                facts_valid = False
+                break
+            citations, citations_valid = _verified_evidence(fact["evidence"], by_id, strict=True)
+            if not citations_valid or not citations:
+                facts_valid = False
+                break
+            facts.append({"text": fact["text"].strip(), "evidence": citations})
+    if not facts_valid:
+        facts = []
+    if bool(answer.get("partial")) and facts_valid:
+        evidence = []
+        seen = set()
+        for fact in facts:
+            for item in fact["evidence"]:
+                key = _evidence_key(item)
+                if key not in seen:
+                    seen.add(key)
+                    evidence.append(item)
+        no_evidence = bool(answer.get("no_evidence")) or not evidence
+    partial = (bool(answer.get("partial")) and facts_valid and bool(evidence) and bool(unanswered)
+               and (no_evidence or conflict))
     trace.append("verify")
     # 모델은 근거가 있다고 했는데 인용문이 하나도 글자 그대로가 아니면, 근거 없음으로 끝내지 않고 다시 쓰게 한다.
-    misquoted = bool(answer["evidence"]) and not evidence and not answer.get("no_evidence") and not conflict
-    return {"text": NO_ANSWER if no_evidence or conflict else answer["text"], "evidence": evidence,
-            "no_evidence": no_evidence, "conflict": conflict, "misquoted": misquoted}
+    misquoted = (bool(answer["evidence"]) and not evidence and not conflict
+                 or bool(answer.get("partial")) and isinstance(raw_facts, list) and bool(raw_facts) and not facts_valid)
+    supported_text = "\n".join(fact["text"] for fact in facts) if partial else answer["text"]
+    text = supported_text if not no_evidence or partial else NO_ANSWER
+    if partial:
+        text += "\n" + "\n".join(
+            f"질문하신 ‘{item}’에 대해서는 자료에서 확인하지 못했어요. 선생님이 확인한 뒤 알려 드릴게요."
+            for item in unanswered
+        )
+    return {"text": NO_ANSWER if conflict else text, "evidence": evidence,
+            "no_evidence": no_evidence, "conflict": conflict, "partial": partial,
+            "facts": facts if partial else [], "unanswered": unanswered if partial else [], "misquoted": misquoted}
 
 
 def _review(model, question, draft, candidates, attempt, trace, today=None):
     prompt = _common(today) + _prompt("checker.md", "## 입력", "## 알림장: 메모와 대조한다") + CHECK_FORMAT
     prompt += "\nsource=daily_note는 요청 아이에게 실제 보낸 알림장 근거다. note_id와 note_date·quote를 대조하고 다른 날짜의 일을 오늘 일로 단정하지 않는다."
     prompt += "\nsource=daily_record는 담임이 그 아이에 대해 남긴 관찰 기록이다. record_id와 record_date·quote를 대조하고 기록에 없는 일을 초안이 덧붙였는지 본다."
+    if draft.get("partial"):
+        prompt += ("\n부분 답변에서는 unanswered에 든 질문 항목이 고정 담임 확인 문구와 함께 남아 있으면 그 항목의 미답 자체는 누락 오류로 돌려보내지 않는다. "
+                   "facts의 각 사실 문장을 같은 facts 항목의 evidence 인용과 따로 대조하고, 인용이 없거나 실제 조각이 뒷받침하지 않는 사실은 통과시키지 않는다. "
+                   "질문한 항목과 관련된 자료끼리 날짜·숫자·사실이 서로 다르면 부분 답을 통과시키지 말고 날짜 또는 출처 문제로 돌려보낸다. "
+                   "고정 문구 형식은 ‘질문하신 …에 대해서는 자료에서 확인하지 못했어요. 선생님이 확인한 뒤 알려 드릴게요.’이다.")
     payload = {"question": question, "today": day_label(today), "draft": draft["text"], "evidence": draft["evidence"],
-               "chunks": candidates, "attempt": attempt,
+               "chunks": candidates, "attempt": attempt, "partial": draft.get("partial", False),
+               "facts": draft.get("facts", []),
+               "unanswered": draft.get("unanswered", []),
                "untrusted_data_fields": ["question", "chunks", "draft"]}
     for _ in range(2):
         try:
@@ -201,14 +266,14 @@ def draft_answer(question: str, search, writer=None, checker=None, *, memories=(
                                                     "untrusted_data_fields": ["question", "chunks", "memories", "prior_answer", "preferences", "child_notes"]}, trace)
         if answer is None:
             return fallback(trace)
-        draft = _verify(answer, candidates, trace)
+        draft = _verify(answer, candidates, trace, question)
         misquoted = draft.pop("misquoted")
         if misquoted and attempt < MAX_REWRITES:
             issues = [{"field": "출처", "problem": "인용문이 자료 조각과 글자 그대로 일치하지 않아요. "
                        "조각의 한 줄(또는 이어진 구절)을 고치지 말고 그대로 복사해 quote에 넣어 주세요."}]
             last_check = _check_result(False, issues, attempt + 1)
             continue
-        if draft["no_evidence"] or draft["conflict"]:
+        if (draft["no_evidence"] and not draft["partial"]) or draft["conflict"]:
             problem = "자료끼리 내용이 달라요." if draft["conflict"] else "자료에서 근거를 찾지 못했어요."
             return {**draft, "check_result": _check_result(False, [{"field": "출처", "problem": problem}], attempt + 1),
                     "trace": [*trace, "end"]}

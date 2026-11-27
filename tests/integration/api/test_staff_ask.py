@@ -222,6 +222,27 @@ def test_staff_ask_no_evidence_is_distinct(client, teacher, staff_ask_backend, m
     assert len(Model.calls) == 1
 
 
+def test_staff_ask_does_not_return_partial_answer_to_staff(client, teacher, staff_ask_backend, monkeypatch):
+    add_doc(staff_ask_backend, "준비물은 수건입니다.")
+
+    class PartialModel(Model):
+        def json(self, system, user):
+            self.calls.append(user)
+            if self.role == "CHECKER":
+                return {"passed": True, "issues": []}
+            chunk = json.loads(user)["chunks"][0]
+            return {"text": "준비물은 수건이에요.",
+                    "evidence": [{"chunk_id": chunk["chunk_id"], "quote": "준비물은 수건입니다."}],
+                    "no_evidence": True, "conflict": False, "partial": True,
+                    "unanswered": ["하원 시간 변경"]}
+
+    monkeypatch.setattr("agents.graphs.answer.OpenAIModel", PartialModel)
+    response = client.post(BASE + "/staff/ask", headers=teacher,
+                           json={"question": "준비물과 하원 시간 변경을 알려주세요."})
+    assert response.status_code == 200, response.text
+    assert response.json() == {"answer": "자료에서 못 찾았어요", "evidence": [], "conflict": False}
+
+
 def test_staff_ask_requires_current_consent_before_model(client, teacher, staff_ask_backend):
     if staff_ask_backend == "mock":
         rows = store.state().consents

@@ -27,6 +27,7 @@ class CollaborationState(TypedDict, total=False):
     handoff_reason: str
     draft_no_evidence: bool
     draft_conflict: bool
+    draft_partial: bool
     skip_draft: bool
 
 
@@ -71,14 +72,14 @@ def build_graph(checkpointer, route_request, prepare_card, card_status,
 
     def after_write(state):
         return "handoff" if (state["parallel"].get("search_failed")
-                             or state.get("draft_no_evidence")
+                             or (state.get("draft_no_evidence") and not state.get("draft_partial"))
                              or state.get("draft_conflict")) else "checker"
 
     def document_write(state):
         if state["parallel"].get("search_failed"):
             return {"draft_no_evidence": True}
         if write is None:
-            return {"draft_no_evidence": False, "draft_conflict": False}
+            return {"draft_no_evidence": False, "draft_conflict": False, "draft_partial": False}
         try:
             result = write({**state, "parallel": {**state["parallel"],
                                                     "chunks": work["chunks"],
@@ -87,9 +88,10 @@ def build_graph(checkpointer, route_request, prepare_card, card_status,
                             "issues": work["issues"]})
             work["draft"] = result.get("draft", {})
             return {"draft_no_evidence": bool(work["draft"].get("no_evidence")),
-                    "draft_conflict": bool(work["draft"].get("conflict"))}
+                    "draft_conflict": bool(work["draft"].get("conflict")),
+                    "draft_partial": bool(work["draft"].get("partial"))}
         except Exception:
-            return {"draft_no_evidence": True, "handoff_reason": "write_failed"}
+            return {"draft_no_evidence": True, "draft_partial": False, "handoff_reason": "write_failed"}
 
     def checker(state):
         if check is None:
@@ -128,6 +130,7 @@ def build_graph(checkpointer, route_request, prepare_card, card_status,
             issues = [{"field": "출처", "problem": problem}]
         work["answer"] = {"text": "", "evidence": draft.get("evidence", []),
                           "no_evidence": draft.get("no_evidence", True),
+                          "partial": draft.get("partial", False),
                           "handoff": True, "conflict": draft.get("conflict", False),
                           "check_result": {"passed": False, "issues": issues,
                                            "attempt": state.get("attempt", 0) + 1,
