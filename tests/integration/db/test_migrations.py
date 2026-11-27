@@ -21,7 +21,7 @@ from app.mock import seed
 from db.seeds.demo import seed_demo
 
 ROOT = Path(__file__).resolve().parents[3]
-HEAD_CATALOG = {"tables": 32, "views": 2, "triggers": 2, "foreign_keys": 67, "columns": 306}
+HEAD_CATALOG = {"tables": 33, "views": 2, "triggers": 2, "foreign_keys": 73, "columns": 320}
 
 
 def catalog(connection):
@@ -163,6 +163,7 @@ def test_requeue_action_upgrade_downgrade_preserves_requests_and_old_events(seed
     # 없어진 칸을 포함하는 SELECT * 준비 구문이 풀 연결에 남지 않게 해요.
     seeded_db.dispose()
     request_before.pop("care_detail")  # 0012보다 이전 판에는 없는 칸이에요.
+    assert request_before.pop("source_note_id") is None  # 0019보다 이전 판에는 없는 칸이에요.
     with seeded_db.begin() as connection:
         assert connection.scalar(text("SELECT count(*) FROM events WHERE id=:id"), {"id": original}) == 1
         assert connection.scalar(text("SELECT count(*) FROM events WHERE action='agent_requeued'")) == 0
@@ -394,7 +395,7 @@ def test_0015_note_correction_backfill_constraints_and_round_trip(seeded_db, ale
     with seeded_db.begin() as connection:
         assert dict(connection.execute(text("SELECT * FROM daily_notes WHERE id=:id"),
                                        {"id": before["id"]}).mappings().one()) == {
-            **before, "version": 1, "corrected_at": None}
+            **before, "version": 1, "corrected_at": None, "supplies_checked_at": None}
         for value, state in ((0, "23514"), (None, "23502")):
             with pytest.raises(IntegrityError) as error, connection.begin_nested():
                 connection.execute(text("UPDATE daily_notes SET version=:version WHERE id=:id"),
@@ -444,7 +445,7 @@ def test_seed_twice_keeps_same_rows_and_password_hash(db_engine, alembic_config)
     first = snapshot()
     run_seed()
     assert snapshot() == first
-    assert {table: len(rows) for table, rows in first.items()} == dict(zip(tables, (1, 2, 21, 2, 21, 19, 1, 3, 3, 22, 4, 5, 5), strict=True))
+    assert {table: len(rows) for table, rows in first.items()} == dict(zip(tables, (1, 2, 21, 2, 21, 19, 1, 3, 3, 25, 4, 5, 5), strict=True))
     classrooms = {row["id"]: row for row in first["classrooms"]}
     assert (classrooms[seed.CLASS_STAR]["name"], classrooms[seed.CLASS_STAR]["age_group"]) == ("만 4세 별빛반", 4)
     assert (classrooms[seed.CLASS_SUN]["name"], classrooms[seed.CLASS_SUN]["age_group"]) == ("만 5세 햇님반", 5)
@@ -505,7 +506,7 @@ def test_seed_twice_keeps_same_rows_and_password_hash(db_engine, alembic_config)
             assert refreshed[table] == before_refresh[table]
             continue
         for old, new in zip(before_refresh[table], refreshed[table], strict=True):
-            if old["id"] == unrelated:
+            if old["id"] == unrelated or old["type"] == "consultation":
                 assert new == old
             else:
                 if old["id"] in originals:
@@ -558,6 +559,7 @@ def test_refresh_requests_preserves_fixture_offsets_and_daily_input(seeded_db, m
         for day in (today, today - timedelta(days=1)):
             # 오늘 초안에는 최신 fixture의 GR-02·10·19만, 전날 요청은 전날에 남아요.
             payload = _payload(connection, {"id": uuid4(), "org_id": seed.ORG,
+                               "author_id": seed.TEACHER,
                                "classroom_id": seed.CLASS_STAR, "note_date": day,
                                "activities": "[TEST] 날짜 이동", "supplies": "", "child_memos": []})
             observed = {r["request_id"] for child in payload["children"] for r in child["requests"]}

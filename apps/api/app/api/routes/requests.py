@@ -6,7 +6,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response, stat
 
 from app.api.schemas.common import errors
 from app.api.schemas.requests import (RequestAccepted, RequestAcceptedOut,
-                                      RequestCreateIn, RequestDetailOut)
+                                      RequestCreateIn, RequestDetailOut, MemoryCandidateOut)
 from app.core.auth import CurrentUser, current_user, require_roles
 from app.core.errors import trace_id_of
 from app.core.schedule import KST
@@ -39,9 +39,12 @@ def care_requests(classroom_id: UUID | None = None,
 
 @router.post("/requests/{request_id}/care-decisions", response_model=CareDecisionOut,
              responses=errors(401, 403, 404, 409, 422), summary="투약·인계 실제 확인·완료·반려 기록 (T46 팀 확인 전 초안)")
-def care_decision(request_id: UUID, body: CareDecisionIn,
+def care_decision(request_id: UUID, body: CareDecisionIn, background_tasks: BackgroundTasks,
                   user: CurrentUser = Depends(require_roles("teacher", "director"))):
-    return backend.request_actions.care.decision(user, request_id, body)
+    result = backend.request_actions.care.decision(user, request_id, body)
+    if body.decision == "complete":
+        background_tasks.add_task(backend.memories.after_request, request_id)
+    return result
 
 
 @router.post("/requests/{request_id}/cancel", response_model=CareDecisionOut,
@@ -77,7 +80,9 @@ def create_request(body: RequestCreateIn, request: Request, response: Response, 
 @router.get("/requests/{request_id}", response_model=RequestDetailOut, responses=errors(401, 404, 422),
             summary="요청 상세·대화·진행 기록 (FR-02, FR-11)")
 def get_request(request_id: UUID, user: CurrentUser = Depends(current_user)) -> RequestDetailOut:
-    return backend.request_actions.detail(user, request_id)
+    result = RequestDetailOut.model_validate(backend.request_actions.detail(user, request_id))
+    result.memory_candidates = [MemoryCandidateOut.model_validate(row) for row in backend.memories.candidates_for_request(user, request_id)]
+    return result
 
 
 @router.get("/requests", response_model=RequestList | StaffRequestList, responses=errors(401, 403, 404, 422))

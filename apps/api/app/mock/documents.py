@@ -1,6 +1,7 @@
 """문서 업로드·조각·근거의 메모리 구현."""
 
 from hashlib import sha256
+from datetime import timedelta
 from uuid import uuid4
 
 from app.core.errors import ApiError
@@ -8,6 +9,19 @@ from app.core.document_text import extract_text
 from app.modules.documents.parsing import DocumentFormatError
 from app.mock import store
 from app.mock.records import Document, Chunk, Evidence
+
+
+def daily_note_chunks(req):
+    from agents.graphs.answer import child_day_question, note_chunk
+    child = store.state().children.get(req.get("child_id"))
+    if (req["type"] != "inquiry" or not child or child.org_id != req["org_id"]
+            or req["requester_id"] not in child.guardian_ids or not child_day_question(req["body"])):
+        return []
+    today = store.now().date()
+    rows = sorted((n for n in store.state().notes.values() if n.org_id == req["org_id"] and n.child_id == child.id
+                   and n.status == "sent" and today-timedelta(days=2) <= n.note_date <= today),
+                  key=lambda n: (n.note_date, n.id), reverse=True)[:3]
+    return [chunk for row in rows if (chunk := note_chunk(row.id, row.note_date, row.content))]
 
 
 def in_scope(user, document_id):
@@ -99,6 +113,13 @@ def view(doc, *, include_chunks=False):
 
 def attach_evidence(card):
     req = store.state().requests[card.request_id]
+    notes = daily_note_chunks(req.__dict__)
+    if notes:
+        card.draft["note_evidence"] = [{k: notes[0][k] for k in ("chunk_id", "source", "note_id", "note_date", "title", "quote")}]
+        if card.draft.get("text"):
+            card.draft["text"] = notes[0]["quote"]
+        card.draft["no_evidence"] = False
+        return
     docs = [d for d in store.state().documents.values() if d.org_id == req.org_id and d.status == "active"
             and d.effective_from <= store.now().date() and (not d.effective_to or d.effective_to >= store.now().date())
             and (not store.state().document_classrooms.get(d.id)

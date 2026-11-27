@@ -52,7 +52,7 @@ def _prepare_card(request_id, route, answer=None, classification=None):
 def _request_context(request_id):
     with transaction() as connection:
         return connection.execute(text("""
-            SELECT r.type,r.body,r.org_id,r.classroom_id,r.requester_id,
+            SELECT r.type,r.body,r.org_id,r.classroom_id,r.requester_id,r.child_id,
                    (SELECT s.user_id FROM classroom_staff s
                     JOIN users u ON (u.id,u.org_id)=(s.user_id,s.org_id)
                     WHERE s.org_id=r.org_id AND s.classroom_id=r.classroom_id
@@ -73,7 +73,7 @@ def _high_risk_request(request_id):
 
 
 def _search_request(request_id):
-    from app.modules.documents.answer import graph_enabled
+    from app.modules.documents.answer import graph_enabled, daily_note_chunks
     from app.modules.documents.search import search_documents
     from app.modules.documents.public_sources import forecast_evidence, prefetch_public
 
@@ -102,23 +102,23 @@ def _search_request(request_id):
             except Exception:
                 if attempt:
                     raise
-    return sorted(chunks, key=lambda item: item["score"], reverse=True)[:8]
+    chunks.extend(daily_note_chunks(req))
+    return sorted(chunks, key=lambda item: (item.get("source") == "daily_note", item["score"]), reverse=True)[:8]
 
 
 def _load_request_memory(request_id):
+    from app.modules.memories.memories import load_tones
     req = _request_context(request_id)
     if req["teacher_id"] is None:
         return []
     with transaction() as connection:
-        return [dict(row) for row in connection.execute(text("""
-            SELECT kind,content FROM memories WHERE org_id=:org AND owner_id=:owner
-              AND kind='tone' AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 8
-        """), {"org": req["org_id"], "owner": req["teacher_id"]}).mappings()]
+        return load_tones(connection, req["org_id"], req["teacher_id"])
 
 
 def _write_request(state):
     from agents.graphs import answer as answer_graph
     from app.modules.documents.answer import graph_enabled
+    from app.modules.memories.saved_answers import find_saved_answer
 
     req = _request_context(state["request_id"])
     if req["type"] == "inquiry" and not graph_enabled():
@@ -127,7 +127,16 @@ def _write_request(state):
     prompt = answer_graph._prompt("documents.md", "## 입력", "## 알림장 초안 쓰기") + answer_graph.WRITE_FORMAT
     # 보호자 글은 문의 답변 그래프(answer.py)처럼 가려서 모델에 보낸다(T55 G-5). 원 자료 조각은 그대로 둔다.
     payload = {"question": mask_sensitive(req["body"]), "chunks": chunks, "memories": state["parallel"].get("memories", []),
+               "prior_answer": find_saved_answer(req),
                "review_issues": state.get("issues", [])}
+    from app.modules.memories.memories import load_preferences, load_child_notes
+    try:
+        with transaction() as connection:
+            payload["preferences"] = load_preferences(connection, req["org_id"], req["requester_id"])
+            payload["child_notes"] = load_child_notes(connection, req["org_id"], req["child_id"], req["requester_id"])
+    except Exception:  # 기억 조회 실패가 이번 답변을 막지 않아요
+        payload["preferences"], payload["child_notes"] = [], []
+    payload["untrusted_data_fields"] = ["question", "chunks", "memories", "prior_answer", "preferences", "child_notes"]
     reply = answer_graph._ask_writer(answer_graph.OpenAIModel("DOCUMENT"), prompt, payload, [])
     if reply is None:
         return {"draft": {"text": "", "evidence": [], "no_evidence": True, "conflict": False}}

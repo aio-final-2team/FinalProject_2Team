@@ -12,6 +12,11 @@ from app.api.schemas.requests import (BookingOut, ConsultationOut, MessageOut, R
 from app.mock import care, documents, store
 
 
+def source_note(req):
+    note = store.state().notes.get(req.source_note_id)
+    return {"note_id": note.id, "note_date": note.note_date} if note and note.org_id == req.org_id else None
+
+
 def detail(user, request_id):
     with store._lock:
         req = store.request_in_scope(user, request_id)
@@ -39,7 +44,7 @@ def detail(user, request_id):
                                                    cancelled_by_parent=bool(care_state and care_state["cancelled_by_parent"])),
                                 missing_fields=care_state["missing_fields"] if care_state else req.missing_fields,
                                 hold_until=store.hold_until_of(req.id), parent_confirmed_at=req.parent_confirmed_at,
-                                created_at=req.created_at, updated_at=req.updated_at),
+                                created_at=req.created_at, updated_at=req.updated_at, source_note=source_note(req)),
             messages=[MessageOut(id=m.id, sender_type=m.sender_type, sender_role=m.sender_role, body=m.body,
                                  created_at=m.created_at) for m in store.messages_of(req.id)],
             timeline=timeline, consultation=consultation,

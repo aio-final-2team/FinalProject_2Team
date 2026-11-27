@@ -253,6 +253,21 @@ def test_search_finds_next_month_schedule_before_it_starts(docs):
     assert "소방 대피 훈련" in found[0]["content"]
 
 
+def test_search_keeps_current_documents_when_many_upcoming_score_higher(db_client, teacher, docs):
+    """미리 올린 식단이 여러 개여도 지금 식단이 후보에서 밀려나지 않는다(적용 전 자료는 절반까지만)."""
+    for week in ("12-07", "12-14", "12-21"):
+        body = f"## 오늘 점심 메뉴\n- 오늘 점심 메뉴: [TEST] {week} 주 점심 메뉴 쌀밥\n"
+        response = upload(db_client, teacher, f"[TEST] 오늘 점심 메뉴 {week}.md", body,
+                          doc_type="menu", effective_from=f"2026-{week}")
+        assert response.status_code == 202, response.text
+    found = search_documents(parent(), str(seed.ORG), "menu", "오늘 점심 메뉴가 뭐예요?",
+                             on_date=date(2026, 11, 26), top_k=4)["chunks"]
+    upcoming = [c for c in found if c["effective_from"] > date(2026, 11, 26)]
+    assert len(found) == 4 and len(upcoming) == 2  # 적용 전 자료는 절반까지
+    assert any("11/23~11/27" in c["document_title"] for c in found)  # 이번 주 식단이 남아 있다
+    assert found[0] in upcoming  # 순서는 점수 그대로
+
+
 def test_search_skips_expired_documents(docs, seeded_db):
     with seeded_db.begin() as connection:
         connection.execute(text("UPDATE documents SET effective_to=:day WHERE title='겨울방학 안내'"),

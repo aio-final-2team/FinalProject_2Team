@@ -220,9 +220,11 @@ def test_background_claims_running_and_deduplicates_concurrent_input(db_client, 
     assert response.status_code == 202 and response.json()["draft_status"] == "queued"
     assert len(captured) == 1 and len(notes(db_client, teacher)) == 20
     payload = captured[0]
-    assert set(payload) == {"input_id", "note_date", "classroom", "activities", "supplies", "children", "menu", "roster_names"}
+    assert set(payload) == {"input_id", "note_date", "classroom", "activities", "supplies", "children", "menu", "roster_names", "memories"}
+    assert payload["memories"] == []
     assert payload["classroom"] == {"id": str(seed.CLASS_STAR), "name": "만 4세 별빛반"}
-    assert set(payload["children"][0]) == {"child_id", "display_name", "memo", "requests"}
+    assert set(payload["children"][0]) == {"child_id", "display_name", "memo", "requests", "care_notes"}
+    assert all(child["care_notes"] == [] for child in payload["children"])
     assert payload["menu"]["document_id"] == str(seed.MENU)
     with seeded_db.connect() as connection:
         assert connection.scalar(text("SELECT count(*) FROM daily_note_inputs")) == 1

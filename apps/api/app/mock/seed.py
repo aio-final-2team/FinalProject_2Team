@@ -9,7 +9,7 @@
 로그인 비밀번호는 모의 API 전용 값이다. 실제 계정·원아 정보는 넣지 않는다.
 """
 
-from datetime import datetime
+from datetime import datetime, time, timedelta
 from pathlib import Path
 from uuid import UUID
 
@@ -31,6 +31,21 @@ PARENT_OTHER = demo_id("402")            # P-DEMO-02 다른 아이 학부모
 CHILD = demo_id("501")                   # C-DEMO-01 우리 아이
 CHILD_OTHER = demo_id("502")             # C-DEMO-02 다른 아이
 ROOM = demo_id("601")                    # RM-DEMO-01 상담실
+
+
+def demo_busy_blocks(on=None):
+    """고정 날짜 평가 시간표는 보존하고, 시드 기준일부터 14일의 수업·당번을 채워요."""
+    from app.core.schedule import KST
+
+    on = on or datetime.now(KST).date()
+    for offset in range(14):
+        day = on + timedelta(days=offset)
+        if day.weekday() >= 5:
+            continue
+        for teacher in (TEACHER, TEACHER_OTHER):
+            for start, end, kind in ((time(9, 30), time(12), "class"), (time(13), time(14), "duty")):
+                yield {"org_id": ORG, "user_id": teacher, "kind": kind,
+                       "period": {"start": datetime.combine(day, start, KST), "end": datetime.combine(day, end, KST)}}
 
 CLASSROOMS = [
     {"id": CLASS_STAR, "name": "만 4세 별빛반"},

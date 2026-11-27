@@ -3,7 +3,7 @@
 from uuid import UUID
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, Response
 
 from app.api.schemas.actions import (InboxFilter, CardKind, DecisionIn, ReclassifyIn, BookingIn,
                                     InstructionIn, ReassignIn, RuleDecisionIn)
@@ -37,8 +37,8 @@ def card_stream(card_id: UUID, user: CurrentUser = Depends(staff)):
 
 
 @router.post("/cards/{card_id}/decisions", response_model=DecisionResponse, responses=errors(401, 403, 404, 409, 422))
-def decide(card_id: UUID, body: DecisionIn, user: CurrentUser = Depends(staff)):
-    return backend.cards.decide(user, card_id, body)
+def decide(card_id: UUID, body: DecisionIn, background_tasks: BackgroundTasks, user: CurrentUser = Depends(staff)):
+    return backend.cards.decide(user, card_id, body, background_tasks)
 
 
 @router.post("/cards/{card_id}/reclassify", response_model=ReclassifyResponse, responses=errors(401, 403, 404, 409, 422))
@@ -49,8 +49,10 @@ def reclassify(card_id: UUID, body: ReclassifyIn, user: CurrentUser = Depends(st
 @router.post("/cards/{card_id}/bookings", response_model=BookingResponse,
              responses={**errors(401, 403, 404, 409, 422),
                         409: {**errors(409)[409], "description": "SLOT_PAST: 이미 시작한 후보; SLOT_TAKEN: 예약 충돌"}})
-def book(card_id: UUID, body: BookingIn, user: CurrentUser = Depends(require_roles("teacher"))):
-    return backend.cards.book(user, card_id, body)
+def book(card_id: UUID, body: BookingIn, background_tasks: BackgroundTasks, user: CurrentUser = Depends(require_roles("teacher"))):
+    result = backend.cards.book(user, card_id, body)
+    background_tasks.add_task(backend.memories.after_request, result["request"]["id"])
+    return result
 
 
 @router.post("/cards/{card_id}/instructions", response_model=InstructionResponse, responses=errors(401, 403, 404, 409, 422))
