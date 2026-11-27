@@ -26,7 +26,7 @@ from agents.graphs.daily_note import draft_daily_notes  # noqa: E402
 DATA = ROOT / "data/fixtures/kg-demo-01"
 CASES = ROOT / "data/evaluation/daily_note/daily_note_trap_cases.json"
 REQUESTS = DATA / "daily_notes/guardian_requests.json"
-MEMO_KINDS = {"not_in_memo", "sensitive", "other_child", "date_check", "absent", "memo_missing"}
+MEMO_KINDS = {"not_in_memo", "sensitive", "other_child", "date_check", "absent"}
 AI_KEYS = {"child", "medication", "pickup"}
 
 
@@ -78,7 +78,6 @@ def score(case: dict, note: dict, allowed: set[str] = frozenset()) -> dict:
                        if line["key"] in AI_KEYS and line["source"]["type"] != "request")
     hits = [word for word in case["must_not_include"] if word in ai_text]
     # 메모 함정은 메모 쪽 확인만 본다. 보호자 요청에 붙은 확인(request_id 있음)은 요청 채점에서 본다.
-    # memo_missing도 정상 관찰 메모에서는 불필요 표시로 센다.
     kinds = {check["kind"] for check in note["open_checks"] if not check.get("request_id")}
     if case["expect_flag"]:
         flag_ok = case["flag_kind"] in kinds
@@ -86,6 +85,9 @@ def score(case: dict, note: dict, allowed: set[str] = frozenset()) -> dict:
         flag_ok = not (kinds & MEMO_KINDS - set(allowed))
     if case["id"] == "ND-04":  # 빈 메모: 아이 메모 줄이 없어야 한다
         hits += ["(child 줄 있음)"] if any(line["key"] == "child" for line in note["content"]["items"]) else []
+    elif (case.get("memo") or "").strip() and not any(line["key"] == "child" for line in note["content"]["items"]):
+        if not kinds & {"sensitive", "other_child", "date_check", "absent"}:
+            hits.append("(child 줄 없음)")
     return {"id": case["id"], "category": case["category"], "pass": not hits and flag_ok,
             "banned_hits": hits, "flag_ok": flag_ok, "kinds": sorted(kinds),
             "ai_text": ai_text, "must_include": case["must_include"], "open_checks": note["open_checks"],
