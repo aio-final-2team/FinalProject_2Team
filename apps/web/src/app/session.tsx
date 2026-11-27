@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { api, setToken } from "@/api/client";
 import type { Role } from "@/domain/types";
 
@@ -30,8 +31,11 @@ function read(): SessionUser | null {
 
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<SessionUser | null>(read);
+  /* 계정이 바뀌면 화면 캐시(목록·사진)를 비운다. 같은 탭에서 다른 원으로 들어가도 앞 원 데이터가 보이지 않게 */
+  const qc = useQueryClient();
   const signIn = async (login_id: string, password: string) => {
     const r = await api<LoginRes>("/api/v1/auth/login", { method: "POST", body: JSON.stringify({ login_id, password }) });
+    qc.clear();
     setToken(r.access_token);
     try {
       sessionStorage.setItem(KEY, JSON.stringify(r.user));
@@ -59,6 +63,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("yuchion:consent-required", h);
   }, []);
   const signOut = () => {
+    qc.clear();
     setToken(null);
     try {
       sessionStorage.removeItem(KEY);

@@ -9,7 +9,7 @@ depends_on = None
 
 
 def upgrade():
-    # profiles/<child_id>.<확장자>. 피드 사진과 달리 하위 폴더라 고아 파일 점검(media_sweep) 대상이 아니에요.
+    # profiles/<child_id>.<확장자>. 고아 파일 점검(media_sweep)이 이 열과 대조해요. meals/는 점검 대상이 아니에요.
     op.execute("ALTER TABLE children ADD COLUMN profile_photo_path text")
     op.execute("""
         CREATE TABLE meal_photos (
