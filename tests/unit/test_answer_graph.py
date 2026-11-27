@@ -15,9 +15,11 @@ class Writer:
     def __init__(self, answer):
         self.answer = answer
         self.calls = 0
+        self.system = ""
 
     def json(self, system, user):
         self.calls += 1
+        self.system = system
         if isinstance(self.answer, Exception):
             raise self.answer
         return self.answer
@@ -47,6 +49,15 @@ def test_valid_quote():
     assert result["text"] == "12월 24일부터예요."
     assert result["evidence"][0]["chunk_id"] == 1
     assert result["trace"] == ["search", "write", "verify", "check", "end"]
+
+
+def test_writer_prompt_requires_named_event_match():
+    writer = Writer({"text": "확인 중이에요.", "evidence": [{"chunk_id": 1, "quote": "겨울방학"}],
+                     "no_evidence": False, "conflict": False})
+    draft_answer("우리 동네 장터 일정이 언제예요?", search, writer, Checker())
+    # 행사 이름이 다른 자료를 근거로 대신 답하지 않는 규칙이 작성 프롬프트에 포함된다.
+    assert "같은 행사·대상임을 확인할 수 있는 이름이나 연결 정보" in writer.system
+    assert "no_evidence = true" in writer.system
 
 
 def test_same_chunk_cited_twice_is_kept_once():
