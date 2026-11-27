@@ -2,6 +2,8 @@
 
 export type NoteStatus = "draft" | "needs_check" | "ready" | "sent";
 export type ItemKey = "day" | "meal" | "medication" | "pickup" | "supplies" | "child";
+/** 모든 가정에 같은 내용이 가는 줄. 나머지(아이의 오늘·투약·귀가·보호자 요청)는 아이별이라 담임이 확인한다 */
+export const COMMON_KEYS: string[] = ["day", "meal", "supplies"];
 export type SourceType = "teacher_input" | "document" | "request";
 export type CheckKind =
   | "not_in_memo"

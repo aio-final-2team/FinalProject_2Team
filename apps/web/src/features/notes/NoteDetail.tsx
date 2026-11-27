@@ -12,7 +12,7 @@ import { Icon } from "@/components/Icon";
 import { useToast } from "@/components/Toast";
 import { useRecords } from "@/features/records/store";
 import { fmtDateTime } from "@/domain/datetime";
-import { CHECK_KIND, NOTE_STATUS, SOURCE_LABEL, dateLabel, itemLabel, nameI, noMd, todayKST, type DailyNote, type NoteItem, type OpenCheck } from "@/domain/notes";
+import { CHECK_KIND, COMMON_KEYS, NOTE_STATUS, SOURCE_LABEL, dateLabel, itemLabel, nameI, noMd, todayKST, type DailyNote, type NoteItem, type OpenCheck } from "@/domain/notes";
 
 /**
  * 아이별 알림장 (API 25 PATCH). 줄마다 출처, 검사 AI가 짚은 곳(open_checks[].kind),
@@ -238,10 +238,14 @@ function Detail({ note, notes, name, names }: { note: DailyNote; notes: DailyNot
               ) : (
                 <p className={`mt-0.5 text-body ${bad ? "rounded-xs bg-tint" : ""}`}>{noMd(it.value)}</p>
               )}
-              {/* 줄 이름과 출처가 같은 말이면(보호자 요청 / 보호자 요청) 배지는 숨긴다 */}
-              {src !== (it.key === "child" ? "" : itemLabel(it)) && (
-                <span className={`mt-1 inline-block rounded-sm px-2 py-0.5 text-caption font-semibold ${it.source.type === "document" ? "bg-ok-tint text-ok" : it.source.type === "request" ? "bg-lav-tint text-lav" : "bg-g text-ink2"}`}>{src}</span>
-              )}
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                {/* 모든 가정에 같은 내용이 가는 줄(오늘 하루·식사·준비물)은 '선생님 입력' 대신 '반 공통'으로 알아보게 한다 */}
+                {COMMON_KEYS.includes(it.key) && <span className="inline-block rounded-sm bg-tint px-2 py-0.5 text-caption font-semibold text-accent-ink">반 공통</span>}
+                {/* 줄 이름과 출처가 같은 말이면(보호자 요청 / 보호자 요청) 배지는 숨긴다 */}
+                {src !== (it.key === "child" ? "" : itemLabel(it)) && !(COMMON_KEYS.includes(it.key) && it.source.type === "teacher_input") && (
+                  <span className={`inline-block rounded-sm px-2 py-0.5 text-caption font-semibold ${it.source.type === "document" ? "bg-ok-tint text-ok" : it.source.type === "request" ? "bg-lav-tint text-lav" : "bg-g text-ink2"}`}>{src}</span>
+                )}
+              </div>
             </div>
           );
         })}

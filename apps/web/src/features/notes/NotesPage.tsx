@@ -15,7 +15,7 @@ import { Icon } from "@/components/Icon";
 import { Sheet } from "@/components/Sheet";
 import { useToast } from "@/components/Toast";
 import { useAllCards } from "@/api/cards";
-import { CHECK_KIND, NOTE_STATUS, dateLabel, itemLabel, nameI, noMd, todayKST, type DailyNote, type NoteItem } from "@/domain/notes";
+import { CHECK_KIND, COMMON_KEYS, NOTE_STATUS, dateLabel, itemLabel, nameI, noMd, todayKST, type DailyNote, type NoteItem } from "@/domain/notes";
 import { RecordSheet } from "@/features/records/RecordSheet";
 import { useRecords } from "@/features/records/store";
 
@@ -432,7 +432,7 @@ function Review({ notes }: { notes: DailyNote[] }) {
 
   const preview = notes.find((n) => hasChild(n)) ?? notes[0];
   /* 보내기 전 확인에는 아이 이름 없이 반 활동·식단·준비물 같은 공통 내용만 보여 준다 */
-  const common = (preview?.content.items ?? []).filter((it) => ["day", "meal", "supplies"].includes(it.key) && it.value.trim());
+  const common = (preview?.content.items ?? []).filter((it) => COMMON_KEYS.includes(it.key) && it.value.trim());
   return (
     <Frame title="알림장 확인" sub={`${user?.display_name} · ${notes.length}명${allSent ? "" : " · 17:00까지"}`}>
       {!allSent && <section className="mt-4 rounded-lg bg-card p-3 shadow-card">
