@@ -729,8 +729,8 @@ T12 화면 지도에 나온 화면들이 조회 응답에서 쓰는 칸을 여�
 
 | 필드 | 값 | 설명 |
 | --- | --- | --- |
-| `items[].key` | `day`·`meal`·`medication`·`pickup`·`supplies`·`child`·`inquiry` | 줄 종류. `child`는 아이별 메모를 풀어 쓴 줄로 출처는 `teacher_input`이며, 메모가 없거나 공백뿐이면 이 줄도 없다. 보호자 문의는 반 공통 `day`와 따로 `inquiry` 줄로, 투약·귀가는 `medication`·`pickup` 줄로 잇고, 이 줄들의 출처는 `request`다. 투약·귀가를 실제로 확인하는 일은 3.27에서 다루고, 현재 상태는 응답의 request_status로 보여 준다 |
-| `items[].source.type` | `teacher_input`·`document`·`request` | 순서대로 담임 입력(`daily_note_inputs`), 원 자료(식단·일정), 학부모 요청(문의·투약·귀가) |
+| `items[].key` | `day`·`meal`·`medication`·`pickup`·`supplies`·`child`·`inquiry` | 줄 종류. `child`는 아이별 메모를 풀어 쓴 줄로 출처는 `teacher_input`이며, 메모가 없거나 공백뿐이면 이 줄도 없다. 투약·귀가는 `medication`·`pickup` 줄로 잇고, 이 줄들의 출처는 `request`다. 문의는 #406부터 알림장에 넣지 않고 받은함에서만 다루므로 새 초안에는 `inquiry` 줄이 생기지 않는다. `inquiry`는 그 전에 저장한 알림장을 고칠 수 있게 남긴 값이다. 투약·귀가를 실제로 확인하는 일은 3.27에서 다루고, 현재 상태는 응답의 request_status로 보여 준다 |
+| `items[].source.type` | `teacher_input`·`document`·`request` | 순서대로 담임 입력(`daily_note_inputs`), 원 자료(식단·일정), 학부모 투약·귀가 요청 |
 | `items[].source.document_id`·`document_title` | — | `document`일 때 |
 | `items[].source.request_id` | — | `request`일 때 |
 | `open_checks[] { id, item_key, kind, problem, action?, sentence, request_id? }` | — | 확인할 항목. `id`·`item_key`·`kind`·`problem`은 필수이고, 그중 `problem`은 무엇이 문제인지 한 줄로, 화면 제목으로 그대로 보인다. `action`은 선생님이 할 일 한 줄(선택, 없으면 null)이다. 둘 다 검사 AI가 자기 말로 쓰고, 코드가 만드는 확인은 코드 문구를 쓴다. `sentence`는 문제가 걸린 초안 문장이며 없으면 null이다. `request_id`는 선택 칸(UUID)이라 생략하거나 null로 둘 수 있고, 보호자 요청 누락일 때 해당 요청 ID를 넣는다. `resolved_checks[]`에는 `id`만 보낸다 |
@@ -1197,7 +1197,7 @@ HTTP/1.1 200 OK
 
 초안을 만드는 입구 함수의 전체 입력은 `{ input_id, note_date, classroom, activities, supplies, children, roster_names, menu }`이고, 이 중 `menu`는 `{ document_id, title, text }` 또는 null이다. `roster_names`는 반 전체 아이 이름이며, 부분 재생성으로 `children`을 걸러도 유지한다(3.26). 아이별 입력은 `{ child_id, display_name, memo, requests: [{ request_id, type, text }] }`다. `requests`는 클라이언트가 보내지 않고 서버가 모은다. 같은 기관·반·아이의 보호자가 보낸 `medication`·`pickup` 요청 가운데 `created_at`의 한국 날짜가 `note_date`인 것을 모으며, 해당 요청이 없으면 빈 목록이다. 문의·상담·민원은 답이 있어야 끝나는 일이라 알림장에 넣지 않고 받은함에서만 다룬다(알림장은 아이의 하루·식사·투약·귀가·준비물, 기획서 FR-14). 각 항목의 `text`에는 보호자 요청 본문이 들어간다. DB 모드의 실행기(runner)도 이 입구를 같은 모양으로 부른다.
 
-모의 초안은 요청 원문을 `source: { type: request, request_id }` 줄에 넣는다. 하늘의 "기침해요"와 다른 귀가 요청은 반영하지만, 노을의 고정 귀가 요청(…70a) 하나만은 일부러 빼서 `request_missed`를 보여 준다. 이 항목은 `item_key: pickup`, `sentence: null`, `request_id: …70a`다. 교사는 요청을 확인한 뒤 기존 PATCH의 `resolved_checks`로 해결한다. 미해결 항목이 남아 있으면 확인·발송을 막는 규칙도 기존과 같다.
+모의 초안은 요청 원문을 `source: { type: request, request_id }` 줄에 넣는다. 그날 접수한 투약·귀가 요청은 반영하지만(하늘의 문의 "기침해요"는 받은함에서만 다룬다), 노을의 고정 귀가 요청(…70a) 하나만은 일부러 빼서 `request_missed`를 보여 준다. 이 항목은 `item_key: pickup`, `sentence: null`, `request_id: …70a`다. 교사는 요청을 확인한 뒤 기존 PATCH의 `resolved_checks`로 해결한다. 미해결 항목이 남아 있으면 확인·발송을 막는 규칙도 기존과 같다.
 
 ```http
 POST /api/v1/daily-notes/drafts
@@ -1366,7 +1366,7 @@ HTTP/1.1 200 OK
 | --- | --- | --- | --- | --- | --- | --- |
 | `note_id` | 경로 | string(UUID) | 필수 | 불가 | 현재 담당 반 알림장 | 3.20 응답에서 받은 ID |
 | `content` | 본문 | object | 선택 | null 가능 | items[]의 key·label·value·source는 3.7; 빈 items도 허용 | 생략·null이면 내용 유지 |
-| `content.items[].key` | 본문 | string | 줄마다 필수 | 불가 | day·meal·medication·pickup·supplies·child·inquiry | 줄 종류. child의 출처는 teacher_input, inquiry는 request만 허용 |
+| `content.items[].key` | 본문 | string | 줄마다 필수 | 불가 | day·meal·medication·pickup·supplies·child·inquiry | 줄 종류. child의 출처는 teacher_input, inquiry는 request만 허용(#406 전에 저장한 알림장용. 새 초안에는 없음) |
 | `content.items[].label`·`value` | 본문 | string | 줄마다 필수 | value만 빈 문자열 가능 | label은 1자 이상, value 길이 제한 없음 | 줄 이름과 내용 |
 | `content.items[].source` | 본문 | object | 줄마다 필수 | 불가 | document면 document_id·document_title, request면 request_id 필수 | 출처 종류는 teacher_input·document·request |
 | `note.open_checks[].kind` | 응답 | string | 항목마다 | 불가 | not_in_memo·sensitive·other_child·date_check·absent·draft_failed·check_failed·request_missed·return_limit | `return_limit`도 남아 있으면 `confirm=true`는 409 |
@@ -2194,7 +2194,7 @@ def decide(card_id: UUID, body: CardDecision, user: User = Depends(current_staff
 
 #### 5.5.1 알림장 아이 줄 쓰기 — 자료 AI(`write()`)
 
-프롬프트는 `agents/prompts/documents.md`의 '알림장 초안 쓰기' 절이다. 아이 메모나 그날 보호자 요청이 있는 아이마다 부른다. 둘 다 없는 아이는 모델을 부르지 않고 반 공통 줄만 둔다. 그래프의 `draft_daily_notes()`는 `ThreadPoolExecutor`로 아이별 쓰기·검사를 동시에 처리하고, `NOTE_DRAFT_CONCURRENCY`로 최대 동시 아이 수를 정한다(기본값 5, 최솟값 1). 한 아이 안에서는 쓰기→코드 검사→검사 AI→필요하면 다시 쓰기 순서로 진행하며, 결과 목록은 입력 아이 순서를 유지한다.
+프롬프트는 `agents/prompts/documents.md`의 '알림장 초안 쓰기' 절이다. 아이 메모나 그날 보호자 투약·귀가 요청이 있는 아이마다 부른다. 둘 다 없는 아이는 모델을 부르지 않고 반 공통 줄만 둔다. 그래프의 `draft_daily_notes()`는 `ThreadPoolExecutor`로 아이별 쓰기·검사를 동시에 처리하고, `NOTE_DRAFT_CONCURRENCY`로 최대 동시 아이 수를 정한다(기본값 5, 최솟값 1). 한 아이 안에서는 쓰기→코드 검사→검사 AI→필요하면 다시 쓰기 순서로 진행하며, 결과 목록은 입력 아이 순서를 유지한다.
 
 | 입력 | 타입 | 필수 | 허용값·설명 |
 | --- | --- | --- | --- |
@@ -2626,7 +2626,7 @@ MVP 설정값은 서버 설정(`.env`)으로 관리한다. `.env.example`에는 
 별빛반(`…0101`, 만 4세, teacher01)은 하늘·노을에 `roster_c4.json` 명단의 18명을 더해 20명이다. 명단의 `C4-NN`은 `demo_id("54NN")`으로 바꿔 쓰며, 명단 아이에게는 보호자가 없다. 햇님반(`…0102`, 만 5세, teacher02)에는 바다 1명뿐이다. 반 이름, 교사 표시 이름, 아이 이름과 순서는 `apps/api/app/mock/seed.py`에 있다.
 
 
-알림장에 연결하는 두 요청은 모의 저장소를 초기화하는 날짜에 접수 상태로 넣는다. 문의·귀가를 처리할 카드는 아직 만들지 않는다.
+`R-DEMO-08`·`R-DEMO-10` 두 요청은 모의 저장소를 초기화하는 날짜에 접수 상태로 넣는다. 알림장에는 귀가 요청(…70a)만 잇고, 문의(…708)는 받은함에서만 다룬다(#406). 두 요청을 처리할 카드는 아직 만들지 않는다.
 
 그 밖의 데모 요청(…703~707), 문서(…b01~b03), 규칙(…d01)은 `apps/api/app/mock/seed.py`를 참고한다.
 
