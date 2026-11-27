@@ -12,7 +12,7 @@ const TONE: Record<Tone, string> = {
 };
 
 export function Pill({ tone = "wait", children }: { tone?: Tone; children: ReactNode }) {
-  return <span className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-cap font-semibold tracking-normal ${TONE[tone]}`}>{children}</span>;
+  return <span className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 font-display text-cap font-semibold tracking-normal ${TONE[tone]}`}>{children}</span>;
 }
 
 export function StatusPill({ status, role }: { status: Status; role: "parent" | "staff" }) {
@@ -31,7 +31,7 @@ export function TypeTag({ type, size = "md" }: { type: RequestType; size?: "sm" 
   const s = TYPE_STYLE[type];
   const sz = size === "sm" ? "text-[10.5px] px-2 py-px" : size === "lg" ? "text-[13px] px-3 py-1.5" : "text-[11.5px] px-2 py-1";
   return (
-    <span className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full font-bold tracking-normal ${s.cls} ${sz}`}>
+    <span className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full font-display font-bold tracking-normal ${s.cls} ${sz}`}>
       <Icon name={s.icon} className={size === "lg" ? "size-[15px]" : "size-[13px]"} />
       {TYPE_LABEL[type]}
     </span>

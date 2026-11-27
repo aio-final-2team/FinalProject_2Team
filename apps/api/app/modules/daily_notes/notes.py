@@ -3,6 +3,7 @@
 import json
 from contextlib import nullcontext
 from datetime import datetime
+from uuid import uuid4
 
 from sqlalchemy import text
 
@@ -20,6 +21,30 @@ from app.modules.daily_notes.runner import requeued
 from app.modules.notifications.notifications import enqueue
 
 input_in_scope = scope.note_input_in_scope
+
+
+def reply(user, note_id, body, background_tasks, trace_id):
+    from app.modules.requests.requests import create
+
+    note = scope.note_in_scope(user, note_id)
+    req, _ = create(user, background_tasks=background_tasks, client_request_id=str(uuid4()),
+                    type="inquiry", body=body, child_id=note["child_id"], previous_request_id=None,
+                    trace_id=trace_id, source_note_id=note_id)
+    return {"request_id": req["id"]}
+
+
+def supplies_check(user, note_id):
+    with transaction() as connection:
+        scope.note_in_scope(user, note_id, connection=connection)
+        note = connection.execute(text("SELECT * FROM daily_notes WHERE id=:id FOR UPDATE"),
+                                  {"id": note_id}).mappings().one()
+        if not any(line["key"] == "supplies" and line["value"].strip() for line in note["content"]["items"]):
+            raise ApiError(409, "INVALID_TRANSITION")
+        at = connection.scalar(text("""
+            UPDATE daily_notes SET supplies_checked_at=coalesce(supplies_checked_at,clock_timestamp())
+            WHERE id=:id RETURNING supplies_checked_at
+        """), {"id": note_id})
+        return {"supplies_checked_at": at}
 
 
 def batch_view(connection, input_id, org_id):
@@ -115,14 +140,17 @@ def draft(user, body, background_tasks):
 
 def view(note, *, connection=None, requests=None):
     result = {name: note[name] for name in ("id", "child_id", "note_date", "status", "content",
-                                         "open_checks", "confirmed_at", "sent_at", "version", "corrected_at")}
+                                         "open_checks", "confirmed_at", "sent_at", "version", "corrected_at", "supplies_checked_at")}
     if requests is None:
         with (transaction() if connection is None else nullcontext(connection)) as connection:
             requests = {str(r["id"]): r for r in connection.execute(text(
-                "SELECT id,type,status,child_id FROM requests WHERE org_id=:org AND child_id=:child"),
+                "SELECT id,type,status,child_id,source_note_id,body,created_at FROM requests WHERE org_id=:org AND child_id=:child"),
                 {"org": note["org_id"], "child": note["child_id"]}).mappings()}
     result["content"] = note_content(note["content"], {key: r for key, r in requests.items()
                                                     if r["child_id"] == note["child_id"]})
+    result["replies"] = [{"request_id": r["id"], **{k: r[k] for k in ("body", "status", "created_at")}}
+                         for r in sorted(requests.values(), key=lambda r: (r["created_at"], r["id"]))
+                         if r["source_note_id"] == note["id"] and r["child_id"] == note["child_id"]]
     return result
 
 
@@ -187,8 +215,9 @@ def list_notes(user, note_date, classroom_id, page, size, sort):
         request_ids = list({str(line.get("source", {}).get("request_id")) for row in items
                             for line in row["content"]["items"] if line.get("source", {}).get("request_id")})
         requests = {str(r["id"]): r for r in connection.execute(text("""
-            SELECT id,type,status,child_id FROM requests WHERE org_id=:org AND id=ANY(CAST(:ids AS uuid[]))
-        """), {"org": user.org_id, "ids": request_ids}).mappings()} if request_ids else {}
+            SELECT id,type,status,child_id,source_note_id,body,created_at FROM requests
+            WHERE org_id=:org AND (id=ANY(CAST(:ids AS uuid[])) OR source_note_id=ANY(CAST(:notes AS uuid[])))
+        """), {"org": user.org_id, "ids": request_ids, "notes": [str(n["id"]) for n in items]}).mappings()}
         return {"items": [{**view(row, requests=requests), "input_id": row["input_id"]} for row in items],
                 "total": total, "page": page, "size": size}
 
@@ -263,7 +292,7 @@ def _notify_guardians(connection, note, kind, dedupe_prefix, now):
             ON CONFLICT (dedupe_key) DO NOTHING
         """), {"org": note["org_id"], "recipient": guardian["id"], "note": note["id"],
                "kind": kind, "title": notification_title(kind), "key": f"{dedupe_prefix}:{guardian['id']}",
-               "after": deliver_after(now, guardian["role"])})
+               "after": deliver_after(now, guardian["role"], user_id=guardian["id"])})
 
 
 def correct(user, note_id, body):

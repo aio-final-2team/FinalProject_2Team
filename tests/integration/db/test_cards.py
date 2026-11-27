@@ -113,7 +113,8 @@ def test_0013_escalated_reply_view_roundtrip_preserves_rows(db_client, seeded_db
 
     def snapshot():
         with seeded_db.connect() as connection:
-            return {table: connection.execute(text(f"SELECT * FROM {table} ORDER BY id")).mappings().all()
+            return {table: [{**({"source_note_id": None} if table == "requests" else {}), **row}
+                            for row in connection.execute(text(f"SELECT * FROM {table} ORDER BY id")).mappings()]
                     for table in ("requests", "cards", "approvals", "events", "notifications")}
 
     def buckets():
@@ -180,6 +181,25 @@ def test_overview_reads_view_and_eval_and_empty_organization(db_client, seeded_d
         k: response.json()[k] for k in ("unassigned", "waiting", "delayed", "done_today", "completed_unconfirmed")
     } == dict.fromkeys(("unassigned", "waiting", "delayed", "done_today", "completed_unconfirmed"), 0)
     assert response.json()["eval"][0]["passed"] == 2
+
+
+def test_upcoming_document_evidence_is_current(db_client, seeded_db):
+    """시행 전 문서를 근거로 써도 옛 자료 경고를 붙이지 않는다(API 설계 문서 evidence.is_current)."""
+    rid, cid = create(db_client, "inquiry")
+    with seeded_db.begin() as connection:
+        connection.execute(text("UPDATE documents SET effective_from=CURRENT_DATE + 10 WHERE id=:doc"),
+                           {"doc": seed.NOTICE})
+        connection.execute(text("DELETE FROM card_evidence WHERE card_id=:card"), {"card": cid})
+        connection.execute(
+            text("""INSERT INTO card_evidence (card_id,org_id,chunk_id,rank,quote)
+            SELECT :card,org_id,id,1,'[TEST] 다음 달 안내 인용' FROM document_chunks WHERE document_id=:doc"""),
+            {"card": cid, "doc": seed.NOTICE},
+        )
+    response = db_client.get(f"{BASE}/cards/{cid}", headers=auth(seed.TEACHER))
+    assert response.status_code == 200, response.text
+    saved = response.json()
+    assert saved["evidence"][0]["is_current"] is True
+    assert "stale_evidence" not in saved["warnings"]
 
 
 def test_evidence_staleness_warnings_and_parent_sources(db_client, seeded_db):

@@ -25,6 +25,7 @@ from app.core.db import transaction
 from app.core.schedule import KST
 from app.modules.daily_notes.stub_writer import failed_child
 from app.modules.daily_notes.events import edited_child_ids, record
+from app.modules.daily_records.records import with_record_memos
 
 log = logging.getLogger(__name__)
 
@@ -47,6 +48,7 @@ class _CurrentRunModel:
 
 
 def _payload(connection, entry):
+    from app.modules.memories.memories import load_tones, load_child_notes
     values = {"org": entry["org_id"], "class": entry["classroom_id"], "date": entry["note_date"]}
     classroom = connection.execute(text("SELECT id, name FROM classrooms WHERE id=:class AND org_id=:org"),
                                    values).mappings().one()
@@ -63,6 +65,7 @@ def _payload(connection, entry):
                       WHERE (g.child_id,g.org_id,g.user_id)=(r.child_id,r.org_id,r.requester_id))
         ORDER BY r.created_at, r.id
     """), {**values, "types": list(NOTE_REQUEST_TYPES), "start": start, "end": start + timedelta(days=1)}).mappings().all()
+    # 식단표는 다음 주 것을 미리 올려 두므로, 가장 늦게 적용된 식단보다 그날 줄(| MM-DD)이 있는 식단을 먼저 고른다.
     menu = connection.execute(text("""
         SELECT d.id AS document_id, d.title,
                string_agg(c.content, E'\n' ORDER BY c.chunk_index) AS text
@@ -74,14 +77,19 @@ def _payload(connection, entry):
           AND (NOT EXISTS (SELECT 1 FROM document_classrooms dc WHERE dc.document_id=d.id AND dc.org_id=d.org_id)
                OR EXISTS (SELECT 1 FROM document_classrooms dc
                           WHERE dc.document_id=d.id AND dc.org_id=d.org_id AND dc.classroom_id=:class))
-        GROUP BY d.id ORDER BY d.effective_from DESC NULLS LAST, d.created_at DESC, d.id LIMIT 1
-    """), values).mappings().one_or_none()
+        GROUP BY d.id
+        ORDER BY bool_or(c.content ~ ('\|\s*' || :mmdd || '([^0-9]|$)')) DESC,
+                 d.effective_from DESC NULLS LAST, d.created_at DESC, d.id LIMIT 1
+    """), {**values, "mmdd": str(entry["note_date"])[5:10]}).mappings().one_or_none()
     memos = {m["child_id"]: m["memo"] for m in entry["child_memos"]}
+    memos = with_record_memos(connection, entry, memos)
     payload = {"input_id": entry["id"], "note_date": entry["note_date"], "classroom": dict(classroom),
+            "memories": load_tones(connection, entry["org_id"], entry["author_id"]),
             "activities": entry["activities"], "supplies": entry["supplies"],
             "roster_names": [c["display_name"] for c in children],
             "children": [{"child_id": c["id"], "display_name": c["display_name"],
                           "memo": memos.get(str(c["id"]), ""),
+                          "care_notes": load_child_notes(connection, entry["org_id"], c["id"], entry["author_id"]),
                           "requests": [{k: r[k] for k in ("request_id", "type", "text")}
                                        for r in requests if r["child_id"] == c["id"]]} for c in children],
             "menu": dict(menu) if menu is not None else None}

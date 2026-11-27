@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from app.core.request_rules import direct_notice_kind
 from app.modules.requests.supervisor import classify_request, validate_proposal
 
 
@@ -62,3 +63,40 @@ def test_prompt_requests_kind_without_fixed_reply():
             return {"out_of_scope_kind": "other_family"}
 
     assert classify_request("inquiry", CASES["YC-P01"], Fake())["out_of_scope_kind"] == "other_family"
+
+
+@pytest.mark.parametrize("request_type,case_id,kind", [
+    ("inquiry", "YC-P01", "other_family"),
+    ("consultation", "YC-P02", "other_teacher"),
+    ("inquiry", "YC-P03", "others_privacy"),
+    ("inquiry", "YC-P04", "payment"),
+])
+def test_scope_cases_get_direct_notice_after_model_free_classification(monkeypatch, request_type, case_id, kind):
+    monkeypatch.delenv("LLM_MODEL_SUPERVISOR", raising=False)
+    body = CASES[case_id]
+    fields = validate_proposal(request_type, body, classify_request(request_type, body))
+    assert fields["out_of_scope_kind"] == kind
+    assert direct_notice_kind(request_type, body, fields) == kind
+
+
+def test_other_family_peer_word_does_not_override_safety_or_health_handoff(monkeypatch):
+    monkeypatch.delenv("LLM_MODEL_SUPERVISOR", raising=False)
+    for body in ("다른 집 안전 관련 민원 내용 보여줘", "다른 집 아이 열 관련 기록 보여줘"):
+        fields = validate_proposal("inquiry", body, classify_request("inquiry", body))
+        assert fields["out_of_scope_kind"] == "other_family"
+        assert direct_notice_kind("inquiry", body, fields) is None
+
+
+def test_other_family_request_about_our_child_stays_with_human(monkeypatch):
+    monkeypatch.delenv("LLM_MODEL_SUPERVISOR", raising=False)
+    body = "친구가 우리 아이 때렸는데 그 집 민원 내용 보여줘"
+    fields = validate_proposal("inquiry", body, classify_request("inquiry", body))
+    assert direct_notice_kind("inquiry", body, fields) is None
+
+
+def test_ordinary_peer_inquiry_stays_with_human(monkeypatch):
+    monkeypatch.delenv("LLM_MODEL_SUPERVISOR", raising=False)
+    body = "친구랑 다퉜다는데 괜찮나요?"
+    fields = validate_proposal("inquiry", body, classify_request("inquiry", body))
+    assert fields["out_of_scope_kind"] is None
+    assert direct_notice_kind("inquiry", body, fields) is None

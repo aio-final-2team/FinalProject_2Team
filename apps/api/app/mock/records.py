@@ -102,6 +102,7 @@ class Rule:
     rule_json: dict
     status: str = "proposed"
     decided_at: datetime | None = None
+    created_at: datetime = field(default_factory=lambda: datetime.now(KST))
 
 
 @dataclass
@@ -135,6 +136,7 @@ class Note:
     ai_original: dict = field(default_factory=dict)
     version: int = 1
     corrected_at: datetime | None = None
+    supplies_checked_at: datetime | None = None
 
     def __post_init__(self):
         self.ai_original = deepcopy(self.content)
@@ -152,3 +154,6 @@ class Memory:
     created_at: datetime = field(default_factory=lambda: datetime.now(KST))
     deleted_at: datetime | None = None
     source_card_id: UUID | None = None
+    child_id: UUID | None = None
+    confirm_status: str = "confirmed"
+    confirmed_at: datetime | None = None

@@ -12,6 +12,11 @@ from app.api.schemas.requests import (BookingOut, ConsultationOut, MessageOut, R
 from app.mock import care, documents, store
 
 
+def source_note(req):
+    note = store.state().notes.get(req.source_note_id)
+    return {"note_id": note.id, "note_date": note.note_date} if note and note.org_id == req.org_id else None
+
+
 def detail(user, request_id):
     with store._lock:
         req = store.request_in_scope(user, request_id)
@@ -39,7 +44,7 @@ def detail(user, request_id):
                                                    cancelled_by_parent=bool(care_state and care_state["cancelled_by_parent"])),
                                 missing_fields=care_state["missing_fields"] if care_state else req.missing_fields,
                                 hold_until=store.hold_until_of(req.id), parent_confirmed_at=req.parent_confirmed_at,
-                                created_at=req.created_at, updated_at=req.updated_at),
+                                created_at=req.created_at, updated_at=req.updated_at, source_note=source_note(req)),
             messages=[MessageOut(id=m.id, sender_type=m.sender_type, sender_role=m.sender_role, body=m.body,
                                  created_at=m.created_at) for m in store.messages_of(req.id)],
             timeline=timeline, consultation=consultation,
@@ -149,7 +154,9 @@ def create(user, *, background_tasks=None, **values):
     return {"id": req.id, "status": req.status}, created
 
 
-def listing(user, status, page, size, sort):
+def listing(user, status, page, size, sort, answered_by=None, classroom_id=None, type=None):
+    if user.role != "parent":
+        return staff_listing(user, status, page, size, sort, answered_by, classroom_id, type)
     with store._lock:
         store.expire()
         requests = store.requests_of(user, status)
@@ -167,6 +174,43 @@ def listing(user, status, page, size, sort):
                     "updated_at": r.updated_at,
                     "next_action": action, "hold_until": store.hold_until_of(r.id)}
         return {"items": [item(r) for r in requests[(page-1)*size:page*size]], "total": len(requests), "page": page, "size": size}
+
+
+def staff_listing(user, status, page, size, sort, answered_by, classroom_id, type):
+    from app.mock.card_views import requester_fields
+
+    with store._lock:
+        store.expire()
+        if classroom_id:
+            store.classroom_in_scope(user, classroom_id)
+        classes = store.classroom_ids_of(user.id) if user.role == "teacher" else list(store.state().classrooms)
+        # 답변 뒤 대화가 이어져도 한 번 답한 이력을 유지해요.
+        agents = {e.request_id for e in store.state().events if e.org_id == user.org_id and e.action == "out_of_scope_answered"}
+        staff = {e.request_id for e in store.state().events if e.org_id == user.org_id and e.to_status in ("sent_or_booked", "completed")}
+        # 다른 반 요청도 카드를 재배정받았으면 보여요(상세 request_in_scope와 같은 예외, 기획서 2.4).
+        mine = {c.request_id for c in store.state().cards.values() if c.assignee_id == user.id}
+        rows = []
+        for req in store.state().requests.values():
+            if (req.org_id != user.org_id
+                    or (user.role == "teacher" and req.classroom_id not in classes and req.id not in mine)
+                    or (classroom_id is not None and req.classroom_id != classroom_id)
+                    or (type is not None and req.type != type) or (status is not None and req.status != status)):
+                continue
+            answer = "agent" if req.id in agents else "staff" if req.id in staff or req.status in ("sent_or_booked", "completed") else None
+            if answered_by is None or answer == answered_by:
+                rows.append((req, answer))
+        rows.sort(key=lambda pair: (getattr(pair[0], sort.lstrip("-")), str(pair[0].id)), reverse=sort.startswith("-"))
+        items = []
+        for req, answer in rows[(page-1)*size:page*size]:
+            is_care = req.type in CARE_REQUEST_TYPES
+            cancelled = care.view(req)["cancelled_by_parent"] if is_care and req.status == "rejected" else False
+            items.append({**{k: getattr(req, k) for k in ("id", "type", "title", "status", "updated_at", "classroom_id")},
+                          **requester_fields(req), "answered_by": answer,
+                          "status_label": staff_label(req.status, req.type, cancelled_by_parent=cancelled),
+                          "next_action": ("confirm" if req.status == "received" else
+                                          "complete" if req.status == "assigned" else None) if is_care else None,
+                          "hold_until": store.hold_until_of(req.id)})
+        return {"items": items, "total": len(rows), "page": page, "size": size}
 
 
 def stream(user, request_id):

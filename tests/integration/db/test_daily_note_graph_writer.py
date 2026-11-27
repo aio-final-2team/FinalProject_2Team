@@ -137,6 +137,74 @@ def test_graph_keeps_request_missed_reference_after_returns(db_client, teacher, 
     blocked = db_client.post(BASE + "/daily-notes/send", headers=teacher, json=batch())
     assert blocked.status_code == 409 and blocked.json()["error"]["code"] == "NOTE_BATCH_BLOCKED"
 
+    # 담임이 모든 남은 확인 항목(요청 누락·return_limit 포함)을 확인하면 반 발송이 가능하다.
+    for note in listed:
+        resolved = db_client.patch(f"{BASE}/daily-notes/{note['id']}", headers=teacher, json={
+            "confirm": True, "resolved_checks": [check["id"] for check in note["open_checks"]]})
+        assert resolved.status_code == 200, resolved.text
+        assert resolved.json()["note"]["status"] == "ready"
+        assert resolved.json()["note"]["open_checks"] == []
+    sent = db_client.post(BASE + "/daily-notes/send", headers=teacher, json=batch())
+    assert sent.status_code == 200 and sent.json()["sent_count"] == 20
+
+
+def test_superseded_graph_run_makes_no_next_model_call_or_overwrite(db_client, teacher, graph_models, monkeypatch):
+    old_started, release_old, old_finished = Event(), Event(), Event()
+
+    def writer(value):
+        if not old_started.is_set():
+            old_started.set()
+            assert release_old.wait(20)
+            old_finished.set()
+            return {"child": "[TEST] 늦은 이전 초안", "requests": []}
+        return echo_writer(value)
+
+    def checker(value):
+        return {"checks": []}
+
+    models = graph_models(writer, checker)
+    original_payload = runner._payload
+
+    def only_test_child(connection, entry):
+        value = original_payload(connection, entry)
+        value["children"] = [child for child in value["children"] if child["child_id"] == str(seed.CHILD)]
+        return value
+
+    monkeypatch.setattr(runner, "_payload", only_test_child)
+    # fixture의 FakeModel은 호출 시 입력을 기록하므로 실제 호출 횟수도 확인한다.
+    monkeypatch.setattr(runner, "settings", replace(runner.settings, daily_note_writer_timeout=0.1))
+    try:
+        response = draft(db_client, teacher, [{"child_id": str(seed.CHILD), "memo": "[TEST] 모래놀이"}])
+        assert response.status_code == 202
+        input_id = response.json()["input_id"]
+        assert old_started.is_set() and not old_finished.is_set()
+
+        monkeypatch.setattr(runner, "settings", replace(runner.settings, daily_note_writer_timeout=5))
+        regenerated = db_client.post(f"{BASE}/daily-notes/drafts/{input_id}/regenerate", headers=teacher)
+        assert regenerated.status_code == 202, regenerated.text
+        target = next(n for n in db_client.get(BASE + "/daily-notes", headers=teacher,
+                         params={"date": batch()["note_date"], "classroom_id": str(seed.CLASS_STAR)}).json()["items"]
+                      if n["child_id"] == str(seed.CHILD))
+        child_line = next(line for line in target["content"]["items"] if line["key"] == "child")
+        assert child_line["value"] == "[TEST] 모래놀이"
+
+        edited = json.loads(json.dumps(target["content"]))
+        next(line for line in edited["items"] if line["key"] == "child")["value"] = "[TEST] 담임 수정본"
+        changed = db_client.patch(f"{BASE}/daily-notes/{target['id']}", headers=teacher, json={"content": edited})
+        assert changed.status_code == 200, changed.text
+    finally:
+        release_old.set()
+        assert old_finished.wait(20)
+
+    # 이전 DOC 요청은 이미 진행 중이어서 끝날 수 있지만, 다음 CHECKER 호출은 token 검사에서 중단된다.
+    assert len(models["DOCUMENT"].inputs) == 2
+    assert len(models["CHECKER"].inputs) == 1
+    after = db_client.get(BASE + "/daily-notes", headers=teacher,
+                          params={"date": batch()["note_date"], "classroom_id": str(seed.CLASS_STAR)}).json()["items"]
+    saved = next(n for n in after if n["child_id"] == str(seed.CHILD))
+    assert saved["content"] == edited
+    assert next(line for line in saved["content"]["items"] if line["key"] == "child")["value"] == "[TEST] 담임 수정본"
+
 
 @pytest.mark.parametrize("failed_role,kind,keeps_child", [
     ("DOCUMENT", "draft_failed", False), ("CHECKER", "check_failed", True)])

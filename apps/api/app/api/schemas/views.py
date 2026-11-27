@@ -26,6 +26,18 @@ class RequestList(Page):
     items: list[RequestItem]
 
 
+class StaffRequestItem(RequestItem):
+    classroom_id: UUID | None
+    child_id: UUID | None
+    child_name: str | None
+    requester_name: str | None
+    answered_by: Literal["agent", "staff"] | None
+
+
+class StaffRequestList(Page):
+    items: list[StaffRequestItem]
+
+
 class CareRequestItem(RequestItem):
     child_id: UUID
     child_name: str
@@ -117,6 +129,9 @@ class CardItem(BaseModel):
     status_label: str
     version: int
     request_id: UUID | None
+    child_id: UUID | None
+    child_name: str | None
+    requester_name: str | None
     request_type: Literal["inquiry", "consultation", "complaint"] | None
     title: str
     urgency: str | None
@@ -177,6 +192,9 @@ class InstructionView(BaseModel):
 
 
 class StaffRequest(RequestView):
+    child_id: UUID | None
+    child_name: str | None
+    requester_name: str | None
     body: str
     risk_level: str | None
     risk_category: str | None
@@ -264,7 +282,7 @@ class NotificationView(BaseModel):
     kind: Literal["needs_info", "new_card", "urgent_complaint", "uncertain_complaint", "director_report",
                   "on_hold", "sent_or_booked", "parent_confirmed", "completed", "rejected", "note_sent", "note_corrected",
                   "slot_hold_expired", "hold_resumed", "consultation_ending", "consultation_delayed", "care_requested", "care_confirmed",
-                  "care_rejected", "cancelled", "parent_message", "reassigned", "consultation_booked"]
+                  "care_rejected", "cancelled", "parent_message", "reassigned", "consultation_booked", "memory_candidate"]
     title: str
     body: str | None
     request_id: UUID | None
@@ -314,6 +332,20 @@ class NoteContentOut(BaseModel):
     items: list[NoteLineOut]
 
 
+class NoteReplyAccepted(BaseModel):
+    request_id: UUID
+
+
+class NoteReply(NoteReplyAccepted):
+    body: str
+    status: RequestStatus
+    created_at: datetime
+
+
+class SuppliesCheckOut(BaseModel):
+    supplies_checked_at: datetime
+
+
 class NoteView(BaseModel):
     id: UUID
     child_id: UUID
@@ -325,6 +357,8 @@ class NoteView(BaseModel):
     sent_at: datetime | None
     version: int = Field(ge=1, description="정정용 판. 정정 성공마다 1 증가해요")
     corrected_at: datetime | None
+    supplies_checked_at: datetime | None = None
+    replies: list[NoteReply] = Field(default_factory=list)
 
 
 class NoteListItem(NoteView):
@@ -339,20 +373,46 @@ class NoteResponse(BaseModel):
     note: NoteView
 
 
-MemoryKind = Literal["rejection_reason", "preference", "tone"]
+MemoryKind = Literal["rejection_reason", "preference", "tone", "care_note", "saved_answer", "rule"]
 
 
 class MemoryView(BaseModel):
-    id: int
+    id: int | UUID
     kind: MemoryKind
     reason_code: str | None
     content: str
     structured: dict
     created_at: datetime
+    title: str
+    child_id: UUID | None = None
+    child_name: str | None = None
+    confirm_status: Literal["pending", "confirmed", "discarded"] = "confirmed"
+    confirmed_at: datetime | None = None
+    source: Literal["memory", "saved_answer", "rule"]
+
+
+class SavedAnswerView(BaseModel):
+    id: UUID
+    question: str
+    answer: str
+    status: Literal["active", "off", "invalidated"]
+    approved_at: datetime
+
+
+class SavedAnswerResponse(BaseModel):
+    saved_answer: SavedAnswerView
+
+
+class MemoryConfirmation(BaseModel):
+    id: int
+    confirm_status: Literal["confirmed", "discarded"]
+    confirmed_at: datetime | None
 
 
 class MemoryList(Page):
     items: list[MemoryView]
+    saved_answers: list[SavedAnswerView] = Field(default_factory=list)
+    rules: list[RuleView] = Field(default_factory=list)
 
 
 class SendResponse(BaseModel):

@@ -81,7 +81,7 @@ def test_injected_document_chunk_is_marked_and_not_searched(db_client, teacher, 
 
 
 def test_fixture_documents_load_with_locations_and_classrooms(seeded_db, docs):
-    assert len(docs["added"]) == 29 and docs["skipped"] == ["NT-2026-31"]  # C3(새싹반)은 시드에 없음
+    assert len(docs["added"]) == 65 and docs["skipped"] == ["NT-2026-31"]  # C3(새싹반)은 시드에 없음
     with seeded_db.begin() as connection:
         assert seed_documents(connection)["added"] == []  # 다시 해도 같은 내용은 건너뜀
         row = connection.execute(text("""
@@ -147,7 +147,9 @@ def test_search_scope_for_parent_class_and_other_org(docs):
     with pytest.raises(ApiError):
         search_documents(staff(), str(seed.ORG), "law", "겨울방학")  # 도구 doc_type은 네 가지만
     future = search_documents(staff(), str(seed.ORG), "notice", "크리스마스", on_date=date(2026, 11, 20))["chunks"]
-    assert future == []  # 시행일(12/01) 전 자료는 아직 찾지 않음
+    # 미리 공지한 시행 전(12/01) 자료도 찾음. 12월 가정통신문(#367)도 크리스마스를 다뤄서 어느 쪽이 1등이어도 된다.
+    christmas = [c for c in future if c["document_title"] == "크리스마스 행사 안내"]
+    assert christmas and christmas[0]["effective_from"] == date(2026, 12, 1)  # 답에서 '12월 1일부터'라고 말할 수 있게 시행일을 같이 줌
 
 
 def test_parent_search_accepts_string_classroom_ids(docs):
@@ -210,6 +212,34 @@ def test_reseed_supersedes_old_virtual_timetable_only(seeded_db):
     assert found and all("김하늘" not in chunk["document_title"] for chunk in found)
 
 
+@pytest.mark.parametrize(("doc_type", "query", "on_date", "title", "answer"), [
+    ("policy", "체육복은 무슨 요일", date(2026, 11, 26), "원복·체육복 요일과 실내화·물통·낮잠 이불 준비물", "화·목"),
+    ("policy", "통학버스 시간", date(2026, 11, 26), "통학버스 노선·시간과 타는 곳", "08:20"),
+    ("policy", "원비 얼마", date(2026, 11, 26), "한 달 교육비 금액·납부 방법·카드 결제·환불", "85,000원"),
+    ("menu", "11/30 점심", date(2026, 11, 26), "다음 주 12월 1주 점심 식단 미리보기 (11/30~12/04)", "닭볶음탕"),
+    ("menu", "12월 3주 식단표", date(2026, 12, 8), "12월 3주 점심 식단표·오후 간식 (12/14~12/18)", "12-14"),
+    ("menu", "1월 2주 식단표", date(2027, 1, 4), "1월 2주 점심 식단표·오후 간식 (1/11~1/15)", "01-11"),
+])
+def test_parent_finds_operating_and_upcoming_meal_answers_first(docs, doc_type, query, on_date, title, answer):
+    found = search_documents(parent(), str(seed.ORG), doc_type, query,
+                             classroom_id=seed.CLASS_STAR, on_date=on_date)["chunks"]
+    assert found and found[0]["document_title"] == title
+    assert answer in found[0]["content"]
+
+
+def test_parent_sees_c4_trip_but_no_c5_only_documents(docs):
+    for classroom in (None, seed.CLASS_STAR):
+        found = search_documents(parent(), str(seed.ORG), "notice", "현장체험학습 도시락",
+                                 classroom_id=classroom, top_k=20, on_date=date(2026, 11, 26))["chunks"]
+        own = [c for c in found if c["document_title"] == "12월 현장체험학습 안내 (만 4세반)"]
+        assert any("도시락을 싸지 않습니다" in c["content"] and "13:00" in c["content"] for c in own)
+        assert all(c["document_title"] != "11월 현장체험학습 안내 (만 5세반)" for c in found)
+        plans = search_documents(parent(), str(seed.ORG), "schedule", "12월 주간 활동 계획",
+                                 classroom_id=classroom, top_k=20, on_date=date(2026, 12, 8))["chunks"]
+        assert any("만 4세 별빛반 12월" in c["document_title"] for c in plans)
+        assert all(c["document_title"] != "만 5세반 12월 주간 활동 계획" for c in plans)
+
+
 def test_upload_conflicting_notice_is_pending_with_conflicts(db_client, teacher, docs):
     response = upload(db_client, teacher, "겨울방학_다시알림.md", WINTER_1226)
     assert response.status_code == 202, response.text
@@ -239,7 +269,7 @@ def test_upload_unreadable_file_fails_with_message(db_client, teacher, docs):
     response = upload(db_client, teacher, "식단표.hwp", "binary")
     doc = response.json()["document"]
     assert response.status_code == 202 and doc["ingest_status"] == "failed" and doc["chunk_count"] == 0
-    assert doc["error"] == {"code": "UPSTREAM_UNAVAILABLE", "message": "지금은 .md·.txt 글 파일만 읽을 수 있어요"}
+    assert doc["error"] == {"code": "UPSTREAM_UNAVAILABLE", "message": "한글에서 hwpx나 PDF로 저장해 올려 주세요"}
     listed = db_client.get("/api/v1/documents", headers=teacher).json()["items"]
     assert next(d for d in listed if d["id"] == doc["id"])["error"] == doc["error"]
     retried = upload(db_client, teacher, "식단표.txt", "binary")
@@ -318,3 +348,34 @@ def test_teacher_cannot_target_or_read_other_class_document(db_client, teacher, 
     with seeded_db.begin() as connection:
         sun_doc = connection.scalar(text("SELECT id FROM documents WHERE title='만 5세반 12월 주간 활동 계획'"))
     assert db_client.get(f"/api/v1/documents/{sun_doc}", headers=teacher).status_code == 404
+
+
+def test_search_finds_next_month_schedule_before_it_starts(docs):
+    """11월에 '12월 초 일정'을 물으면 미리 올린 12월 월간 일정을 찾는다(시행일 12/01)."""
+    found = search_documents(parent(), str(seed.ORG), "schedule", "12월 초에 원 일정 뭐 있어요?",
+                             on_date=date(2026, 11, 26))["chunks"]
+    assert found and found[0]["document_title"] == "12월 월간 일정"
+    assert "소방 대피 훈련" in found[0]["content"]
+
+
+def test_search_keeps_current_documents_when_many_upcoming_score_higher(db_client, teacher, docs):
+    """미리 올린 식단이 여러 개여도 지금 식단이 후보에서 밀려나지 않는다(적용 전 자료는 절반까지만)."""
+    for week in ("12-07", "12-14", "12-21"):
+        body = f"## 오늘 점심 메뉴\n- 오늘 점심 메뉴: [TEST] {week} 주 점심 메뉴 쌀밥\n"
+        response = upload(db_client, teacher, f"[TEST] 오늘 점심 메뉴 {week}.md", body,
+                          doc_type="menu", effective_from=f"2026-{week}")
+        assert response.status_code == 202, response.text
+    found = search_documents(parent(), str(seed.ORG), "menu", "오늘 점심 메뉴가 뭐예요?",
+                             on_date=date(2026, 11, 26), top_k=4)["chunks"]
+    upcoming = [c for c in found if c["effective_from"] > date(2026, 11, 26)]
+    assert len(found) == 4 and len(upcoming) == 2  # 적용 전 자료는 절반까지
+    assert any("11/23~11/27" in c["document_title"] for c in found)  # 이번 주 식단이 남아 있다
+    assert found[0] in upcoming  # 순서는 점수 그대로
+
+
+def test_search_skips_expired_documents(docs, seeded_db):
+    with seeded_db.begin() as connection:
+        connection.execute(text("UPDATE documents SET effective_to=:day WHERE title='겨울방학 안내'"),
+                           {"day": date(2026, 11, 19)})
+    found = search_documents(staff(), str(seed.ORG), "notice", "겨울방학", on_date=date(2026, 11, 20))["chunks"]
+    assert all(c["document_title"] != "겨울방학 안내" for c in found)  # 기간이 끝난 문서는 계속 뺌

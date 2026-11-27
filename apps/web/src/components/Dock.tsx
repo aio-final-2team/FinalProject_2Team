@@ -7,7 +7,7 @@ import { Icon } from "./Icon";
  */
 export function Dock({ children, reason, reasonIcon = "lock" }: { children: ReactNode; reason?: string; reasonIcon?: "lock" | "check" }) {
   return (
-    <div className="glass fixed inset-x-0 bottom-[calc(64px+env(safe-area-inset-bottom))] z-20 border-t border-sep bg-bar px-4 py-2.5 backdrop-blur-xl lg:sticky lg:bottom-0 lg:mt-6">
+    <div data-bottom-bar className="glass fixed inset-x-0 bottom-[calc(64px+env(safe-area-inset-bottom))] z-20 border-t border-sep bg-bar px-4 py-2.5 backdrop-blur-xl lg:sticky lg:bottom-0 lg:mt-6">
       <div className="mx-auto grid max-w-[680px] gap-1.5">
         {reason && (
           <p className="flex items-center justify-center gap-1.5 text-footnote font-semibold text-ink2">
@@ -41,7 +41,7 @@ export function SubButton({ tone = "tint", small, children, ...rest }: React.But
   return (
     <button
       {...rest}
-      className={`inline-flex items-center justify-center gap-1.5 rounded-md font-semibold transition-transform duration-100 active:scale-[.97] disabled:opacity-50 ${small ? "h-8 px-2.5 text-footnote" : "h-11 px-4 text-callout"} ${tone === "tint" ? "bg-tint text-accent-ink" : "bg-fill text-ink"} ${rest.className ?? ""}`}
+      className={`inline-flex items-center justify-center gap-1.5 rounded-md font-semibold transition-transform duration-100 active:scale-[.97] disabled:opacity-50 ${small ? "relative h-8 px-2.5 text-footnote after:absolute after:inset-x-0 after:-inset-y-1.5 after:content-['']" : "h-11 px-4 text-callout"} ${tone === "tint" ? "bg-tint text-accent-ink" : "bg-fill text-ink"} ${rest.className ?? ""}`}
     >
       {children}
     </button>

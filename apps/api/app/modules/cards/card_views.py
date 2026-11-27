@@ -10,10 +10,19 @@ from app.core import scope
 from app.core.db import transaction
 from app.core.schedule import KST
 from app.modules.requests.complaints import repeat_count
-from app.modules.requests.requests import _expire, _hold_until
+from app.modules.requests.requests import _expire, _hold_until, source_note
 from app.modules.daily_notes.notes import batch_view
 
 FILTERS = ("unassigned", "needs_review", "uncertain", "on_hold", "in_progress", "done")
+
+
+def requester_fields(connection, req):
+    names = connection.execute(text("""
+        SELECT c.display_name AS child_name,u.display_name AS requester_name
+        FROM users u LEFT JOIN children c ON c.id=:child AND c.org_id=u.org_id
+        WHERE u.id=:user AND u.org_id=:org
+    """), {"child": req["child_id"], "user": req["requester_id"], "org": req["org_id"]}).mappings().one()
+    return {"child_id": req["child_id"], **names}
 
 
 def staff_request(connection, req, card_kind=None):
@@ -34,9 +43,11 @@ def staff_request(connection, req, card_kind=None):
             "missing_fields",
         )
     } | {
+        **requester_fields(connection, req),
         "repeat_count": repeat_count(connection, req),
         "status_label": staff_label(req["status"], req["type"], card_kind=card_kind),
         "hold_until": _hold_until(connection, req),
+        "source_note": source_note(connection, req),
     }
 
 
@@ -47,9 +58,12 @@ def _visible(connection, user):
         for row in connection.execute(
             text("""
         SELECT c.*,i.inbox_filter,r.classroom_id AS request_classroom,n.classroom_id AS note_classroom,
+               r.child_id,ch.display_name AS child_name,u.display_name AS requester_name,
                coalesce(r.classroom_id,n.classroom_id,owner_class.classroom_id) AS display_classroom
         FROM cards c JOIN staff_inbox i ON i.card_id=c.id
         LEFT JOIN requests r ON (r.id,r.org_id)=(c.request_id,c.org_id)
+        LEFT JOIN children ch ON (ch.id,ch.org_id)=(r.child_id,r.org_id)
+        LEFT JOIN users u ON (u.id,u.org_id)=(r.requester_id,r.org_id)
         LEFT JOIN daily_note_inputs n ON c.subject_type='daily_note_batch' AND (n.id,n.org_id)=(c.subject_id,c.org_id)
         LEFT JOIN memory_rules mr ON c.subject_type='memory_rule' AND (mr.id,mr.org_id)=(c.subject_id,c.org_id)
         LEFT JOIN LATERAL (SELECT s.classroom_id FROM classroom_staff s
@@ -100,6 +114,7 @@ def _item(connection, card):
     check = card["check_result"]
     note_batch = batch_view(connection, card["subject_id"], card["org_id"]) if card["subject_type"] == "daily_note_batch" else None
     return {k: card[k] for k in ("id", "kind", "status", "version", "request_id", "due_at", "hold_until")} | {
+        **{k: card[k] for k in ("child_id", "child_name", "requester_name")},
         "status_label": staff_label(req["status"], req["type"], card_kind=card["kind"])
         if req
         else note_batch_label(card["status"], note_batch["draft_status"], card["draft"].get("validation_result"))
@@ -186,7 +201,7 @@ def detail(user, card_id):
             for row in connection.execute(
                 text("""
             SELECT d.title AS document_title,ch.location,coalesce(d.effective_from,d.created_at::date) AS effective_from,
-                   coalesce(e.quote,'') AS quote,(d.status='active' AND (d.effective_from IS NULL OR d.effective_from<=CURRENT_DATE)
+                   coalesce(e.quote,'') AS quote,(d.status='active'
                      AND (d.effective_to IS NULL OR d.effective_to>=CURRENT_DATE)) AS is_current
             FROM card_evidence e JOIN document_chunks ch ON (ch.id,ch.org_id)=(e.chunk_id,e.org_id)
             JOIN documents d ON (d.id,d.org_id)=(ch.document_id,ch.org_id)
@@ -198,7 +213,7 @@ def detail(user, card_id):
         warnings = []
         if any(not e["is_current"] for e in evidence):
             warnings.append("stale_evidence")
-        if not evidence or card["draft"].get("no_evidence"):
+        if (not evidence and not card["draft"].get("note_evidence")) or card["draft"].get("no_evidence"):
             warnings.append("no_evidence")
         if card["draft"].get("law_unchecked"):
             warnings.append("law_unchecked")

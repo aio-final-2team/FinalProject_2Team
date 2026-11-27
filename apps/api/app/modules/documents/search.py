@@ -56,7 +56,7 @@ def score(words: list[str], title: str, location: str, content: str) -> float:
 
 
 def search_documents(user, kindergarten_id: str, doc_type: str, query: str, classroom_id=None, top_k: int = 5,
-                     on_date: date | None = None) -> dict:
+                     on_date: date | None = None, *, allowed_chunk_ids=None) -> dict:
     if str(kindergarten_id) != str(user.org_id):
         raise ApiError(404, "NOT_FOUND")  # 다른 기관 자료는 있다고도 알리지 않는다
     if doc_type not in DOC_TYPES or not query.strip() or not 1 <= top_k <= 20:
@@ -86,7 +86,7 @@ def search_documents(user, kindergarten_id: str, doc_type: str, query: str, clas
                         THEN 1 - (ch.embedding <=> CAST(:vector AS vector)) ELSE NULL END AS vector_score
             FROM document_chunks ch JOIN documents d ON (d.id, d.org_id) = (ch.document_id, ch.org_id)
             WHERE d.org_id = :org AND d.doc_type = :doc_type AND d.status = 'active' AND d.ingest_status = 'succeeded'
-              AND (d.effective_from IS NULL OR d.effective_from <= :today)
+              -- 시행 전 문서(미리 공지한 12월 일정 등)도 찾는다. 기간이 끝난 문서만 뺀다. 같은 점수면 지금 시행 중인 문서가 앞.
               AND (d.effective_to IS NULL OR d.effective_to >= :today)
               AND (NOT :parent OR d.visibility IN ('parents', 'all'))
               AND (NOT :parent OR NOT EXISTS (SELECT 1 FROM document_classrooms dc
@@ -106,6 +106,8 @@ def search_documents(user, kindergarten_id: str, doc_type: str, query: str, clas
                "vector": vector, "version": embedding.VERSION}).mappings().all()
     ranked = []
     for row in rows:
+        if allowed_chunk_ids is not None and row["chunk_id"] not in allowed_chunk_ids:
+            continue
         if suspicious_chunk(row["content"]):
             continue
         lexical = score(words, row["document_title"], row["location"] or "", row["content"])
@@ -114,10 +116,28 @@ def search_documents(user, kindergarten_id: str, doc_type: str, query: str, clas
             ranked.append({key: row[key] for key in ("chunk_id", "document_title", "location", "effective_from", "content")}
                           | {"location": row["location"] or "본문", "score": value})
     def order(row):
-        # 점수가 같으면 제목·위치에 낱말이 있는 조각, 낱말이 더 많이 나오는 조각, 새 판 순서
+        # 점수가 같으면 지금 시행 중인 문서, 제목·위치에 낱말이 있는 조각, 낱말이 더 많이 나오는 조각, 새 판 순서
         heads = sum((w in row["document_title"]) + (w in row["location"]) for w in words)
-        return (-row["score"], -heads, -sum(row["content"].count(w) for w in words),
+        upcoming = row["effective_from"] is not None and row["effective_from"] > today
+        return (-row["score"], upcoming, -heads, -sum(row["content"].count(w) for w in words),
                 -(row["effective_from"] or date.min).toordinal(), row["chunk_id"])
 
     ranked.sort(key=order)
-    return {"chunks": ranked[:top_k]}
+
+    def is_upcoming(row):
+        return row["effective_from"] is not None and row["effective_from"] > today
+
+    # 미리 올린 자료가 여러 개면 점수만으로 지금 판을 전부 밀어낸다("오늘 점심"에 다음 달 식단만 남음).
+    # 적용 전 자료는 절반까지만 싣고, 나머지는 지금 시행 중인 자료로 채운다. 순서는 점수 그대로.
+    current_count = sum(not is_upcoming(row) for row in ranked)
+    upcoming_cap = max(top_k // 2, top_k - current_count)
+    picked, upcoming_used = [], 0
+    for row in ranked:
+        if is_upcoming(row):
+            if upcoming_used >= upcoming_cap:
+                continue
+            upcoming_used += 1
+        picked.append(row)
+        if len(picked) == top_k:
+            break
+    return {"chunks": picked}

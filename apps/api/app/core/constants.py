@@ -2,7 +2,7 @@
 
 from app.core.schedule import KST
 
-CONSENT_VERSION = "2026-11-24"
+CONSENT_VERSION = "2026-11-26"
 
 NOTIFICATION_TITLES = {
     "needs_info": "정보가 더 필요해요", "new_card": "새 카드가 왔어요",
@@ -62,6 +62,10 @@ UNREGISTERED_PICKUP_CHECK = "미등록 인계자 확인"
 CARE_MESSAGE_NOTICE = "보호자가 내용을 추가했어요. 다시 확인해 주세요."
 CARE_UPDATED_NOTICE = "보호자가 입력을 수정했어요. 다시 확인해 주세요."
 REJECTION_RULE_THRESHOLD = 3
+TONE_LIMIT = 12
+TONE_READ_LIMIT = 8
+TONE_MAX_LENGTH = 80
+SAVED_ANSWER_MIN_SIMILARITY = 0.80
 
 # 자유 글에서 시간·선호를 추측하지 않는 기억 대역이에요. 구체적인 조건 추출은 기억 AI가 맡아요.
 REJECTION_RULE_TEXTS = {
@@ -77,5 +81,6 @@ REJECTION_RULE_TEXTS = {
 # [제안] T54 사진 업로드 제한이에요.
 MAX_PHOTO_BYTES = 5 * 1024 * 1024
 MAX_DOCUMENT_BYTES = 2 * 1024 * 1024
+DOCUMENT_SIZE_MESSAGE = "자료 파일은 2MiB 이하여야 해요."
 MAX_PHOTOS = 10
 MAX_POST_BYTES = MAX_PHOTOS * MAX_PHOTO_BYTES + 1024 * 1024

@@ -33,9 +33,20 @@ def person(user_id):
     return {"id": user.id, "display_name": user.display_name} if user else None
 
 
+def requester_fields(req):
+    child = store.state().children.get(req.child_id) if req else None
+    requester = store.get_user(req.requester_id) if req else None
+    return {"child_id": req.child_id if req else None,
+            "child_name": child.display_name if child else None,
+            "requester_name": requester.display_name if requester else None}
+
+
 def staff_request(req, card_kind=None):
+    from app.mock.request_actions import source_note
     return {k: getattr(req, k) for k in ("id", "type", "title", "body", "status", "risk_level", "risk_category",
                                         "parent_confirmed_at", "classroom_id", "created_at", "updated_at")} | {
+        **requester_fields(req),
+        "source_note": source_note(req),
         "repeat_count": store.repeat_count(req), "missing_fields": req.missing_fields,
         "status_label": staff_label(req.status, req.type, card_kind=card_kind), "hold_until": store.hold_until_of(req.id)}
 
@@ -46,6 +57,7 @@ def item(card):
     check = card.check_result
     note_batch = notes.batch_view(card.subject_id, card.org_id) if card.subject_type == "daily_note_batch" else None
     return {"id": card.id, "kind": card.kind, "status": card.status, "version": card.version,
+            **requester_fields(req),
             "status_label": staff_label(req.status, req.type, card_kind=card.kind) if req else note_batch_label(card.status, note_batch["draft_status"], card.draft.get("validation_result"))
             if note_batch else "확인 필요" if card.status == "pending" else "완료",
             "note_batch": note_batch,
@@ -94,7 +106,7 @@ def detail(user, card_id):
         warnings = []
         if any(not e["is_current"] for e in evidence):
             warnings.append("stale_evidence")
-        if not evidence or card.draft.get("no_evidence"):
+        if (not evidence and not card.draft.get("note_evidence")) or card.draft.get("no_evidence"):
             warnings.append("no_evidence")
         if card.draft.get("law_unchecked"):
             warnings.append("law_unchecked")

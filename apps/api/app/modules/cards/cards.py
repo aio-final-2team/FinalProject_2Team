@@ -3,6 +3,7 @@
 import json
 import logging
 from contextlib import contextmanager
+from copy import deepcopy
 
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
@@ -148,7 +149,7 @@ def close_reports(connection, req):
         touch(connection, dict(report_card), "done")
 
 
-def decide(user, card_id, body):
+def decide(user, card_id, body, background_tasks=None):
     with locked(user, card_id, decision=body.decision) as (connection, card, req):
         version(connection, card, body.version)
         choice = body.decision
@@ -186,6 +187,9 @@ def decide(user, card_id, body):
         if choice == "complete" and req["parent_confirmed_at"] is None and not body.reason_text:
             raise ApiError(409, "REASON_REQUIRED")
         content = body.edited_content if choice == "edit_approve" else card["draft"]
+        original_card = deepcopy(card)
+        if choice == "edit_approve" and card["draft"].get("note_evidence"):
+            content = {**content, "note_evidence": card["draft"]["note_evidence"]}
         if choice in ("approve", "edit_approve") and (
             not isinstance(content.get("text"), str) or not content["text"].strip()
         ):
@@ -278,6 +282,12 @@ def decide(user, card_id, body):
             else:
                 set_status(connection, req, "awaiting_review", action="drafted", card=next_card)
         response = result(card, req, next_card)
+    if choice in ("approve", "edit_approve"):
+        from app.modules.memories.memories import after_approval
+        if background_tasks is not None:
+            background_tasks.add_task(after_approval, user, original_card, dict(req), choice, deepcopy(content))
+        else:
+            after_approval(user, original_card, dict(req), choice, content)
     _resume_graph_after_commit(card)
     return response
 
@@ -299,6 +309,13 @@ def rule_decision(user, rule_id, body):
         rule = connection.execute(text("""
             SELECT * FROM memory_rules WHERE id=:id AND org_id=:org AND owner_id=:owner FOR NO KEY UPDATE
         """), values).mappings().one()
+        if body.decision == "off":
+            # FR-20: 켜 둔 규칙만 끈다. 같은 거절이 다시 세 번 쌓이면 새 제안 카드로 묻는다.
+            if rule["status"] != "active":
+                raise ApiError(409, "INVALID_TRANSITION")
+            connection.execute(text("UPDATE memory_rules SET status='off',decided_at=clock_timestamp() WHERE id=:id"),
+                               {"id": rule_id})
+            return {"rule": {"id": rule_id, "status": "off"}}
         if rule["status"] != "proposed" or card is None or card["status"] not in ("pending", "in_review"):
             raise ApiError(409, "INVALID_TRANSITION")
         card = dict(card)

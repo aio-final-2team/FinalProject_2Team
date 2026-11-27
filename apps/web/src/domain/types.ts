@@ -19,7 +19,13 @@ export type Card = {
   title: string;
   childName: string;
   guardianName: string;
+  /** 서버가 준 요청한 보호자 표시 이름(API 카드 응답 requester_name). 없으면 비어 있다 */
+  requesterName?: string;
   className: string;
+  /** 카드 목록이 주는 반 id(원장이 반을 고를 때 쓴다) */
+  classroomId?: string;
+  /** 목록 응답이 주는 담당자(상세 응답에는 없다) */
+  assignee?: { id: string; name: string };
   createdAt: string;
   original: string;
   summary?: string;
@@ -31,6 +37,13 @@ export type Card = {
   /** 초안 AI가 근거를 못 찾아 초안 없이 담임에게 넘긴 카드 (draft.no_evidence) */
   noEvidence?: boolean;
   repeatCount?: number;
+  /** 학부모와 주고받은 글 전체(카드 상세 messages[]) */
+  /** from: 학부모 · 선생님 · AI(권한 밖 고정 안내처럼 담임 승인 없이 나간 글) · 시스템 */
+  messages?: { id: number; fromParent: boolean; from: "parent" | "teacher" | "ai" | "system"; body: string; at: string }[];
+  /** 학부모가 글을 더 남겨 카드가 다시 열렸을 때 지난 답 (draft.previous_text). 이때 초안은 비어 있다 */
+  previousText?: string;
+  /** 개인 규칙 제안 카드(kind rule_proposal)의 규칙. 켜기(activate)·거절(decline)한다 */
+  rule?: { id: string; reasonCode: string; text: string; status: string };
   escalated: boolean;
   assigned: boolean;
   parentConfirmedAt?: string;
@@ -43,6 +56,8 @@ export type Card = {
 export type CardAction =
   | { action: "approve_send"; draft?: string }
   | { action: "reject"; reason: string }
+  /** 상담 시간을 거절하고 이유를 남긴다 → 서버가 새 후보를 계산한다 (API decision reject) */
+  | { action: "reject_time"; reason: string }
   | { action: "hold"; reason: string; until: string }
   | { action: "escalate" }
   | { action: "resume" }

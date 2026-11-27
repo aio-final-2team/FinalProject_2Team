@@ -93,7 +93,15 @@ class ReassignIn(BaseModel):
 
 
 class RuleDecisionIn(BaseModel):
-    decision: Literal["activate", "decline"]
+    decision: Literal["activate", "decline", "off"]
+
+
+class MemoryConfirmIn(BaseModel):
+    decision: Literal["remember", "discard"]
+
+
+class SavedAnswerStatusIn(BaseModel):
+    status: Literal["off", "active"]
 
 
 class NoteBatchIn(BaseModel):

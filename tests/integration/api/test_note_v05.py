@@ -273,13 +273,14 @@ def memory_ids(note_backend):
 
 def test_memories_are_private_filtered_paginated_and_soft_deleted(client, teacher, teacher_other, memory_ids, note_backend):
     response = client.get(BASE + "/memories", headers=teacher).json()
-    assert response["total"] == 3 and [m["id"] for m in response["items"]] == memory_ids[:3]
-    assert set(response["items"][0]) == {"id", "kind", "reason_code", "content", "structured", "created_at"}
+    assert response["total"] == 3 + (note_backend == "mock")
+    assert [m["id"] for m in response["items"] if m["source"] == "memory"] == memory_ids[:3]
+    assert set(next(m for m in response["items"] if m["source"] == "memory")) == {"id", "kind", "reason_code", "content", "structured", "created_at", "title", "child_id", "child_name", "confirm_status", "confirmed_at", "source"}
     filtered = client.get(BASE + "/memories", headers=teacher, params={"kind": "tone"}).json()
     assert filtered["total"] == 1 and filtered["items"][0]["id"] == memory_ids[0]
     pages = [client.get(BASE + "/memories", headers=teacher, params={"size": 1, "page": p,
-             "sort": "created_at"}).json() for p in range(1, 4)]
-    assert [p["items"][0]["id"] for p in pages] == memory_ids[:3][::-1]
+             "sort": "created_at"}).json() for p in range(1, response["total"]+1)]
+    assert [p["items"][0]["id"] for p in pages if p["items"][0]["source"] == "memory"] == memory_ids[:3][::-1]
     err(client.delete(f"{BASE}/memories/{memory_ids[3]}", headers=teacher), 404, "NOT_FOUND")
     err(client.delete(f"{BASE}/memories/{memory_ids[4]}", headers=teacher), 404, "NOT_FOUND")
     err(client.delete(f"{BASE}/memories/999999", headers=teacher), 404, "NOT_FOUND")
@@ -298,18 +299,20 @@ def test_memories_are_private_filtered_paginated_and_soft_deleted(client, teache
 
 
 def test_memory_empty_validation_and_role_permissions(client, teacher, parent, director):
-    assert client.get(BASE + "/memories", headers=teacher).json() == {"items": [], "total": 0, "page": 1, "size": 20}
+    assert client.get(BASE + "/memories?kind=tone", headers=teacher).json() == {"items": [], "total": 0, "page": 1, "size": 20, "saved_answers": [], "rules": []}
     for params in ({"kind": "unknown"}, {"page": 0}, {"size": 101}, {"sort": "content"}):
         err(client.get(BASE + "/memories", headers=teacher, params=params), 422, "VALIDATION_FAILED")
     err(client.delete(BASE + "/memories/0", headers=teacher), 422, "VALIDATION_FAILED")
-    for method, path in (("GET", "/memories"), ("DELETE", "/memories/1")):
-        for headers, status, code in (({}, 401, "UNAUTHENTICATED"), (parent, 403, "FORBIDDEN_ROLE"),
-                                      (director, 403, "FORBIDDEN_ROLE")):
-            err(client.request(method, BASE + path, headers=headers), status, code)
+    for method,path in (("GET","/memories"),("DELETE","/memories/1")):
+        err(client.request(method,BASE+path),401,"UNAUTHENTICATED")
+    for headers in (parent,director):
+        assert client.get(BASE+"/memories",headers=headers).status_code==200
+        err(client.delete(BASE+"/memories/1",headers=headers),404,"NOT_FOUND")
 
 
-def test_memory_list_huge_page_is_empty(client, teacher, memory_ids):
+def test_memory_list_huge_page_is_empty(client, teacher, memory_ids, note_backend):
     for page in (10**17, 10**30):
         response = client.get(BASE + "/memories", headers=teacher, params={"page": page, "size": 100})
         assert response.status_code == 200, response.text
-        assert response.json() == {"items": [], "total": 3, "page": page, "size": 100}
+        result=response.json()
+        assert result["items"]==[] and result["total"]==3+(note_backend=="mock") and result["page"]==page

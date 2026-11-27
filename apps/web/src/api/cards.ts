@@ -1,7 +1,10 @@
+import { useLiveStream } from "./stream";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { InboxFilter, RequestType, Status } from "@/domain/status";
 import type { Card, CardAction, HistoryItem, Role, Slot, Source } from "@/domain/types";
+import { useSession } from "@/app/session";
 import { api, uuid } from "./client";
+import { term } from "@/domain/wording";
 
 type ApiRequestType = "inquiry" | "consultation" | "complaint";
 type ApiInboxFilter = "unassigned" | "needs_review" | "uncertain" | "on_hold" | "in_progress" | "done";
@@ -14,6 +17,8 @@ type CardItem = {
   repeat_count: number | null; check: { passed: boolean; issue_count: number } | null;
   parent_choice_count: number | null; classroom: { id: string; name: string }; assignee: Person | null;
   due_at: string | null; is_delayed: boolean; hold_until: string | null;
+  /** 요청이 있는 카드에서만 온다. 서버가 아직 안 주면 없다 */
+  child_name?: string | null; requester_name?: string | null;
 };
 type CardList = {
   total: number; page: number; size: number; items: CardItem[];
@@ -21,9 +26,11 @@ type CardList = {
 };
 type CardDetail = {
   card: { id: string; kind: string; status: string; version: number; summary: string; draft: Record<string, unknown>; check_result: { passed?: boolean; issues?: unknown[]; note?: string; attempt?: number } | null; check_attempts: number };
-  request: null | { id: string; type: ApiRequestType | "pickup"; title: string | null; body: string; status: Status; risk_level: string | null; risk_category: string | null; repeat_count: number | null; parent_confirmed_at: string | null; classroom_id: string; created_at: string; updated_at: string };
+  request: null | { child_name?: string | null; requester_name?: string | null; id: string; type: ApiRequestType | "pickup"; title: string | null; body: string; status: Status; risk_level: string | null; risk_category: string | null; repeat_count: number | null; parent_confirmed_at: string | null; classroom_id: string; created_at: string; updated_at: string };
   evidence: Array<{ document_title: string; location: string | null; effective_from: string | null; quote: string; is_current: boolean }>;
   warnings: string[];
+  messages?: Array<{ id: number; sender_type: string; sender_role?: string | null; body: string; created_at: string }>;
+  rule?: null | { id: string; reason_code: string; rule_text: string; status: string };
   parent_choices: Array<{ slot_id: number; period: Period; room: string; chosen_at: string; hold_expires_at: string }>;
   director_instruction: null | { text: string; by: Person; at: string };
   timeline: Array<{ action: string; actor_type: string; agent_name: string | null; created_at: string }>;
@@ -50,32 +57,39 @@ const statusFromItem = (item: CardItem, filter: InboxFilter): Status => {
 const cardFromItem = (item: CardItem, filter: InboxFilter): Card => ({
   id: item.id, version: item.version, kind: item.kind, inboxFilter: filter,
   requestId: item.request_id ?? "-", type: requestType(item.request_type), status: statusFromItem(item, filter), risk: risk(item.risk_level),
-  urgentReason: riskLabel(item.risk_category), title: item.title || item.status_label, childName: "", guardianName: "보호자",
-  className: item.classroom.name, createdAt: item.due_at ?? new Date().toISOString(), original: item.title, sources: [],
+  urgentReason: riskLabel(item.risk_category), title: item.title || term(item.status_label), childName: item.child_name ?? "", guardianName: item.requester_name ?? "보호자", requesterName: item.requester_name ?? undefined,
+  className: item.classroom.name, classroomId: item.classroom.id, createdAt: item.due_at ?? new Date().toISOString(), original: item.title, sources: [],
   check: item.check ? { passed: item.check.passed, note: item.check.issue_count ? `확인 항목 ${item.check.issue_count}개` : undefined } : undefined,
   repeatCount: item.repeat_count ?? undefined, escalated: item.risk_level === "urgent" || item.kind === "director_report",
+  assignee: item.assignee ? { id: item.assignee.id, name: item.assignee.display_name } : undefined,
   assigned: !!item.assignee, slots: item.parent_choice_count ? [] : undefined, history: [],
 });
 
 const formatPeriod = (period: Period) => new Date(period.start).toLocaleString("ko-KR", { month: "numeric", day: "numeric", weekday: "short", hour: "2-digit", minute: "2-digit" });
 const AGENT_NAME: Record<string, string> = { supervisor: "감독", document: "자료", checker: "검사", memory: "기억" };
-const actorName = (actor: string, agent: string | null) => agent ? `${AGENT_NAME[agent] ?? ""} AI`.trim() : actor === "user" ? "교직원" : actor === "agent" ? "AI" : "시스템";
+/** 학부모가 하는 동작. 서버는 행위자 종류를 user로만 주어서, 동작으로 학부모와 교직원을 가른다 */
+const PARENT_ACTIONS = new Set(["created", "message_added", "cancelled", "care_updated", "parent_confirmed", "slots_chosen"]);
+const actorName = (actor: string, agent: string | null, action: string) =>
+  agent ? `${AGENT_NAME[agent] ?? ""} AI`.trim() : actor === "user" ? (PARENT_ACTIONS.has(action) ? "학부모" : "교직원") : actor === "agent" ? "AI" : "시스템";
 /** 처리 이력의 action 코드를 교직원이 읽는 말로 바꾼다. 모르는 코드는 내부 용어를 그대로 보이지 않는다 */
-const ACTION_LABEL: Record<string, string> = { created: "접수", classified: "분류", assigned: "담당 배정", drafted: "초안 작성", checked: "검사", approved: "승인", sent: "발송", rejected: "반려", dismissed: "반려", held: "보류", resumed: "재개", escalated: "원장 보고", completed: "처리 완료", risk_reclassified: "위험 분류 변경" };
+const ACTION_LABEL: Record<string, string> = { created: "접수", classified: "분류", assigned: "담당 배정", drafted: "초안 작성", checked: "검사", approved: "승인", sent: "보내기", rejected: "거절", dismissed: "거절", held: "보류", resumed: "재개", escalated: "원장 보고", completed: "처리 완료", risk_reclassified: "위험 분류 변경", message_added: "글 추가", cancelled: "취소", care_updated: "입력 수정" };
 const actionLabel = (a: string) => ACTION_LABEL[a] ?? "처리 기록";
 
 const cardFromDetail = (data: CardDetail): Card => {
   const req = data.request;
   const sources: Source[] = data.evidence.map((e) => ({ doc: e.document_title, where: e.location ?? "", effective: e.effective_from ?? "", old: !e.is_current }));
   const slots: Slot[] | undefined = data.parent_choices.length ? data.parent_choices.map((s) => ({ id: String(s.slot_id), at: formatPeriod(s.period), mode: "대면", picked: true })) : undefined;
-  const history: HistoryItem[] = data.timeline.map((e) => ({ at: e.created_at, who: actorName(e.actor_type, e.agent_name), what: actionLabel(e.action) }));
+  const history: HistoryItem[] = data.timeline.map((e) => ({ at: e.created_at, who: actorName(e.actor_type, e.agent_name, e.action), what: actionLabel(e.action) }));
   const draft = typeof data.card.draft.text === "string" ? data.card.draft.text : undefined;
   return {
     id: data.card.id, version: data.card.version, kind: data.card.kind, requestId: req?.id ?? "-", type: requestType(req?.type),
     status: req?.status ?? (data.card.status === "done" ? "completed" : "awaiting_review"), risk: risk(req?.risk_level),
-    urgentReason: riskLabel(req?.risk_category), title: req?.title ?? data.card.summary, childName: "", guardianName: "보호자",
-    className: "담당 반", createdAt: req?.created_at ?? new Date().toISOString(), original: req?.body ?? data.card.summary,
-    summary: data.card.summary || undefined, draft, sources,
+    urgentReason: riskLabel(req?.risk_category), title: req?.title ?? data.card.summary, childName: req?.child_name ?? "", guardianName: req?.requester_name ?? "보호자", requesterName: req?.requester_name ?? undefined,
+    className: "", createdAt: req?.created_at ?? new Date().toISOString(), original: req?.body ?? data.card.summary,
+    summary: data.card.summary || undefined, draft: draft || undefined, sources,
+    messages: data.messages?.map((m) => ({ id: m.id, fromParent: m.sender_role === "parent", from: m.sender_role === "parent" ? "parent" : m.sender_type === "agent" ? "ai" : m.sender_type === "system" ? "system" : "teacher", body: m.body, at: m.created_at })),
+    rule: data.rule ? { id: data.rule.id, reasonCode: data.rule.reason_code, text: data.rule.rule_text, status: data.rule.status } : undefined,
+    previousText: typeof data.card.draft.previous_text === "string" && data.card.draft.previous_text ? data.card.draft.previous_text : undefined,
     check: data.card.check_result ? { passed: !!data.card.check_result.passed, note: data.card.check_result.note, issues: (data.card.check_result.issues ?? []).map(issueText).filter(Boolean), attempt: data.card.check_result.attempt } : undefined,
     warnings: data.warnings ?? [], noEvidence: !!data.card.draft?.no_evidence,
     repeatCount: req?.repeat_count ?? undefined, escalated: req?.status === "escalated" || data.card.kind === "director_report",
@@ -83,30 +97,44 @@ const cardFromDetail = (data: CardDetail): Card => {
   };
 };
 
-export const useCards = (filter: InboxFilter, type: TypeFilter = "all") => useQuery({
-  queryKey: ["cards", "list", filter, type],
-  queryFn: async (): Promise<CardsResult> => {
-    const apiFilter = UI_TO_API_FILTER[filter];
-    const result = await api<CardList>(`/api/v1/cards?filter=${apiFilter}&size=100${type === "all" ? "" : `&request_type=${type}`}`);
-    const counts = Object.fromEntries(Object.entries(result.counts).map(([key, value]) => [API_TO_UI_FILTER[key as ApiInboxFilter], value])) as Record<InboxFilter, number>;
-    const typeCounts = { all: 0, complaint: 0, consultation: 0, inquiry: 0, ...((result as { type_counts?: Partial<Record<TypeFilter, number>> }).type_counts ?? {}) };
-    return { items: result.items.map((item) => cardFromItem(item, filter)), counts, typeCounts };
-  },
-});
+export const useCards = (filter: InboxFilter, type: TypeFilter = "all") => {
+  const role = useSession().user?.role;
+  const teacher = role === "teacher";
+  return useQuery({
+    queryKey: ["cards", "list", filter, type, role],
+    queryFn: async (): Promise<CardsResult> => {
+      const apiFilter = UI_TO_API_FILTER[filter];
+      /* 교사는 원장 보고 카드를 처리하지 못한다(API 403). 같은 요청의 답장 카드와 겹쳐 두 줄로 보이므로 목록에서 뺀다.
+         빼고 나면 서버가 준 종류별 숫자가 맞지 않아서, 교사는 종류 없이 받아 온 뒤 화면에서 나누고 숫자도 다시 센다 */
+      const result = await api<CardList>(`/api/v1/cards?filter=${apiFilter}&size=100${type === "all" || teacher ? "" : `&request_type=${type}`}`);
+      const counts = Object.fromEntries(Object.entries(result.counts).map(([key, value]) => [API_TO_UI_FILTER[key as ApiInboxFilter], value])) as Record<InboxFilter, number>;
+      const typeCounts = { all: 0, complaint: 0, consultation: 0, inquiry: 0, ...((result as { type_counts?: Partial<Record<TypeFilter, number>> }).type_counts ?? {}) };
+      if (!teacher) return { items: result.items.map((item) => cardFromItem(item, filter)), counts, typeCounts };
+      const own = result.items.filter((item) => item.kind !== "director_report");
+      const byType = (t: TypeFilter) => own.filter((item) => item.request_type === t).length;
+      const recount = { all: own.length, complaint: byType("complaint"), consultation: byType("consultation"), inquiry: byType("inquiry") };
+      const shown = type === "all" ? own : own.filter((item) => item.request_type === type);
+      return { items: shown.map((item) => cardFromItem(item, filter)), counts: { ...counts, [filter]: own.length }, typeCounts: recount };
+    },
+  });
+};
 
 /** 모든 상태의 카드를 한 줄로 합친다 (알림의 요청 ID로 카드를 찾을 때 쓴다). 상태별 목록 캐시를 그대로 같이 쓴다. */
 const ALL_FILTERS: InboxFilter[] = ["review", "judge", "unassigned", "hold", "progress", "done"];
 export const useAllCards = () => {
   const results = useQueries({
     queries: ALL_FILTERS.map((filter) => ({
-      queryKey: ["cards", "list", filter, "all"],
+      queryKey: ["cards", "list", filter, "flat"],
       queryFn: async () => (await api<CardList>(`/api/v1/cards?filter=${UI_TO_API_FILTER[filter]}&size=100`)).items.map((item) => cardFromItem(item, filter)),
     })),
   });
   return results.flatMap((r) => r.data ?? []);
 };
 
-export const useCard = (id: string | undefined) => useQuery({ queryKey: ["cards", "detail", id], queryFn: () => api<CardDetail>(`/api/v1/cards/${id}`).then(cardFromDetail), enabled: !!id });
+export const useCard = (id: string | undefined) => {
+  useLiveStream(id ? `/api/v1/cards/${id}/stream` : undefined, ["cards", "detail", id]);
+  return useQuery({ queryKey: ["cards", "detail", id], queryFn: () => api<CardDetail>(`/api/v1/cards/${id}`).then(cardFromDetail), enabled: !!id });
+};
 /** 검사 결과 issues는 서버에서 [{field, problem}]로 온다 (field: 출처·날짜·대상·누락·민감정보). 옛 모양(문자열·message·text)도 읽는다. */
 function issueText(i: unknown): string {
   if (typeof i === "string") return i;
@@ -120,6 +148,18 @@ const REASON_CODE: Record<string, string> = { "개인정보 요청": "privacy", 
 type ActionResponse = { card?: { id?: string; status?: string; version?: number } };
 
 /** 카드 행동을 API 계약의 기능별 엔드포인트와 요청 본문으로 변환한다. */
+/** 원장이 카드 담당 교사를 바꾼다(API 19, 문서 3.16). version은 받지 않는다 */
+export function useReassign(cardId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { assigneeId: string; reason: string }) => api(`/api/v1/cards/${cardId}/reassign`, { method: "POST", body: JSON.stringify({ assignee_id: v.assigneeId, reason: v.reason }) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["cards"] });
+      qc.invalidateQueries({ queryKey: ["overview"] });
+    },
+  });
+}
+
 export function useCardAction(id: string, _role: Role) {
   const qc = useQueryClient();
   return useMutation({
@@ -128,10 +168,10 @@ export function useCardAction(id: string, _role: Role) {
       if (body.action === "reclassify") return api<ActionResponse>(`/api/v1/cards/${id}/reclassify`, { method: "POST", body: JSON.stringify({ version, risk_level: body.risk, risk_category: body.risk === "urgent" ? body.riskCategory : null, reason: body.reason }) });
       if (body.action === "confirm_slot") return api<ActionResponse>(`/api/v1/cards/${id}/bookings`, { method: "POST", body: JSON.stringify({ version, slot_id: Number(body.slotId) }) });
       if (body.action === "note") return api<ActionResponse>(`/api/v1/cards/${id}/instructions`, { method: "POST", body: JSON.stringify({ version, instruction: body.text }) });
-      const decision = body.action === "approve_send" ? (body.draft ? "edit_approve" : "approve") : body.action === "reject" ? "dismiss" : body.action;
+      const decision = body.action === "approve_send" ? (body.draft ? "edit_approve" : "approve") : body.action === "reject" ? "dismiss" : body.action === "reject_time" ? "reject" : body.action;
       const payload: Record<string, unknown> = { version, decision };
       if (body.action === "approve_send" && body.draft) payload.edited_content = { text: body.draft };
-      if (body.action === "reject") Object.assign(payload, { reason_code: REASON_CODE[body.reason] ?? "other", reason_text: body.reason });
+      if (body.action === "reject" || body.action === "reject_time") Object.assign(payload, { reason_code: REASON_CODE[body.reason] ?? "other", reason_text: body.reason });
       if (body.action === "hold") Object.assign(payload, { reason_text: body.reason, hold_until: body.until });
       if (body.action === "complete" && body.reason) payload.reason_text = body.reason;
       return api<ActionResponse>(`/api/v1/cards/${id}/decisions`, { method: "POST", body: JSON.stringify(payload) });
