@@ -30,6 +30,14 @@ const RULE_STATUS: Record<string, string> = { active: "켜짐", proposed: "제�
 const when = (iso: string) => new Date(iso).toLocaleDateString("ko-KR", { month: "long", day: "numeric" });
 
 /** 내 AI 기억 (API 31). 세 역할이 자기 것만 보고 지운다. 돌봄 메모는 보호자가 확인한 것만 쓰인다 */
+const SHOW = 5;
+/** 규칙 제목이 "상담 · 답변 규칙"처럼 모두 같으면 구분이 안 된다. 그때는 규칙 내용의 첫 부분을 제목으로 쓴다 */
+const ruleHead = (m: { title?: string; content: string }) => {
+  if (m.title && !/답변 규칙$/.test(m.title)) return m.title;
+  const first = m.content.split(/[.。!?\n]/)[0].trim();
+  return first.length > 24 ? `${first.slice(0, 24)}…` : first || m.title;
+};
+
 export function MemoryPage({ role = "teacher" }: { role?: Role }) {
   const q = useMemories();
   const del = useDeleteMemory();
@@ -40,6 +48,8 @@ export function MemoryPage({ role = "teacher" }: { role?: Role }) {
   const [target, setTarget] = useState<Memory | null>(null);
   /* 기억하지 않기로 한 것은 내용이 비어 있으므로 보이지 않는다 */
   const items = (q.data ?? []).filter((m) => m.confirm_status !== "discarded" && (m.content || m.kind === "rule"));
+  /* 한 묶음에 기억이 많으면 처음 몇 개만 펼치고 나머지는 더 보기로 연다 */
+  const [more, setMore] = useState<Record<string, boolean>>({});
   const groups = ORDER[role].map((k) => ({ kind: k, rows: items.filter((m) => m.kind === k) })).filter((g) => g.rows.length);
   /* 서버가 아직 이 역할에 기억을 열지 않았으면(403) 오류 대신 준비 중으로 안내한다 */
   const notOpen = q.error instanceof ApiError && q.error.status === 403;
@@ -90,10 +100,10 @@ export function MemoryPage({ role = "teacher" }: { role?: Role }) {
               <section key={g.kind} className="mt-5" aria-label={KIND_LABEL[g.kind]}>
                 <h2 className="mb-2 px-1 text-footnote font-semibold text-ink2">{KIND_LABEL[g.kind]} {g.rows.length}</h2>
                 <ul className="overflow-hidden rounded-lg bg-card shadow-card [&>li+li]:border-t [&>li+li]:border-sep">
-                  {g.rows.map((m) => {
+                  {(more[g.kind] ? g.rows : g.rows.slice(0, SHOW)).map((m) => {
                     const pending = m.kind === "care_note" && m.confirm_status === "pending";
                     const state = m.kind === "saved_answer" ? SAVED_STATUS[statusOf(m) ?? ""] : m.kind === "rule" ? RULE_STATUS[statusOf(m) ?? ""] : undefined;
-                    const head = m.kind === "care_note" ? (m.title ?? `${m.child_name ?? "아이"} 돌봄 메모`) : m.kind === "saved_answer" || m.kind === "rule" ? m.title : undefined;
+                    const head = m.kind === "care_note" ? (m.title ?? `${m.child_name ?? "아이"} 돌봄 메모`) : m.kind === "rule" ? ruleHead(m) : m.kind === "saved_answer" ? m.title : undefined;
                     return (
                       <li key={String(m.id)} className="flex items-start gap-3 px-3 py-3">
                         <span className="min-w-0 flex-1">
@@ -125,6 +135,11 @@ export function MemoryPage({ role = "teacher" }: { role?: Role }) {
                     );
                   })}
                 </ul>
+                {g.rows.length > SHOW && (
+                  <button type="button" onClick={() => setMore((p) => ({ ...p, [g.kind]: !p[g.kind] }))} className="mt-1.5 inline-flex min-h-9 items-center px-1 text-footnote font-semibold text-accent-ink active:scale-[.97]">
+                    {more[g.kind] ? "접기" : `나머지 ${g.rows.length - SHOW}개 더 보기`}
+                  </button>
+                )}
               </section>
             ))
           )}

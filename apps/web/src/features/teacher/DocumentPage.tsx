@@ -31,7 +31,8 @@ export function DocumentPage() {
 function ChunkCard({ c }: { c: Chunk }) {
   const [open, setOpen] = useState(!c.suspicious);
   /* 조각 본문이 '## 제목'으로 시작하면 위치 이름과 같아서 위치 줄은 생략한다 */
-  const showLoc = c.location && c.location !== "본문" && !c.content.trimStart().startsWith("#");
+  /* 문서 안 위치가 본문이거나 "1쪽"처럼 쪽 번호뿐이면 알려 줄 게 없어서 숨긴다 */
+  const showLoc = c.location && c.location !== "본문" && !/^\d+\s*쪽$/.test(c.location) && !c.content.trimStart().startsWith("#");
   return (
     <section className={`rounded-lg bg-card p-3 shadow-card ${c.suspicious ? "border-[1.5px] border-danger" : ""}`}>
       {c.suspicious && (
