@@ -247,8 +247,9 @@ def test_text_reply_on_consultation_without_booking_sends_plain_reply_notice(db_
 @pytest.mark.parametrize("request_type,body,risk,has_teacher", [
     ("inquiry", "[TEST] 아이가 다쳤어요", "urgent", True),
     ("complaint", "[TEST] 아이가 다쳤어요", "urgent", True),
-    ("inquiry", "[TEST] 판단 필요 문의예요", "uncertain", True),
-    ("complaint", "[TEST] 판단 필요 민원이에요", "uncertain", True),
+    # 모델 실패 대역은 본문의 '판단 필요' 글자로 등급을 정하지 않아요(판단 필요는 감독 AI만 정해요).
+    ("inquiry", "[TEST] 판단 필요한 식단 문의예요", "normal", True),
+    ("complaint", "[TEST] 판단 필요한 식단 민원이에요", "normal", True),
     ("inquiry", "[TEST] 식단 문의예요", "normal", True),
     ("complaint", "[TEST] 식단 민원이에요", "normal", True),
     ("inquiry", "[TEST] 아이가 다쳤어요", "urgent", False),

@@ -9,6 +9,7 @@ from sqlalchemy import text
 from app.mock import seed
 from app.modules.requests import runner
 from db.seeds.documents import seed_documents
+from tests import fake_supervisor
 
 BODY = "[TEST] 원비 환불 안내가 부족해요"
 
@@ -99,12 +100,17 @@ def test_checker_returns_twice_then_hands_off(db_client, seeded_db, monkeypatch)
 
 
 @pytest.mark.parametrize("body", ["[TEST] 아이가 다쳤어요. 처리해 주세요.", "[TEST] 판단 필요: 원비를 확인해 주세요."])
-def test_high_risk_skips_model_and_keeps_director_report(db_client, seeded_db, monkeypatch, body):
+def test_high_risk_keeps_director_report_and_only_urgent_skips_model(db_client, seeded_db, monkeypatch, body):
     setup(seeded_db, monkeypatch)
+    fake_supervisor.install(monkeypatch)  # 판단 필요는 가짜 감독 AI가 정해요
+    uncertain = fake_supervisor.MARK in body
     cards, status, _ = submit(db_client, seeded_db, body)
     assert status == "escalated" and {c["kind"] for c in cards} == {"reply_draft", "director_report"}
-    assert not next(c for c in cards if c["kind"] == "reply_draft")["draft"].get("text")
-    assert FakeModel.calls == []
+    reply = next(c for c in cards if c["kind"] == "reply_draft")
+    # 긴급은 자료·검사 AI를 건너뛰어요. 판단 필요는 초안을 써 두고 이유 한 줄을 남겨요(승인은 재분류 전까지 막혀요).
+    assert bool(reply["draft"].get("text")) == uncertain
+    assert FakeModel.calls == (["DOCUMENT", "CHECKER"] if uncertain else [])
+    assert all(c["draft"].get("risk_reason") == (fake_supervisor.REASON if uncertain else None) for c in cards)
 
 
 def test_old_and_new_complaint_keep_card_kind_and_status(db_client, seeded_db, monkeypatch):

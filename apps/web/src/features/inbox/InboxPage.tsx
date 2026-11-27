@@ -16,7 +16,7 @@ let listScroll = 0;
 
 const EMPTY: Record<InboxFilter, string> = {
   review: "지금 확인할 카드가 없어요",
-  judge: "판단이 필요한 민원이 없어요",
+  judge: "판단이 필요한 요청이 없어요",
   unassigned: "담당을 정할 카드가 없어요",
   hold: "보류한 카드가 없어요",
   progress: "진행 중인 카드가 없어요",

@@ -41,9 +41,9 @@ def build_graph(checkpointer, route_request, prepare_card, card_status,
         route = route_request(state["request_id"])
         work["classification"] = high_risk(state["request_id"]) if high_risk and route in ROUTES else None
         risk = work["classification"]
+        # 긴급만 초안을 건너뛴다. 판단 필요도 초안을 써 두고, 승인은 재분류 전까지 카드 API가 막는다.
         return {"route": route if route in ROUTES else "other", "attempt": 0,
-                "skip_draft": (risk.get("risk_level") in ("urgent", "uncertain")
-                               if isinstance(risk, dict) else bool(risk))}
+                "skip_draft": (risk.get("risk_level") == "urgent" if isinstance(risk, dict) else bool(risk))}
 
     def route_after_supervisor(state):
         if state.get("skip_draft"):

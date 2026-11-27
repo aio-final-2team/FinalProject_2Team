@@ -23,7 +23,7 @@ const WARNING: Record<string, string> = {
   no_evidence: "답변할 근거 자료를 찾지 못했어요. 직접 답을 써 주세요",
   law_unchecked: "법령 근거를 확인하지 못했어요. 법적 내용은 직접 확인해 주세요",
   check_unavailable: "검사 AI가 이 초안을 검사하지 못했어요. 보내기 전에 직접 읽어 주세요",
-  notify_failed: "원장님께 가는 알림을 만들지 못했어요. 원장님께 직접 알려 주세요",
+  notify_failed: "이 카드의 알림 가운데 보내지 못한 것이 있어요. 받아야 할 분께 직접 알려 주세요",
 };
 
 type SheetKind = null | "send" | "reject" | "reject_time" | "hold" | "complete" | "confirm_slot" | "note" | "reclassify";
@@ -49,7 +49,8 @@ function ReasonChips({ options, value, onChange }: { options: string[]; value: s
 
 /**
  * T-02 · D-02 카드 상세. 학부모 원문(흰 칸) · 근거(문서 칩) · AI 초안(파란 칸)을 모양으로 나눈다.
- * 긴급·판단 필요 카드에는 AI 초안 칸이 없다. 되돌릴 수 없는 행동은 확인 시트를 거친다.
+ * 긴급·판단 필요 카드에는 AI 초안 칸이 없다(판단 필요 초안은 서버가 미리 써 두고, 일반으로 다시 분류하면 보인다).
+ * 되돌릴 수 없는 행동은 확인 시트를 거친다.
  * 보내기는 5초 동안 되돌릴 수 있고, 실제 요청은 5초 뒤에 보낸다.
  */
 export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Role, "parent">; backTo: string }) {
@@ -226,7 +227,8 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
           <p className="text-[14px]">
             <b>분류 확인 필요</b>
             <br />
-            교직원 비난인지 확신이 낮아요. 일반이나 긴급으로 다시 분류해 주세요.
+            {/* 감독 AI가 준 이유 한 줄이 있으면 그 문장, 없으면 예전 기본 문구 */}
+            {c.riskReason ? `${c.riskReason.replace(/[\s.!?]+$/, "")}.` : "교직원 비난인지 확신이 낮아요."} 일반이나 긴급으로 다시 분류해 주세요.
           </p>
         </div>
       )}
@@ -250,7 +252,7 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
               </li>
             ))}
           </ul>
-          {showSummary && <p className="px-1 text-sub text-ink2">AI 요약: {c.summary}</p>}
+          {showSummary && <p className="px-1 text-sub text-ink2">요청 내용: {c.summary}</p>}
         </Section>
       ) : (
         <>
@@ -259,7 +261,7 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
               <blockquote className="rounded-2xl bg-card px-4 py-3.5 text-[15px] leading-relaxed">{c.original}</blockquote>
             </Section>
           )}
-          {showSummary && <p className="px-1 text-sub text-ink2">AI 요약: {c.summary}</p>}
+          {showSummary && <p className="px-1 text-sub text-ink2">요청 내용: {c.summary}</p>}
         </>
       )}
       {reopened && (

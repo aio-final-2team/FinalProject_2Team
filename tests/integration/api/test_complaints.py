@@ -10,6 +10,7 @@ from app import backend
 from app.core.db import transaction
 from app.core.schedule import KST
 from app.mock import seed, store
+from tests import fake_supervisor
 from tests.integration.api.helpers import BASE, decision, err
 from tests.integration.api.test_consultations import book, choose
 
@@ -105,9 +106,10 @@ def test_other_topic_is_not_combined_into_repeated_complaints(client, parent, di
     ("[TEST] 판단 필요 민원이에요", "uncertain", None),
 ])
 @pytest.mark.parametrize("kind", ["complaint", "inquiry"])
-def test_high_risk_handoff_has_two_cards_no_draft_or_automatic_reply(
-    client, parent, teacher, director, body, risk, category, kind
+def test_high_risk_handoff_has_two_cards_and_no_automatic_reply(
+    client, parent, teacher, director, monkeypatch, body, risk, category, kind
 ):
+    fake_supervisor.install(monkeypatch)  # 판단 필요는 가짜 감독 AI가 정해요
     rid = create(client, parent, body=body, kind=kind)
     saved = cards(client, director, rid)
     assert set(saved) == {"reply_draft", "director_report"}
@@ -115,12 +117,18 @@ def test_high_risk_handoff_has_two_cards_no_draft_or_automatic_reply(
     assert all(c["is_urgent"] == (risk == "urgent") for c in saved.values())
     assert saved["reply_draft"]["assignee"]["id"] == str(seed.TEACHER)
     assert saved["director_report"]["assignee"]["id"] == str(seed.DIRECTOR)
-    for row in saved.values():
+    for kind_, row in saved.items():
         item = detail(client, director, row["id"])
-        assert "text" not in item["card"]["draft"] and item["card"]["check_result"] is None
+        # 판단 필요도 답장 초안은 써 둬요(승인은 재분류 전까지 막혀요). 긴급과 원장 보고 카드엔 초안이 없어요.
+        drafted = risk == "uncertain" and kind_ == "reply_draft"
+        assert bool(item["card"]["draft"].get("text")) == drafted
+        assert (item["card"]["check_result"] is not None) == drafted
+        assert item["card"]["draft"].get("risk_reason") == (fake_supervisor.REASON if risk == "uncertain" else None)
         start = datetime.fromisoformat(item["request"]["created_at"])
         assert datetime.fromisoformat(row["due_at"]) == start + timedelta(hours=2)
         assert item["request"]["status"] == "escalated"
+    # 초안이 있어도 담임이 바로 승인해 보낼 수는 없어요.
+    err(decision(client, teacher, saved["reply_draft"]["id"], "approve"), 409, "INVALID_TRANSITION")
     history = detail(client, teacher, saved["reply_draft"]["id"])["timeline"]
     assert [e["detail"]["reason"] for e in history if e["action"] == "escalated"] == ["risk"]
     assert [e["to_status"] for e in history if e["to_status"]] == ["received", "classified", "assigned", "escalated"]
@@ -194,8 +202,9 @@ def test_urgent_inquiry_can_be_lowered_by_teacher_and_director(client, parent, t
     ("[TEST] 판단 필요 상담이에요", "uncertain", "AI 판단 불확실 상담"),
 ])
 def test_risky_consultation_keeps_slot_flow_and_adds_director_report(
-    client, parent, teacher, director, complaint_backend, body, risk, title
+    client, parent, teacher, director, complaint_backend, monkeypatch, body, risk, title
 ):
+    fake_supervisor.install(monkeypatch)
     other = create(client, parent, body="[TEST] 아이가 다쳤어요", kind="inquiry")  # 다른 요청의 보고 카드는 그대로
     rid = create(client, parent, body=body, kind="consultation")
     saved = cards(client, director, rid)
@@ -203,6 +212,8 @@ def test_risky_consultation_keeps_slot_flow_and_adds_director_report(
     assert saved["consult_slots"]["assignee"]["id"] == str(seed.TEACHER)
     assert saved["director_report"]["assignee"]["id"] == str(seed.DIRECTOR)
     assert all(c["risk_level"] == risk for c in saved.values())
+    reason = fake_supervisor.REASON if risk == "uncertain" else None
+    assert all(detail(client, director, c["id"])["card"]["draft"].get("risk_reason") == reason for c in saved.values())
     start = datetime.fromisoformat(detail(client, director, saved["director_report"]["id"])["request"]["created_at"])
     assert all(datetime.fromisoformat(c["due_at"]) == start + timedelta(hours=2) for c in saved.values())
     kind = "urgent_complaint" if risk == "urgent" else "uncertain_complaint"
@@ -227,7 +238,8 @@ def test_risky_consultation_keeps_slot_flow_and_adds_director_report(
     ("[TEST] 아이가 다쳤어요. 상담하고 싶어요", "urgent"),
     ("[TEST] 판단 필요 상담이에요", "uncertain"),
 ])
-def test_risky_consultation_can_be_declined_and_closes_director_report(client, parent, teacher, director, body, risk):
+def test_risky_consultation_can_be_declined_and_closes_director_report(client, parent, teacher, director, monkeypatch, body, risk):
+    fake_supervisor.install(monkeypatch)
     rid = create(client, parent, body=body, kind="consultation")
     saved = cards(client, director, rid)
     assert saved["consult_slots"]["risk_level"] == risk

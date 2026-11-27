@@ -101,6 +101,25 @@ def test_supervisor_skips_send_for_risky_inquiry_and_complaint():
         assert calls == [(route, "urgent")]
 
 
+@pytest.mark.parametrize("route", ["inquiry", "complaint"])
+def test_uncertain_still_writes_and_checks_draft(route):
+    # 판단 필요도 초안을 써 둬요. 승인은 재분류 전까지 카드 API가 막아요(긴급만 초안을 건너뛰어요).
+    saved = []
+
+    def prepare(request_id, selected, answer, classification):
+        saved.append((answer["text"], classification["risk_level"]))
+        return "card-1"
+
+    graph = build_graph(InMemorySaver(), lambda _: route, prepare, lambda _: "done",
+                        search=lambda _: [{"chunk_id": 1}], load_memory=lambda _: [],
+                        write=lambda _: {"draft": {"text": "[TEST] 초안", "no_evidence": False}},
+                        check=lambda _: {"passed": True},
+                        high_risk=lambda _: {"risk_level": "uncertain", "risk_reason": "[TEST] 이유"})
+    result = graph.invoke({"request_id": "request-1"}, {"configurable": {"thread_id": f"uncertain-{route}"}})
+    assert result["__interrupt__"] and not result["skip_draft"]
+    assert saved == [("[TEST] 초안", "uncertain")]
+
+
 def test_memory_failure_keeps_draft_and_marks_warning():
     answers = []
 

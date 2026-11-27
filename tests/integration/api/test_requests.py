@@ -11,6 +11,7 @@ from app.core.db import transaction
 from app.mock import request_actions, store
 
 from app.mock import seed
+from tests import fake_supervisor
 from tests.integration.api.helpers import decision, err
 
 
@@ -426,12 +427,16 @@ def test_out_of_scope_child_topics_and_own_child_still_go_to_teacher(
     ("원비 결제해 주세요. 아이가 다쳤어요.", "urgent", "urgent_complaint"),
     ("원비 결제해 주세요. 판단 필요해요.", "uncertain", "uncertain_complaint"),
 ])
-def test_out_of_scope_inquiry_prioritizes_risk(client, parent, teacher, director, request_backend, body, risk, notice_kind):
+def test_out_of_scope_inquiry_prioritizes_risk(client, parent, teacher, director, request_backend, monkeypatch,
+                                               body, risk, notice_kind):
+    fake_supervisor.install(monkeypatch)  # 판단 필요는 가짜 감독 AI가 정해요
     rid = _create(client, parent, type="inquiry", body="[TEST] " + body).json()["request"]["id"]
     data = client.get(f"/api/v1/requests/{rid}", headers=parent).json()
     assert data["request"]["status"] == "escalated" and len(data["messages"]) == 1
     card = reply_card(request_backend, rid)
-    assert not card["draft"].get("text") and card["check_result"] is None
+    # 긴급은 초안 없이, 판단 필요는 초안을 써 두고 넘겨요. 어느 쪽도 학부모에게 바로 안내하지 않아요.
+    assert bool(card["draft"].get("text")) == (risk == "uncertain")
+    assert (card["check_result"] is None) == (risk == "urgent")
     reports = client.get("/api/v1/cards?size=100", headers=director).json()["items"]
     assert any(c["request_id"] == rid and c["kind"] == "director_report" for c in reports)
     detail = client.get(f"/api/v1/cards/{card['id']}", headers=teacher).json()

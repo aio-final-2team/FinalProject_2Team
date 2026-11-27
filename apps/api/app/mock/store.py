@@ -365,10 +365,20 @@ def create_request(user, *, client_request_id: str, type: str, body: str, child_
         return req, True
 
 
-# 모의 AI 분류 규칙. 실제 분류는 감독 AI(T14)가 한다. 화면 시연용으로 낱말만 본다.
+# mock엔 감독 AI가 없어요. 빈 제안이면 실제 백엔드가 모델 없이 쓰는 낱말 대역과 같은 규칙으로 분류해요.
+# 낱말 대역은 판단 필요를 만들지 않아서, 시연 시드의 판단 필요 사례만 정해 둔 감독 결과를 줘요.
+# 시험은 이 함수를 가짜 감독 결과로 바꿔 끼워요(tests/fake_supervisor.py).
+_DEMO_JUDGMENTS = {seed.demo_id("704"): {"risk_level": "uncertain", "risk_category": None,
+                                         "risk_reason": "급식을 맡은 교직원을 탓하는 글인지 확신이 낮아요"}}
+
+
+def _mock_proposal(req: Request) -> dict:
+    return _DEMO_JUDGMENTS.get(req.id, {})
+
+
 def _classify(req: Request) -> dict:
     from app.modules.requests.supervisor import validate_proposal
-    fields = validate_proposal(req.type, req.body, {})
+    fields = validate_proposal(req.type, req.body, _mock_proposal(req))
     for key in ("topic_key", "urgency", "risk_level", "risk_category"):
         setattr(req, key, fields.get(key))
     return fields
@@ -378,6 +388,7 @@ def _run_mock_ai(req: Request, trace_id: str | None) -> None:
     if req.type in CARE_REQUEST_TYPES:
         return
     from app.core.request_rules import direct_notice_kind
+    from app.modules.requests.complaints import REPEAT_REPORT_AT
     fields = _classify(req)
     set_request_status(req, "classified", action="classified", actor_type="agent", agent_name="supervisor",
                        trace_id=trace_id)
@@ -395,28 +406,31 @@ def _run_mock_ai(req: Request, trace_id: str | None) -> None:
             return
     summary = req.body[:60]
     high_risk = req.risk_level in ("urgent", "uncertain")
+    reason = {"risk_reason": fields["risk_reason"]} if fields.get("risk_reason") else {}
     if req.type == "consultation":
-        card = _new_card(req, "consult_slots", teacher)
+        card = _new_card(req, "consult_slots", teacher, draft=reason)
         _propose_slots(card, teacher)
         set_request_status(req, "needs_info", action="info_requested", card=card, actor_type="agent",
                            agent_name="code", trace_id=trace_id)
         director = director_of(req.org_id)
         if high_risk and director:
             # DB 백엔드와 같이 상담 흐름은 두고 원장 보고 카드와 알림만 더해요.
-            report = _new_card(req, "director_report", director, draft={"summary": summary})
+            report = _new_card(req, "director_report", director, draft={"summary": summary, **reason})
             add_event(req, "escalated", card=report, actor_type="agent", agent_name="supervisor", trace_id=trace_id, reason="risk")
         return
+    # 판단 필요도 초안을 써 두고(승인은 재분류 전까지 막혀요), 긴급만 초안 없이 넘겨요. DB 백엔드와 같아요.
+    urgent = req.risk_level == "urgent"
     card = _new_card(req, "reply_draft", teacher, draft={
-        "summary": summary,
-        **({} if high_risk else {"text": "(모의 초안) 말씀해 주셔서 감사합니다. 확인해서 다시 안내드릴게요."}),
+        "summary": summary, **reason,
+        **({} if urgent else {"text": "(모의 초안) 말씀해 주셔서 감사합니다. 확인해서 다시 안내드릴게요."}),
     })
-    if not high_risk:
+    if not urgent:
         from app.mock.documents import attach_evidence
         attach_evidence(card)
         card.check_result = {"passed": True, "issues": [], "attempt": 1}
     add_event(req, "drafted", card=card, actor_type="agent", agent_name="document", trace_id=trace_id)
-    if high_risk or (req.type == "complaint" and (repeat_count(req) or 0) >= 3):
-        report = _new_card(req, "director_report", director_of(req.org_id), draft={"summary": summary})
+    if high_risk or (req.type == "complaint" and (repeat_count(req) or 0) >= REPEAT_REPORT_AT):
+        report = _new_card(req, "director_report", director_of(req.org_id), draft={"summary": summary, **reason})
         set_request_status(req, "escalated", action="escalated", card=report, actor_type="agent",
                            agent_name="supervisor", trace_id=trace_id, reason="risk" if high_risk else "repeat")
         return

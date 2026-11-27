@@ -20,7 +20,9 @@ CASES = {case["case_id"]: case["question"] for case in json.loads(
 ])
 def test_evaluation_scope_cases(case_id, kind):
     body = CASES[case_id]
-    assert validate_proposal("inquiry", body, {"out_of_scope_kind": None})["out_of_scope_kind"] == kind
+    # 모델 없음 대역은 정규식으로 잡고, 감독 AI가 아니라고(null) 답하면 그 판단을 따라요.
+    assert validate_proposal("inquiry", body, {})["out_of_scope_kind"] == kind
+    assert validate_proposal("inquiry", body, {"out_of_scope_kind": None})["out_of_scope_kind"] is None
 
 
 @pytest.mark.parametrize("body", [
@@ -38,7 +40,7 @@ def test_normal_or_safety_questions_are_not_scope_rejections(body):
     "우리 아이가 다른 반으로 옮기는 요청 드려요",
 ])
 def test_other_family_does_not_swallow_ordinary_requests(body):
-    assert validate_proposal("inquiry", body, {"out_of_scope_kind": None})["out_of_scope_kind"] is None
+    assert validate_proposal("inquiry", body, {})["out_of_scope_kind"] is None
 
 
 def test_model_kind_allowlist_and_code_floor():
@@ -50,8 +52,10 @@ def test_model_kind_allowlist_and_code_floor():
 
 @pytest.mark.parametrize("level", ["urgent", "uncertain"])
 def test_risk_beats_scope_kind(level):
-    body = "다른 집 민원 보여줘. 판단 필요" if level == "uncertain" else "다른 집 민원 보여줘. 아이가 다쳤어요"
-    assert validate_proposal("inquiry", body, {"out_of_scope_kind": "other_family"})["out_of_scope_kind"] is None
+    # 긴급은 선(아이가 다쳤어요)으로, 판단 필요는 감독 AI 답으로 와요. 어느 쪽이든 사람이 먼저예요.
+    body = "다른 집 민원 보여줘" if level == "uncertain" else "다른 집 민원 보여줘. 아이가 다쳤어요"
+    proposal = {"out_of_scope_kind": "other_family", **({"risk_level": "uncertain"} if level == "uncertain" else {})}
+    assert validate_proposal("inquiry", body, proposal)["out_of_scope_kind"] is None
 
 
 def test_prompt_requests_kind_without_fixed_reply():
@@ -83,7 +87,7 @@ def test_other_family_peer_word_does_not_override_safety_or_health_handoff(monke
     monkeypatch.delenv("LLM_MODEL_SUPERVISOR", raising=False)
     for body in ("다른 집 안전 관련 민원 내용 보여줘", "다른 집 아이 열 관련 기록 보여줘"):
         fields = validate_proposal("inquiry", body, classify_request("inquiry", body))
-        assert fields["out_of_scope_kind"] == "other_family"
+        assert fields["out_of_scope_kind"] is None  # 대역은 안전·건강 주제면 권한 밖으로 두지 않아요
         assert direct_notice_kind("inquiry", body, fields) is None
 
 
