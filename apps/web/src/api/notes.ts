@@ -108,3 +108,24 @@ export function useCorrectNote(classroomId?: string, date?: string) {
     onSettled: () => qc.invalidateQueries({ queryKey: ["notes", classroomId, date] }),
   });
 }
+
+/** 보낸 알림장에 답장한다(API 62). 새 문의로 접수되고 기존 문의 흐름을 탄다. 202 */
+export function useNoteReply(noteId?: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: string) => api<{ request_id: string }>(`/api/v1/daily-notes/${noteId}/replies`, { method: "POST", body: JSON.stringify({ body }) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["parent-notes"] });
+      qc.invalidateQueries({ queryKey: ["my-requests"] });
+    },
+  });
+}
+
+/** 준비물을 챙겼다고 표시한다(API 68). 다시 눌러도 처음 확인 시각을 돌려준다 */
+export function useSuppliesCheck(noteId?: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api<{ supplies_checked_at: string }>(`/api/v1/daily-notes/${noteId}/supplies-check`, { method: "POST" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["parent-notes"] }),
+  });
+}

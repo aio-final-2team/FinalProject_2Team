@@ -8,6 +8,7 @@ import { Icon } from "@/components/Icon";
 import { ChildAvatar, type ProfilePhoto } from "@/components/ChildAvatar";
 import { MealRepresentative } from "@/components/MealRepresentative";
 import { dateLabel, itemLabel, nameI, noMd, todayKST, type DailyNote } from "@/domain/notes";
+import { NoteReply } from "./NoteReply";
 import { term } from "@/domain/wording";
 
 type Me = { user: { display_name: string }; children: { id: string; display_name: string; classroom_id: string; profile_photo?: ProfilePhoto }[] };
@@ -15,7 +16,7 @@ type Me = { user: { display_name: string }; children: { id: string; display_name
 /**
  * A-08 학부모 홈 · 오늘 알림장 (디자인 시스템 7.8 블루 머리 · 7.11 알림장 카드).
  * 보호자는 내 아이의 '보낸' 알림장만 받는다 (API 24, open_checks는 늘 빈 목록).
- * [API 없음] 선생님께 답장하기·알림은 아직 API가 없어 모양만 둔다.
+ * 답장·준비물 확인은 문서 3.34(API 62·68). 알림은 아직 API가 없다.
  */
 export function ParentHome() {
   const date = todayKST();
@@ -121,6 +122,7 @@ export function ParentHome() {
                 </>
               )}
             </div>
+            <NoteReply note={note} />
           </article>
         )}
         </QueryState>

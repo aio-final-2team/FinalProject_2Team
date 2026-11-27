@@ -43,7 +43,11 @@ export type DailyNote = {
   input_id?: string;
   version?: number;
   corrected_at?: string | null;
+  /** 보낸 알림장에 학부모가 남긴 답장(문의로 접수된 것)과 준비물 확인 시각 (문서 3.34, API 62·68) */
+  replies?: NoteReply[];
+  supplies_checked_at?: string | null;
 };
+export type NoteReply = { request_id: string; body: string; status: string; created_at: string };
 
 export type Child = { id: string; display_name: string; classroom_id: string };
 export type DraftStatus = "queued" | "running" | "succeeded" | "failed";
