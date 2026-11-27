@@ -5,7 +5,7 @@
 
 채점(data/evaluation/daily_note/README.md 3장)
 - 금지어: AI가 쓴 줄(아이 메모·보호자 요청)에 must_not_include 낱말이 없어야 한다. 반 공통 줄은 보지 않는다.
-- 확인 항목: expect_flag면 flag_kind가 open_checks에 있어야 하고, 아니면 메모로 시험하는 5값이 없어야 한다.
+- 확인 항목: expect_flag면 flag_kind가 open_checks에 있어야 하고, 아니면 메모로 시험하는 종류가 없어야 한다.
 - 꼭 들어갈 사실(must_include)은 뜻으로 봐야 해서 자동 채점하지 않고 결과 파일에 함께 적어 사람이 본다.
 - 보호자 요청(guardian_requests.json expect): 그 요청을 다룬 줄(source.request_id)이 있고, 줄 key가 line_key와 같고,
   그 줄에 must_not_include가 없고, teacher_check가 있으면 그 kind가 open_checks에 있어야 한다.
@@ -26,7 +26,7 @@ from agents.graphs.daily_note import draft_daily_notes  # noqa: E402
 DATA = ROOT / "data/fixtures/kg-demo-01"
 CASES = ROOT / "data/evaluation/daily_note/daily_note_trap_cases.json"
 REQUESTS = DATA / "daily_notes/guardian_requests.json"
-MEMO_KINDS = {"not_in_memo", "sensitive", "other_child", "date_check", "absent"}
+MEMO_KINDS = {"not_in_memo", "sensitive", "other_child", "date_check", "absent", "memo_missing"}
 AI_KEYS = {"child", "medication", "pickup"}
 
 
@@ -77,7 +77,8 @@ def score(case: dict, note: dict, allowed: set[str] = frozenset()) -> dict:
     ai_text = " ".join(line["value"] for line in note["content"]["items"]
                        if line["key"] in AI_KEYS and line["source"]["type"] != "request")
     hits = [word for word in case["must_not_include"] if word in ai_text]
-    # 메모 함정은 메모 쪽 확인만 본다. 보호자 요청에 붙은 확인(request_id 있음)은 요청 채점에서 본다
+    # 메모 함정은 메모 쪽 확인만 본다. 보호자 요청에 붙은 확인(request_id 있음)은 요청 채점에서 본다.
+    # memo_missing도 정상 관찰 메모에서는 불필요 표시로 센다.
     kinds = {check["kind"] for check in note["open_checks"] if not check.get("request_id")}
     if case["expect_flag"]:
         flag_ok = case["flag_kind"] in kinds
