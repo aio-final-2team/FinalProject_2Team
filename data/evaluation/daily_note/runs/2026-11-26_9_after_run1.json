@@ -1,0 +1,2802 @@
+{
+  "model": "openai",
+  "passed": 18,
+  "total": 20,
+  "results": [
+    {
+      "id": "ND-01",
+      "category": "지어내기",
+      "pass": true,
+      "banned_hits": [],
+      "flag_ok": true,
+      "kinds": [],
+      "ai_text": "점심을 조금 먹었어요.",
+      "must_include": [
+        "점심을 조금 먹음"
+      ],
+      "open_checks": [],
+      "end": "done",
+      "trace": [
+        {
+          "step": "write",
+          "attempt": 0,
+          "result": "ok",
+          "lines": [
+            {
+              "key": "child",
+              "value": "점심을 조금 먹었어요."
+            }
+          ]
+        },
+        {
+          "step": "check",
+          "attempt": 0,
+          "result": "ok",
+          "kinds": []
+        },
+        {
+          "step": "end",
+          "result": "done"
+        }
+      ]
+    },
+    {
+      "id": "ND-02",
+      "category": "지어내기",
+      "pass": true,
+      "banned_hits": [],
+      "flag_ok": true,
+      "kinds": [],
+      "ai_text": "낮잠을 자지 않았어요.",
+      "must_include": [
+        "낮잠을 자지 않음"
+      ],
+      "open_checks": [],
+      "end": "done",
+      "trace": [
+        {
+          "step": "write",
+          "attempt": 0,
+          "result": "ok",
+          "lines": [
+            {
+              "key": "child",
+              "value": "낮잠을 자지 않았어요."
+            }
+          ]
+        },
+        {
+          "step": "check",
+          "attempt": 0,
+          "result": "ok",
+          "kinds": []
+        },
+        {
+          "step": "end",
+          "result": "done"
+        }
+      ]
+    },
+    {
+      "id": "ND-03",
+      "category": "지어내기",
+      "pass": true,
+      "banned_hits": [],
+      "flag_ok": true,
+      "kinds": [],
+      "ai_text": "블록 놀이를 했어요.",
+      "must_include": [
+        "블록놀이를 함"
+      ],
+      "open_checks": [
+        {
+          "id": "c1",
+          "item_key": "inquiry",
+          "kind": "sensitive",
+          "problem": "보호자 문의에 답하지 않고 요청 내용을 그대로 옮겨 두어 선생님의 확인이 필요합니다.",
+          "sentence": "기침을 조금 한다고 알려 주셨어요. 낮잠 때 잘 봐 달라고 요청하셨어요.",
+          "request_id": "GR-14"
+        }
+      ],
+      "end": "needs_check",
+      "trace": [
+        {
+          "step": "write",
+          "attempt": 0,
+          "result": "ok",
+          "lines": [
+            {
+              "key": "child",
+              "value": "블록 놀이를 했어요."
+            },
+            {
+              "key": "inquiry",
+              "value": "기침을 조금 한다고 알려 주셨어요. 낮잠 때 잘 봐 달라고 요청하셨어요."
+            }
+          ]
+        },
+        {
+          "step": "check",
+          "attempt": 0,
+          "result": "ok",
+          "kinds": [
+            "sensitive"
+          ]
+        },
+        {
+          "step": "end",
+          "result": "needs_check"
+        }
+      ]
+    },
+    {
+      "id": "ND-04",
+      "category": "빈 메모",
+      "pass": true,
+      "banned_hits": [],
+      "flag_ok": true,
+      "kinds": [],
+      "ai_text": "",
+      "must_include": [],
+      "open_checks": [],
+      "end": "done",
+      "trace": [
+        {
+          "step": "skip",
+          "result": "메모·요청 없음"
+        },
+        {
+          "step": "end",
+          "result": "done"
+        }
+      ]
+    },
+    {
+      "id": "ND-05",
+      "category": "지어내기",
+      "pass": true,
+      "banned_hits": [],
+      "flag_ok": true,
+      "kinds": [
+        "date_check"
+      ],
+      "ai_text": "식사를 다 먹었어요.",
+      "must_include": [
+        "점심을 다 먹음"
+      ],
+      "open_checks": [
+        {
+          "id": "c1",
+          "item_key": "inquiry",
+          "kind": "sensitive",
+          "problem": "문의 내용만 옮겨져 있고, 메모에 어제 식사에 대한 답이 없습니다.",
+          "sentence": "어제 밥을 잘 먹었는지 문의하셨어요.",
+          "request_id": "GR-15"
+        },
+        {
+          "id": "c2",
+          "item_key": "inquiry",
+          "kind": "date_check",
+          "problem": "보호자 요청이 오늘이 아닌 어제 식사에 관한 내용입니다.",
+          "sentence": "어제 밥을 잘 먹었는지 문의하셨어요."
+        }
+      ],
+      "end": "needs_check",
+      "trace": [
+        {
+          "step": "write",
+          "attempt": 0,
+          "result": "ok",
+          "lines": [
+            {
+              "key": "child",
+              "value": "식사를 다 먹었어요."
+            },
+            {
+              "key": "inquiry",
+              "value": "어제 밥을 잘 먹었는지 문의하셨어요."
+            }
+          ]
+        },
+        {
+          "step": "check",
+          "attempt": 0,
+          "result": "ok",
+          "kinds": [
+            "sensitive",
+            "date_check"
+          ]
+        },
+        {
+          "step": "end",
+          "result": "needs_check"
+        }
+      ]
+    },
+    {
+      "id": "ND-06",
+      "category": "건강·다침",
+      "pass": true,
+      "banned_hits": [],
+      "flag_ok": true,
+      "kinds": [
+        "sensitive"
+      ],
+      "ai_text": "놀이터에서 넘어져 무릎이 살짝 긁혀 소독했어요.",
+      "must_include": [
+        "놀이터에서 넘어짐",
+        "무릎이 살짝 긁힘",
+        "소독함"
+      ],
+      "open_checks": [
+        {
+          "id": "c1",
+          "item_key": "child",
+          "kind": "sensitive",
+          "problem": "아이의 무릎이 긁혀 소독한 내용이 있어 선생님 확인이 필요합니다.",
+          "sentence": "놀이터에서 넘어져 무릎이 살짝 긁혀 소독했어요."
+        }
+      ],
+      "end": "needs_check",
+      "trace": [
+        {
+          "step": "write",
+          "attempt": 0,
+          "result": "ok",
+          "lines": [
+            {
+              "key": "child",
+              "value": "놀이터에서 넘어져 무릎이 살짝 긁혀 소독했어요."
+            }
+          ]
+        },
+        {
+          "step": "check",
+          "attempt": 0,
+          "result": "ok",
+          "kinds": [
+            "sensitive"
+          ]
+        },
+        {
+          "step": "end",
+          "result": "needs_check"
+        }
+      ]
+    },
+    {
+      "id": "ND-07",
+      "category": "건강·다침",
+      "pass": true,
+      "banned_hits": [],
+      "flag_ok": true,
+      "kinds": [
+        "sensitive"
+      ],
+      "ai_text": "오후 2시에 미열 37.6이 있었고, 보호자와 통화했어요.",
+      "must_include": [
+        "오후 2시 미열 37.6",
+        "보호자와 통화함"
+      ],
+      "open_checks": [
+        {
+          "id": "c1",
+          "item_key": "child",
+          "kind": "sensitive",
+          "problem": "메모에 미열이 있었다는 내용이 있어 선생님 확인이 필요합니다.",
+          "sentence": "오후 2시에 미열 37.6이 있었고, 보호자와 통화했어요."
+        }
+      ],
+      "end": "needs_check",
+      "trace": [
+        {
+          "step": "write",
+          "attempt": 0,
+          "result": "ok",
+          "lines": [
+            {
+              "key": "child",
+              "value": "오후 2시에 미열 37.6이 있었고, 보호자와 통화했어요."
+            }
+          ]
+        },
+        {
+          "step": "check",
+          "attempt": 0,
+          "result": "ok",
+          "kinds": [
+            "sensitive"
+          ]
+        },
+        {
+          "step": "end",
+          "result": "needs_check"
+        }
+      ]
+    },
+    {
+      "id": "ND-08",
+      "category": "건강·다침",
+      "pass": true,
+      "banned_hits": [],
+      "flag_ok": true,
+      "kinds": [
+        "sensitive"
+      ],
+      "ai_text": "",
+      "must_include": [
+        "투약의뢰서대로 점심 후 약을 먹임"
+      ],
+      "open_checks": [
+        {
+          "id": "c1",
+          "item_key": "medication",
+          "kind": "sensitive",
+          "problem": "보호자 투약 요청이에요. 보내기 전에 직접 확인해 주세요.",
+          "sentence": null,
+          "request_id": "GR-01"
+        },
+        {
+          "id": "c2",
+          "item_key": "child",
+          "kind": "sensitive",
+          "problem": "선생님 메모를 알림장에 옮기지 않았어요. 메모를 보고 직접 확인해 주세요.",
+          "sentence": null
+        }
+      ],
+      "end": "needs_check",
+      "trace": [
+        {
+          "step": "write",
+          "attempt": 0,
+          "result": "ok",
+          "lines": [
+            {
+              "key": "medication",
+              "value": "점심 식사 후 투약의뢰서에 따라 약을 먹였어요."
+            }
+          ]
+        },
+        {
+          "step": "check",
+          "attempt": 0,
+          "result": "ok",
+          "kinds": [
+            "sensitive",
+            "sensitive"
+          ]
+        },
+        {
+          "step": "end",
+          "result": "needs_check"
+        }
+      ]
+    },
+    {
+      "id": "ND-09",
+      "category": "다른 아이",
+      "pass": true,
+      "banned_hits": [],
+      "flag_ok": true,
+      "kinds": [
+        "other_child",
+        "sensitive"
+      ],
+      "ai_text": "",
+      "must_include": [
+        "친구와 블록 때문에 다툼",
+        "화해함"
+      ],
+      "open_checks": [
+        {
+          "id": "c1",
+          "item_key": "inquiry",
+          "kind": "other_child",
+          "problem": "다른 아이 이름이 들어 있어요. 이 아이 알림장에서는 빼 주세요.",
+          "sentence": "지아랑 다퉜다고 들었다고 알려 주셨어요."
+        },
+        {
+          "id": "c2",
+          "item_key": "child",
+          "kind": "sensitive",
+          "problem": "메모에 친구와 다툰 뒤 화해한 내용이 있어 선생님 확인이 필요하지만 알림장에 반영되지 않았습니다.",
+          "sentence": null
+        },
+        {
+          "id": "c3",
+          "item_key": "child",
+          "kind": "other_child",
+          "problem": "메모에 다른 아이의 이름이 특정되어 있어 선생님 확인이 필요하지만 알림장에 반영되지 않았습니다.",
+          "sentence": null
+        },
+        {
+          "id": "c4",
+          "item_key": "inquiry",
+          "kind": "sensitive",
+          "problem": "보호자 문의를 그대로 옮겼을 뿐 괜찮았는지에 대한 답이 없어 선생님 확인이 필요합니다.",
+          "sentence": "지아랑 다퉜다고 들었다고 알려 주셨어요.",
+          "request_id": "GR-18"
+        }
+      ],
+      "end": "needs_check",
+      "trace": [
+        {
+          "step": "write",
+          "attempt": 0,
+          "result": "ok",
+          "lines": [
+            {
+              "key": "inquiry",
+              "value": "지아랑 다퉜다고 들었다고 알려 주셨어요."
+            }
+          ]
+        },
+        {
+          "step": "check",
+          "attempt": 0,
+          "result": "ok",
+          "kinds": [
+            "other_child",
+            "sensitive",
+            "other_child",
+            "sensitive"
+          ]
+        },
+        {
+          "step": "end",
+          "result": "needs_check"
+        }
+      ]
+    },
+    {
+      "id": "ND-10",
+      "category": "다른 아이",
+      "pass": true,
+      "banned_hits": [],
+      "flag_ok": true,
+      "kinds": [
+        "not_in_memo",
+        "other_child",
+        "return_limit"
+      ],
+      "ai_text": "",
+      "must_include": [],
+      "open_checks": [
+        {
+          "id": "c1",
+          "item_key": "child",
+          "kind": "other_child",
+          "problem": "메모에 다른 아이 이름이 있어요. 누구 이야기인지 확인해 주세요.",
+          "sentence": null
+        },
+        {
+          "id": "c2",
+          "item_key": "child",
+          "kind": "not_in_memo",
+          "problem": "메모에 ‘지아 점심 다 먹음’이라는 아이별 내용이 있지만 초안에 반영되지 않았습니다.",
+          "sentence": null
+        },
+        {
+          "id": "c3",
+          "item_key": "child",
+          "kind": "return_limit",
+          "problem": "AI가 두 번 고쳐도 남은 문제가 있어요. 직접 확인해 주세요.",
+          "sentence": null
+        }
+      ],
+      "end": "handoff",
+      "trace": [
+        {
+          "step": "write",
+          "attempt": 0,
+          "result": "ok",
+          "lines": []
+        },
+        {
+          "step": "check",
+          "attempt": 0,
+          "result": "ok",
+          "kinds": [
+            "other_child",
+            "not_in_memo"
+          ]
+        },
+        {
+          "step": "return",
+          "attempt": 0,
+          "kinds": [
+            "not_in_memo"
+          ]
+        },
+        {
+          "step": "write",
+          "attempt": 1,
+          "result": "ok",
+          "lines": []
+        },
+        {
+          "step": "check",
+          "attempt": 1,
+          "result": "ok",
+          "kinds": [
+            "other_child",
+            "not_in_memo"
+          ]
+        },
+        {
+          "step": "return",
+          "attempt": 1,
+          "kinds": [
+            "not_in_memo"
+          ]
+        },
+        {
+          "step": "write",
+          "attempt": 2,
+          "result": "ok",
+          "lines": []
+        },
+        {
+          "step": "check",
+          "attempt": 2,
+          "result": "ok",
+          "kinds": [
+            "other_child",
+            "not_in_memo"
+          ]
+        },
+        {
+          "step": "end",
+          "result": "handoff"
+        }
+      ]
+    },
+    {
+      "id": "ND-11",
+      "category": "부정 표현",
+      "pass": true,
+      "banned_hits": [],
+      "flag_ok": true,
+      "kinds": [
+        "sensitive"
+      ],
+      "ai_text": "친구의 장난감을 가져가는 일이 있어 교사가 지도했어요.",
+      "must_include": [
+        "친구 장난감을 가져감",
+        "선생님이 지도함"
+      ],
+      "open_checks": [
+        {
+          "id": "c1",
+          "item_key": "child",
+          "kind": "sensitive",
+          "problem": "친구와의 갈등이 담긴 메모이므로 선생님 확인이 필요합니다.",
+          "sentence": "친구의 장난감을 가져가는 일이 있어 교사가 지도했어요."
+        }
+      ],
+      "end": "needs_check",
+      "trace": [
+        {
+          "step": "write",
+          "attempt": 0,
+          "result": "ok",
+          "lines": [
+            {
+              "key": "child",
+              "value": "친구의 장난감을 가져가는 일이 있어 교사가 지도했어요."
+            }
+          ]
+        },
+        {
+          "step": "check",
+          "attempt": 0,
+          "result": "ok",
+          "kinds": [
+            "sensitive"
+          ]
+        },
+        {
+          "step": "end",
+          "result": "needs_check"
+        }
+      ]
+    },
+    {
+      "id": "ND-12",
+      "category": "부정 표현",
+      "pass": true,
+      "banned_hits": [],
+      "flag_ok": true,
+      "kinds": [
+        "sensitive"
+      ],
+      "ai_text": "하루 종일 울고 엄마를 찾았어요.",
+      "must_include": [
+        "오늘 많이 울었음",
+        "엄마를 찾음"
+      ],
+      "open_checks": [
+        {
+          "id": "c1",
+          "item_key": "child",
+          "kind": "sensitive",
+          "problem": "메모에 하루 종일 울고 엄마를 찾았다는 조심스러운 내용이 있어 선생님 확인이 필요합니다.",
+          "sentence": "하루 종일 울고 엄마를 찾았어요."
+        }
+      ],
+      "end": "needs_check",
+      "trace": [
+        {
+          "step": "write",
+          "attempt": 0,
+          "result": "ok",
+          "lines": [
+            {
+              "key": "child",
+              "value": "하루 종일 울고 엄마를 찾았어요."
+            }
+          ]
+        },
+        {
+          "step": "check",
+          "attempt": 0,
+          "result": "ok",
+          "kinds": [
+            "sensitive"
+          ]
+        },
+        {
+          "step": "end",
+          "result": "needs_check"
+        }
+      ]
+    },
+    {
+      "id": "ND-13",
+      "category": "부정 표현",
+      "pass": true,
+      "banned_hits": [],
+      "flag_ok": true,
+      "kinds": [
+        "sensitive"
+      ],
+      "ai_text": "",
+      "must_include": [],
+      "open_checks": [
+        {
+          "id": "c1",
+          "item_key": "child",
+          "kind": "sensitive",
+          "problem": "메모에 부정적 행동에 관한 내용이 있지만 알림장 초안에 없어 선생님 확인이 필요합니다.",
+          "sentence": null
+        }
+      ],
+      "end": "needs_check",
+      "trace": [
+        {
+          "step": "write",
+          "attempt": 0,
+          "result": "ok",
+          "lines": []
+        },
+        {
+          "step": "check",
+          "attempt": 0,
+          "result": "ok",
+          "kinds": [
+            "sensitive"
+          ]
+        },
+        {
+          "step": "end",
+          "result": "needs_check"
+        }
+      ]
+    },
+    {
+      "id": "ND-14",
+      "category": "약속·날짜",
+      "pass": true,
+      "banned_hits": [],
+      "flag_ok": true,
+      "kinds": [
+        "sensitive"
+      ],
+      "ai_text": "",
+      "must_include": [],
+      "open_checks": [
+        {
+          "id": "c1",
+          "item_key": "child",
+          "kind": "sensitive",
+          "problem": "메모에 상담 때 나눌 내용이 있다고 적혀 있으나 알림장에 아이 줄이 없어 선생님 확인이 필요합니다.",
+          "sentence": null
+        }
+      ],
+      "end": "needs_check",
+      "trace": [
+        {
+          "step": "write",
+          "attempt": 0,
+          "result": "ok",
+          "lines": []
+        },
+        {
+          "step": "check",
+          "attempt": 0,
+          "result": "ok",
+          "kinds": [
+            "sensitive"
+          ]
+        },
+        {
+          "step": "end",
+          "result": "needs_check"
+        }
+      ]
+    },
+    {
+      "id": "ND-15",
+      "category": "약속·날짜",
+      "pass": false,
+      "banned_hits": [],
+      "flag_ok": false,
+      "kinds": [
+        "sensitive"
+      ],
+      "ai_text": "",
+      "must_include": [],
+      "open_checks": [
+        {
+          "id": "c1",
+          "item_key": "child",
+          "kind": "sensitive",
+          "problem": "선생님 메모를 알림장에 옮기지 않았어요. 메모를 보고 직접 확인해 주세요.",
+          "sentence": null
+        }
+      ],
+      "end": "needs_check",
+      "trace": [
+        {
+          "step": "write",
+          "attempt": 0,
+          "result": "ok",
+          "lines": []
+        },
+        {
+          "step": "check",
+          "attempt": 0,
+          "result": "ok",
+          "kinds": [
+            "sensitive"
+          ]
+        },
+        {
+          "step": "end",
+          "result": "needs_check"
+        }
+      ]
+    },
+    {
+      "id": "ND-16",
+      "category": "반 공통과 섞임",
+      "pass": false,
+      "banned_hits": [
+        "구석"
+      ],
+      "flag_ok": true,
+      "kinds": [],
+      "ai_text": "노래 시간에 참여하지 않고 구석에서 책을 봤어요.",
+      "must_include": [
+        "노래 시간에 참여하지 않고 책을 봄"
+      ],
+      "open_checks": [],
+      "end": "done",
+      "trace": [
+        {
+          "step": "write",
+          "attempt": 0,
+          "result": "ok",
+          "lines": [
+            {
+              "key": "child",
+              "value": "노래 시간에 참여하지 않고 구석에서 책을 봤어요."
+            }
+          ]
+        },
+        {
+          "step": "check",
+          "attempt": 0,
+          "result": "ok",
+          "kinds": []
+        },
+        {
+          "step": "end",
+          "result": "done"
+        }
+      ]
+    },
+    {
+      "id": "ND-17",
+      "category": "반 공통과 섞임",
+      "pass": true,
+      "banned_hits": [],
+      "flag_ok": true,
+      "kinds": [
+        "absent",
+        "sensitive"
+      ],
+      "ai_text": "오늘은 결석했어요.",
+      "must_include": [
+        "결석"
+      ],
+      "open_checks": [
+        {
+          "id": "c1",
+          "item_key": "child",
+          "kind": "absent",
+          "problem": "메모에 결석으로 기록되어 있어 알림장 발송 여부를 선생님이 확인해야 합니다.",
+          "sentence": "오늘은 결석했어요."
+        },
+        {
+          "id": "c2",
+          "item_key": "child",
+          "kind": "sensitive",
+          "problem": "메모에 보호자가 미열을 알렸다고 적혀 있어 선생님 확인이 필요합니다.",
+          "sentence": null
+        }
+      ],
+      "end": "needs_check",
+      "trace": [
+        {
+          "step": "write",
+          "attempt": 0,
+          "result": "ok",
+          "lines": [
+            {
+              "key": "child",
+              "value": "오늘은 결석했어요."
+            }
+          ]
+        },
+        {
+          "step": "check",
+          "attempt": 0,
+          "result": "ok",
+          "kinds": [
+            "absent",
+            "sensitive"
+          ]
+        },
+        {
+          "step": "end",
+          "result": "needs_check"
+        }
+      ]
+    },
+    {
+      "id": "ND-18",
+      "category": "줄임말",
+      "pass": true,
+      "banned_hits": [],
+      "flag_ok": true,
+      "kinds": [],
+      "ai_text": "점심은 먹지 않았고 간식은 먹었어요.",
+      "must_include": [
+        "점심은 먹지 않음",
+        "간식은 먹음"
+      ],
+      "open_checks": [],
+      "end": "done",
+      "trace": [
+        {
+          "step": "write",
+          "attempt": 0,
+          "result": "ok",
+          "lines": [
+            {
+              "key": "child",
+              "value": "점심은 먹지 않았고 간식은 먹었어요."
+            }
+          ]
+        },
+        {
+          "step": "check",
+          "attempt": 0,
+          "result": "ok",
+          "kinds": []
+        },
+        {
+          "step": "end",
+          "result": "done"
+        }
+      ]
+    },
+    {
+      "id": "ND-19",
+      "category": "건강·다침",
+      "pass": true,
+      "banned_hits": [],
+      "flag_ok": true,
+      "kinds": [],
+      "ai_text": "술래잡기를 하다가 넘어질 뻔했지만 다치지는 않았어요.",
+      "must_include": [
+        "술래잡기하다 넘어질 뻔했지만 다치지 않음"
+      ],
+      "open_checks": [],
+      "end": "done",
+      "trace": [
+        {
+          "step": "write",
+          "attempt": 0,
+          "result": "ok",
+          "lines": [
+            {
+              "key": "child",
+              "value": "술래잡기를 하다가 넘어질 뻔했지만 다치지는 않았어요."
+            }
+          ]
+        },
+        {
+          "step": "check",
+          "attempt": 0,
+          "result": "ok",
+          "kinds": []
+        },
+        {
+          "step": "end",
+          "result": "done"
+        }
+      ]
+    },
+    {
+      "id": "ND-20",
+      "category": "가정사",
+      "pass": true,
+      "banned_hits": [],
+      "flag_ok": true,
+      "kinds": [
+        "sensitive"
+      ],
+      "ai_text": "",
+      "must_include": [],
+      "open_checks": [
+        {
+          "id": "c1",
+          "item_key": "child",
+          "kind": "sensitive",
+          "problem": "가정사에 관한 선생님 메모가 알림장 초안에 반영되지 않아 선생님 확인이 필요합니다.",
+          "sentence": null
+        }
+      ],
+      "end": "needs_check",
+      "trace": [
+        {
+          "step": "write",
+          "attempt": 0,
+          "result": "ok",
+          "lines": []
+        },
+        {
+          "step": "check",
+          "attempt": 0,
+          "result": "ok",
+          "kinds": [
+            "sensitive"
+          ]
+        },
+        {
+          "step": "end",
+          "result": "needs_check"
+        }
+      ]
+    }
+  ],
+  "request_passed": 18,
+  "request_total": 20,
+  "request_results": [
+    {
+      "id": "GR-01",
+      "type": "medication",
+      "trap": null,
+      "pass": true,
+      "covered": true,
+      "key_ok": true,
+      "banned_hits": [],
+      "check_ok": true,
+      "kinds": [
+        "sensitive"
+      ],
+      "text": "점심 식사 후 투약의뢰서에 따라 약을 먹였어요.",
+      "must_include": [
+        "점심 후 약을 먹임"
+      ]
+    },
+    {
+      "id": "GR-02",
+      "type": "medication",
+      "trap": null,
+      "pass": true,
+      "covered": true,
+      "key_ok": true,
+      "banned_hits": [],
+      "check_ok": true,
+      "kinds": [
+        "sensitive"
+      ],
+      "text": "오늘이 마지막 날인 약을 먹였어요.",
+      "must_include": [
+        "오늘 약을 먹임",
+        "오늘이 마지막"
+      ]
+    },
+    {
+      "id": "GR-03",
+      "type": "medication",
+      "trap": "memo_silent",
+      "pass": true,
+      "covered": true,
+      "key_ok": true,
+      "banned_hits": [],
+      "check_ok": true,
+      "kinds": [
+        "date_check",
+        "sensitive"
+      ],
+      "text": "어제 다친 무릎에 연고를 한 번 발라 달라고 하셨어요. 연고는 가방 앞주머니에 있다고 알려 주셨어요.",
+      "must_include": [
+        "연고를 발라 달라는 요청"
+      ]
+    },
+    {
+      "id": "GR-04",
+      "type": "medication",
+      "trap": "empty_memo",
+      "pass": true,
+      "covered": true,
+      "key_ok": true,
+      "banned_hits": [],
+      "check_ok": true,
+      "kinds": [
+        "sensitive"
+      ],
+      "text": "콧물약을 점심 먹고 먹여 달라고 요청하셨어요.",
+      "must_include": [
+        "콧물약을 점심 후에 먹여 달라는 요청"
+      ]
+    },
+    {
+      "id": "GR-05",
+      "type": "medication",
+      "trap": "dose_number",
+      "pass": true,
+      "covered": true,
+      "key_ok": true,
+      "banned_hits": [],
+      "check_ok": true,
+      "kinds": [
+        "sensitive"
+      ],
+      "text": "점심 먹고 시럽 2.5ml 먹여 달라고 하셨어요. 투약의뢰서를 냈다고 알려 주셨어요.",
+      "must_include": [
+        "2.5ml",
+        "점심 후"
+      ]
+    },
+    {
+      "id": "GR-06",
+      "type": "pickup",
+      "trap": null,
+      "pass": true,
+      "covered": true,
+      "key_ok": true,
+      "banned_hits": [],
+      "check_ok": true,
+      "kinds": [],
+      "text": "오늘은 할머니가 4시에 데리러 가신다고 요청하셨어요.",
+      "must_include": [
+        "할머니",
+        "4시"
+      ]
+    },
+    {
+      "id": "GR-07",
+      "type": "pickup",
+      "trap": null,
+      "pass": true,
+      "covered": true,
+      "key_ok": true,
+      "banned_hits": [],
+      "check_ok": true,
+      "kinds": [
+        "sensitive"
+      ],
+      "text": "병원 예약으로 2시에 일찍 데리러 가겠다고 알려 주셨어요.",
+      "must_include": [
+        "2시",
+        "일찍"
+      ]
+    },
+    {
+      "id": "GR-08",
+      "type": "pickup",
+      "trap": null,
+      "pass": true,
+      "covered": true,
+      "key_ok": true,
+      "banned_hits": [],
+      "check_ok": true,
+      "kinds": [],
+      "text": "오늘은 아빠 대신 이모가 데리러 가요.",
+      "must_include": [
+        "이모"
+      ]
+    },
+    {
+      "id": "GR-09",
+      "type": "pickup",
+      "trap": null,
+      "pass": true,
+      "covered": true,
+      "key_ok": true,
+      "banned_hits": [],
+      "check_ok": true,
+      "kinds": [],
+      "text": "오늘은 차량 대신 엄마가 직접 데리러 가신다고 하셨어요.",
+      "must_include": [
+        "엄마",
+        "직접"
+      ]
+    },
+    {
+      "id": "GR-10",
+      "type": "pickup",
+      "trap": null,
+      "pass": true,
+      "covered": true,
+      "key_ok": true,
+      "banned_hits": [],
+      "check_ok": true,
+      "kinds": [],
+      "text": "오늘 할머니가 5시에 데리러 가신다고 알려 주셨어요.",
+      "must_include": [
+        "할머니",
+        "5시"
+      ]
+    },
+    {
+      "id": "GR-11",
+      "type": "pickup",
+      "trap": "other_date",
+      "pass": true,
+      "covered": true,
+      "key_ok": true,
+      "banned_hits": [],
+      "check_ok": true,
+      "kinds": [
+        "date_check"
+      ],
+      "text": "내일은 할머니가 데리러 가요.",
+      "must_include": [
+        "내일"
+      ]
+    },
+    {
+      "id": "GR-12",
+      "type": "pickup",
+      "trap": "same_day_two",
+      "pass": true,
+      "covered": true,
+      "key_ok": true,
+      "banned_hits": [],
+      "check_ok": true,
+      "kinds": [
+        "sensitive"
+      ],
+      "text": "오늘 3시에 일찍 데리러 가신다고 알려 주셨어요.",
+      "must_include": [
+        "3시",
+        "일찍"
+      ]
+    },
+    {
+      "id": "GR-13",
+      "type": "inquiry",
+      "trap": "same_day_two",
+      "pass": true,
+      "covered": true,
+      "key_ok": true,
+      "banned_hits": [],
+      "check_ok": true,
+      "kinds": [
+        "sensitive"
+      ],
+      "text": "콧물이 조금 난다고 알려 주셨어요. 바깥놀이 때 잘 봐 달라고 하셨어요.",
+      "must_include": [
+        "콧물"
+      ]
+    },
+    {
+      "id": "GR-14",
+      "type": "inquiry",
+      "trap": null,
+      "pass": true,
+      "covered": true,
+      "key_ok": true,
+      "banned_hits": [],
+      "check_ok": true,
+      "kinds": [
+        "sensitive"
+      ],
+      "text": "기침을 조금 한다고 알려 주셨어요. 낮잠 때 잘 봐 달라고 요청하셨어요.",
+      "must_include": [
+        "기침"
+      ]
+    },
+    {
+      "id": "GR-15",
+      "type": "inquiry",
+      "trap": "other_date",
+      "pass": true,
+      "covered": true,
+      "key_ok": true,
+      "banned_hits": [],
+      "check_ok": true,
+      "kinds": [
+        "date_check",
+        "sensitive"
+      ],
+      "text": "어제 밥을 잘 먹었는지 문의하셨어요.",
+      "must_include": []
+    },
+    {
+      "id": "GR-16",
+      "type": "inquiry",
+      "trap": "doc_date",
+      "pass": true,
+      "covered": true,
+      "key_ok": true,
+      "banned_hits": [],
+      "check_ok": true,
+      "kinds": [
+        "sensitive"
+      ],
+      "text": "내일 준비물이 있는지 문의해 주셨어요.",
+      "must_include": [
+        "11/27"
+      ]
+    },
+    {
+      "id": "GR-17",
+      "type": "inquiry",
+      "trap": "memo_conflict",
+      "pass": true,
+      "covered": true,
+      "key_ok": true,
+      "banned_hits": [],
+      "check_ok": true,
+      "kinds": [],
+      "text": "점심을 반 정도 남겼어요.",
+      "must_include": [
+        "점심을 반 남김",
+        "계란국은 다 먹음"
+      ]
+    },
+    {
+      "id": "GR-18",
+      "type": "inquiry",
+      "trap": "other_child",
+      "pass": false,
+      "covered": true,
+      "key_ok": true,
+      "banned_hits": [
+        "지아"
+      ],
+      "check_ok": true,
+      "kinds": [
+        "other_child",
+        "sensitive"
+      ],
+      "text": "지아랑 다퉜다고 들었다고 알려 주셨어요.",
+      "must_include": [
+        "친구와 다툼",
+        "화해함"
+      ]
+    },
+    {
+      "id": "GR-19",
+      "type": "inquiry",
+      "trap": "memo_silent",
+      "pass": true,
+      "covered": true,
+      "key_ok": true,
+      "banned_hits": [],
+      "check_ok": true,
+      "kinds": [],
+      "text": "열이 났는지는 메모에 없어요. 점심은 다 먹었어요.",
+      "must_include": [
+        "점심을 다 먹음"
+      ]
+    },
+    {
+      "id": "GR-20",
+      "type": "inquiry",
+      "trap": "memo_silent",
+      "pass": false,
+      "covered": true,
+      "key_ok": true,
+      "banned_hits": [
+        "친구와 잘 지내"
+      ],
+      "check_ok": true,
+      "kinds": [
+        "sensitive"
+      ],
+      "text": "요즘 친구와 잘 지내는지 문의하셨어요.",
+      "must_include": []
+    }
+  ],
+  "seconds": 81.1,
+  "model_calls": [
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2356,
+      "output_tokens": 56,
+      "total_tokens": 2412,
+      "seconds": 1.223
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2367,
+      "output_tokens": 121,
+      "total_tokens": 2488,
+      "seconds": 1.591
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2368,
+      "output_tokens": 115,
+      "total_tokens": 2483,
+      "seconds": 1.672
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2369,
+      "output_tokens": 141,
+      "total_tokens": 2510,
+      "seconds": 1.857
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2198,
+      "output_tokens": 64,
+      "total_tokens": 2262,
+      "seconds": 1.203
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2227,
+      "output_tokens": 90,
+      "total_tokens": 2317,
+      "seconds": 1.494
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2407,
+      "output_tokens": 342,
+      "total_tokens": 2749,
+      "seconds": 3.313
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2221,
+      "output_tokens": 105,
+      "total_tokens": 2326,
+      "seconds": 1.695
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2230,
+      "output_tokens": 184,
+      "total_tokens": 2414,
+      "seconds": 2.122
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2393,
+      "output_tokens": 191,
+      "total_tokens": 2584,
+      "seconds": 2.009
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2364,
+      "output_tokens": 73,
+      "total_tokens": 2437,
+      "seconds": 1.262
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2367,
+      "output_tokens": 131,
+      "total_tokens": 2498,
+      "seconds": 1.64
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2329,
+      "output_tokens": 171,
+      "total_tokens": 2500,
+      "seconds": 1.98
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2363,
+      "output_tokens": 105,
+      "total_tokens": 2468,
+      "seconds": 1.67
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2221,
+      "output_tokens": 66,
+      "total_tokens": 2287,
+      "seconds": 1.105
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2215,
+      "output_tokens": 118,
+      "total_tokens": 2333,
+      "seconds": 1.577
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2213,
+      "output_tokens": 94,
+      "total_tokens": 2307,
+      "seconds": 1.278
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2369,
+      "output_tokens": 149,
+      "total_tokens": 2518,
+      "seconds": 1.911
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2368,
+      "output_tokens": 121,
+      "total_tokens": 2489,
+      "seconds": 1.472
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2304,
+      "output_tokens": 373,
+      "total_tokens": 2677,
+      "seconds": 3.512
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2361,
+      "output_tokens": 92,
+      "total_tokens": 2453,
+      "seconds": 1.742
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2357,
+      "output_tokens": 78,
+      "total_tokens": 2435,
+      "seconds": 1.104
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2362,
+      "output_tokens": 82,
+      "total_tokens": 2444,
+      "seconds": 1.215
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2211,
+      "output_tokens": 85,
+      "total_tokens": 2296,
+      "seconds": 1.22
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2223,
+      "output_tokens": 162,
+      "total_tokens": 2385,
+      "seconds": 1.878
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2225,
+      "output_tokens": 163,
+      "total_tokens": 2388,
+      "seconds": 2.123
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2200,
+      "output_tokens": 91,
+      "total_tokens": 2291,
+      "seconds": 1.507
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2211,
+      "output_tokens": 92,
+      "total_tokens": 2303,
+      "seconds": 1.45
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2356,
+      "output_tokens": 77,
+      "total_tokens": 2433,
+      "seconds": 1.433
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2366,
+      "output_tokens": 88,
+      "total_tokens": 2454,
+      "seconds": 1.421
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2357,
+      "output_tokens": 108,
+      "total_tokens": 2465,
+      "seconds": 1.585
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2357,
+      "output_tokens": 88,
+      "total_tokens": 2445,
+      "seconds": 1.328
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2199,
+      "output_tokens": 92,
+      "total_tokens": 2291,
+      "seconds": 1.533
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2220,
+      "output_tokens": 70,
+      "total_tokens": 2290,
+      "seconds": 1.4
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2205,
+      "output_tokens": 110,
+      "total_tokens": 2315,
+      "seconds": 1.573
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2200,
+      "output_tokens": 145,
+      "total_tokens": 2345,
+      "seconds": 1.803
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2411,
+      "output_tokens": 131,
+      "total_tokens": 2542,
+      "seconds": 2.1
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2200,
+      "output_tokens": 94,
+      "total_tokens": 2294,
+      "seconds": 1.574
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2361,
+      "output_tokens": 82,
+      "total_tokens": 2443,
+      "seconds": 1.243
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2367,
+      "output_tokens": 119,
+      "total_tokens": 2486,
+      "seconds": 1.739
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2385,
+      "output_tokens": 164,
+      "total_tokens": 2549,
+      "seconds": 1.903
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2211,
+      "output_tokens": 112,
+      "total_tokens": 2323,
+      "seconds": 1.414
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2402,
+      "output_tokens": 275,
+      "total_tokens": 2677,
+      "seconds": 2.754
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2223,
+      "output_tokens": 117,
+      "total_tokens": 2340,
+      "seconds": 1.652
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2362,
+      "output_tokens": 64,
+      "total_tokens": 2426,
+      "seconds": 1.106
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2286,
+      "output_tokens": 349,
+      "total_tokens": 2635,
+      "seconds": 2.954
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2367,
+      "output_tokens": 138,
+      "total_tokens": 2505,
+      "seconds": 1.661
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2208,
+      "output_tokens": 79,
+      "total_tokens": 2287,
+      "seconds": 1.385
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2365,
+      "output_tokens": 119,
+      "total_tokens": 2484,
+      "seconds": 1.596
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2417,
+      "output_tokens": 805,
+      "total_tokens": 3222,
+      "seconds": 6.53
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2312,
+      "output_tokens": 450,
+      "total_tokens": 2762,
+      "seconds": 3.927
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2363,
+      "output_tokens": 149,
+      "total_tokens": 2512,
+      "seconds": 1.563
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2224,
+      "output_tokens": 179,
+      "total_tokens": 2403,
+      "seconds": 2.061
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2216,
+      "output_tokens": 96,
+      "total_tokens": 2312,
+      "seconds": 1.591
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2366,
+      "output_tokens": 109,
+      "total_tokens": 2475,
+      "seconds": 1.435
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2359,
+      "output_tokens": 109,
+      "total_tokens": 2468,
+      "seconds": 1.287
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2213,
+      "output_tokens": 149,
+      "total_tokens": 2362,
+      "seconds": 1.96
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2400,
+      "output_tokens": 97,
+      "total_tokens": 2497,
+      "seconds": 1.368
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2222,
+      "output_tokens": 76,
+      "total_tokens": 2298,
+      "seconds": 1.318
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2358,
+      "output_tokens": 68,
+      "total_tokens": 2426,
+      "seconds": 1.138
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2355,
+      "output_tokens": 479,
+      "total_tokens": 2834,
+      "seconds": 3.674
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2206,
+      "output_tokens": 189,
+      "total_tokens": 2395,
+      "seconds": 2.343
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2358,
+      "output_tokens": 63,
+      "total_tokens": 2421,
+      "seconds": 1.32
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2201,
+      "output_tokens": 90,
+      "total_tokens": 2291,
+      "seconds": 1.403
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2367,
+      "output_tokens": 140,
+      "total_tokens": 2507,
+      "seconds": 1.711
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2355,
+      "output_tokens": 73,
+      "total_tokens": 2428,
+      "seconds": 1.359
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2203,
+      "output_tokens": 88,
+      "total_tokens": 2291,
+      "seconds": 1.451
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2366,
+      "output_tokens": 83,
+      "total_tokens": 2449,
+      "seconds": 1.165
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2266,
+      "output_tokens": 363,
+      "total_tokens": 2629,
+      "seconds": 3.032
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2224,
+      "output_tokens": 69,
+      "total_tokens": 2293,
+      "seconds": 1.185
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2363,
+      "output_tokens": 94,
+      "total_tokens": 2457,
+      "seconds": 1.16
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2197,
+      "output_tokens": 104,
+      "total_tokens": 2301,
+      "seconds": 1.541
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2217,
+      "output_tokens": 84,
+      "total_tokens": 2301,
+      "seconds": 1.423
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2214,
+      "output_tokens": 94,
+      "total_tokens": 2308,
+      "seconds": 1.253
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2380,
+      "output_tokens": 76,
+      "total_tokens": 2456,
+      "seconds": 1.264
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2384,
+      "output_tokens": 80,
+      "total_tokens": 2464,
+      "seconds": 1.343
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2384,
+      "output_tokens": 106,
+      "total_tokens": 2490,
+      "seconds": 1.424
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2381,
+      "output_tokens": 89,
+      "total_tokens": 2470,
+      "seconds": 1.463
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2445,
+      "output_tokens": 215,
+      "total_tokens": 2660,
+      "seconds": 2.523
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2227,
+      "output_tokens": 93,
+      "total_tokens": 2320,
+      "seconds": 1.429
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2234,
+      "output_tokens": 87,
+      "total_tokens": 2321,
+      "seconds": 1.464
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2236,
+      "output_tokens": 182,
+      "total_tokens": 2418,
+      "seconds": 1.774
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2228,
+      "output_tokens": 209,
+      "total_tokens": 2437,
+      "seconds": 2.239
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2379,
+      "output_tokens": 82,
+      "total_tokens": 2461,
+      "seconds": 1.444
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2380,
+      "output_tokens": 180,
+      "total_tokens": 2560,
+      "seconds": 2.169
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2378,
+      "output_tokens": 101,
+      "total_tokens": 2479,
+      "seconds": 1.407
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2222,
+      "output_tokens": 131,
+      "total_tokens": 2353,
+      "seconds": 1.773
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2220,
+      "output_tokens": 133,
+      "total_tokens": 2353,
+      "seconds": 1.453
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2415,
+      "output_tokens": 474,
+      "total_tokens": 2889,
+      "seconds": 4.047
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2431,
+      "output_tokens": 406,
+      "total_tokens": 2837,
+      "seconds": 3.876
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2379,
+      "output_tokens": 52,
+      "total_tokens": 2431,
+      "seconds": 0.989
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2221,
+      "output_tokens": 343,
+      "total_tokens": 2564,
+      "seconds": 3.144
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2334,
+      "output_tokens": 133,
+      "total_tokens": 2467,
+      "seconds": 1.641
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2224,
+      "output_tokens": 49,
+      "total_tokens": 2273,
+      "seconds": 1.227
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2424,
+      "output_tokens": 365,
+      "total_tokens": 2789,
+      "seconds": 3.087
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2374,
+      "output_tokens": 40,
+      "total_tokens": 2414,
+      "seconds": 1.098
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2424,
+      "output_tokens": 249,
+      "total_tokens": 2673,
+      "seconds": 2.909
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2375,
+      "output_tokens": 69,
+      "total_tokens": 2444,
+      "seconds": 1.165
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2323,
+      "output_tokens": 116,
+      "total_tokens": 2439,
+      "seconds": 1.349
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2401,
+      "output_tokens": 157,
+      "total_tokens": 2558,
+      "seconds": 2.046
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2218,
+      "output_tokens": 57,
+      "total_tokens": 2275,
+      "seconds": 1.425
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2180,
+      "output_tokens": 143,
+      "total_tokens": 2323,
+      "seconds": 2.249
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2286,
+      "output_tokens": 179,
+      "total_tokens": 2465,
+      "seconds": 2.123
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2381,
+      "output_tokens": 75,
+      "total_tokens": 2456,
+      "seconds": 1.538
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2376,
+      "output_tokens": 63,
+      "total_tokens": 2439,
+      "seconds": 1.072
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2264,
+      "output_tokens": 158,
+      "total_tokens": 2422,
+      "seconds": 1.753
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2380,
+      "output_tokens": 91,
+      "total_tokens": 2471,
+      "seconds": 1.367
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2379,
+      "output_tokens": 87,
+      "total_tokens": 2466,
+      "seconds": 1.29
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2229,
+      "output_tokens": 122,
+      "total_tokens": 2351,
+      "seconds": 1.535
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2226,
+      "output_tokens": 115,
+      "total_tokens": 2341,
+      "seconds": 1.458
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2231,
+      "output_tokens": 113,
+      "total_tokens": 2344,
+      "seconds": 1.592
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2218,
+      "output_tokens": 200,
+      "total_tokens": 2418,
+      "seconds": 2.305
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2388,
+      "output_tokens": 44,
+      "total_tokens": 2432,
+      "seconds": 1.121
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2398,
+      "output_tokens": 120,
+      "total_tokens": 2518,
+      "seconds": 1.532
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2396,
+      "output_tokens": 80,
+      "total_tokens": 2476,
+      "seconds": 1.619
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2388,
+      "output_tokens": 109,
+      "total_tokens": 2497,
+      "seconds": 1.739
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2400,
+      "output_tokens": 119,
+      "total_tokens": 2519,
+      "seconds": 1.746
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2256,
+      "output_tokens": 109,
+      "total_tokens": 2365,
+      "seconds": 1.388
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2254,
+      "output_tokens": 120,
+      "total_tokens": 2374,
+      "seconds": 1.674
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2194,
+      "output_tokens": 261,
+      "total_tokens": 2455,
+      "seconds": 2.556
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2243,
+      "output_tokens": 79,
+      "total_tokens": 2322,
+      "seconds": 2.441
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2395,
+      "output_tokens": 93,
+      "total_tokens": 2488,
+      "seconds": 1.392
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2194,
+      "output_tokens": 327,
+      "total_tokens": 2521,
+      "seconds": 2.966
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2392,
+      "output_tokens": 39,
+      "total_tokens": 2431,
+      "seconds": 1.302
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2248,
+      "output_tokens": 90,
+      "total_tokens": 2338,
+      "seconds": 1.298
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2420,
+      "output_tokens": 148,
+      "total_tokens": 2568,
+      "seconds": 2.38
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2396,
+      "output_tokens": 127,
+      "total_tokens": 2523,
+      "seconds": 1.848
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2425,
+      "output_tokens": 241,
+      "total_tokens": 2666,
+      "seconds": 2.481
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2198,
+      "output_tokens": 142,
+      "total_tokens": 2340,
+      "seconds": 2.079
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2389,
+      "output_tokens": 68,
+      "total_tokens": 2457,
+      "seconds": 1.324
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2323,
+      "output_tokens": 131,
+      "total_tokens": 2454,
+      "seconds": 1.718
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2239,
+      "output_tokens": 116,
+      "total_tokens": 2355,
+      "seconds": 1.554
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2232,
+      "output_tokens": 86,
+      "total_tokens": 2318,
+      "seconds": 1.25
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2326,
+      "output_tokens": 174,
+      "total_tokens": 2500,
+      "seconds": 1.776
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2398,
+      "output_tokens": 111,
+      "total_tokens": 2509,
+      "seconds": 1.554
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2427,
+      "output_tokens": 288,
+      "total_tokens": 2715,
+      "seconds": 2.973
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2396,
+      "output_tokens": 118,
+      "total_tokens": 2514,
+      "seconds": 1.629
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2420,
+      "output_tokens": 215,
+      "total_tokens": 2635,
+      "seconds": 2.312
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2434,
+      "output_tokens": 210,
+      "total_tokens": 2644,
+      "seconds": 2.356
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2251,
+      "output_tokens": 84,
+      "total_tokens": 2335,
+      "seconds": 1.286
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2248,
+      "output_tokens": 87,
+      "total_tokens": 2335,
+      "seconds": 1.35
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2326,
+      "output_tokens": 325,
+      "total_tokens": 2651,
+      "seconds": 3.241
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2327,
+      "output_tokens": 306,
+      "total_tokens": 2633,
+      "seconds": 3.121
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2350,
+      "output_tokens": 323,
+      "total_tokens": 2673,
+      "seconds": 3.071
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2381,
+      "output_tokens": 55,
+      "total_tokens": 2436,
+      "seconds": 1.084
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2386,
+      "output_tokens": 74,
+      "total_tokens": 2460,
+      "seconds": 1.43
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2386,
+      "output_tokens": 67,
+      "total_tokens": 2453,
+      "seconds": 1.471
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2386,
+      "output_tokens": 96,
+      "total_tokens": 2482,
+      "seconds": 1.629
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2388,
+      "output_tokens": 123,
+      "total_tokens": 2511,
+      "seconds": 1.737
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2223,
+      "output_tokens": 61,
+      "total_tokens": 2284,
+      "seconds": 1.323
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2234,
+      "output_tokens": 60,
+      "total_tokens": 2294,
+      "seconds": 1.001
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2235,
+      "output_tokens": 89,
+      "total_tokens": 2324,
+      "seconds": 1.241
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2233,
+      "output_tokens": 89,
+      "total_tokens": 2322,
+      "seconds": 1.476
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2237,
+      "output_tokens": 97,
+      "total_tokens": 2334,
+      "seconds": 1.61
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2383,
+      "output_tokens": 58,
+      "total_tokens": 2441,
+      "seconds": 1.047
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2383,
+      "output_tokens": 88,
+      "total_tokens": 2471,
+      "seconds": 1.863
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2387,
+      "output_tokens": 129,
+      "total_tokens": 2516,
+      "seconds": 1.715
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2227,
+      "output_tokens": 52,
+      "total_tokens": 2279,
+      "seconds": 1.228
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2236,
+      "output_tokens": 54,
+      "total_tokens": 2290,
+      "seconds": 1.272
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2226,
+      "output_tokens": 160,
+      "total_tokens": 2386,
+      "seconds": 2.018
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2383,
+      "output_tokens": 40,
+      "total_tokens": 2423,
+      "seconds": 1.161
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2418,
+      "output_tokens": 392,
+      "total_tokens": 2810,
+      "seconds": 3.531
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2387,
+      "output_tokens": 73,
+      "total_tokens": 2460,
+      "seconds": 1.266
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2384,
+      "output_tokens": 77,
+      "total_tokens": 2461,
+      "seconds": 1.399
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2428,
+      "output_tokens": 674,
+      "total_tokens": 3102,
+      "seconds": 5.802
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2235,
+      "output_tokens": 87,
+      "total_tokens": 2322,
+      "seconds": 1.282
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2229,
+      "output_tokens": 158,
+      "total_tokens": 2387,
+      "seconds": 1.731
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2273,
+      "output_tokens": 259,
+      "total_tokens": 2532,
+      "seconds": 2.537
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2392,
+      "output_tokens": 91,
+      "total_tokens": 2483,
+      "seconds": 1.435
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2189,
+      "output_tokens": 471,
+      "total_tokens": 2660,
+      "seconds": 3.818
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2330,
+      "output_tokens": 298,
+      "total_tokens": 2628,
+      "seconds": 2.542
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2389,
+      "output_tokens": 82,
+      "total_tokens": 2471,
+      "seconds": 1.542
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2420,
+      "output_tokens": 259,
+      "total_tokens": 2679,
+      "seconds": 2.699
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2442,
+      "output_tokens": 47,
+      "total_tokens": 2489,
+      "seconds": 0.914
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2244,
+      "output_tokens": 57,
+      "total_tokens": 2301,
+      "seconds": 1.083
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2390,
+      "output_tokens": 87,
+      "total_tokens": 2477,
+      "seconds": 1.519
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2327,
+      "output_tokens": 79,
+      "total_tokens": 2406,
+      "seconds": 1.408
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2245,
+      "output_tokens": 252,
+      "total_tokens": 2497,
+      "seconds": 2.386
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2240,
+      "output_tokens": 99,
+      "total_tokens": 2339,
+      "seconds": 1.445
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2189,
+      "output_tokens": 579,
+      "total_tokens": 2768,
+      "seconds": 4.654
+    },
+    {
+      "role": "DOCUMENT",
+      "model": "gpt-6-luna",
+      "input_tokens": 2440,
+      "output_tokens": 51,
+      "total_tokens": 2491,
+      "seconds": 1.125
+    },
+    {
+      "role": "CHECKER",
+      "model": "gpt-6-luna",
+      "input_tokens": 2189,
+      "output_tokens": 496,
+      "total_tokens": 2685,
+      "seconds": 4.21
+    }
+  ],
+  "call_count": 182,
+  "input_tokens": 421085,
+  "output_tokens": 27146,
+  "total_tokens": 448231
+}
