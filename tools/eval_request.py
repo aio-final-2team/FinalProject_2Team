@@ -7,7 +7,7 @@ PYTHONPATH=apps/api:. python tools/eval_request.py --real  # 실제 모델 호�
 import argparse
 import json
 import sys
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 from langgraph.checkpoint.memory import InMemorySaver
@@ -144,7 +144,9 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--real", action="store_true", help="실제 모델을 호출한다")
     parser.add_argument("--out", type=Path)
+    parser.add_argument("--record", action="store_true", help="평가 결과를 eval_runs에 기록한다")
     args = parser.parse_args()
+    started_at = datetime.now(timezone.utc) if args.record else None
     results = evaluate(real=args.real)
     print("문항 | 유형 | 옛 분기/카드/근거 | 새 분기/카드/근거 | 차이 | 결과")
     for item in results:
@@ -159,6 +161,11 @@ def main():
         args.out.parent.mkdir(parents=True, exist_ok=True)
         args.out.write_text(json.dumps({"results": results, "passed": passed, "total": len(results)},
                                        ensure_ascii=False, indent=2), encoding="utf-8")
+    if args.record:
+        from tools.eval_record import record_run
+
+        record_run(tool="eval_request", model="openai" if args.real else "fake", started_at=started_at,
+                   total=len(results), passed=passed, report_url=args.out)
     return 0 if passed == len(results) else 1
 
 

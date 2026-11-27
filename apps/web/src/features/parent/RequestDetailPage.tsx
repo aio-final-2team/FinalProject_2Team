@@ -21,7 +21,7 @@ const STEP_OF: Record<string, number> = { received: 0, classified: 0, needs_info
 /** P-04 요청 상세: 대화·추가 요청을 먼저 보여 주고 진행 기록은 맨 아래에 둔다. */
 export function RequestDetailPage() {
   const { requestId } = useParams();
-  const q = useRequest(requestId);
+  const q = useRequest(requestId, true);
   const confirm = useConfirmRequest(requestId ?? "");
   const post = usePostMessage(requestId ?? "");
   const toast = useToast();

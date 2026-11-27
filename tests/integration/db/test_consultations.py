@@ -16,6 +16,13 @@ from app.modules.consultations import slots
 from tests.integration.db.test_cards import BASE, auth, create
 
 
+@pytest.fixture(autouse=True)
+def isolated_timetable(seeded_db):
+    # 이 파일은 개별 시험이 직접 만든 시간표를 검증해요. 데모 시드는 별도 시험에서 확인해요.
+    with seeded_db.begin() as connection:
+        connection.execute(text("DELETE FROM staff_busy_blocks"))
+
+
 def future_day():
     day = datetime.now(KST).date() + timedelta(days=1)
     while not schedule.working_day(day):

@@ -24,7 +24,7 @@ export function ScreenTop({ title, sub, back, right }: { title: ReactNode; sub?:
           </div>
         </div>
       )}
-      <h1 className="mt-1 text-large-title font-bold tracking-[-0.025em]">{title}</h1>
+      <h1 className="mt-1 text-large-title font-bold tracking-[-0.01em]">{title}</h1>
       {sub && <p className="mt-0.5 text-footnote font-medium text-ink2">{sub}</p>}
     </header>
   );

@@ -22,13 +22,13 @@ export function Dock({ children, reason, reasonIcon = "lock" }: { children: Reac
 }
 
 /** 주 버튼: 높이 52, 모서리 8, 브랜드 블루 채움 (7.1). 잠기면 회색 */
-export function PrimaryButton({ children, loading, tone = "brand", ...rest }: React.ButtonHTMLAttributes<HTMLButtonElement> & { loading?: boolean; tone?: "brand" | "warm" }) {
+export function PrimaryButton({ children, loading, ...rest }: React.ButtonHTMLAttributes<HTMLButtonElement> & { loading?: boolean }) {
   return (
     <button
       {...rest}
       disabled={rest.disabled || loading}
       aria-busy={loading || undefined}
-      className={`flex h-[52px] w-full items-center justify-center gap-2 rounded-md text-body font-semibold transition-[transform,filter] duration-100 ease-out active:scale-[.97] active:brightness-95 disabled:scale-100 disabled:bg-fill2 disabled:text-ink2 disabled:brightness-100 ${tone === "warm" ? "bg-warm-accent text-on-warm" : "bg-brand-fill text-on-brand"} ${rest.className ?? ""}`}
+      className={`flex h-[52px] w-full items-center justify-center gap-2 rounded-md text-body font-semibold transition-[transform,filter] duration-100 ease-out active:scale-[.97] active:brightness-95 disabled:scale-100 disabled:bg-fill2 disabled:text-ink2 disabled:brightness-100 bg-brand-fill text-on-brand ${rest.className ?? ""}`}
     >
       {loading && <span className="m-spin size-4 rounded-full border-2 border-current border-r-transparent" />}
       {children}

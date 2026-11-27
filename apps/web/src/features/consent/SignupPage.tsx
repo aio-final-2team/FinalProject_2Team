@@ -26,7 +26,7 @@ export function SignupPage() {
   return (
     <div className="mx-auto min-h-dvh max-w-[480px] bg-g px-4 pb-40">
       <BackLink to={role ? "/signup" : "/login"} label={role ? "역할 다시 고르기" : "로그인"} className="mt-2" onClick={role ? (e) => { e.preventDefault(); setRole(null); setOn([]); } : undefined} />
-      <h1 className="mt-1 text-large-title font-bold tracking-[-0.025em]">가입</h1>
+      <h1 className="mt-1 text-large-title font-bold tracking-[-0.01em]">가입</h1>
       {!role ? (
         <>
           <p className="mt-0.5 text-footnote font-medium text-ink2">어떤 역할로 가입하시겠습니까?</p>

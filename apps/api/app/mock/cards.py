@@ -67,7 +67,7 @@ def result(card, req, next_card=None):
             "request": request_state(req) if req else None, "next_card_id": next_card.id if next_card else None}
 
 
-def decide(user, card_id, body):
+def decide(user, card_id, body, background_tasks=None):
     with store._lock:
         card = in_scope(user, card_id)
         if card.kind == "director_report" and user.role != "director":
@@ -107,6 +107,8 @@ def decide(user, card_id, body):
         if decision == "complete" and req.parent_confirmed_at is None and not body.reason_text:
             raise ApiError(409, "REASON_REQUIRED")
         content = body.edited_content if decision == "edit_approve" else card.draft
+        if decision == "edit_approve" and card.draft.get("note_evidence"):
+            content = {**content, "note_evidence": card.draft["note_evidence"]}
         if decision in ("approve", "edit_approve") and not content.get("text", "").strip():
             raise ApiError(409, "INVALID_TRANSITION")
         record(card, user, decision, body.reason_code, body.reason_text, body.edited_content)
@@ -121,6 +123,8 @@ def decide(user, card_id, body):
             store.add_event(req, {"hold": "held", "resume": "resumed", "acknowledge": "report_acknowledged"}[decision],
                             reason_text=body.reason_text, **actor)
         elif decision in ("approve", "edit_approve"):
+            from app.mock.memories import remember_answer
+            remember_answer(user, card, req, content)
             card.draft = content
             card.status = "approved"
             store.set_request_status(req, "approved", action="approved", **actor)
@@ -240,19 +244,16 @@ def book(user, card_id, body):
             raise ApiError(409, "INVALID_TRANSITION")
         if slot.period["start"] <= store.now():
             raise ApiError(409, "SLOT_PAST")
-        for booking in store.state().bookings.values():
-            overlaps = (slot.period["start"] < (booking.expected_end_at or booking.period["end"])
-                        and booking.period["start"] < slot.period["end"])
-            if booking.status == "confirmed" and (booking.request_id == req.id or (overlaps
-                    and (booking.room_id == slot.room_id or booking.teacher_id == slot.teacher_id))):
-                slot.status = "discarded"
-                round_no = max(s.round for s in store.slots_of_request(req.id) if s.card_id == card.id) + 1
-                candidates = store._propose_slots(card, card.assignee_id, round_no)
-                touch(card)
-                store.set_request_status(req, "needs_info", action="slot_conflict_reproposed", card=card,
-                                         actor_type="user", actor_id=user.id, slot_id=slot.id,
-                                         new_slot_ids=[candidate.id for candidate in candidates])
-                raise ApiError(409, "SLOT_TAKEN")
+        if store.slot_conflicts(req.org_id, slot.teacher_id, slot.room_id, slot.period) or any(
+                b.status == "confirmed" and b.request_id == req.id for b in store.state().bookings.values()):
+            slot.status = "discarded"
+            round_no = max(s.round for s in store.slots_of_request(req.id) if s.card_id == card.id) + 1
+            candidates = store._propose_slots(card, card.assignee_id, round_no)
+            touch(card)
+            store.set_request_status(req, "needs_info", action="slot_conflict_reproposed", card=card,
+                                     actor_type="user", actor_id=user.id, slot_id=slot.id,
+                                     new_slot_ids=[candidate.id for candidate in candidates])
+            raise ApiError(409, "SLOT_TAKEN")
         record(card, user, "approve")
         booking = Booking(uuid4(), req.org_id, req.id, slot.id, slot.teacher_id, slot.room_id, dict(slot.period), user.id)
         store.state().bookings[booking.id] = booking
@@ -336,6 +337,11 @@ def rule_decision(user, rule_id, body):
         rule = store.state().rules.get(rule_id)
         if rule is None or rule.org_id != user.org_id or rule.owner_id != user.id:
             store.deny(user)
+        if body.decision == "off":
+            if rule.status != "active":
+                raise ApiError(409, "INVALID_TRANSITION")
+            rule.status, rule.decided_at = "off", store.now()
+            return {"rule": {"id": rule.id, "status": rule.status}}
         if rule.status != "proposed":
             raise ApiError(409, "INVALID_TRANSITION")
         card = next((c for c in store.state().cards.values() if c.org_id == user.org_id
