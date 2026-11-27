@@ -7,8 +7,9 @@
 - 금지어: AI가 쓴 줄(아이 메모·보호자 요청)에 must_not_include 낱말이 없어야 한다. 반 공통 줄은 보지 않는다.
 - 확인 항목: expect_flag면 flag_kind가 open_checks에 있어야 하고, 아니면 메모로 시험하는 5값이 없어야 한다.
 - 꼭 들어갈 사실(must_include)은 뜻으로 봐야 해서 자동 채점하지 않고 결과 파일에 함께 적어 사람이 본다.
-- 보호자 요청(guardian_requests.json expect): 그 요청을 다룬 줄(source.request_id)이 있고, 줄 key가 line_key와 같고,
+- 보호자 투약·귀가 요청(guardian_requests.json expect): 그 요청을 다룬 줄(source.request_id)이 있고, 줄 key가 line_key와 같고,
   그 줄에 must_not_include가 없고, teacher_check가 있으면 그 kind가 open_checks에 있어야 한다.
+- 문의(inquiry): #406 기준으로 알림장에 요청 출처 줄이 없어야 한다. 받은함에서만 다룬다.
 """
 
 import argparse
@@ -60,7 +61,8 @@ def payloads() -> list[dict]:
     for day in days:
         d = day["note_date"]
         memo = {m["child_key"]: m["memo"] for m in memos if m["note_date"] == d}
-        reqs = [r for r in guardian_requests() if r["note_date"] == d]
+        # Match API #406: inquiry belongs to the inbox, so it is not an input to note drafting.
+        reqs = [r for r in guardian_requests() if r["note_date"] == d and r["type"] in {"medication", "pickup"}]
         children = [{"child_id": c["child_id"], "display_name": c["display_name"],
                      "memo": memo.get(c["child_key"], ""),
                      "requests": [{"request_id": r["request_key"], "type": r["type"], "text": r["body"]}
@@ -95,6 +97,12 @@ def score_request(req: dict, note: dict) -> dict:
     expect = req["expect"]
     lines = [line for line in note["content"]["items"] if line["source"].get("request_id") == req["request_key"]]
     kinds = {check["kind"] for check in note["open_checks"]}
+    if req["type"] == "inquiry":
+        # #406: 문의는 받은함에서만 다루므로, 알림장에 이 요청의 줄이 생기면 실패다.
+        return {"id": req["request_key"], "type": req["type"], "trap": (req.get("trap") or {}).get("type"),
+                "pass": not lines, "covered": bool(lines), "key_ok": not lines,
+                "banned_hits": [], "check_ok": True, "kinds": sorted(kinds), "text": " ".join(line["value"] for line in lines),
+                "must_include": [], "expected_no_line": True}
     text = " ".join(line["value"] for line in lines)
     hits = [word for word in expect.get("must_not_include") or [] if word in text]
     key_ok = bool(lines) and (expect["line_key"] is None or any(line["key"] == expect["line_key"] for line in lines))
