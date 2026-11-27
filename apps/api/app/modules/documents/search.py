@@ -1,6 +1,6 @@
 """`search_documents` 도구(DB): 원 자료에서 근거 조각을 찾는다 (T20 → T33, 계약표 4장, API 5.4).
 
-입력: `kindergarten_id`(문맥의 기관 ID 그대로), `doc_type`(notice·schedule·menu·policy 중 하나), `query`,
+입력: `kindergarten_id`(문맥의 기관 ID 그대로), `doc_type`(notice·schedule·menu·policy·consult_timetable 중 하나), `query`,
 백엔드 값 `classroom_id`(학부모 아이의 반; 원 전체 + 그 반 자료만. 교직원은 비움), `top_k`(기본 5).
 출력: `chunks[] { chunk_id, document_title, location, effective_from, content, score }`.
 
@@ -23,7 +23,7 @@ from app.core.schedule import KST
 from agents.guardrails.injection import suspicious_chunk
 from . import embedding
 
-DOC_TYPES = ("notice", "schedule", "menu", "policy")
+DOC_TYPES = ("notice", "schedule", "menu", "policy", "consult_timetable")
 # 낱말 끝에 붙는 조사·어미. 긴 것부터 떼요
 _TAILS = sorted(["은", "는", "이", "가", "을", "를", "에", "에서", "에게", "도", "의", "와", "과", "로", "으로", "까지", "부터",
                  "요", "나요", "까요", "인가요", "인지", "해요", "하나요", "있나요", "없나요", "언제", "뭐예요", "이에요", "예요"],
@@ -56,7 +56,7 @@ def score(words: list[str], title: str, location: str, content: str) -> float:
 
 
 def search_documents(user, kindergarten_id: str, doc_type: str, query: str, classroom_id=None, top_k: int = 5,
-                     on_date: date | None = None) -> dict:
+                     on_date: date | None = None, *, allowed_chunk_ids=None) -> dict:
     if str(kindergarten_id) != str(user.org_id):
         raise ApiError(404, "NOT_FOUND")  # 다른 기관 자료는 있다고도 알리지 않는다
     if doc_type not in DOC_TYPES or not query.strip() or not 1 <= top_k <= 20:
@@ -106,6 +106,8 @@ def search_documents(user, kindergarten_id: str, doc_type: str, query: str, clas
                "vector": vector, "version": embedding.VERSION}).mappings().all()
     ranked = []
     for row in rows:
+        if allowed_chunk_ids is not None and row["chunk_id"] not in allowed_chunk_ids:
+            continue
         if suspicious_chunk(row["content"]):
             continue
         lexical = score(words, row["document_title"], row["location"] or "", row["content"])

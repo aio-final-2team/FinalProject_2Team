@@ -362,6 +362,26 @@ def test_menu_is_nullable_and_excludes_unusable_documents(db_client, teacher, se
     assert len(listed) == 20 and all(l["key"] != "meal" for n in listed for l in n["content"]["items"])
 
 
+def test_menu_with_that_days_row_wins_over_newer_preview(db_client, teacher, seeded_db):
+    today = datetime.now(KST).date()
+    with seeded_db.begin() as connection:
+        connection.execute(text("UPDATE documents SET effective_from=:day WHERE id=:id"),
+                           {"id": seed.MENU, "day": today - timedelta(days=3)})
+        connection.execute(text("UPDATE document_chunks SET content=:content WHERE document_id=:id"), {
+            "id": seed.MENU, "content": f"| 날짜 | 점심 |\n| --- | --- |\n| {today:%m-%d}(오늘) | [TEST] 그날 점심 |"})
+        preview = connection.scalar(text("""
+            INSERT INTO documents (org_id,title,doc_type,source,effective_from,ingest_status,content_sha256)
+            VALUES (:org,'[TEST] 다음 주 식단 미리보기','menu','virtual',:day,'succeeded','test-preview') RETURNING id
+        """), {"org": seed.ORG, "day": today - timedelta(days=1)})
+        connection.execute(text("INSERT INTO document_chunks (document_id,org_id,chunk_index,content) VALUES (:id,:org,0,:content)"),
+                           {"id": preview, "org": seed.ORG,
+                            "content": f"| 날짜 | 점심 |\n| --- | --- |\n| {today + timedelta(days=7):%m-%d}(다음 주) | [TEST] 다음 주 점심 |"})
+    draft(db_client, teacher)
+    meals = [l for n in notes(db_client, teacher) for l in n["content"]["items"] if l["key"] == "meal"]
+    assert meals and all(l["source"]["document_id"] == str(seed.MENU) and l["value"] == "점심: [TEST] 그날 점심"
+                         for l in meals)
+
+
 def test_notification_error_rolls_back_entire_batch(db_client, teacher, seeded_db):
     draft(db_client, teacher)
     for note in notes(db_client, teacher):
@@ -413,9 +433,9 @@ def test_notification_uses_schedule_and_does_not_delay_parent_at_night(db_client
             "confirm": True, "resolved_checks": [c["id"] for c in note["open_checks"]]})
     calls = []
 
-    def schedule(at, role):
+    def schedule(at, role, **kwargs):
         calls.append(role)
-        return deliver_after(at, role)
+        return deliver_after(at, role, **kwargs)
 
     class Night(datetime):
         @classmethod

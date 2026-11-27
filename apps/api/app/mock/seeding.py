@@ -11,6 +11,7 @@ from app.mock.records import Document, Rule
 def populate():
     from app.mock.documents import add_chunks
     state = store.state()
+    state.staff_busy_blocks = [{"id": state.next_int(), **b} for b in seed.demo_busy_blocks(store.now().date())]
     from app.core.consents import required_items
     from app.core.constants import CONSENT_VERSION
     agreed_at = store.now()

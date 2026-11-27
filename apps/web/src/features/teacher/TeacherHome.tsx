@@ -1,7 +1,5 @@
 import { Link, useNavigate } from "react-router";
-import { useQuery } from "@tanstack/react-query";
 import { useCards } from "@/api/cards";
-import { api } from "@/api/client";
 import { useCareRequests } from "@/api/care";
 import { useChildren, useNotes } from "@/api/notes";
 import { useSession } from "@/app/session";
@@ -13,8 +11,7 @@ import { dateLabel, todayKST } from "@/domain/notes";
 import { useRecords } from "@/features/records/store";
 import { QueryState } from "@/components/QueryState";
 import { SOON } from "./SoonPage";
-
-type Doc = { id: string; title: string; doc_type: string; status: string; effective_from: string };
+import { TodayClass } from "./TodayClass";
 
 /** 홈은 입력 화면이 아니라 API 상태를 요약하고 다음 행동 하나를 안내한다. */
 export function TeacherHome() {
@@ -28,7 +25,6 @@ export function TeacherHome() {
   const { records } = useRecords(cid, date);
   const care = useCareRequests(cid);
   const careOpen = (care.data ?? []).filter((c) => c.status !== "completed").length;
-  const docs = useQuery({ queryKey: ["documents"], queryFn: () => api<{ items: Doc[] }>("/api/v1/documents?size=50").then((r) => r.items) });
 
   const urgent = (inbox.data?.items ?? []).filter((c) => c.risk === "urgent");
   const list = notes.data ?? [];
@@ -37,9 +33,6 @@ export function TeacherHome() {
   list.forEach((n) => c[n.status]++);
   const allSent = list.length > 0 && c.sent === list.length;
   const allReady = list.length > 0 && c.ready === list.length;
-  const meal = list[0]?.content.items.find((i) => i.key === "meal");
-  const menuDoc = docs.data?.find((d) => d.doc_type === "menu" && d.status === "active");
-  const notice = docs.data?.find((d) => d.doc_type === "notice" && d.status === "active");
   // TODO(#368): 반·담임 표시 이름 API가 오면 실제 값으로 교체한다.
   const homeTitle = "별빛반 손영민 선생님";
 
@@ -60,15 +53,7 @@ export function TeacherHome() {
       <ScreenTop title={homeTitle} sub={dateLabel(date)} right={<BellLink to="/teacher/notifications" />} />
 
       <QueryState queries={[kids, notes, inbox]} skeleton={3}>
-      <Link to="/teacher/class" className="mt-4 flex items-center gap-3 rounded-xl bg-tint p-4 text-ink shadow-card transition-transform duration-100 active:scale-[.98]">
-        <span className="grid size-12 shrink-0 place-items-center rounded-xl bg-card text-accent-ink shadow-card"><Icon name="document" className="size-6" /></span>
-        <span className="min-w-0 flex-1">
-          <span className="text-caption font-bold text-accent-ink">오늘 우리 반</span>
-          <b className="mt-0.5 block truncate text-callout">{meal?.value ?? (notice ? notice.title : menuDoc ? "오늘의 식단과 소식을 보아요" : "우리 반 이야기를 보아요")}</b>
-          <span className="mt-0.5 block text-footnote text-ink2">식단표와 가정통신문을 한곳에서 확인해요</span>
-        </span>
-        <Icon name="chevR" className="size-4 shrink-0 text-accent-ink" />
-      </Link>
+      <TodayClass />
       {urgent.length > 0 && (
         <>
           <Label>먼저 확인해 주세요</Label>

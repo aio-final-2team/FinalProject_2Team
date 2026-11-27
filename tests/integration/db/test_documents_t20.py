@@ -10,7 +10,8 @@ from sqlalchemy import text
 from app.core.errors import ApiError
 from app.mock import seed
 from app.modules.documents.search import search_documents
-from db.seeds.documents import seed_documents
+from app.modules.documents.parsing import parse_document
+from db.seeds.documents import FIXTURES, seed_documents
 
 WINTER_1226 = """---
 title: "겨울방학 일정 다시 알림"
@@ -80,7 +81,7 @@ def test_injected_document_chunk_is_marked_and_not_searched(db_client, teacher, 
 
 
 def test_fixture_documents_load_with_locations_and_classrooms(seeded_db, docs):
-    assert len(docs["added"]) == 29 and docs["skipped"] == ["NT-2026-31"]  # C3(새싹반)은 시드에 없음
+    assert len(docs["added"]) == 65 and docs["skipped"] == ["NT-2026-31"]  # C3(새싹반)은 시드에 없음
     with seeded_db.begin() as connection:
         assert seed_documents(connection)["added"] == []  # 다시 해도 같은 내용은 건너뜀
         row = connection.execute(text("""
@@ -90,6 +91,31 @@ def test_fixture_documents_load_with_locations_and_classrooms(seeded_db, docs):
             WHERE d.title='김장 체험 안내 (만 4·5세반)' AND ch.chunk_index=1
         """)).mappings().one()
     assert row["location"] == "1쪽 준비물" and set(row["classes"]) == {seed.CLASS_STAR, seed.CLASS_SUN}
+
+
+def test_reseed_keeps_replaced_virtual_document_superseded(seeded_db, docs):
+    source = next((FIXTURES / "notice").glob("*.md"))
+    parsed = parse_document(source.read_text(encoding="utf-8"))
+    with seeded_db.begin() as connection:
+        old_id = connection.scalar(text("""
+            SELECT id FROM documents WHERE org_id=:org AND content_sha256=:sha
+        """), {"org": seed.ORG, "sha": parsed.content_sha256})
+        assert old_id is not None
+        new_id = connection.scalar(text("""
+            INSERT INTO documents (org_id,title,doc_type,source,status,ingest_status,content_sha256,
+                                   supersedes_id,is_virtual)
+            VALUES (:org,'새 판','notice','uploaded','active','succeeded',:sha,:old,false)
+            RETURNING id
+        """), {"org": seed.ORG, "sha": hashlib.sha256(b"manual replacement version").hexdigest(),
+               "old": old_id})
+        connection.execute(text("UPDATE documents SET status='superseded' WHERE id=:id"), {"id": old_id})
+
+        assert seed_documents(connection)["added"] == []
+        statuses = connection.execute(text("""
+            SELECT id,status FROM documents WHERE id IN (:old,:new)
+        """), {"old": old_id, "new": new_id}).all()
+
+    assert dict(statuses) == {old_id: "superseded", new_id: "active"}
 
 
 def test_search_finds_winter_break_with_location_and_date(docs):
@@ -121,8 +147,9 @@ def test_search_scope_for_parent_class_and_other_org(docs):
     with pytest.raises(ApiError):
         search_documents(staff(), str(seed.ORG), "law", "겨울방학")  # 도구 doc_type은 네 가지만
     future = search_documents(staff(), str(seed.ORG), "notice", "크리스마스", on_date=date(2026, 11, 20))["chunks"]
-    assert future and future[0]["document_title"] == "크리스마스 행사 안내"  # 미리 공지한 시행 전(12/01) 자료도 찾음
-    assert future[0]["effective_from"] == date(2026, 12, 1)  # 답에서 '12월 1일부터'라고 말할 수 있게 시행일을 같이 줌
+    # 미리 공지한 시행 전(12/01) 자료도 찾음. 12월 가정통신문(#367)도 크리스마스를 다뤄서 어느 쪽이 1등이어도 된다.
+    christmas = [c for c in future if c["document_title"] == "크리스마스 행사 안내"]
+    assert christmas and christmas[0]["effective_from"] == date(2026, 12, 1)  # 답에서 '12월 1일부터'라고 말할 수 있게 시행일을 같이 줌
 
 
 def test_parent_search_accepts_string_classroom_ids(docs):
@@ -133,6 +160,84 @@ def test_parent_search_accepts_string_classroom_ids(docs):
         search_documents(parent(), str(seed.ORG), "notice", "현장체험학습 도시락",
                          classroom_id=str(seed.CLASS_SUN), on_date=date(2026, 11, 20))
     assert denied.value.status == 404
+
+
+def test_parent_finds_own_teacher_consult_timetable(docs):
+    found = search_documents(parent(), str(seed.ORG), "consult_timetable", "상담 시간표 11-20",
+                             classroom_id=seed.CLASS_STAR, on_date=date(2026, 11, 20))["chunks"]
+    assert found
+    assert all("T-DEMO-01" in chunk["document_title"] for chunk in found)
+    assert any("윤서진" in chunk["document_title"] and "10:00, 14:00, 16:30" in chunk["content"]
+               for chunk in found)
+
+
+def test_reseed_supersedes_old_virtual_timetable_only(seeded_db):
+    path = FIXTURES / "consult_timetable" / "CS-T01-2026-11.md"
+    current = path.read_text(encoding="utf-8")
+    old = parse_document(current.replace("윤서진", "김하늘").replace("만 4세 별빛반", "만 5세 햇님반")
+                         .replace("만 4세반", "만 5세반").replace("[C4]", "[C5]"))
+    with seeded_db.begin() as connection:
+        old_id = connection.scalar(text("""
+            INSERT INTO documents (org_id,title,doc_type,source,status,ingest_status,content_sha256,is_virtual)
+            VALUES (:org,:title,'consult_timetable','virtual','active','succeeded',:sha,true) RETURNING id
+        """), {"org": seed.ORG, "title": old.meta.title, "sha": old.content_sha256})
+        connection.execute(text("""
+            INSERT INTO document_classrooms (document_id,classroom_id,org_id) VALUES (:doc,:classroom,:org)
+        """), {"doc": old_id, "classroom": seed.CLASS_SUN, "org": seed.ORG})
+        for chunk in old.chunks:
+            connection.execute(text("""
+                INSERT INTO document_chunks (document_id,org_id,chunk_index,location,content)
+                VALUES (:doc,:org,:index,:location,:content)
+            """), {"doc": old_id, "org": seed.ORG, "index": chunk.index,
+                   "location": chunk.location, "content": chunk.content})
+        human_id = connection.scalar(text("""
+            INSERT INTO documents (org_id,title,doc_type,source,status,ingest_status,content_sha256,is_virtual)
+            VALUES (:org,'사람이 올린 문서','notice','uploaded','active','succeeded','human:t11',false) RETURNING id
+        """), {"org": seed.ORG})
+        seed_documents(connection)
+        statuses = connection.execute(text("""
+            SELECT id,status FROM documents WHERE id IN (:old,:human,:menu,:notice,:old_notice)
+        """), {"old": old_id, "human": human_id, "menu": seed.MENU,
+               "notice": seed.NOTICE, "old_notice": seed.OLD_NOTICE}).all()
+        new_id = connection.scalar(text("""
+            SELECT id FROM documents WHERE org_id=:org AND content_sha256=:sha
+        """), {"org": seed.ORG, "sha": parse_document(current).content_sha256})
+        assert seed_documents(connection)["added"] == []
+        assert connection.scalar(text("SELECT status FROM documents WHERE id=:id"), {"id": old_id}) == "superseded"
+    assert dict(statuses) == {old_id: "superseded", human_id: "active", seed.MENU: "active",
+                              seed.NOTICE: "active", seed.OLD_NOTICE: "superseded"}
+    assert new_id != old_id
+    found = search_documents(parent(), str(seed.ORG), "consult_timetable", "상담 시간표 11-20",
+                             classroom_id=seed.CLASS_STAR, on_date=date(2026, 11, 20))["chunks"]
+    assert found and all("김하늘" not in chunk["document_title"] for chunk in found)
+
+
+@pytest.mark.parametrize(("doc_type", "query", "on_date", "title", "answer"), [
+    ("policy", "체육복은 무슨 요일", date(2026, 11, 26), "원복·체육복 요일과 실내화·물통·낮잠 이불 준비물", "화·목"),
+    ("policy", "통학버스 시간", date(2026, 11, 26), "통학버스 노선·시간과 타는 곳", "08:20"),
+    ("policy", "원비 얼마", date(2026, 11, 26), "한 달 교육비 금액·납부 방법·카드 결제·환불", "85,000원"),
+    ("menu", "11/30 점심", date(2026, 11, 26), "다음 주 12월 1주 점심 식단 미리보기 (11/30~12/04)", "닭볶음탕"),
+    ("menu", "12월 3주 식단표", date(2026, 12, 8), "12월 3주 점심 식단표·오후 간식 (12/14~12/18)", "12-14"),
+    ("menu", "1월 2주 식단표", date(2027, 1, 4), "1월 2주 점심 식단표·오후 간식 (1/11~1/15)", "01-11"),
+])
+def test_parent_finds_operating_and_upcoming_meal_answers_first(docs, doc_type, query, on_date, title, answer):
+    found = search_documents(parent(), str(seed.ORG), doc_type, query,
+                             classroom_id=seed.CLASS_STAR, on_date=on_date)["chunks"]
+    assert found and found[0]["document_title"] == title
+    assert answer in found[0]["content"]
+
+
+def test_parent_sees_c4_trip_but_no_c5_only_documents(docs):
+    for classroom in (None, seed.CLASS_STAR):
+        found = search_documents(parent(), str(seed.ORG), "notice", "현장체험학습 도시락",
+                                 classroom_id=classroom, top_k=20, on_date=date(2026, 11, 26))["chunks"]
+        own = [c for c in found if c["document_title"] == "12월 현장체험학습 안내 (만 4세반)"]
+        assert any("도시락을 싸지 않습니다" in c["content"] and "13:00" in c["content"] for c in own)
+        assert all(c["document_title"] != "11월 현장체험학습 안내 (만 5세반)" for c in found)
+        plans = search_documents(parent(), str(seed.ORG), "schedule", "12월 주간 활동 계획",
+                                 classroom_id=classroom, top_k=20, on_date=date(2026, 12, 8))["chunks"]
+        assert any("만 4세 별빛반 12월" in c["document_title"] for c in plans)
+        assert all(c["document_title"] != "만 5세반 12월 주간 활동 계획" for c in plans)
 
 
 def test_upload_conflicting_notice_is_pending_with_conflicts(db_client, teacher, docs):
@@ -164,7 +269,7 @@ def test_upload_unreadable_file_fails_with_message(db_client, teacher, docs):
     response = upload(db_client, teacher, "식단표.hwp", "binary")
     doc = response.json()["document"]
     assert response.status_code == 202 and doc["ingest_status"] == "failed" and doc["chunk_count"] == 0
-    assert doc["error"] == {"code": "UPSTREAM_UNAVAILABLE", "message": "지금은 .md·.txt 글 파일만 읽을 수 있어요"}
+    assert doc["error"] == {"code": "UPSTREAM_UNAVAILABLE", "message": "한글에서 hwpx나 PDF로 저장해 올려 주세요"}
     listed = db_client.get("/api/v1/documents", headers=teacher).json()["items"]
     assert next(d for d in listed if d["id"] == doc["id"])["error"] == doc["error"]
     retried = upload(db_client, teacher, "식단표.txt", "binary")

@@ -112,6 +112,11 @@ class RequestAcceptedOut(BaseModel):
     request: RequestAccepted
 
 
+class SourceNote(BaseModel):
+    note_id: UUID
+    note_date: date
+
+
 class RequestView(BaseModel):
     id: UUID
     type: RequestReadType
@@ -123,6 +128,7 @@ class RequestView(BaseModel):
     parent_confirmed_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
+    source_note: SourceNote | None = None
 
 
 class MessageOut(BaseModel):

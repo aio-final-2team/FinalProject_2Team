@@ -89,6 +89,7 @@ class Request:
     care_detail: dict = field(default_factory=dict)
     assignee_id: UUID | None = None
     previous_request_id: UUID | None = None
+    source_note_id: UUID | None = None
     created_at: datetime = field(default_factory=lambda: now())
     updated_at: datetime = field(default_factory=lambda: now())
     closed_at: datetime | None = None
@@ -186,12 +187,14 @@ class _State:
         self.rules: dict[UUID, Rule] = {}
         self.note_inputs: dict[UUID, NoteInput] = {}
         self.notes: dict[UUID, Note] = {}
+        self.daily_records = {}
         self.feed_posts = {}
         self.feed_photos = {}
         self.memories = {}
         self.saved_answers = {}
         self.saved_answer_sources = {}
         self.consents = {}
+        self.user_settings = {}
         self._seq = 1000
 
     def next_int(self) -> int:
@@ -302,7 +305,7 @@ def set_request_status(req: Request, to: str, **event_kw) -> None:
 
 def create_request(user, *, client_request_id: str, type: str, body: str, child_id: UUID,
                    previous_request_id: UUID | None, trace_id: str | None,
-                   pickup_guardian_id: UUID | None = None, **care_fields) -> tuple[Request, bool]:
+                   pickup_guardian_id: UUID | None = None, source_note_id: UUID | None = None, **care_fields) -> tuple[Request, bool]:
     """(요청, 새로 만들었는지). 같은 client_request_id면 처음 요청을 돌려준다(6.4)."""
     with _lock:
         for r in _state.requests.values():
@@ -310,6 +313,10 @@ def create_request(user, *, client_request_id: str, type: str, body: str, child_
                 require_complete(user)
                 return r, False
         child = _state.children.get(child_id)
+        if source_note_id is not None:
+            from app.mock.notes import note_in_scope
+            if note_in_scope(user, source_note_id).child_id != child_id:
+                deny(user)
         if child is None or child.org_id != user.org_id or user.id not in child.guardian_ids:
             raise ApiError(404, "NOT_FOUND")
         from app.core.care import input_detail
@@ -326,6 +333,7 @@ def create_request(user, *, client_request_id: str, type: str, body: str, child_
         req = Request(id=uuid4(), org_id=user.org_id, classroom_id=child.classroom_id, child_id=child.id,
                       requester_id=user.id, client_request_id=client_request_id, type=type, body=body,
                       title=body.split("\n")[0][:40], previous_request_id=previous_request_id, care_detail=detail)
+        req.source_note_id = source_note_id
         if type == "medication":
             req.missing_fields = [key for key in MEDICATION_FIELDS if not (detail.get(key) or "").strip()]
         _state.requests[req.id] = req

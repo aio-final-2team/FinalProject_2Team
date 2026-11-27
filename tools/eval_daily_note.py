@@ -15,6 +15,7 @@ import argparse
 import json
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -108,7 +109,9 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", choices=["echo", "openai"], default="echo")
     parser.add_argument("--out")
+    parser.add_argument("--record", action="store_true", help="평가 결과를 eval_runs에 기록한다")
     args = parser.parse_args()
+    started_at = datetime.now(timezone.utc) if args.record else None
     writer = checker = Echo() if args.model == "echo" else None
 
     roster = json.loads((DATA / "daily_notes/roster_c4.json").read_text(encoding="utf-8"))
@@ -148,6 +151,13 @@ def main():
                                               "request_total": len(req_results), "request_results": req_results,
                                               "seconds": seconds},
                                              ensure_ascii=False, indent=2), encoding="utf-8")
+    if args.record:
+        from tools.eval_record import record_run
+
+        record_run(tool="eval_daily_note", model=args.model, started_at=started_at,
+                   total=len(results) + len(req_results), passed=passed + req_passed, report_url=args.out,
+                   scores={"memo": {"passed": passed, "total": len(results)},
+                           "requests": {"passed": req_passed, "total": len(req_results)}})
 
 
 if __name__ == "__main__":

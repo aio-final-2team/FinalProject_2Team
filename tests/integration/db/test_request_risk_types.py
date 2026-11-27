@@ -4,6 +4,7 @@ from alembic.script import ScriptDirectory
 from uuid import uuid4
 
 from alembic import command
+from alembic.script import ScriptDirectory
 from sqlalchemy import text
 
 from app.core.db import transaction

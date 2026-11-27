@@ -8,18 +8,23 @@ from app.core.config import settings
 if settings.data_backend == "mock":
     from app.mock import cards, card_views, documents, memories, notes, notifications, request_actions, store
     from app.mock import consultation_reminders
-    from app.mock import feed, consents
+    from app.mock import feed, consents, busy_blocks, daily_records, calendar, notification_settings, staff_ask
     users = store
 else:
+    from app.modules.daily_records import records as daily_records
+    from app.modules.consultations import busy_blocks
     from app.modules.consents import consents
     from app.modules.feed import feed
     from app.modules.consultations import reminders as consultation_reminders
     from app.core import users
     from app.modules.daily_notes import notes
     from app.modules.documents import documents
+    from app.modules.documents import calendar
+    from app.modules.documents import staff_ask
     from app.modules.memories import memories
     from app.modules.requests import requests as request_actions
     # T27에서 걷을 목록: 미구현 라우트 호환용 store=users 별칭(core/workflows.py 참고).
     store = users
     from app.modules.cards import cards, card_views
     from app.modules.notifications import notifications
+    from app.modules.notifications import settings as notification_settings

@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 from threading import Event
 
 from alembic import command
+from alembic.script import ScriptDirectory
 from fastapi.testclient import TestClient
 import pytest
 from sqlalchemy import text
@@ -224,7 +225,7 @@ def test_note_listing_uses_one_connection_and_one_bulk_request_query(db_client, 
         with original() as connection:
             yield connection
     def count_query(connection, cursor, statement, parameters, context, many):
-        if "SELECT id,type,status,child_id FROM requests" in statement:
+        if "SELECT id,type,status,child_id" in statement and "FROM requests" in statement:
             queries.append(statement)
     monkeypatch.setattr(notes, "transaction", counted_connection)
     event.listen(seeded_db, "before_cursor_execute", count_query)

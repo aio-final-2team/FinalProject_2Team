@@ -1,6 +1,6 @@
--- 유치온 DB 스키마 초안 (T09) · 문서 버전 v0.25 (보호자 확인 돌봄 메모 11/26 반영)
+-- 유치온 DB 스키마 초안 (T09) · 문서 버전 v0.26 (보호자 확인 돌봄 메모·하루 중 기록·알림장 답장 11/26 반영)
 -- 설계서: Docs/Step2/DB_스키마_설계서.md
--- 이 파일은 최종 설계 모양이다. 실제 적용은 apps/api/migrations의 0001~0017을 차례로 적용한다.
+-- 이 파일은 최종 설계 모양이다. 실제 적용은 apps/api/migrations의 0001~0019를 차례로 적용한다.
 -- 대상: PostgreSQL 16 + pgvector 0.8 (compose.yaml의 pgvector/pgvector:pg16). Supabase는 쓰지 않는다(설계서 5.1)
 -- 기관 경계: 기관에 속한 표끼리는 (id, org_id) 짝으로 참조해서 다른 원 행을 섞어 넣으면 DB가 거부한다
 
@@ -87,6 +87,24 @@ CREATE TABLE children (
     UNIQUE (id, org_id)
 );
 
+-- [제안] 하루 중 기록(0018). 삭제 표시는 남기고 초안 입력에서 제외한다.
+CREATE TABLE daily_records (
+            id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+            org_id uuid NOT NULL REFERENCES organizations(id),
+            classroom_id uuid NOT NULL,
+            child_id uuid NOT NULL,
+            note_date date NOT NULL,
+            body text NOT NULL CHECK (char_length(body) <= 500),
+            author_id uuid NOT NULL,
+            created_at timestamptz NOT NULL DEFAULT now(),
+            deleted_at timestamptz,
+            FOREIGN KEY (classroom_id,org_id) REFERENCES classrooms(id,org_id),
+            FOREIGN KEY (child_id,org_id) REFERENCES children(id,org_id),
+            FOREIGN KEY (author_id,org_id) REFERENCES users(id,org_id)
+        );
+CREATE INDEX daily_records_active_idx
+        ON daily_records(org_id,classroom_id,note_date,child_id,created_at,id) WHERE deleted_at IS NULL;
+
 CREATE TABLE child_guardians (
     child_id  uuid NOT NULL,
     org_id    uuid NOT NULL,
@@ -131,6 +149,7 @@ CREATE TABLE requests (
     updated_at       timestamptz NOT NULL DEFAULT now(),
     closed_at        timestamptz,
     care_detail      jsonb NOT NULL DEFAULT '{}',  -- 투약·귀가 입력. 접수 이력에는 값 대신 fields 목록만 남김(0012)
+    source_note_id   uuid,                 -- 답장 원문 알림장(0019), 아래에서 기관 짝 FK 연결
     FOREIGN KEY (classroom_id, org_id) REFERENCES classrooms(id, org_id),
     FOREIGN KEY (child_id, org_id) REFERENCES children(id, org_id),
     FOREIGN KEY (requester_id, org_id) REFERENCES users(id, org_id),
@@ -601,6 +620,7 @@ CREATE TABLE daily_notes (
     ai_original    jsonb NOT NULL DEFAULT '{}',  -- 마지막 AI 초안. 교사 수정 때 유지, 미수정 초안 재생성 때 갱신(v0.9)
     version        integer NOT NULL DEFAULT 1 CHECK (version >= 1),  -- 정정 성공마다 +1(0015)
     corrected_at   timestamptz,           -- 마지막 정정 시각(0015)
+    supplies_checked_at timestamptz,      -- 보호자의 첫 준비물 확인 시각(0019)
     CONSTRAINT daily_notes_id_org_key UNIQUE (id, org_id),
     FOREIGN KEY (input_id, org_id, note_date) REFERENCES daily_note_inputs(id, org_id, note_date),
     FOREIGN KEY (child_id, org_id) REFERENCES children(id, org_id),
@@ -612,6 +632,10 @@ CREATE TABLE daily_notes (
 
 ALTER TABLE events ADD CONSTRAINT events_daily_note_org_fkey
     FOREIGN KEY (daily_note_id, org_id) REFERENCES daily_notes(id, org_id);
+
+ALTER TABLE requests ADD CONSTRAINT requests_source_note_org_fkey
+    FOREIGN KEY (source_note_id, org_id) REFERENCES daily_notes(id, org_id);
+CREATE INDEX requests_source_note_idx ON requests (source_note_id,created_at,id);
 
 -- ─────────────────────────────────────────────
 -- 9. 서비스 안 알림
@@ -785,3 +809,12 @@ CREATE TABLE feed_photo_children (
     FOREIGN KEY (child_id, org_id) REFERENCES children(id, org_id)
 );
 CREATE INDEX feed_photo_children_child_idx ON feed_photo_children (child_id, photo_id);
+
+CREATE TABLE user_settings (
+    user_id uuid PRIMARY KEY,
+    org_id uuid NOT NULL,
+    quiet_start time,
+    quiet_end time,
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    FOREIGN KEY (user_id, org_id) REFERENCES users(id, org_id)
+);

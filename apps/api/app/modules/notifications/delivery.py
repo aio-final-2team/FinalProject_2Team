@@ -77,7 +77,8 @@ def deliver_pending(now=None):
                 _failure(connection, row, "RECIPIENT_UNAVAILABLE", row["attempts"])
                 continue
             after = now if row["kind"] == ENDING else deliver_after(
-                now, row["role"], row["risk_level"], row["risk_category"], request_type=row["request_type"])
+                now, row["role"], row["risk_level"], row["risk_category"], request_type=row["request_type"],
+                user_id=row["recipient_id"], connection=connection)
             if after > now:
                 connection.execute(text("UPDATE notifications SET next_attempt_at=:after WHERE id=:id"),
                                    {"id": row["id"], "after": after})
@@ -90,7 +91,8 @@ def deliver_pending(now=None):
                 attempts = row["attempts"] + 1
                 retry_at = now + timedelta(seconds=RETRY_SECONDS * 2 ** (attempts-1))
                 after = retry_at if row["kind"] == ENDING else deliver_after(
-                    retry_at, row["role"], row["risk_level"], row["risk_category"], request_type=row["request_type"])
+                    retry_at, row["role"], row["risk_level"], row["risk_category"], request_type=row["request_type"],
+                    user_id=row["recipient_id"], connection=connection)
                 # 예외 원문에는 개인정보가 섞일 수 있어 고정 실패 코드만 남겨요.
                 connection.execute(text("""
                     UPDATE notifications SET attempts=:attempts,last_error='DELIVERY_FAILED',

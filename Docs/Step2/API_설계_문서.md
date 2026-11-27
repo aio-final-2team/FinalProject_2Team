@@ -7,7 +7,7 @@
 | 작업 | T13 API 설계 문서(FastAPI·Function Calling 도구 계약)·모의 API (#170) |
 | 작성 · 검토 | 태웅 · 인혜 |
 | 계약을 쓰는 쪽 | 화면 T12·T32(성주), 알림장 그래프 T32(프롬프트 검토 영민), 요청 처리 에이전트·자료·근거 검색 T29·T20·T33(영민) |
-| 판 | v0.13.2 · 2026-11-26 (판마다 바뀐 내용은 맨 끝 변경 이력 참고. 계약을 바꾸면 예시·모의 응답·시험도 함께 고친다) |
+| 판 | v0.13.4 · 2026-11-27 (판마다 바뀐 내용은 맨 끝 변경 이력 참고. 계약을 바꾸면 예시·모의 응답·시험도 함께 고친다) |
 | 2차 검토 링크 | `develop` 브랜치의 [API 설계 문서](https://github.com/aio-final-2team/FinalProject_2Team/blob/develop/Docs/Step2/API_설계_문서.md). API별 상태(2장)는 develop `24258f2` 코드로 판정했다. 이 커밋은 2장 상태 칸의 기준이고, 시연에 쓰는 커밋은 다음 줄에 따로 적는다 |
 | 시연 코드 기준 커밋 | 레포 [README](../../README.md#2차-검토-문서)의 '시연 코드 기준 커밋' 한 줄을 본다(11/24 밤 기준 develop `641591f`, 흐름 고치기 #338까지 팀 서버에 배포). 팀 서버를 다시 배포하면 README 그 한 줄만 고친다 |
 | 함께 보는 문서 | 아래 기준 판 표의 문서들, T04 흐름·권한 명세 |
@@ -16,7 +16,7 @@
 | --- | --- |
 | [기획서](../Step1/기획서.md) | 11/23 develop 판(`8f45d51`, #319). 3장 기능 요구사항(FR)과 4장 비기능 요구사항(NFR)의 번호를 쓴다 |
 | [입출력 계약표](입출력_계약표_초안.md) | v0.21 · 2026-11-24 |
-| [DB 스키마 설계서](DB_스키마_설계서.md) | v0.24 · 2026-11-24, 마이그레이션 0001~0016 |
+| [DB 스키마 설계서](DB_스키마_설계서.md) | v0.25 · 2026-11-26, 마이그레이션 0001~0016·0018·0019 |
 | OpenAPI 생성물 `contracts/openapi.yaml` | v0.13의 필수 동의 API 53~55·내 정보의 동의 완료 값을 반영했다. 앱이 내는 `/openapi.json`과 같은지는 `test_contract_matches_application`으로 확인한다 |
 
 **1차 검토 뒤 보완.** 1차 검토 뒤에 바뀐 내용과 그 내용을 지키는 시험을 표 하나에 모았다. 시험은 모두 시연 코드 기준 커밋에서 다시 돌려 통과했다. DB 시험과 공유 HTTP 시험은 `tools/test_db.sh`로, 계약 시험은 `tests/integration/api/test_openapi.py`로 돌렸다. 표의 시험 파일은 모두 `tests/integration/`(DB는 `db/`, HTTP는 `api/`) 아래에 있고, `api/` 시험 가운데 `test_openapi.py`를 뺀 나머지는 모의·시험 PG 두 모드에서 모두 돈다. 반영 커밋 칸에는 develop에 합쳐진 커밋을 적었다.
@@ -43,7 +43,7 @@
 | DB 2 | 검사를 통과한 아이별 초안만 복구 성공으로 세고, 사람에게 넘김·재시도 진입 실패를 따로 센다 | DB 2.6 'T58 복구 집계 기준' | `db/test_daily_note_recovery.py`의 현재 집계와 T58 기준 차이 기록, `daily_note_drafted` 저장 코드·0001/0003 DDL 확인 | 이 PR |
 | DB 3 | 시험 수치마다 커밋·날짜·alembic 판·범위·명령을 붙이고 권한·마이그레이션을 다시 확인한다 | API 2.2, DB 4.4·6.2·9.2 | `db/test_scope.py`, `db/test_scope_cases.py`, `db/test_migrations.py`, `db/test_feed_migration.py`, `db/test_request_risk_types.py` | 이 PR |
 
-이 문서는 유치온 API 57개(기존 49개는 v0.8 때 develop `24258f2` 코드로 확인, 투약·귀가 취소·수정·알림장 정정 3개와 필수 동의 3개, 기억 확인·승인한 답 고치기 2개 추가)와 에이전트 도구 15개의 계약을 담는다. 1~6장은 강사님 'API 설계 문서 작성법'에 나온 '문서에 들어가는 여섯 가지'의 순서를 따르고, 7장에는 API 필드와 DB 컬럼의 대응을, 8장에는 설정값을 적었다. 필드·권한·오류는 입출력 계약표와 같아야 한다. 두 문서가 어긋나면 계약표를 먼저 고친 뒤 두 문서의 판을 함께 올린다. 구현(FastAPI의 `/docs`)과 달라졌을 때도 둘을 대조해 판을 올린다. 모의 API와 생성물 `contracts/openapi.yaml`도 이 문서와 함께 둔다. 모의 API를 쓰는 법과 데모 계정은 [모의 API 안내](../../contracts/mock_api/README.md)에 있다. 제목에 [제안]이 붙은 절은 팀이 아직 계약을 확인하지 않은 내용으로, 투약·귀가(3.27), 상담 지연 입력(3.28), 피드·앨범(3.29), 보낸 알림장 정정(3.30), 필수 동의(3.31)가 여기에 해당한다. API별로 지금 어디까지 동작하는지는 2장 표의 상태 칸에 적었다.
+이 문서는 유치온 API 69개(기존 49개는 v0.8 때 develop `24258f2` 코드로 확인, 투약·귀가 취소·수정·알림장 정정 3개와 필수 동의 3개, 기억 확인·승인한 답 고치기 2개, 바쁜 시간 3개·하루 중 기록 3개·알림장 답장과 준비물 확인 2개, 원 일정 1개·개인 알림 시간 2개·교직원 질문 1개 추가)와 에이전트 도구 15개의 계약을 담는다. 1~6장은 강사님 'API 설계 문서 작성법'에 나온 '문서에 들어가는 여섯 가지'의 순서를 따르고, 7장에는 API 필드와 DB 컬럼의 대응을, 8장에는 설정값을 적었다. 필드·권한·오류는 입출력 계약표와 같아야 한다. 두 문서가 어긋나면 계약표를 먼저 고친 뒤 두 문서의 판을 함께 올린다. 구현(FastAPI의 `/docs`)과 달라졌을 때도 둘을 대조해 판을 올린다. 모의 API와 생성물 `contracts/openapi.yaml`도 이 문서와 함께 둔다. 모의 API를 쓰는 법과 데모 계정은 [모의 API 안내](../../contracts/mock_api/README.md)에 있다. 제목에 [제안]이 붙은 절은 팀이 아직 계약을 확인하지 않은 내용으로, 투약·귀가(3.27), 상담 지연 입력(3.28), 피드·앨범(3.29), 보낸 알림장 정정(3.30), 필수 동의(3.31), 바쁜 시간(3.32), 하루 중 기록(3.33), 알림장 답장·준비물 확인(3.34), 원 일정(3.35), 개인 알림 시간(3.36), 교직원 AI 질문(3.37)이 여기에 해당한다. API별로 지금 어디까지 동작하는지는 2장 표의 상태 칸에 적었다.
 
 **목차.** 1. 공통 정보와 인증 · 2. API 목록 · 3. 엔드포인트 상세 명세 · 4. 검증과 권한 규칙 · 5. Tool 정의와 호출 흐름 · 6. 실행 규칙 · 7. API 필드와 DB 컬럼 대응 · 8. 설정값 · 부록 A. 예시 ID · 부록 B. 강사 가이드 체크리스트 대조 · 변경 이력
 
@@ -57,7 +57,7 @@
 | 배포 서버 | `https://<배포 도메인>/api/v1` (AWS EC2) |
 | 자동 문서 | `http://localhost:8000/docs`, `http://localhost:8000/openapi.json`(버전 접두어 없이 앱 최상위 경로에 있음). 저장소에는 `/openapi.json`에서 뽑아낸 `contracts/openapi.yaml`을 생성물로 둔다 |
 | 상태 확인 | `GET /health` (인증 없음, 버전 접두어 없음) |
-| 모의 API | API 57개가 메모리에 올린 데모 데이터로 응답하므로, 다시 켜면 초기화된다. 실행 방법·계정·흐름은 [모의 API 안내](../../contracts/mock_api/README.md) 참고 |
+| 모의 API | API 69개가 메모리에 올린 데모 데이터로 응답하므로, 다시 켜면 초기화된다. 실행 방법·계정·흐름은 [모의 API 안내](../../contracts/mock_api/README.md) 참고 |
 
 ### 1.2 인증
 
@@ -135,13 +135,13 @@ FastAPI가 기본으로 내는 422 응답은 예외 처리기에서 위 형식�
 
 첫 시연은 알림장 흐름으로 고정한다. 담임이 반 활동과 아이별 메모를 입력하면 AI가 초안을 만들고, 담임이 이를 확인·수정한 뒤 반 전체에 보낸다(기획서 2.3, 결정 D02). 이때 화면은 로그인·내 정보(3.8), 반 아이 목록(3.24), 초안 만들기·진행 상태(3.19), 알림장 보기(3.20), 고치기·확인(3.21), 반 알림장 보내기(3.6) 순서로 API를 부른다. 초안을 만들지 못했거나 다시 써야 하면 다시 만들기(3.26)를 부른다. 알림장을 보내면 학부모는 알림 목록(3.11)에서 `note_sent` 알림을 받고, 알림장 보기(3.20)에서 자기 아이 알림장을 연다.
 
-아래 표에 API 57개(기존 49개는 v0.8 때 develop `24258f2` 코드로 확인, 투약·귀가 취소·수정·알림장 정정 3개와 필수 동의 3개, 기억 확인·승인한 답 고치기 2개 추가)를 모았다. 인증·역할 열의 '자기 것'·'우리 반'은 4.2의 범위 규칙을 뜻한다. 상세 열에는 각 API를 자세히 설명한 3장의 절 번호를 적었다. 기존 49개 상태 칸은 develop 코드를 DB 모드(`DATA_BACKEND=db`)로 띄워 호출한 기록이며, 취소·수정 2개는 임시 DB 공용 HTTP 시험으로 확인한다.
+아래 표에 API 69개(기존 49개는 v0.8 때 develop `24258f2` 코드로 확인, 투약·귀가 취소·수정·알림장 정정 3개와 필수 동의 3개, 기억 확인·승인한 답 고치기 2개, 바쁜 시간 3개·하루 중 기록 3개·알림장 답장과 준비물 확인 2개, 원 일정 1개·개인 알림 시간 2개·교직원 질문 1개 추가)를 모았다. 인증·역할 열의 '자기 것'·'우리 반'은 4.2의 범위 규칙을 뜻한다. 상세 열에는 각 API를 자세히 설명한 3장의 절 번호를 적었다. 기존 49개 상태 칸은 develop 코드를 DB 모드(`DATA_BACKEND=db`)로 띄워 호출한 기록이며, 취소·수정 2개는 임시 DB 공용 HTTP 시험으로 확인한다.
 
 | 상태 | 뜻 | 개수 |
 | --- | --- | --- |
 | DB 연결 | DB 모드에서 실제 표를 읽고 쓴다. 모의 API에도 같은 경로가 있다 | 35 |
 | 모의만 | 모의 API에만 있고, DB 모드에서는 501 `NOT_IMPLEMENTED`를 돌려준다 | 0 |
-| 제안 | 모의·DB 두 모드에서 동작하지만, 계약을 팀이 확인하기 전이다 | 22 |
+| 제안 | 모의·DB 두 모드에서 동작하지만, 계약을 팀이 확인하기 전이다 | 34 |
 
 설계서를 실제 동작으로 잇는 단계는 네 가지다(A 화면 계약·B 저장·C 외부 연동·D 모델). 'DB 연결'은 이 가운데 B 저장까지 실제로 확인했다는 뜻이다. 화면과 모델까지 실제로 동작하는지는 첫 시연 흐름을 기준으로 2.1에 따로 적었다. 지금 '모의만' 상태인 API는 없다. 자료 올리기(27)와 자료 상세(29)도 DB에 연결돼 있다. 기존 '제안' 세 절은 모두 기획서의 최종(반드시) 범위에 들어 있지만, 12/08 MVP에는 들어 있지 않다. 아래 표에 기존 세 절과 필수 동의 절의 상태를 적었다.
 
@@ -151,6 +151,9 @@ FastAPI가 기본으로 내는 422 응답은 예외 처리기에서 위 형식�
 | 3.28 상담 지연 입력(API 37) | FR-17, 최종·중요 | 들어 있지 않음 | 위와 같음 | 모의·DB 모두 구현. 예약 변경과 실제 종료 입력은 후속 |
 | 3.29 피드·앨범(API 38~49) | FR-22·AC-06, 최종·중요 | 들어 있지 않음 | 위와 같음 | 모의·DB 모두 구현. DB는 마이그레이션 0010이 필요하다 |
 | 3.31 [제안] 필수 동의(API 53~55) | 로그인한 사람의 역할별 전 항목 필수 동의 | 화면 연결 후 확인 | API 계약은 팀 확인 전이다 | 모의·DB 모두 구현, 0016 필요 |
+| 3.33 [제안] 하루 중 기록(API 56~58) | FR-10 아이별 관찰과 알림장 메모 | 화면 연결 후 확인 | API 계약은 팀 확인 전이다 | 모의·DB 모두 구현, 0018 필요 |
+| 3.32 [제안] 바쁜 시간(API 59~61) | FR-05 상담 후보의 시간 충돌 방지 | 상담 예약의 일정 관리 | API 계약은 팀 확인 전이다 | 모의·DB 모두 구현, 기존 표 사용 |
+| 3.34 [제안] 알림장 답장·준비물 확인(API 62·68) | FR-14 학부모 홈 | 최종·중요 | API 계약은 팀 확인 전이다 | 모의·DB 모두 구현, 0019 필요 |
 
 | # | 메서드 | 경로 | 인증·역할 | 설명 | 성공 | 요구사항 | 상세 | 상태 | 알림장 MVP | 팀 확인 남음 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -209,6 +212,18 @@ FastAPI가 기본으로 내는 422 응답은 예외 처리기에서 위 형식�
 | 53 | GET | `/api/v1/consents` | 로그인한 사용자 | [제안] 내 필수 동의 조회 | 200 | FR-01 | 3.31 | 제안 | — | 팀: 제안 계약 |
 | 54 | POST | `/api/v1/consents` | 로그인한 사용자 | [제안] 전 항목 필수 동의 저장 | 200 | FR-01 | 3.31 | 제안 | — | 팀: 제안 계약 |
 | 55 | GET | `/api/v1/classrooms/{classroom_id}/consents` | 같은 기관 원장·현재 담당 반 담임 | [제안] 반 아이별 보호자 동의 현황 | 200 | FR-01 | 3.31 | 제안 | — | 팀: 제안 계약 |
+| 56 | GET | `/api/v1/classrooms/{classroom_id}/records` | 그 반 담임·같은 기관 원장 | [제안] 하루 중 기록 조회 | 200 | FR-10 | 3.33 | 제안 | — | 팀: 제안 계약 |
+| 57 | POST | `/api/v1/classrooms/{classroom_id}/records` | 그 반 담임 | [제안] 하루 중 기록 등록 | 201 | FR-10 | 3.33 | 제안 | — | 팀: 제안 계약 |
+| 58 | DELETE | `/api/v1/records/{record_id}` | 작성 교사·그 반 담임 | [제안] 하루 중 기록 삭제 | 204 | FR-10 | 3.33 | 제안 | — | 팀: 제안 계약 |
+| 59 | GET | `/api/v1/staff/busy-blocks` | 본인 교직원·같은 기관 원장 | [제안] 바쁜 시간 조회 | 200 | FR-05 | 3.32 | 제안 | — | 팀: 제안 계약 |
+| 60 | POST | `/api/v1/staff/busy-blocks` | 교직원 본인 | [제안] 바쁜 시간 등록 | 201 | FR-05 | 3.32 | 제안 | — | 팀: 제안 계약 |
+| 61 | DELETE | `/api/v1/staff/busy-blocks/{id}` | 교직원 본인 | [제안] 바쁜 시간 삭제 | 204 | FR-05 | 3.32 | 제안 | — | 팀: 제안 계약 |
+| 62 | POST | `/api/v1/daily-notes/{note_id}/replies` | 그 아이 보호자(보낸 알림장) | [제안] 알림장 답장을 새 문의로 접수 | 202 | FR-14 | 3.34 | 제안 | — | 팀: 제안 계약 |
+| 63 | GET | `/api/v1/calendar` | 학부모·담임·원장(자기 기관·볼 수 있는 반) | [제안] 원 일정 조회 | 200 | FR-21 | 3.35 | 제안 | — | 팀: 제안 계약 |
+| 64 | GET | `/api/v1/me/notification-settings` | 담임·원장 본인 | [제안] 개인 알림 시간 조회 | 200 | FR-21 | 3.36 | 제안 | — | 팀: 제안 계약 |
+| 65 | PATCH | `/api/v1/me/notification-settings` | 담임·원장 본인 | [제안] 개인 알림 시간 저장·해제 | 200 | FR-21 | 3.36 | 제안 | — | 팀: 제안 계약 |
+| 66 | POST | `/api/v1/staff/ask` | 담임·원장 | [제안] 원 자료로 교직원 질문에 답변(모델 장애: 503 UPSTREAM_UNAVAILABLE) | 200 | FR-21 | 3.37 | 제안 | — | 팀: 제안 계약 |
+| 68 | POST | `/api/v1/daily-notes/{note_id}/supplies-check` | 그 아이 보호자(보낸 알림장) | [제안] 준비물 '챙겼어요' 확인 | 200 | FR-14 | 3.34 | 제안 | — | 팀: 제안 계약 |
 
 | 67 | POST | `/api/v1/memories/{memory_id}/confirm` | 그 아이 보호자 | 돌봄 메모 기억·버림 | 200 | FR-20 | 3.25 | DB 연결 | — | 화면 연결 필요 |
 | 69 | PATCH | `/api/v1/saved-answers/{answer_id}` | 승인한 담임·같은 기관 원장 | 승인 답 끄기·켜기 | 200 | FR-20 | 3.25 | DB 연결 | — | 화면 연결 필요 |
@@ -277,7 +292,7 @@ SSE 두 개(6번·14번)는 실시간 진행 화면(NFR-10)에서 쓴다. 투약
 
 ## 3. 엔드포인트 상세 명세
 
-API 55개를 가이드의 여덟 칸으로 쓴다. 필드 표의 '빈값'은 그 필드가 `""`이나 `null`을 받아도 되는지를 뜻한다. 예시의 고정 ID는 부록 A의 데모 ID이고, 3.8 이후 예시는 주요 응답 필드와 목록 첫 항목만 남겨 줄여 보인다. 토큰과 새로 발급한 ID도 `…`로 줄인다. 경로의 `{card_id}`·`{input_id}`·`{note_id}`에는 앞선 응답에서 받은 값을 넣는다.
+API 56개를 가이드의 여덟 칸으로 쓴다. 필드 표의 '빈값'은 그 필드가 `""`이나 `null`을 받아도 되는지를 뜻한다. 예시의 고정 ID는 부록 A의 데모 ID이고, 3.8 이후 예시는 주요 응답 필드와 목록 첫 항목만 남겨 줄여 보인다. 토큰과 새로 발급한 ID도 `…`로 줄인다. 경로의 `{card_id}`·`{input_id}`·`{note_id}`에는 앞선 응답에서 받은 값을 넣는다.
 
 ### 3.1 요청 만들기 — `POST /api/v1/requests`
 
@@ -1373,11 +1388,11 @@ HTTP/1.1 200 OK
 | ⑤ 검증·권한 | teacher·director만 호출할 수 있다. 대상 반과 이전 문서가 범위 안에 있는지 검사하고, 새 판으로 올릴 때 이전 문서는 active여야 한다. |
 | ⑥ 정상 응답 | 새 자료면 202 + document, 같은 기관에 바이트까지 같은 자료가 이미 있으면 200 + 기존 document를 돌려준다. 다만 DB 모드에서 그 기존 자료가 적재에 실패한 상태라면, 같은 ID로 다시 적재하고 202를 돌려준다. |
 | ⑦ 오류 응답 | 아래 오류 표. |
-| ⑧ 실행 규칙 | 적재가 성공했는지 실패했는지는 접수한 뒤 GET /documents/{document_id}(3.23)로 확인한다. 두 모드 모두 접수 요청 안에서 적재를 끝내므로, 202 응답의 ingest_status는 succeeded나 failed다. 이전 자료는 새 판이 적재에 성공했을 때만 superseded로 바꾼다. 새 판의 적재가 실패하면 옛 판을 그대로 쓰고 supersedes_id도 비운다. 모의 적재는 UTF-8로 치환 해독한 뒤 500자씩 나눈다(빈 파일도 1조각). 파일명에 [실패]가 들어 있으면 ingest_status=failed·chunk_count=0으로 끝난다. DB 모드 적재에서는 파일 종류와 내용을 읽고 충돌도 검사한다. 그 결과는 아래 'DB 모드 적재 결과' 표에 있다. |
+| ⑧ 실행 규칙 | 적재가 성공했는지 실패했는지는 접수한 뒤 GET /documents/{document_id}(3.23)로 확인한다. 두 모드 모두 접수 요청 안에서 적재를 끝내므로, 202 응답의 ingest_status는 succeeded나 failed다. 이전 자료는 새 판이 적재에 성공했을 때만 superseded로 바꾼다. 새 판의 적재가 실패하면 옛 판을 그대로 쓰고 supersedes_id도 비운다. 두 모드가 같은 함수로 파일의 글을 추출한다. 모의 적재는 추출한 글을 500자씩 나눈다(빈 UTF-8 글 파일도 1조각). 파일명에 [실패]가 들어 있으면 ingest_status=failed·chunk_count=0으로 끝난다. DB 모드는 추출 뒤 기존 파싱·충돌 검사·임베딩 흐름을 따른다. 그 결과는 아래 'DB 모드 적재 결과' 표에 있다. |
 
 | 필드 | 위치 | 타입 | 필수 | 빈값 | 제약 | 설명 |
 | --- | --- | --- | --- | --- | --- | --- |
-| `file` | 폼 | binary | 필수 | 접수는 빈 파일 허용 | 2MiB(2,097,152바이트) 이하. 접수 단계에서는 확장자·형식을 보지 않음 | title은 파일명, 파일명이 없으면 자료. DB 모드는 적재 단계에서 .md·.markdown·.txt UTF-8 글만 읽으며, 빈 파일이나 다른 형식은 failed가 된다 |
+| `file` | 폼 | binary | 필수 | 접수는 빈 파일 허용 | 2MiB(2,097,152바이트) 이하. DOCX·HWPX는 압축 해제 총량도 같은 상한 | title은 파일명, 파일명이 없으면 자료. .md·.markdown·.txt(UTF-8)·.pdf·.docx·.hwpx의 글을 추출한다. HWP·글 없는 PDF·DOCX·HWPX·미지원 형식은 failed가 된다 |
 | `doc_type` | 폼 | string | 필수 | 불가 | notice·schedule·menu·policy·consult_timetable·law·public_data | 자료 유형 |
 | `visibility` | 폼 | string | 필수 | 불가 | staff·parents·all | 공개 범위 |
 | `classroom_ids[]` | 폼 | string[](UUID) | 선택 | 생략 가능 | 기본 [], 담임은 현재 담당 반 | 비우면 원 전체 |
@@ -1405,11 +1420,15 @@ HTTP/1.1 200 OK
 | 413 | `VALIDATION_FAILED` | 파일이 2MiB를 넘음 |
 | 422 | `VALIDATION_FAILED` | 필수 칸·타입·허용 값·길이가 맞지 않음 |
 
-**DB 모드 적재 결과.** DB 모드는 글을 `## ` 제목 단위로 나누고, 그 제목을 근거 위치(location)로 쓴다. 제목이 없는 글은 본문 전체가 한 조각이 되고, 위치는 '본문'이다. 적재에 실패하면 이유와 상관없이 error.code는 `UPSTREAM_UNAVAILABLE`이다. 실패 이유는 error.message로 구분한다. 아래 결과는 2026-11-23 develop `24258f2`를 DB 모드로 띄운 뒤, 파일을 하나씩 직접 올려서 얻은 것이다.
+**DB 모드 적재 결과.** DB 모드는 글을 `## ` 제목 단위로 나누고, 그 제목을 근거 위치(location)로 쓴다. 제목이 없는 글은 본문 전체가 한 조각이 되고, 위치는 '본문'이다. 적재에 실패하면 이유와 상관없이 error.code는 `UPSTREAM_UNAVAILABLE`이다. 실패 이유는 error.message로 구분한다. 기존 동작은 2026-11-23 develop `24258f2`의 직접 업로드로 확인했고, PDF·DOCX·HWPX 확장은 표에 적은 mock·DB 통합 시험으로 확인한다.
 
 | 올린 파일 | 결과 | error.message와 남는 값 | 시험 |
 | --- | --- | --- | --- |
-| 이름이 .md·.markdown·.txt로 끝나지 않음(예: 식단표.hwp) | 202 · failed · chunk_count 0 | "지금은 .md·.txt 글 파일만 읽을 수 있어요" | `test_upload_unreadable_file_fails_with_message` |
+| .pdf·.docx·.hwpx(대소문자 무관) | 202 · succeeded | PDF는 pypdf, DOCX는 python-docx로 본문 문단·표를 순서대로 읽는다. HWPX는 표준 zipfile·XML로 Contents/sectionN.xml의 문단 글자를 번호 순으로 읽는다. 추출 뒤 DB 파싱·충돌 검사·임베딩 흐름은 그대로다 | `test_document_upload_formats_store_text_and_dedupe`, `test_document_upload_formats_reuse_conflict_parsing` |
+| 옛 .hwp, 추출한 글이 없는 PDF·DOCX·HWPX(스캔본 포함) | 202 · failed · chunk_count 0 | "한글에서 hwpx나 PDF로 저장해 올려 주세요". OCR은 하지 않는다. 모의 모드도 같은 안내 | `test_upload_unreadable_file_fails_with_message`, `test_document_upload_formats_failure_events` |
+| 지원하지 않는 다른 확장자 | 202 · failed · chunk_count 0 | "지금은 .md·.txt·.pdf·.docx·.hwpx 글 파일만 읽을 수 있어요" | `test_document_upload_formats_failure_events` |
+| 깨진 PDF·DOCX·HWPX | 202 · failed · chunk_count 0 | "자료를 읽지 못했어요." | `test_document_upload_formats_failure_events` |
+| DOCX·HWPX의 모든 ZIP 항목 압축 해제 크기 합계가 2MiB 초과 | 202 · failed · chunk_count 0 | "자료 파일은 2MiB 이하여야 해요." 글을 읽기 전에 거절하며 모의 모드도 같다 | `test_document_upload_formats_archive_total_limit` |
 | UTF-8로 읽히지 않는 글 | 202 · failed | "UTF-8 글 파일이 아니에요" | 직접 호출로만 확인 |
 | 빈 파일, 공백·빈 줄만 있는 파일 | 202 · failed | "읽을 내용이 없어요". 모의 모드에서는 1조각으로 succeeded가 된다 | 직접 호출로만 확인 |
 | 맨 앞이 `---`로 시작함 | 머리말로 읽어 본문과 떼어 낸다 | 필수 키 6개(title·doc_type·kindergarten_id·effective_from·visibility·source)가 빠지거나 값이 허용 범위 밖이면 failed가 된다("머리말에 필수 값이 없습니다: …", "머리말이 닫히지 않았습니다" 등). 통과해도 자료 이름·유형·공개 범위·적용일은 폼 값을 쓴다 | `test_upload_conflicting_notice_is_pending_with_conflicts`, `test_bad_front_matter_is_rejected`(단위 시험) |
@@ -1705,7 +1724,7 @@ GET은 내 역할의 항목만 돌려준다. 현재 판에 기록이 없으면 a
 
 반 현황의 guardians_total은 아이에게 연결된 보호자 수이고, guardians_complete는 그중 현재 판의 보호자 필수 항목을 모두 동의한 수다. 한 명 이상 완료하면 아이의 complete=true다. 보호자가 없으면 두 수는 0, complete=false다. 반환 순서는 아이 이름·ID 순이다.
 
-**미동의 차단.** 기존 역할·기관·반·아이 권한 검사 뒤, 업무 처리 전 공용 require_complete로 현재 판을 확인한다. 미완료면 403 CONSENT_REQUIRED다. 아래 여섯 쓰기 경로에만 적용하며 GET과 나머지 동작은 기존대로 제공한다. 피드 업로드는 권한·동의를 검사한 뒤 multipart 몸통을 읽는다.
+**미동의 차단.** 기존 역할·기관·반·아이 권한 검사 뒤, 업무 처리 전 공용 require_complete로 현재 판을 확인한다. 미완료면 403 CONSENT_REQUIRED다. 아래 일곱 경로(쓰기 여섯과 교직원 AI 질문)와, 같은 요청 생성 함수를 쓰는 알림장 답장(3.34)에 적용하며 GET과 나머지 동작은 기존대로 제공한다. 피드 업로드는 권한·동의를 검사한 뒤 multipart 몸통을 읽는다.
 
 - POST `/api/v1/requests`
 - POST `/api/v1/requests/{request_id}/messages`
@@ -1713,8 +1732,143 @@ GET은 내 역할의 항목만 돌려준다. 현재 판에 기록이 없으면 a
 - POST `/api/v1/daily-notes/drafts/{input_id}/regenerate`
 - POST `/api/v1/classrooms/{classroom_id}/posts`
 - POST `/api/v1/organizations/{org_id}/posts`
+- POST `/api/v1/staff/ask` (질문을 AI에 보내므로)
 
 GET `/api/v1/me`와 로그인 응답의 user.consents_complete도 같은 판·역할 기준이다. 데모 시드는 mock·DB 모든 시드 계정을 현재 판으로 완료시켜 기존 시연을 유지한다. 0016은 동의 행을 넣지 않고 표·이력 허용 값만 만든다. 실제 동의 화면은 후속이며 호출 순서는 백엔드 구현 기록에 적었다.
+
+### 3.32 [제안] 바쁜 시간 — 본인 일정 관리와 원장 조회
+
+| 칸 | 내용 |
+| --- | --- |
+| ① 호출 목적 | 수업·회의·당번 등 상담을 잡을 수 없는 시간을 관리한다(API 59~61). |
+| ② 요청 헤더 | Authorization 필수, X-Request-ID 권장. POST는 Content-Type: application/json. |
+| ③ 경로·쿼리 | GET `/api/v1/staff/busy-blocks?from=2030-01-07T09:00:00%2B09:00&to=2030-01-08T00:00:00%2B09:00`. from·to는 필수이며 시간대가 있는 시각, from < to다. 원장만 user_id(UUID)로 같은 기관 교직원을 조회할 수 있다. DELETE는 정수 id다. |
+| ④ 요청 본문 | POST `{"start_at":"2030-01-07T09:30:00+09:00","end_at":"2030-01-07T12:00:00+09:00","kind":"class"}`. 시간대 필수, start_at < end_at, kind는 class·meeting·duty·off·other만 허용한다. 다른 키는 받지 않는다. |
+| ⑤ 검증·권한 | 교사·원장만 호출한다(보호자는 403). POST·DELETE는 본인 일정만 관리하며 원장도 남의 일정은 지우지 못한다. 다른 교직원 조회·삭제, 다른 기관·없는 대상은 404 NOT_FOUND로 거부하고 호출자 기관의 permission_denied 이력을 남긴다. |
+| ⑥ 정상 응답 | GET 200 `{items:[{id,user_id,start_at,end_at,kind}]}`, 시작 시각·id 오름차순. POST 201 `{id,user_id,start_at,end_at,kind}`. DELETE 204, 본문 없음. |
+| ⑦ 오류 응답 | 401 UNAUTHENTICATED, 403 FORBIDDEN_ROLE, 404 NOT_FOUND, 형식·순서 오류 422 VALIDATION_FAILED, 확정 상담과 겹치는 등록은 409 SLOT_TAKEN. |
+| ⑧ 실행 규칙 | 조회·겹침은 반개구간 [시작,끝) 기준이다. 확정(confirmed) 상담은 지연 보고 expected_end_at까지 막고, cancelled·done은 막지 않는다. 등록과 상담 확정이 같은 담임 잠금을 사용하며 이전 후보도 확정 직전에 바쁜 시간을 재검사한다. 수정 API는 없으며 삭제 후 다시 등록한다. |
+
+기존 staff_busy_blocks 표를 사용하며 새 마이그레이션은 없다. 가상 teacher01·02에게 시드 기준일부터 14일 동안 평일마다 09:30~12:00(class), 13:00~14:00(duty)를 채운다. DB 재실행은 같은 기간·종류를 중복하지 않고 확정 상담과 겹치는 시드는 건너뛴다. 기존 고정 날짜 평가 픽스처는 보존한다. 상담 후보 계산은 이 시간을 제외한다.
+
+### 3.33 [제안] 하루 중 기록 — 아이별 관찰과 알림장 메모
+
+| 칸 | 내용 |
+| --- | --- |
+| ① 호출 목적 | 담임이 관찰을 짧게 쌓고, 알림장 초안(API 22)에 아이별 메모로 쓴다(API 56~58). |
+| ② 요청 헤더 | Authorization 필수, X-Request-ID 권장. POST는 Content-Type: application/json. |
+| ③ 경로·쿼리 | GET `/api/v1/classrooms/{classroom_id}/records?date=2026-11-26`. 반은 UUID, date는 필수 YYYY-MM-DD다. POST도 같은 반 경로, DELETE `/api/v1/records/{record_id}`는 기록 UUID다. |
+| ④ 요청 본문 | POST `{"child_id":"00000000-0000-4000-8000-000000000501","body":"블록을 나누어 쌓았어요.","note_date":"2026-11-26"}`. body는 1~500자, note_date 생략 시 KST 오늘이다. 다른 키는 받지 않는다. |
+| ⑤ 검증·권한 | 읽기·등록은 현재 그 반 담임, 같은 기관 원장은 읽기만 한다. 삭제는 같은 기관 작성 교사 또는 현재 그 반 담임만 한다. 보호자는 403, 원장의 쓰기도 403이다. 다른 기관·반·아이, 없는 대상은 404로 거부하고 permission_denied를 남긴다. 아이는 지정 반에 속해야 한다. |
+| ⑥ 정상 응답 | GET 200 `{items:[{id,classroom_id,child_id,note_date,body,author_id,created_at}]}`, child_id·created_at·id 오름차순이다. POST 201은 같은 기록 객체, DELETE 204는 본문이 없다. |
+| ⑦ 오류 응답 | 401 UNAUTHENTICATED, 403 FORBIDDEN_ROLE, 404 NOT_FOUND, UUID·날짜·글 길이·허용되지 않은 본문 키는 422 VALIDATION_FAILED. |
+| ⑧ 실행 규칙 | 삭제는 deleted_at만 채우며 다시 삭제하면 404다. 조회와 초안 입력에서 삭제 기록을 뺀다. 초안 만들기·다시 만들기는 같은 원·반·날짜의 기록을 아이별 시간순으로 줄바꿈해 합친다. child_memos에 명시한 아이는 그 메모가 우선이며 공백 메모도 서버 기록으로 대체하지 않는다. API 22의 요청·응답 칸은 그대로다. |
+
+0018 표·활성 기록 부분 인덱스를 사용한다. 데모 적재 시 별빛반 아이마다 최초 적재일의 오늘·어제 가상 관찰 두 줄을 넣고 재실행 때 날짜·삭제 표시를 보존한다.
+
+### 3.34 [제안] 알림장 답장·준비물 '챙겼어요'
+
+| 칸 | 내용 |
+| --- | --- |
+| ① 호출 목적 | 발송된 알림장의 답장을 새 문의로 접수하고(API 62), 준비물을 챙겼음을 표시한다(API 68). 별도 답장 표는 만들지 않는다. |
+| ② 요청 헤더 | Authorization 필수, X-Request-ID 권장. 답장은 Content-Type: application/json. |
+| ③ 경로 | POST `/api/v1/daily-notes/{note_id}/replies`, POST `/api/v1/daily-notes/{note_id}/supplies-check`. note_id는 UUID다. |
+| ④ 요청 본문 | 답장 `{"body":"내일 준비물은 무엇인가요?"}`. 기존 문의와 같은 1~2000자 문자열이다. 준비물 확인은 본문이 없다. |
+| ⑤ 검증·권한 | 해당 아이의 현재 보호자만 호출한다. 교직원은 403 FORBIDDEN_ROLE. 다른 아이·기관·없는 알림장·발송 전 알림장은 404 NOT_FOUND로 숨기고 permission_denied 이력을 남긴다. 준비물 줄(key=supplies)이 없거나 값이 빈 문자열·공백뿐이면 409 INVALID_TRANSITION이다. 답장은 기존 문의 생성의 필수 동의 검사도 적용한다. |
+| ⑥ 정상 응답 | 답장 202 `{"request_id":"00000000-0000-0000-0000-000000000901"}`. 준비물 확인 200 `{"supplies_checked_at":"2026-11-26T18:00:00+09:00"}`. 다시 누르거나 동시에 눌러도 첫 확인 시각을 돌려준다. |
+| ⑦ 오류 응답 | 401 UNAUTHENTICATED, 403 FORBIDDEN_ROLE·CONSENT_REQUIRED, 404 NOT_FOUND, 409 INVALID_TRANSITION, 422 VALIDATION_FAILED. |
+| ⑧ 실행 규칙 | 답장은 API 3의 요청 생성 함수를 그대로 호출하여 type=inquiry·source_note_id를 함께 저장한다. 이후 분류·근거 검색·담임 카드·알림·사람 승인은 기존 문의 흐름을 따른다. 호출마다 새 요청이며 별도 분류 로직은 없다. |
+
+응답은 기존 칸을 유지하고 다음 칸만 더한다.
+
+| 응답 위치 | 추가 칸 | 의미 |
+| --- | --- | --- |
+| 요청 상세 `request`·카드 상세 `request` | `source_note: {note_id, note_date} \| null` | 답장 원문의 ID·날짜. 일반 요청은 null이다. |
+| GET `/api/v1/daily-notes`의 `items[]` | `replies: [{request_id, body, status, created_at}]` | 해당 알림장에서 접수한 문의를 생성 시각·ID 오름차순으로 표시한다. 없으면 빈 배열이다. status는 요청의 현재 상태이며 승인 뒤에도 갱신된다. |
+| GET `/api/v1/daily-notes`의 `items[]` | `supplies_checked_at: datetime \| null` | 최초 준비물 확인 시각. 학부모·담임·원장 모두 같은 값을 본다. 확인 전에는 null이다. |
+
+알림장 수정·정정의 `note` 응답에도 같은 추가 칸을 제공한다. 확인은 알림장의 content·상태·정정 version·sent_at을 바꾸지 않는다. 저장은 0019의 `requests.source_note_id`(기관 짝 FK)·`daily_notes.supplies_checked_at` 두 칸을 쓴다.
+
+### 3.35 [제안] 원 일정 — `GET /api/v1/calendar`
+
+| 칸 | 내용 |
+| --- | --- |
+| ① 호출 목적 | 사용 중인 일정표·가정통신문에서 조회 기간과 하루라도 겹치는 날짜 사실을 읽는다(API 63). |
+| ② 요청 헤더 | Authorization 필수, X-Request-ID 권장. |
+| ③ 경로·쿼리 | 경로 변수 없음. from·to 둘 다 필수이며 기존 날짜 쿼리처럼 YYYY-MM-DD로 보낸다. |
+| ④ 요청 본문 | 없음. |
+| ⑤ 검증·권한 | 자기 기관만 조회한다. 원장은 기관 전체, 담임은 현재 담당 반, 학부모는 현재 연결된 아이의 반 자료를 본다. 대상 반이 없는 기관 전체 자료는 모두 볼 수 있다. 학부모에게 staff 자료는 제외한다. 목록에서 반·공개 범위 밖 자료는 조용히 제외하고 permission_denied 이력을 만들지 않는다. 다른 기관 자료는 읽지 않는다. |
+| ⑥ 정상 응답 | 200 `{items:[{date,end_date,title,document_id,document_title,location}]}`. 없으면 items=[]. |
+| ⑦ 오류 응답 | 로그인 없음·무효는 401 UNAUTHENTICATED. 날짜 생략·잘못된 날짜·from>to는 422 VALIDATION_FAILED. 공통 오류 형식은 1.4와 같다. |
+| ⑧ 실행 규칙 | status=active·ingest_status=succeeded인 schedule·notice만 대상으로 기존 extract_facts를 재사용한다. 날짜 사실만 쓰며 AI·임베딩은 호출하지 않는다. 자료의 시행 전 일정도 조회할 수 있다. |
+
+| 방향 | 칸 | 형식·의미 |
+| --- | --- | --- |
+| 입력(query) | from, to | 필수 date. 양 끝을 포함하는 조회 구간. |
+| 출력 | items[].date | date. 단일 날짜 또는 기간의 시작일. |
+| 출력 | items[].end_date | date 또는 null. 기간의 종료일이며 단일 날짜는 null. |
+| 출력 | items[].title | string. extract_facts가 정규화한 일정 이름. |
+| 출력 | items[].document_id, document_title | UUID string·string. 일정의 원 자료 ID와 제목. |
+| 출력 | items[].location | string. extract_facts의 근거 위치 그대로. 위치가 없는 조각은 빈 문자열. |
+
+기간과 조회 구간이 하루라도 겹치면 원래 시작·종료일을 유지해 반환한다. 예를 들어 12/28 하루 조회에도 12/24~1/3 방학을 포함한다. date·title·document_title·location 오름차순이며, 자료마다 겨울방학이 12/24·12/26으로 다르면 각각 반환한다. 합치거나 한 날짜를 선택하지 않는다. 새 DB 표·마이그레이션은 없다.
+
+```json
+{"items":[{"date":"2026-12-24","end_date":"2027-01-03","title":"겨울방학","document_id":"00000000-0000-4000-8000-000000000b02","document_title":"[가상] 겨울방학 안내","location":"1쪽 겨울방학 기간"}]}
+```
+
+### 3.36 [제안] 개인 알림 시간 — API 64·65
+
+| 칸 | 내용 |
+| --- | --- |
+| ① 호출 목적 | 교직원이 본인 알림을 받지 않을 시간을 조회·변경한다. |
+| ② 요청 헤더 | Authorization 필수, X-Request-ID 권장. PATCH는 Content-Type: application/json. |
+| ③ 경로·쿼리 | GET·PATCH `/api/v1/me/notification-settings`. 경로 변수·쿼리는 없다. |
+| ④ 요청 본문 | PATCH는 `{"quiet_start":"22:00","quiet_end":"07:00"}`. 두 칸 모두 필수다. |
+| ⑤ 검증·권한 | 담임·원장 본인만 사용한다. 사용자·기관 ID를 입력받지 않는다. 학부모는 403 FORBIDDEN_ROLE. |
+| ⑥ 정상 응답 | 모두 200, 요청과 같은 두 칸. 설정이 없거나 둘 다 null로 해제하면 두 칸 모두 null. |
+| ⑦ 오류 응답 | 로그인 없으면 401 UNAUTHENTICATED. 누락·형식 오류·하나만 null·같은 시각·추가 키는 422 VALIDATION_FAILED. |
+| ⑧ 실행 규칙 | KST의 시작 이상·끝 미만을 피한다. 자정을 넘을 수 있다. 둘 다 null이면 행을 지워 기본 WORK_HOURS·근무일 규칙으로 돌아간다. |
+
+| 칸 | 방향 | 타입 | 필수·허용값 | 의미 |
+| --- | --- | --- | --- | --- |
+| `quiet_start` | PATCH 입력·GET/PATCH 출력 | string 또는 null | 두 칸 모두 필수, HH:MM(00:00~23:59) 또는 둘 다 null | 조용한 시간 시작 |
+| `quiet_end` | PATCH 입력·GET/PATCH 출력 | string 또는 null | 시작과 다른 HH:MM 또는 둘 다 null | 조용한 시간 종료 |
+
+응답 예: `{"quiet_start":"22:00","quiet_end":"07:00"}`. 개인 설정은 하루 중 시간대만 WORK_HOURS 대신 바꾸며 주말·HOLIDAYS의 보류는 유지한다. 근무일이면 조용한 시간 밖은 바로, 안이면 quiet_end로 미루고, 그 결과가 근무일이 아니면 다음 근무일의 quiet_end로 미룬다. 예를 들어 토요일 12시와 금요일 23시는 모두 월요일 07시로 미룬다(월요일이 공휴일이면 다음 근무일 07시). 개인 설정은 알림 생성·발송·재시도 때 수신자 기준으로 읽으며 학부모·귀가·설정된 긴급 위험 종류의 즉시 알림은 그대로다.
+
+
+### 3.37 [제안] 교직원 AI에게 묻기 — `POST /api/v1/staff/ask`
+
+| 칸 | 내용 |
+| --- | --- |
+| ① 호출 목적 | 교직원이 원 자료를 근거로 질문에 답을 받는다(API 66, Y-130). |
+| ② 요청 헤더 | Authorization 필수, Content-Type: application/json, X-Request-ID 권장. |
+| ③ 경로·쿼리 | 경로 변수·쿼리 없음. 기관·반은 현재 로그인과 담당 관계로 판별한다. |
+| ④ 요청 본문 | `{"question":"준비물은 무엇인가요?"}`. 기존 요청 본문처럼 최대 2,000자이며 앞뒤 공백을 뺀 뒤 빈 질문과 추가 키는 거부한다. |
+| ⑤ 검증·권한 | 담임·원장만. 담임은 같은 기관의 원 전체 자료와 현재 담당 반 자료, 원장은 같은 기관 전체 자료. 범위 밖 자료는 검색에서 제외한다. |
+| ⑥ 정상 응답 | 200 `{answer,evidence:[{document_id,title,location,effective_date}],conflict}`. 검증된 인용만 출처로 돌려준다. |
+| ⑦ 오류 응답 | 401 UNAUTHENTICATED, 학부모 403 FORBIDDEN_ROLE, 현재 판 필수 동의 전 403 CONSENT_REQUIRED(모델을 부르지 않음, 3.31), 질문 형식 오류 422 VALIDATION_FAILED, 모델 호출 실패 503 UPSTREAM_UNAVAILABLE. 공통 오류 형식(1.4) 유지. |
+| ⑧ 실행 규칙 | 기존 search_documents와 문의 답변 흐름(인용 확인·검사·재작성)을 재사용한다. notice·schedule·menu·policy의 active·적재 성공·기간 미종료 자료만 검색하며 시행 전 안내도 포함한다. 요청·카드·알림을 만들지 않고 events에 tool_called·agent_name=document·호출자·trace_id·근거 수만 남긴다. 모델 실패도 tool_failed·code=UPSTREAM_UNAVAILABLE 이력을 남긴다. 질문·답변 원문과 예외 원문은 이력에 저장하지 않는다. |
+
+| 필드 | 위치 | 타입 | 필수·빈값 | 설명 |
+| --- | --- | --- | --- | --- |
+| question | 입력 본문 | string | 필수, 공백만 불가 | 앞뒤 공백 제거 후 1~2,000자 |
+| answer | 응답 | string | 200에서 항상 | 검증된 답변. 근거 없음·인용 검증 실패는 `자료에서 못 찾았어요` |
+| evidence | 응답 | object[] | 항상, 빈 배열 가능 | 답변에서 인용 검증을 통과한 자료 조각 순서 |
+| conflict | 응답 | boolean | 항상 | 평소 false, 답변 흐름이 자료 충돌을 판별하면 true |
+| evidence[].document_id·title·location | 응답 | UUID·string·string | 항상 | 문서 ID·제목·원문 위치. 위치가 없으면 본문 |
+| evidence[].effective_date | 응답 | date 또는 null | 항상, null 가능 | 문서 effective_from |
+
+- 자료 충돌: 200, answer=`자료마다 내용이 달라요. 아래 두 자료를 확인해 주세요.`, conflict=true, 충돌한 양쪽 자료의 검증된 evidence를 반환한다(겨울방학 12/24·12/26 둘 다). 검색·인용에 없는 출처는 만들지 않는다.
+- 모델 호출 실패: 기존 답변 흐름의 모양 오류·검사 재시도를 유지하며, 재시도 뒤에도 모델 오류로 답변을 못 만들면 503 `UPSTREAM_UNAVAILABLE`, 1.4의 `{error:{code,message,trace_id,details}}` 형식을 반환한다. 재시도에 성공하면 정상 200이다. ModelError 이외의 예외도 503이다.
+- 근거 없음: 200, answer=`자료에서 못 찾았어요`, evidence=[], conflict=false. 인용·검사 검증에서 근거를 확정하지 못해도 같은 안전 응답을 쓴다.
+
+모델에 보내는 질문·자료 제목·위치·본문·검사 입력은 기존 mask_sensitive를 통과한다. 지시문이 섞인 조각은 기존 guardrails로 제외한다. 근거가 없으면 모델을 호출하지 않는다. mock·DB 계약은 같으며 시험에는 가짜 작성·검사 모델을 주입한다. 새 표·마이그레이션은 없다.
+
+```json
+{"answer":"준비물은 수건이에요.","evidence":[{"document_id":"00000000-0000-4000-8000-000000000066","title":"가상 준비 안내","location":"1쪽 준비물","effective_date":"2026-12-01"}],"conflict":false}
+```
 
 ## 4. 검증과 권한 규칙
 
@@ -2104,6 +2258,8 @@ def decide(card_id: UUID, body: CardDecision, user: User = Depends(current_staff
 
 이 값은 서버가 알림을 만들 때 계산해 `notifications.deliver_after`에 넣는다. 발송기는 `status = 'pending' AND deliver_after <= now()`인 알림만 꺼낸다. 아래 표는 8장의 기본 설정을 쓸 때의 값이다.
 
+개인 알림 설정(API 64·65)이 있는 교직원은 하루 중 시간대만 3.36의 조용한 시간 규칙으로 바꾸고, 주말·HOLIDAYS에는 다음 근무일의 quiet_end까지 보류한다. 아래 기본 설정 예시는 개인 설정이 없을 때 적용한다.
+
 | 받는 사람 · 알림 | 근무 시간(평일 09:00~18:00, 공휴일 제외) 안 | 근무 시간 밖 |
 | --- | --- | --- |
 | 교직원 · 긴급 요청(문의·상담·민원) 중 아이 안전(`risk_category = child_safety`) | 바로 | 바로 |
@@ -2305,9 +2461,9 @@ MVP 설정값은 서버 설정(`.env`)으로 관리한다. `.env.example`에는 
 
 | 체크리스트(가이드 33쪽) | 이 문서 |
 | --- | --- |
-| 구현할 API가 모두 목록 표에 있고 요구사항 ID와 연결된다 | 2장(57개, 요구사항 열·상태 칸) |
+| 구현할 API가 모두 목록 표에 있고 요구사항 ID와 연결된다 | 2장(69개, 요구사항 열·상태 칸) |
 | 서버 주소·인증·오류 형식·/docs·변경 이력이 있다 | 1장, 끝의 변경 이력 |
-| 구현할 API마다 상세 명세와 필드 명세 표가 있다 | 3장(57개 전부) |
+| 구현할 API마다 상세 명세와 필드 명세 표가 있다 | 3장(69개 전부) |
 | 형식 오류(422)와 권한·승인 오류(403)를 나눠 적었다 | 4.1 |
 | 202를 쓰는 API는 작업 상태·결과·실패 조회가 있다 | 3.19.1, 6.3 |
 | Tool마다 성공·실패 출력과 실패 후 처리가 있다 | 5.2, 5.4, 5.5, 5.7 |
@@ -2340,3 +2496,5 @@ MVP 설정값은 서버 설정(`.env`)으로 관리한다. `.env.example`에는 
 | v0.13 | 2026-11-24 | [제안] 필수 동의 API 53~55·user.consents_complete·미동의자 6개 쓰기 경로 차단·새 오류 코드·현재 판 데모 시드를 추가하고 OpenAPI와 맞춤. | 태웅 |
 | v0.13.1 | 2026-11-24 | 상담 재배정 때 새 담당 일정과 겹치는 후보를 버리고 부족한 만큼 다시 제안하며, 선택한 시간이 사라지면 학부모에게 다시 선택을 안내한다(3.16). 0012·0014를 되돌릴 때 이전 판에서 읽지 못하는 새 알림·이력·결정 행을 정리한다. | 태웅 |
 | v0.13.2 | 2026-11-26 | 카드 목록·상세·재분류에 아이·보호자 이름을 더해요. GET /requests를 담임·원장에게 열고 담당 반·유형·답변 주체로 걸러요. 학부모 응답은 유지해요(3.7·3.9). | 태웅 |
+| v0.13.3 | 2026-11-26 | [제안] 하루 중 기록 API 56~58·3.33과 API 22의 서버 기록 메모 fallback을 추가함. 기존 초안 요청·응답 칸은 유지함. | 태웅 |
+| v0.13.4 | 2026-11-27 | [제안] 원 일정 API 63(3.35)·개인 알림 시간 API 64~65(3.36)·교직원 AI 질문 API 66(3.37)을 더함. 미동의 차단에 교직원 AI 질문을 넣어 일곱 경로. 목록 69개(DB 연결 35·제안 34) | 태웅 |

@@ -6,7 +6,7 @@ from app.core.consultation_alerts import DELAYED, ENDING, alerts, message, notif
 from app.core.constants import NOTIFICATION_TITLES
 from app.core.errors import ApiError
 from app.core.schedule import KST, deliver_after, working_day
-from app.mock import store
+from app.mock import store, notification_settings
 from app.mock.records import Notification
 
 
@@ -119,7 +119,8 @@ def sweep_consultation_notifications(now=None, *, teacher_id=None, day=None):
                 if (user is None or not user.is_active or user.org_id != booking["org_id"]
                         or any(n.dedupe_key == key for n in state.notifications.values())):
                     continue
-                after = now if kind == ENDING else deliver_after(now, user.role)
+                after = now if kind == ENDING else deliver_after(
+                    now, user.role, user_id=recipient, lookup=notification_settings.get)
                 if after >= booking["end"]:
                     continue
                 row = Notification(id=state.next_int(), org_id=booking["org_id"], recipient_id=recipient,
