@@ -36,21 +36,33 @@ def daily_note_chunks(req):
     return [chunk for row in rows if (chunk := note_chunk(row["id"], row["note_date"], row["content"]))]
 
 
+RELATIVE_DAYS = (("그저께", 2), ("그제", 2), ("어저께", 1), ("어제", 1), ("오늘", 0))
+
+
+def asked_days(body, today):
+    """질문에 나온 오늘·어제·그제를 날짜로 바꿔요. 날짜 말이 없으면 질문 받은 날 하나예요."""
+    return sorted({today - timedelta(days=n) for word, n in RELATIVE_DAYS if word in body} or {today})
+
+
 def daily_record_chunks(req):
-    """아이에 관한 문의면 질문 받은 날(어제를 물으면 전날까지)의 담임 관찰 기록을 근거 후보로 더해요.
-    관찰 기록은 보호자에게 바로 안 보이는 메모라, 담임이 검토하고 보내는 초안에만 쓰여요."""
+    """아이에 관한 문의면 질문이 가리키는 날(오늘·어제·그제, 없으면 질문 받은 날)의 담임 관찰 기록을 근거 후보로 더해요.
+    날마다 최근 3개까지예요. 관찰 기록은 보호자에게 바로 안 보이는 메모라, 담임이 검토하고 보내는 초안에만 쓰여요."""
     from agents.graphs.answer import child_about_question, record_chunk
     if req["type"] != "inquiry" or not req.get("child_id") or not child_about_question(req["body"]):
         return []
     today = asked_on(req) or datetime.now(KST).date()
     with transaction() as connection:
         rows = connection.execute(text("""
-            SELECT r.id,r.note_date,r.body FROM daily_records r
-            WHERE r.org_id=:org AND r.child_id=:child AND r.deleted_at IS NULL AND r.note_date BETWEEN :since AND :today
-              AND EXISTS (SELECT 1 FROM child_guardians g WHERE (g.org_id,g.child_id,g.user_id)=(:org,:child,:parent))
-            ORDER BY r.note_date DESC,r.created_at DESC,r.id LIMIT 3
+            SELECT id,note_date,body FROM (
+                SELECT r.id,r.note_date,r.body,r.created_at,
+                       row_number() OVER (PARTITION BY r.note_date ORDER BY r.created_at DESC,r.id) AS n
+                FROM daily_records r
+                WHERE r.org_id=:org AND r.child_id=:child AND r.deleted_at IS NULL
+                  AND r.note_date=ANY(CAST(:days AS date[]))
+                  AND EXISTS (SELECT 1 FROM child_guardians g WHERE (g.org_id,g.child_id,g.user_id)=(:org,:child,:parent))
+            ) picked WHERE n<=3 ORDER BY note_date DESC,created_at DESC,id
         """), {"org": req["org_id"], "child": req["child_id"], "parent": req["requester_id"],
-               "since": today-timedelta(days=1) if "어제" in req["body"] else today, "today": today}).mappings().all()
+               "days": asked_days(req["body"], today)}).mappings().all()
         # 기록에 함께 적힌 다른 아이 이름은 이 학부모 초안·외부 모델로 넘기지 않아요(기억 저장과 같은 가림).
         roster = connection.execute(text("SELECT display_name,id=:child AS own FROM children WHERE org_id=:org"),
                                     {"org": req["org_id"], "child": req["child_id"]}).all() if rows else []
