@@ -1,3 +1,4 @@
+import { useLiveStream } from "./stream";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { InboxFilter, RequestType, Status } from "@/domain/status";
 import type { Card, CardAction, HistoryItem, Role, Slot, Source } from "@/domain/types";
@@ -57,9 +58,10 @@ const cardFromItem = (item: CardItem, filter: InboxFilter): Card => ({
   id: item.id, version: item.version, kind: item.kind, inboxFilter: filter,
   requestId: item.request_id ?? "-", type: requestType(item.request_type), status: statusFromItem(item, filter), risk: risk(item.risk_level),
   urgentReason: riskLabel(item.risk_category), title: item.title || term(item.status_label), childName: item.child_name ?? "", guardianName: item.requester_name ?? "보호자", requesterName: item.requester_name ?? undefined,
-  className: item.classroom.name, createdAt: item.due_at ?? new Date().toISOString(), original: item.title, sources: [],
+  className: item.classroom.name, classroomId: item.classroom.id, createdAt: item.due_at ?? new Date().toISOString(), original: item.title, sources: [],
   check: item.check ? { passed: item.check.passed, note: item.check.issue_count ? `확인 항목 ${item.check.issue_count}개` : undefined } : undefined,
   repeatCount: item.repeat_count ?? undefined, escalated: item.risk_level === "urgent" || item.kind === "director_report",
+  assignee: item.assignee ? { id: item.assignee.id, name: item.assignee.display_name } : undefined,
   assigned: !!item.assignee, slots: item.parent_choice_count ? [] : undefined, history: [],
 });
 
@@ -129,7 +131,10 @@ export const useAllCards = () => {
   return results.flatMap((r) => r.data ?? []);
 };
 
-export const useCard = (id: string | undefined) => useQuery({ queryKey: ["cards", "detail", id], queryFn: () => api<CardDetail>(`/api/v1/cards/${id}`).then(cardFromDetail), enabled: !!id });
+export const useCard = (id: string | undefined) => {
+  useLiveStream(id ? `/api/v1/cards/${id}/stream` : undefined, ["cards", "detail", id]);
+  return useQuery({ queryKey: ["cards", "detail", id], queryFn: () => api<CardDetail>(`/api/v1/cards/${id}`).then(cardFromDetail), enabled: !!id });
+};
 /** 검사 결과 issues는 서버에서 [{field, problem}]로 온다 (field: 출처·날짜·대상·누락·민감정보). 옛 모양(문자열·message·text)도 읽는다. */
 function issueText(i: unknown): string {
   if (typeof i === "string") return i;
@@ -143,6 +148,18 @@ const REASON_CODE: Record<string, string> = { "개인정보 요청": "privacy", 
 type ActionResponse = { card?: { id?: string; status?: string; version?: number } };
 
 /** 카드 행동을 API 계약의 기능별 엔드포인트와 요청 본문으로 변환한다. */
+/** 원장이 카드 담당 교사를 바꾼다(API 19, 문서 3.16). version은 받지 않는다 */
+export function useReassign(cardId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { assigneeId: string; reason: string }) => api(`/api/v1/cards/${cardId}/reassign`, { method: "POST", body: JSON.stringify({ assignee_id: v.assigneeId, reason: v.reason }) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["cards"] });
+      qc.invalidateQueries({ queryKey: ["overview"] });
+    },
+  });
+}
+
 export function useCardAction(id: string, _role: Role) {
   const qc = useQueryClient();
   return useMutation({

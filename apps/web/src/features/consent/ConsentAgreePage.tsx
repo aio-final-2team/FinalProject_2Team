@@ -60,7 +60,7 @@ export function ConsentAgreePage() {
       <div className="flex min-h-11 items-center justify-end pt-2">
         <button type="button" onClick={() => { signOut(); nav("/login", { replace: true }); }} className="h-11 px-2 text-body font-medium text-accent">로그아웃</button>
       </div>
-      <h1 className="text-large-title font-bold tracking-[-0.025em]">필수 동의</h1>
+      <h1 className="text-large-title font-bold tracking-[-0.01em]">필수 동의</h1>
       <p className="mt-0.5 text-footnote font-medium text-ink2">서비스를 이용하려면 아래 항목에 모두 동의해야 합니다</p>
       <QueryState queries={[q]} skeleton={3} errorTitle="동의 항목을 불러오지 못했습니다">
         <ConsentChecklist role={role} on={on} setOn={setOn} items={list} />

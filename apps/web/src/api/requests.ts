@@ -1,10 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api, uuid } from "./client";
+import { useLiveStream } from "./stream";
 
 /** 학부모 요청 (API 3·4·5·7, 3.1·3.2·3.9·3.10) */
 export type RequestType = "inquiry" | "consultation" | "complaint" | "medication" | "pickup";
 /** 투약·귀가 구조화 입력 (문서 3.27). 빠진 칸은 막지 않고 선생님이 다시 물어본다 */
-export type CareInput = { medication_name?: string; medication_dose?: string; medication_time?: string; pickup_name?: string; pickup_relation?: string };
+export type CareInput = { medication_name?: string; medication_dose?: string; medication_time?: string; pickup_name?: string; pickup_relation?: string; pickup_guardian_id?: string };
+
+/** 등록된 인계자 목록 (API 34): 그 아이에 연결된 보호자 계정. 연락처는 오지 않는다 */
+export const usePickupGuardians = (childId?: string) =>
+  useQuery({ queryKey: ["pickup-guardians", childId], enabled: !!childId, queryFn: () => api<{ items: { id: string; display_name: string }[] }>(`/api/v1/children/${childId}/pickup-guardians`).then((r) => r.items) });
 export type CareView = CareInput & { version: number; unregistered_pickup: boolean; missing_fields: string[]; confirmed_at: string | null; completed_at: string | null };
 export type RequestSummary = {
   id: string;
@@ -47,12 +52,25 @@ export const useAiAnswered = (enabled: boolean) =>
     },
   });
 
+/** 상담 예상 종료 기록 (API 37). 그 반 예약 담임만, 상담이 시작된 뒤에만 */
+export type DelayResult = { booking: { id: string; period: { start: string; end: string }; status: string; expected_end_at: string | null }; affected_bookings: number };
+export function useConsultDelay(requestId?: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { bookingId: string; expectedEndAt: string }) => api<DelayResult>(`/api/v1/consultations/${v.bookingId}/delay`, { method: "POST", body: JSON.stringify({ expected_end_at: v.expectedEndAt }) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["request", requestId] }),
+  });
+}
+
 export const TYPE_LABEL: Record<string, string> = { inquiry: "문의", consultation: "상담", complaint: "민원", medication: "투약", pickup: "귀가" };
 
 export const useMyRequests = () => useQuery({ queryKey: ["my-requests"], queryFn: () => api<{ items: RequestSummary[]; total: number }>("/api/v1/requests?size=50") });
 
-export const useRequest = (id?: string) =>
-  useQuery({ queryKey: ["request", id], queryFn: () => api<RequestDetail>(`/api/v1/requests/${id}`), enabled: !!id, refetchInterval: 5000 });
+/** live: 학부모 본인 요청 화면에서만 AI 진행 스트림(API 6, 학부모 전용)을 연다 */
+export const useRequest = (id?: string, live = false) => {
+  useLiveStream(live && id ? `/api/v1/requests/${id}/stream` : undefined, ["request", id]);
+  return useQuery({ queryKey: ["request", id], queryFn: () => api<RequestDetail>(`/api/v1/requests/${id}`), enabled: !!id, refetchInterval: 15_000 });
+};
 
 export function useCreateRequest() {
   const qc = useQueryClient();
