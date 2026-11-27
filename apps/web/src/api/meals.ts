@@ -42,6 +42,16 @@ export function useNextMeal(today: string) {
   return { data: next ? { ...next, today: next.date === today } : null, isLoading: docs.isLoading || details.some((q) => q.isLoading) };
 }
 
+/** 주차별 식단표의 기간. 제목의 (11/23~11/27)에서 읽고, 없으면 null(간식표·알레르기 안내 같은 식단 안내) */
+export function menuWeek(d: Doc): { start: string; end: string } | null {
+  const m = d.title.match(/\((\d{1,2})\/(\d{1,2})\s*~\s*(\d{1,2})\/(\d{1,2})\)/);
+  if (!m || !d.title.includes("식단표")) return null;
+  const y = Number(d.effective_from.slice(0, 4));
+  const p2 = (n: string) => n.padStart(2, "0");
+  const endYear = Number(m[3]) < Number(m[1]) ? y + 1 : y;
+  return { start: `${y}-${p2(m[1])}-${p2(m[2])}`, end: `${endYear}-${p2(m[3])}-${p2(m[4])}` };
+}
+
 /** 가정통신문 한 줄: 적용 중인 통신문 중 오늘 기준 7일 뒤까지 시작한 것 가운데 가장 최근 것 */
 export function pickNotice(docs: Doc[] | undefined, today: string): Doc | undefined {
   return (docs ?? [])
