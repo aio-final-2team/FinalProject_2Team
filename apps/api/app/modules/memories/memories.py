@@ -19,7 +19,7 @@ from agents.guardrails.sensitive import mask_sensitive
 from app.modules.requests import events
 from app.modules.requests.events import record
 
-from app.modules.memories.saved_answers import set_status as set_saved_status
+from app.modules.memories.saved_answers import set_status as set_saved_status  # noqa: F401  라우트가 backend.memories.set_saved_status로 부름
 
 log = logging.getLogger(__name__)
 VISIBLE_MEMORY = """m.org_id=:org AND m.deleted_at IS NULL AND (
