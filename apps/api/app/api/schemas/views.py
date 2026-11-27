@@ -332,6 +332,20 @@ class NoteContentOut(BaseModel):
     items: list[NoteLineOut]
 
 
+class NoteReplyAccepted(BaseModel):
+    request_id: UUID
+
+
+class NoteReply(NoteReplyAccepted):
+    body: str
+    status: RequestStatus
+    created_at: datetime
+
+
+class SuppliesCheckOut(BaseModel):
+    supplies_checked_at: datetime
+
+
 class NoteView(BaseModel):
     id: UUID
     child_id: UUID
@@ -343,6 +357,8 @@ class NoteView(BaseModel):
     sent_at: datetime | None
     version: int = Field(ge=1, description="정정용 판. 정정 성공마다 1 증가해요")
     corrected_at: datetime | None
+    supplies_checked_at: datetime | None = None
+    replies: list[NoteReply] = Field(default_factory=list)
 
 
 class NoteListItem(NoteView):

@@ -21,7 +21,7 @@ def _lock(connection, request_id):
                                    {"id": request_id}).mappings().one())
 
 
-def create(user, *, background_tasks, client_request_id, type, body, child_id, previous_request_id, trace_id, pickup_guardian_id=None, **care_fields):
+def create(user, *, background_tasks, client_request_id, type, body, child_id, previous_request_id, trace_id, pickup_guardian_id=None, source_note_id=None, **care_fields):
     with transaction() as connection:
         values = {"org": user.org_id, "user": user.id, "key": client_request_id}
         old = connection.execute(text("SELECT * FROM requests WHERE requester_id=:user AND client_request_id=:key"),
@@ -31,6 +31,9 @@ def create(user, *, background_tasks, client_request_id, type, body, child_id, p
             require_complete(user)
             return old, False
         child = scope.child_in_scope(user, child_id, connection=connection)
+        if source_note_id is not None:
+            note = scope.note_in_scope(user, source_note_id, connection=connection)
+            scope._checked(user, note, note["child_id"] == child_id, "note", source_note_id)
         detail = input_detail(type, pickup_guardian_id=pickup_guardian_id, **care_fields)
         if type == "pickup" and pickup_guardian_id is not None:
             detail = care.validate_guardian(connection, user, child_id, pickup_guardian_id)
@@ -40,11 +43,11 @@ def create(user, *, background_tasks, client_request_id, type, body, child_id, p
                 raise ApiError(409, "INVALID_TRANSITION")
         require_complete(user)
         row = connection.execute(text("""
-            INSERT INTO requests (org_id,classroom_id,child_id,requester_id,client_request_id,type,body,title,previous_request_id,missing_fields,care_detail)
-            VALUES (:org,:class,:child,:user,:key,:type,:body,:title,:previous,CAST(:missing AS jsonb),CAST(:care AS jsonb))
+            INSERT INTO requests (org_id,classroom_id,child_id,requester_id,client_request_id,type,body,title,previous_request_id,missing_fields,care_detail,source_note_id)
+            VALUES (:org,:class,:child,:user,:key,:type,:body,:title,:previous,CAST(:missing AS jsonb),CAST(:care AS jsonb),:note)
             ON CONFLICT (requester_id,client_request_id) DO NOTHING RETURNING *
         """), {**values, "class": child["classroom_id"], "child": child_id, "type": type, "body": body,
-               "title": body.split("\n")[0][:40], "previous": previous_request_id, "care": json.dumps(detail),
+               "title": body.split("\n")[0][:40], "previous": previous_request_id, "care": json.dumps(detail), "note": source_note_id,
                "missing": json.dumps([k for k in MEDICATION_FIELDS if not (detail.get(k) or "").strip()]
                                      if type == "medication" else [])}).mappings().one_or_none()
         if row is None:
@@ -219,6 +222,14 @@ def choices(user, request_id, body):
             key: req[key] for key in ("id", "status", "parent_confirmed_at")}}
 
 
+def source_note(connection, req):
+    if req["source_note_id"] is None:
+        return None
+    row = connection.execute(text("SELECT id AS note_id,note_date FROM daily_notes WHERE id=:id AND org_id=:org"),
+                             {"id": req["source_note_id"], "org": req["org_id"]}).mappings().one_or_none()
+    return dict(row) if row else None
+
+
 def detail(user, request_id):
     with transaction() as connection:
         req = dict(scope.request_in_scope(user, request_id, connection=connection))
@@ -282,7 +293,7 @@ def detail(user, request_id):
                     "id", "type", "title", "status", "missing_fields", "parent_confirmed_at", "created_at", "updated_at")},
                     "status_label": label(req["status"], req["type"], req["assignee_id"], req["parent_confirmed_at"],
                                           cancelled_by_parent=bool(care_state and care_state["cancelled_by_parent"])),
-                    "hold_until": _hold_until(connection, req)},
+                    "hold_until": _hold_until(connection, req), "source_note": source_note(connection, req)},
                 "messages": [dict(row) for row in messages], "sources": [dict(row) for row in sources],
                 "timeline": timeline, "consultation": consultation,
                 "care": care_state, "rejection": dict(rejection) if rejection else None}

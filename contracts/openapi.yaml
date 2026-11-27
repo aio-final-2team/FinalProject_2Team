@@ -3270,6 +3270,416 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
           description: Unprocessable Entity
+  /api/v1/staff/busy-blocks:
+    get:
+      tags:
+      - 바쁜 시간
+      summary: List Busy Blocks
+      operationId: list_busy_blocks_api_v1_staff_busy_blocks_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: from
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date-time
+          title: From
+      - name: to
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date-time
+          title: To
+      - name: user_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: User Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusyBlocksOut'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+    post:
+      tags:
+      - 바쁜 시간
+      summary: Create Busy Block
+      operationId: create_busy_block_api_v1_staff_busy_blocks_post
+      security:
+      - HTTPBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BusyBlockIn'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusyBlockOut'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+  /api/v1/staff/busy-blocks/{id}:
+    delete:
+      tags:
+      - 바쁜 시간
+      summary: Delete Busy Block
+      operationId: delete_busy_block_api_v1_staff_busy_blocks__id__delete
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          title: Id
+      responses:
+        '204':
+          description: Successful Response
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+  /api/v1/classrooms/{classroom_id}/records:
+    get:
+      tags:
+      - '[제안] 하루 중 기록'
+      summary: List Records
+      operationId: list_records_api_v1_classrooms__classroom_id__records_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: classroom_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Classroom Id
+      - name: date
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date
+          title: Date
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DailyRecordsOut'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+    post:
+      tags:
+      - '[제안] 하루 중 기록'
+      summary: Create Record
+      operationId: create_record_api_v1_classrooms__classroom_id__records_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: classroom_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Classroom Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DailyRecordIn'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DailyRecordOut'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+  /api/v1/records/{record_id}:
+    delete:
+      tags:
+      - '[제안] 하루 중 기록'
+      summary: Delete Record
+      operationId: delete_record_api_v1_records__record_id__delete
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: record_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Record Id
+      responses:
+        '204':
+          description: Successful Response
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+  /api/v1/daily-notes/{note_id}/replies:
+    post:
+      tags:
+      - '[제안] 알림장 답장·준비물 확인'
+      summary: Reply
+      operationId: reply_api_v1_daily_notes__note_id__replies_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: note_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Note Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MessageIn'
+      responses:
+        '202':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NoteReplyAccepted'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+  /api/v1/daily-notes/{note_id}/supplies-check:
+    post:
+      tags:
+      - '[제안] 알림장 답장·준비물 확인'
+      summary: Supplies Check
+      operationId: supplies_check_api_v1_daily_notes__note_id__supplies_check_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: note_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Note Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuppliesCheckOut'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Forbidden
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not Found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflict
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
   /health:
     get:
       tags:
@@ -3414,6 +3824,78 @@ components:
       - request
       - booking
       title: BookingResponse
+    BusyBlockIn:
+      properties:
+        start_at:
+          type: string
+          format: date-time
+          title: Start At
+        end_at:
+          type: string
+          format: date-time
+          title: End At
+        kind:
+          type: string
+          enum:
+          - class
+          - meeting
+          - duty
+          - 'off'
+          - other
+          title: Kind
+      additionalProperties: false
+      type: object
+      required:
+      - start_at
+      - end_at
+      - kind
+      title: BusyBlockIn
+    BusyBlockOut:
+      properties:
+        start_at:
+          type: string
+          format: date-time
+          title: Start At
+        end_at:
+          type: string
+          format: date-time
+          title: End At
+        kind:
+          type: string
+          enum:
+          - class
+          - meeting
+          - duty
+          - 'off'
+          - other
+          title: Kind
+        id:
+          type: integer
+          title: Id
+        user_id:
+          type: string
+          format: uuid
+          title: User Id
+      additionalProperties: false
+      type: object
+      required:
+      - start_at
+      - end_at
+      - kind
+      - id
+      - user_id
+      title: BusyBlockOut
+    BusyBlocksOut:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/BusyBlockOut'
+          type: array
+          title: Items
+      type: object
+      required:
+      - items
+      title: BusyBlocksOut
     CardDetail:
       properties:
         card:
@@ -4239,6 +4721,78 @@ components:
       required:
       - slots
       title: ConsultationOut
+    DailyRecordIn:
+      properties:
+        child_id:
+          type: string
+          format: uuid
+          title: Child Id
+        body:
+          type: string
+          maxLength: 500
+          minLength: 1
+          title: Body
+        note_date:
+          type: string
+          format: date
+          title: Note Date
+      additionalProperties: false
+      type: object
+      required:
+      - child_id
+      - body
+      title: DailyRecordIn
+    DailyRecordOut:
+      properties:
+        child_id:
+          type: string
+          format: uuid
+          title: Child Id
+        body:
+          type: string
+          maxLength: 500
+          minLength: 1
+          title: Body
+        note_date:
+          type: string
+          format: date
+          title: Note Date
+        id:
+          type: string
+          format: uuid
+          title: Id
+        classroom_id:
+          type: string
+          format: uuid
+          title: Classroom Id
+        author_id:
+          type: string
+          format: uuid
+          title: Author Id
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      type: object
+      required:
+      - child_id
+      - body
+      - id
+      - classroom_id
+      - author_id
+      - created_at
+      title: DailyRecordOut
+    DailyRecordsOut:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/DailyRecordOut'
+          type: array
+          title: Items
+      type: object
+      required:
+      - items
+      title: DailyRecordsOut
     DecisionIn:
       properties:
         version:
@@ -5397,6 +5951,17 @@ components:
             format: date-time
           - type: 'null'
           title: Corrected At
+        supplies_checked_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Supplies Checked At
+        replies:
+          items:
+            $ref: '#/components/schemas/NoteReply'
+          type: array
+          title: Replies
         input_id:
           type: string
           format: uuid
@@ -5432,6 +5997,51 @@ components:
           default: false
       type: object
       title: NotePatchIn
+    NoteReply:
+      properties:
+        request_id:
+          type: string
+          format: uuid
+          title: Request Id
+        body:
+          type: string
+          title: Body
+        status:
+          type: string
+          enum:
+          - received
+          - classified
+          - needs_info
+          - assigned
+          - awaiting_review
+          - approved
+          - sent_or_booked
+          - completed
+          - on_hold
+          - escalated
+          - rejected
+          title: Status
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      type: object
+      required:
+      - request_id
+      - body
+      - status
+      - created_at
+      title: NoteReply
+    NoteReplyAccepted:
+      properties:
+        request_id:
+          type: string
+          format: uuid
+          title: Request Id
+      type: object
+      required:
+      - request_id
+      title: NoteReplyAccepted
     NoteResponse:
       properties:
         note:
@@ -5522,6 +6132,17 @@ components:
             format: date-time
           - type: 'null'
           title: Corrected At
+        supplies_checked_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Supplies Checked At
+        replies:
+          items:
+            $ref: '#/components/schemas/NoteReply'
+          type: array
+          title: Replies
       type: object
       required:
       - id
@@ -6403,6 +7024,10 @@ components:
           type: string
           format: date-time
           title: Updated At
+        source_note:
+          anyOf:
+          - $ref: '#/components/schemas/SourceNote'
+          - type: 'null'
       type: object
       required:
       - id
@@ -6626,6 +7251,21 @@ components:
       - id
       - status
       title: SlotState
+    SourceNote:
+      properties:
+        note_id:
+          type: string
+          format: uuid
+          title: Note Id
+        note_date:
+          type: string
+          format: date
+          title: Note Date
+      type: object
+      required:
+      - note_id
+      - note_date
+      title: SourceNote
     SourceOut:
       properties:
         document_title:
@@ -6709,6 +7349,10 @@ components:
           type: string
           format: date-time
           title: Updated At
+        source_note:
+          anyOf:
+          - $ref: '#/components/schemas/SourceNote'
+          - type: 'null'
         child_id:
           anyOf:
           - type: string
@@ -6887,6 +7531,16 @@ components:
       - size
       - items
       title: StaffRequestList
+    SuppliesCheckOut:
+      properties:
+        supplies_checked_at:
+          type: string
+          format: date-time
+          title: Supplies Checked At
+      type: object
+      required:
+      - supplies_checked_at
+      title: SuppliesCheckOut
     TimelineItem:
       properties:
         label:

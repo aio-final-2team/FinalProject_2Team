@@ -12,6 +12,37 @@ from app.core.config import settings
 from app.core.schedule import KST, due_at
 from app.mock import seed, store
 from app.mock.records import NoteInput, Note
+from app.mock import daily_records
+
+
+def note_in_scope(user, note_id):
+    note = store.state().notes.get(note_id)
+    child = store.state().children.get(note.child_id) if note else None
+    if (note is None or note.org_id != user.org_id or note.status != "sent"
+            or child is None or child.org_id != user.org_id or user.id not in child.guardian_ids):
+        store.deny(user)
+    return note
+
+
+def reply(user, note_id, body, background_tasks, trace_id):
+    from app.mock.request_actions import create
+
+    with store._lock:
+        note = note_in_scope(user, note_id)
+        req, _ = create(user, background_tasks=background_tasks, client_request_id=str(uuid4()),
+                        type="inquiry", body=body, child_id=note.child_id, previous_request_id=None,
+                        trace_id=trace_id, source_note_id=note_id)
+        return {"request_id": req["id"]}
+
+
+def supplies_check(user, note_id):
+    with store._lock:
+        note = note_in_scope(user, note_id)
+        if not any(line["key"] == "supplies" and line["value"].strip() for line in note.content["items"]):
+            raise ApiError(409, "INVALID_TRANSITION")
+        if note.supplies_checked_at is None:
+            note.supplies_checked_at = store.now()
+        return {"supplies_checked_at": note.supplies_checked_at}
 
 
 def input_in_scope(user, input_id):
@@ -136,6 +167,7 @@ def _generate(entry, children, *, regenerated_by=None):
     menu = next(d for d in store.state().documents.values() if d.org_id == entry.org_id and d.doc_type == "menu" and d.status == "active")
     meal = next(c.content for c in store.state().chunks.values() if c.document_id == menu.id)
     memos = {memo["child_id"]: memo["memo"] for memo in entry.child_memos}
+    memos = daily_records.with_record_memos(entry, memos)
     payload = {"activities": entry.activities, "supplies": entry.supplies, "note_date": entry.note_date,
                "memories": load_tones(entry.org_id, entry.author_id),
                "roster_names": [c.display_name for c in children], "children": [],
@@ -257,6 +289,10 @@ def view(note):
     result = {k: deepcopy(getattr(note, k)) for k in ("id", "child_id", "note_date", "status", "content", "open_checks", "confirmed_at", "sent_at", "version", "corrected_at")}
     result["content"] = note_content(note.content, {str(r.id): r.__dict__ for r in store.state().requests.values()
                                                   if r.org_id == note.org_id and r.child_id == note.child_id})
+    result["supplies_checked_at"] = note.supplies_checked_at
+    result["replies"] = [{"request_id": r.id, "body": r.body, "status": r.status, "created_at": r.created_at}
+                         for r in sorted(store.state().requests.values(), key=lambda r: (r.created_at, r.id))
+                         if r.org_id == note.org_id and r.child_id == note.child_id and r.source_note_id == note.id]
     return result
 
 
