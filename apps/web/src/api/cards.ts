@@ -61,6 +61,7 @@ const cardFromItem = (item: CardItem, filter: InboxFilter): Card => ({
   className: item.classroom.name, classroomId: item.classroom.id, createdAt: item.due_at ?? new Date().toISOString(), original: item.title, sources: [],
   check: item.check ? { passed: item.check.passed, note: item.check.issue_count ? `확인 항목 ${item.check.issue_count}개` : undefined } : undefined,
   repeatCount: item.repeat_count ?? undefined, escalated: item.risk_level === "urgent" || item.kind === "director_report",
+  assignee: item.assignee ? { id: item.assignee.id, name: item.assignee.display_name } : undefined,
   assigned: !!item.assignee, slots: item.parent_choice_count ? [] : undefined, history: [],
 });
 
@@ -147,6 +148,18 @@ const REASON_CODE: Record<string, string> = { "개인정보 요청": "privacy", 
 type ActionResponse = { card?: { id?: string; status?: string; version?: number } };
 
 /** 카드 행동을 API 계약의 기능별 엔드포인트와 요청 본문으로 변환한다. */
+/** 원장이 카드 담당 교사를 바꾼다(API 19, 문서 3.16). version은 받지 않는다 */
+export function useReassign(cardId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { assigneeId: string; reason: string }) => api(`/api/v1/cards/${cardId}/reassign`, { method: "POST", body: JSON.stringify({ assignee_id: v.assigneeId, reason: v.reason }) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["cards"] });
+      qc.invalidateQueries({ queryKey: ["overview"] });
+    },
+  });
+}
+
 export function useCardAction(id: string, _role: Role) {
   const qc = useQueryClient();
   return useMutation({

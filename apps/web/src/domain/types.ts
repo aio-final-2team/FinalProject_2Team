@@ -24,6 +24,8 @@ export type Card = {
   className: string;
   /** 카드 목록이 주는 반 id(원장이 반을 고를 때 쓴다) */
   classroomId?: string;
+  /** 목록 응답이 주는 담당자(상세 응답에는 없다) */
+  assignee?: { id: string; name: string };
   createdAt: string;
   original: string;
   summary?: string;

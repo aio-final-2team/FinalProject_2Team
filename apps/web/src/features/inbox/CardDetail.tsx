@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "@/api/client";
 import { Button } from "@/components/Button";
 import { ConsultDelay } from "./ConsultDelay";
+import { Reassign } from "./Reassign";
 import { Icon } from "@/components/Icon";
 import { Sheet } from "@/components/Sheet";
 import { SkeletonRows, StateView } from "@/components/StateView";
@@ -331,7 +332,7 @@ export function CardDetail({ id, role, backTo }: { id: string; role: Exclude<Rol
 
       {/* 아래 고정 행동 칸 */}
       {isOpen && !reportOnly && (
-        <div data-bottom-bar className={`glass fixed inset-x-0 z-20 ${director ? "bottom-0 pb-[max(12px,env(safe-area-inset-bottom))]" : "bottom-[calc(64px+env(safe-area-inset-bottom))]"} bg-bar px-4 py-3 shadow-[0_-1px_0_var(--sep)] backdrop-blur-xl backdrop-saturate-[1.8] lg:sticky lg:bottom-4 lg:mx-0 lg:rounded-2xl lg:shadow-[0_8px_30px_rgba(11,31,58,.12),0_0_0_.5px_var(--sep)]`}>
+        <div data-bottom-bar className={`glass fixed inset-x-0 z-20 bottom-[calc(64px+env(safe-area-inset-bottom))] bg-bar px-4 py-3 shadow-[0_-1px_0_var(--sep)] backdrop-blur-xl backdrop-saturate-[1.8] lg:sticky lg:bottom-4 lg:mx-0 lg:rounded-2xl lg:shadow-[0_8px_30px_rgba(11,31,58,.12),0_0_0_.5px_var(--sep)]`}>
           <div className="mx-auto grid max-w-[720px] gap-2">{director ? <DirectorActions c={c} open={open} /> : <TeacherActions c={c} open={open} draft={draft} slot={slot} pending={pendingSend || act.isPending} run={run} />}</div>
         </div>
       )}
@@ -451,7 +452,7 @@ function DirectorActions({ c, open }: { c: Card; open: (k: SheetKind) => void })
     <>
       <p className="text-center text-sub text-ink2">민원 회신은 담임 승인으로만 나가요</p>
       <div className="grid grid-cols-2 gap-2">
-        <Button variant="tinted" lockedReason="준비 중이에요">재배정</Button>
+        <Reassign c={c} />
         <Button onClick={() => open("note")}>{c.directorNote ? "지시 고치기" : "지시 남기기"}</Button>
       </div>
     </>
