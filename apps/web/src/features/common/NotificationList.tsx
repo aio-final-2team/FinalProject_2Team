@@ -1,6 +1,6 @@
 import { NotificationGroups, NotificationRow, notificationTag } from "@/components/NotificationRow";
 import { ScreenTop } from "@/components/ScreenTop";
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { QueryState, StaleBanner } from "@/components/QueryState";
 import { useAllCards } from "@/api/cards";
 import { useNotifications, useReadNotification, type Notification } from "@/api/notifications";
@@ -32,7 +32,7 @@ export function TeacherNotifications({ role = "teacher" }: { role?: "teacher" | 
 
   return (
     <div className="mx-auto max-w-[680px] px-4 pb-10">
-      <ScreenTop back={{ to: back, label: role === "teacher" ? "홈" : "현황" }} title="알림" sub={list.data ? `${items.filter((n) => !n.read_at).length}개 안 읽음` : " "} />
+      <ScreenTop back={{ to: back, label: role === "teacher" ? "홈" : "현황" }} title="알림" sub={list.data ? `${items.filter((n) => !n.read_at).length}개 안 읽음` : " "} right={role === "teacher" ? <Link to="/teacher/notify-settings" className="inline-flex h-9 items-center rounded-md px-2.5 text-footnote font-semibold text-accent-ink active:scale-[.97]">조용한 시간</Link> : undefined} />
       <StaleBanner queries={[list]} />
       <div className="mb-4" />
       {list.isLoading || (list.isError && list.data === undefined) ? (

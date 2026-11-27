@@ -85,6 +85,9 @@ export function TeacherHome() {
       <Label>더 보기</Label>
       <NavList>
         <NavRow to="/teacher/feed" icon="class" title="원 소식과 앨범" sub="원에 올라온 이야기와 사진을 볼 수 있어요" />
+        <NavRow to="/teacher/calendar" icon="class" title="원 일정" sub="원 자료에 적힌 앞으로의 일정을 봐요" />
+        <NavRow to="/teacher/busy" icon="hourglass" title="바쁜 시간" sub="상담을 받을 수 없는 시간을 정해요" />
+        <NavRow to="/teacher/ask" icon="ai" title="AI에게 묻기" sub="원 자료를 보고 궁금한 점에 답해요" />
         <NavRow to="/teacher/class-consents" icon="document" title="보호자 동의 현황" sub="아이별로 필수 동의를 확인해요" />
         <NavRow to="/teacher/memory" icon="memory" title="내 AI 기억" sub="내가 거절한 이유를 보고 지울 수 있어요" />
         {Object.entries(SOON).map(([k, v]) => (
