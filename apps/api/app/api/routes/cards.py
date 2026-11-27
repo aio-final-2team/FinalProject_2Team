@@ -3,7 +3,7 @@
 from uuid import UUID
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, Response
 
 from app.api.schemas.actions import (InboxFilter, CardKind, DecisionIn, ReclassifyIn, BookingIn,
                                     InstructionIn, ReassignIn, RuleDecisionIn)
@@ -37,8 +37,8 @@ def card_stream(card_id: UUID, user: CurrentUser = Depends(staff)):
 
 
 @router.post("/cards/{card_id}/decisions", response_model=DecisionResponse, responses=errors(401, 403, 404, 409, 422))
-def decide(card_id: UUID, body: DecisionIn, user: CurrentUser = Depends(staff)):
-    return backend.cards.decide(user, card_id, body)
+def decide(card_id: UUID, body: DecisionIn, background_tasks: BackgroundTasks, user: CurrentUser = Depends(staff)):
+    return backend.cards.decide(user, card_id, body, background_tasks)
 
 
 @router.post("/cards/{card_id}/reclassify", response_model=ReclassifyResponse, responses=errors(401, 403, 404, 409, 422))

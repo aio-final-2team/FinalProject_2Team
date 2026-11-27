@@ -189,6 +189,8 @@ class _State:
         self.feed_posts = {}
         self.feed_photos = {}
         self.memories = {}
+        self.saved_answers = {}
+        self.saved_answer_sources = {}
         self.consents = {}
         self._seq = 1000
 

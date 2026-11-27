@@ -106,19 +106,18 @@ def _search_request(request_id):
 
 
 def _load_request_memory(request_id):
+    from app.modules.memories.memories import load_tones
     req = _request_context(request_id)
     if req["teacher_id"] is None:
         return []
     with transaction() as connection:
-        return [dict(row) for row in connection.execute(text("""
-            SELECT kind,content FROM memories WHERE org_id=:org AND owner_id=:owner
-              AND kind='tone' AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 8
-        """), {"org": req["org_id"], "owner": req["teacher_id"]}).mappings()]
+        return load_tones(connection, req["org_id"], req["teacher_id"])
 
 
 def _write_request(state):
     from agents.graphs import answer as answer_graph
     from app.modules.documents.answer import graph_enabled
+    from app.modules.memories.saved_answers import find_saved_answer
 
     req = _request_context(state["request_id"])
     if req["type"] == "inquiry" and not graph_enabled():
@@ -127,7 +126,10 @@ def _write_request(state):
     prompt = answer_graph._prompt("documents.md", "## 입력", "## 알림장 초안 쓰기") + answer_graph.WRITE_FORMAT
     # 보호자 글은 문의 답변 그래프(answer.py)처럼 가려서 모델에 보낸다(T55 G-5). 원 자료 조각은 그대로 둔다.
     payload = {"question": mask_sensitive(req["body"]), "chunks": chunks, "memories": state["parallel"].get("memories", []),
-               "review_issues": state.get("issues", [])}
+               "prior_answer": find_saved_answer(req),
+               "review_issues": state.get("issues", []),
+               # 저장된 기억·승인한 답도 사용자가 쓴 글에서 왔으니 지시가 아닌 데이터로 표시한다(T55 G-2).
+               "untrusted_data_fields": ["question", "chunks", "memories", "prior_answer"]}
     reply = answer_graph._ask_writer(answer_graph.OpenAIModel("DOCUMENT"), prompt, payload, [])
     if reply is None:
         return {"draft": {"text": "", "evidence": [], "no_evidence": True, "conflict": False}}

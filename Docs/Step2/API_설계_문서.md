@@ -1506,6 +1506,10 @@ HTTP/1.1 200 OK
 
 삭제하면 `deleted_at`을 채우고 content는 빈 문자열, structured는 빈 객체로 바꾼다. 행과 출처 연결은 이력으로 남겨 두되, 이후 조회와 기억 AI 입력에서는 빼고 제안 횟수에도 세지 않는다. 기억을 만들고 말투를 뽑는 일은 기억 AI가 맡는다. 이 API는 학습하지 않고 새 규칙도 만들지 않으며, 가상 말투 기억도 미리 넣어 두지 않는다.
 
+담임의 회신 카드 `edit_approve`가 커밋되면 API 백그라운드에서 원 초안·발송문을 비교한다. `LLM_MODEL_MEMORY`가 켜져 있을 때만 tone 후보 0~2개를 검사해 저장하며(80자 이하 한 문장, 이름 가림, 민감정보 형식·숫자 제외), 본인 tone은 최대 12개이고 같은 문장은 중복 저장하지 않는다. structured는 `{source: edit_approve, card_version: 승인 전 판}`이다. 실패는 memory/tool_failed 이력만 남기고 승인·발송 응답은 성공한다. 다음 문의·알림장 작성에 같은 원·담임의 최신 tone 8개를 표현 지침으로만 넘기며 목록·삭제 계약은 같다.
+
+문의 approve·edit_approve 뒤 `EMBEDDING_MODEL`이 켜져 있으면 질문(아이 이름·민감정보 형식 가림)·실제 발송 답·승인자·요청 반·질문 벡터와 근거 문서를 saved_answers·saved_answer_sources에 저장한다. no_evidence·conflict·근거 0개는 직접 쓴 답도 저장하지 않는다. 같은 원의 원 전체 또는 같은 반 답 중 active이고 모든 근거 문서가 현재 유효·공개·반 허용인 답만 코사인 유사도 0.80 이상 상위 하나를 작성 AI의 prior_answer로 넘긴다. 표현 참고용이고 사실·검사는 새 chunks 인용만 따른다. 기존 문서 변경 트리거로 off 답까지 무효화하며 GET /memories에는 아직 포함하지 않는다.
+
 ### 3.26 알림장 다시 만들기 — `POST /api/v1/daily-notes/drafts/{input_id}/regenerate`
 
 | 항목 | 내용 |

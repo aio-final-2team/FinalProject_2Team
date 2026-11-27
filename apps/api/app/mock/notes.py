@@ -130,12 +130,14 @@ def draft(user, body, background_tasks=None):
 
 
 def _generate(entry, children, *, regenerated_by=None):
+    from app.mock.memories import load_tones
     from app.modules.daily_notes.stub_writer import common_content, other_child_checks
 
     menu = next(d for d in store.state().documents.values() if d.org_id == entry.org_id and d.doc_type == "menu" and d.status == "active")
     meal = next(c.content for c in store.state().chunks.values() if c.document_id == menu.id)
     memos = {memo["child_id"]: memo["memo"] for memo in entry.child_memos}
     payload = {"activities": entry.activities, "supplies": entry.supplies, "note_date": entry.note_date,
+               "memories": load_tones(entry.org_id, entry.author_id),
                "roster_names": [c.display_name for c in children], "children": [],
                "menu": {"document_id": menu.id, "title": menu.title, "text": meal}}
     for index, child in enumerate(children):

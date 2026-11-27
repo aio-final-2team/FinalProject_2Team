@@ -67,7 +67,7 @@ def result(card, req, next_card=None):
             "request": request_state(req) if req else None, "next_card_id": next_card.id if next_card else None}
 
 
-def decide(user, card_id, body):
+def decide(user, card_id, body, background_tasks=None):
     with store._lock:
         card = in_scope(user, card_id)
         if card.kind == "director_report" and user.role != "director":
@@ -121,6 +121,8 @@ def decide(user, card_id, body):
             store.add_event(req, {"hold": "held", "resume": "resumed", "acknowledge": "report_acknowledged"}[decision],
                             reason_text=body.reason_text, **actor)
         elif decision in ("approve", "edit_approve"):
+            from app.mock.memories import remember_answer
+            remember_answer(user, card, req, content)
             card.draft = content
             card.status = "approved"
             store.set_request_status(req, "approved", action="approved", **actor)
