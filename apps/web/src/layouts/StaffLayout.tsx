@@ -6,7 +6,7 @@ import { useCards } from "@/api/cards";
 import { useNotes } from "@/api/notes";
 import { todayKST } from "@/domain/notes";
 import { useSession } from "@/app/session";
-import { MainLogo } from "@/components/Brand";
+import { MainLogo, SymbolMark } from "@/components/Brand";
 import { Icon } from "@/components/Icon";
 import type { Role } from "@/domain/types";
 
@@ -59,6 +59,12 @@ export function StaffLayout({ role }: { role: Exclude<Role, "parent"> }) {
             </Link>
           ))}
         </nav>
+        {role === "teacher" && (
+          <Link to={`${base}/ask`} aria-current={tabOn(pathname, { to: `${base}/ask` }) ? "page" : undefined} className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-body font-semibold transition-colors ${tabOn(pathname, { to: `${base}/ask` }) ? "bg-tint text-accent-ink" : "text-ink hover:bg-fill"}`}>
+            <SymbolMark motion="curious" className="size-5" />
+            AI에게 묻기
+          </Link>
+        )}
         <button
           className="mt-auto flex items-center gap-3 rounded-xl px-3 py-2.5 text-sub text-ink2 hover:bg-fill"
           onClick={() => {
@@ -76,7 +82,7 @@ export function StaffLayout({ role }: { role: Exclude<Role, "parent"> }) {
       </main>
 
       <MeSheet open={me} onClose={() => setMe(false)} />
-      <TabBar className="max-w-none lg:hidden" items={items.map((it) => ({ to: it.to, icon: it.icon, label: it.label, count: it.count, also: it.also }))} extra={{ icon: "profile", label: "내 정보", onClick: () => setMe(true) }} />
+      <TabBar center={role === "teacher" ? { to: `${base}/ask`, label: "AI에게 묻기", mascot: true } : undefined} className="max-w-none lg:hidden" items={items.map((it) => ({ to: it.to, icon: it.icon, label: it.label, count: it.count, also: it.also }))} extra={{ icon: "profile", label: "내 정보", onClick: () => setMe(true) }} />
     </div>
   );
 }

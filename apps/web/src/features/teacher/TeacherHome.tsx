@@ -6,7 +6,6 @@ import { useSession } from "@/app/session";
 import { ScreenTop } from "@/components/ScreenTop";
 import { SubButton } from "@/components/Dock";
 import { BellLink } from "@/components/BellLink";
-import { SymbolMark } from "@/components/Brand";
 import { Icon } from "@/components/Icon";
 import { dateLabel, todayKST } from "@/domain/notes";
 import { useRecords } from "@/features/records/store";
@@ -75,13 +74,6 @@ export function TeacherHome() {
         <p className="mt-1.5 text-footnote leading-relaxed text-ink2">{noteState.sub}</p>
         <SubButton className="mt-3 w-full rounded-lg" onClick={() => nav("/teacher/notes?tab=notes")}>{noteState.action}</SubButton>
       </Card>
-
-      {/* 대표 캐릭터('온' 심볼)가 둥둥 떠 있다가 눌리면 AI에게 묻기로 간다. 학부모 홈의 말풍선 친구와 같은 움직임 */}
-      <Link to="/teacher/ask" className="relative mt-6 block rounded-xl bg-card p-4 pr-24 shadow-card transition-transform duration-100 active:scale-[.99]">
-        <b className="block text-headline">궁금한 게 있으세요?</b>
-        <span className="mt-1 block text-footnote text-ink2">원 자료를 보고 바로 답해요</span>
-        <SymbolMark motion="blink" className="m-float absolute -top-4 right-4 size-[72px] drop-shadow-md" />
-      </Link>
 
       <Label>오늘 살펴볼 것</Label>
       <NavList>
