@@ -20,10 +20,11 @@
 - 같은 내용의 기존 문서도 담당 범위 밖이면 404로 거절해요.
 - 중복 반은 한 번만 저장하고, 동시 올리기의 내용 중복은 기존 문서를 돌려줘요.
 - 적재 실패 문서는 같은 내용으로 다시 올리면 새 파일 이름으로 다시 읽어요.
-- 자료 파일은 2MiB까지만 받고 초과하면 413으로 거절해요.
+- 자료 파일은 2MiB까지만 받고 초과하면 413으로 거절해요. DOCX·HWPX는 ZIP 전체 항목의 압축을 푼 크기 합계도 2MiB까지이며, 넘으면 적재를 failed로 끝내요.
 - **검색은 낱말 검색부터**: 질문을 낱말로 나눠(조사 떼기) 찾은 비율(0~1)로 점수를 매기고, 같으면 제목·위치에 낱말이 있는 조각을 앞에 둬요. `document_chunks.embedding`은 비워 두고, bge-m3 벡터 검색은 T33에서 같은 함수 뒤에 붙여요. 알림장 시연에는 검색이 필요 없어요.
 - **적재는 요청 안에서 바로**: 모델을 부르지 않는 가벼운 일이고, 파일 원문 열이 DB에 없어서 API·Celery 워커 어느 쪽에서도 같은 결과가 나오게 접수 요청 안에서 끝내요(모의 API와 같음). 무거운 임베딩은 저장된 조각을 읽어 뒤에서 할 거예요.
-- 지금 읽는 파일은 `.md`·`.markdown`·`.txt`(UTF-8)뿐이에요. HWP·PDF는 `failed` + "지금은 .md·.txt 글 파일만 읽을 수 있어요".
+- `.md`·`.markdown`·`.txt`(UTF-8), `.pdf`(pypdf), `.docx`(python-docx), `.hwpx`(표준 zipfile·XML)를 읽어요. 공용 `core/document_text.py`를 DB·mock이 함께 써요. DOCX 본문 문단·표는 문서 순서로, HWPX는 `Contents/sectionN.xml`의 문단 글자를 번호 순으로 읽고 기존 파싱·충돌 검사·임베딩 흐름에 넘겨요.
+- 옛 `.hwp`와 글이 없는 PDF·DOCX·HWPX(스캔본 포함)는 `failed`, 오류 코드는 기존 `UPSTREAM_UNAVAILABLE`, 안내는 "한글에서 hwpx나 PDF로 저장해 올려 주세요"예요. 다른 확장자는 "지금은 .md·.txt·.pdf·.docx·.hwpx 글 파일만 읽을 수 있어요"로 안내해요. OCR은 하지 않아요.
 
 ## 원 자료 넣기
 
@@ -36,6 +37,7 @@ T11 가상 원 자료 다섯 폴더의 Markdown 30개 중 29개를 넣어요. �
 ## 시험
 
 - DB 없이: `tests/unit/test_documents_parsing.py`·`test_documents_conflicts.py`·`test_documents_search_terms.py`
+- 형식 확장: `tests/integration/api/test_document_upload_formats.py`·`tests/integration/db/test_document_upload_formats.py` — 실제 가상 PDF·DOCX·HWPX 추출, 빈 글·깨진 파일·HWP·미지원 형식, 압축 해제 총량, 중복·권한 거부·DB 저장·충돌 검사. DB 실행은 `tools/test_db.sh -k document_upload_formats`로 골라요.
 - DB: `tools/test_db.sh tests/integration/db/test_documents_t20.py` — 적재 29개·위치·대상 반, 겨울방학 검색(위치·시행일), 학부모 반 범위·다른 기관·시행 전 자료, 충돌 올리기(`conflict_pending`+`conflicts[]`), 같은 내용 다시 올리기(200), 새 판(`superseded`), 읽을 수 없는 파일(`failed`), 다른 반 대상 올리기·상세(404)
 
 ## 임베딩·답변 초안 (T33)

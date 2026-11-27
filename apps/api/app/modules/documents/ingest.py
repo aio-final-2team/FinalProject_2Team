@@ -20,6 +20,7 @@ from sqlalchemy import text
 
 from app.core import scope
 from app.core.db import transaction
+from app.core.document_text import extract_text
 from app.core.errors import ApiError
 from app.core.schedule import KST
 from agents.guardrails.injection import suspicious_chunk
@@ -28,7 +29,6 @@ from .conflicts import find_conflicts
 from .parsing import Chunk, DocumentFormatError, DocumentMeta, ParsedDocument, parse_document, split_chunks
 
 log = logging.getLogger(__name__)
-TEXT_SUFFIXES = (".md", ".markdown", ".txt")
 FIELDS = ("id", "title", "doc_type", "visibility", "classroom_ids", "effective_from", "effective_to",
           "status", "ingest_status", "supersedes_id", "chunk_count")
 
@@ -133,12 +133,7 @@ def upload(user, filename, data, doc_type, visibility, classroom_ids, effective_
 
 
 def _parsed_from_upload(row, data: bytes) -> ParsedDocument:
-    if not row["title"].lower().endswith(TEXT_SUFFIXES):
-        raise DocumentFormatError("지금은 .md·.txt 글 파일만 읽을 수 있어요")
-    try:
-        content = data.decode("utf-8")
-    except UnicodeDecodeError as error:
-        raise DocumentFormatError("UTF-8 글 파일이 아니에요") from error
+    content = extract_text(row["title"], data)
     if content.lstrip().startswith("---"):
         parsed = parse_document(content)
         body, chunks = parsed.body, parsed.chunks

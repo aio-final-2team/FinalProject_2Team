@@ -194,6 +194,7 @@ class _State:
         self.saved_answers = {}
         self.saved_answer_sources = {}
         self.consents = {}
+        self.user_settings = {}
         self._seq = 1000
 
     def next_int(self) -> int:

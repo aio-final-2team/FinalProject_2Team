@@ -413,9 +413,9 @@ def test_notification_uses_schedule_and_does_not_delay_parent_at_night(db_client
             "confirm": True, "resolved_checks": [c["id"] for c in note["open_checks"]]})
     calls = []
 
-    def schedule(at, role):
+    def schedule(at, role, **kwargs):
         calls.append(role)
-        return deliver_after(at, role)
+        return deliver_after(at, role, **kwargs)
 
     class Night(datetime):
         @classmethod

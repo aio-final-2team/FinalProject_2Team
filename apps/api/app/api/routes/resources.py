@@ -13,7 +13,7 @@ from app.api.schemas.views import (NotificationList, NotificationResponse, Draft
                                   MemoryKind, MemoryList, RegenerateResponse, MemoryConfirmation, SavedAnswerResponse)
 from app.api.schemas.common import errors
 from app.core.auth import CurrentUser, current_user as note_user, require_roles as note_roles
-from app.core.constants import MAX_DOCUMENT_BYTES
+from app.core.constants import DOCUMENT_SIZE_MESSAGE, MAX_DOCUMENT_BYTES
 from app.core.errors import ApiError
 from app import backend
 
@@ -120,7 +120,7 @@ def upload_document(response: Response, file: UploadFile = File(...),
                     user: CurrentUser = Depends(require_roles("teacher", "director"))):
     data = file.file.read(MAX_DOCUMENT_BYTES + 1)
     if len(data) > MAX_DOCUMENT_BYTES:
-        raise ApiError(413, "VALIDATION_FAILED", message="자료 파일은 2MiB 이하여야 해요.")
+        raise ApiError(413, "VALIDATION_FAILED", message=DOCUMENT_SIZE_MESSAGE)
     doc, created = backend.documents.upload(user, file.filename or "자료", data, doc_type, visibility,
                                     classroom_ids, effective_from, replaces_document_id)
     if not created:

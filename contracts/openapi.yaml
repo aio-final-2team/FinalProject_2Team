@@ -3680,6 +3680,158 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
           description: Unprocessable Entity
+  /api/v1/calendar:
+    get:
+      tags:
+      - '[제안] 원 일정'
+      summary: Calendar
+      operationId: calendar_api_v1_calendar_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: from
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date
+          title: From
+      - name: to
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date
+          title: To
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CalendarOut'
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unauthorized
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unprocessable Entity
+  /api/v1/me/notification-settings:
+    get:
+      tags:
+      - 알림 설정
+      summary: Get Settings
+      operationId: get_settings_api_v1_me_notification_settings_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationSettings'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security:
+      - HTTPBearer: []
+    patch:
+      tags:
+      - 알림 설정
+      summary: Patch Settings
+      operationId: patch_settings_api_v1_me_notification_settings_patch
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationSettings'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationSettings'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security:
+      - HTTPBearer: []
+  /api/v1/staff/ask:
+    post:
+      tags:
+      - '[제안] 교직원 질문'
+      summary: Staff Ask
+      operationId: staff_ask_api_v1_staff_ask_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StaffAskIn'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StaffAskOut'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Service Unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security:
+      - HTTPBearer: []
   /health:
     get:
       tags:
@@ -3896,6 +4048,51 @@ components:
       required:
       - items
       title: BusyBlocksOut
+    CalendarItem:
+      properties:
+        date:
+          type: string
+          format: date
+          title: Date
+        end_date:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: End Date
+        title:
+          type: string
+          title: Title
+        document_id:
+          type: string
+          format: uuid
+          title: Document Id
+        document_title:
+          type: string
+          title: Document Title
+        location:
+          type: string
+          title: Location
+      type: object
+      required:
+      - date
+      - end_date
+      - title
+      - document_id
+      - document_title
+      - location
+      title: CalendarItem
+    CalendarOut:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/CalendarItem'
+          type: array
+          title: Items
+      type: object
+      required:
+      - items
+      title: CalendarOut
     CardDetail:
       properties:
         card:
@@ -6187,6 +6384,26 @@ components:
       required:
       - notification
       title: NotificationResponse
+    NotificationSettings:
+      properties:
+        quiet_start:
+          anyOf:
+          - type: string
+            pattern: ^([01][0-9]|2[0-3]):[0-5][0-9]$
+          - type: 'null'
+          title: Quiet Start
+        quiet_end:
+          anyOf:
+          - type: string
+            pattern: ^([01][0-9]|2[0-3]):[0-5][0-9]$
+          - type: 'null'
+          title: Quiet End
+      additionalProperties: false
+      type: object
+      required:
+      - quiet_start
+      - quiet_end
+      title: NotificationSettings
     NotificationView:
       properties:
         id:
@@ -7286,6 +7503,62 @@ components:
       required:
       - document_title
       title: SourceOut
+    StaffAskIn:
+      properties:
+        question:
+          type: string
+          maxLength: 2000
+          minLength: 1
+          title: Question
+      additionalProperties: false
+      type: object
+      required:
+      - question
+      title: StaffAskIn
+    StaffAskOut:
+      properties:
+        answer:
+          type: string
+          title: Answer
+        evidence:
+          items:
+            $ref: '#/components/schemas/StaffEvidence'
+          type: array
+          title: Evidence
+        conflict:
+          type: boolean
+          title: Conflict
+          default: false
+      type: object
+      required:
+      - answer
+      - evidence
+      title: StaffAskOut
+    StaffEvidence:
+      properties:
+        document_id:
+          type: string
+          format: uuid
+          title: Document Id
+        title:
+          type: string
+          title: Title
+        location:
+          type: string
+          title: Location
+        effective_date:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Effective Date
+      type: object
+      required:
+      - document_id
+      - title
+      - location
+      - effective_date
+      title: StaffEvidence
     StaffRequest:
       properties:
         id:

@@ -809,3 +809,12 @@ CREATE TABLE feed_photo_children (
     FOREIGN KEY (child_id, org_id) REFERENCES children(id, org_id)
 );
 CREATE INDEX feed_photo_children_child_idx ON feed_photo_children (child_id, photo_id);
+
+CREATE TABLE user_settings (
+    user_id uuid PRIMARY KEY,
+    org_id uuid NOT NULL,
+    quiet_start time,
+    quiet_end time,
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    FOREIGN KEY (user_id, org_id) REFERENCES users(id, org_id)
+);
