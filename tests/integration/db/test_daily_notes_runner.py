@@ -176,7 +176,9 @@ def test_writer_can_round_trip_json_input_and_output(db_client, teacher, monkeyp
         assert decoded["classroom"]["id"] == str(seed.CLASS_STAR)
         child = next(c for c in decoded["children"] if c["child_id"] == str(seed.CHILD))
         assert child["memo"] == "[TEST] 아이 메모"
-        assert child["requests"] == [{"request_id": str(seed.REQUEST_COUGH), "type": "inquiry", "text": "기침해요"}]
+        assert child["requests"] == []  # 하늘의 기침 문의는 알림장 재료가 아니에요
+        other = next(c for c in decoded["children"] if c["child_id"] == str(seed.demo_id("503")))
+        assert other["requests"] == [{"request_id": str(seed.REQUEST_PICKUP), "type": "pickup", "text": "오늘 할머니가 데리러 가요"}]
         assert decoded["menu"]["document_id"] == str(seed.MENU)
         return json.loads(json.dumps(stub_writer.write(decoded)))
 
@@ -323,25 +325,27 @@ def test_sensitive_memo_is_verbatim_with_one_check(db_client, teacher, memo):
 @pytest.mark.parametrize("seconds,included", [(-1, False), (0, True), (86399, True), (86400, False)])
 def test_requests_use_kst_day_boundaries(db_client, teacher, seeded_db, seconds, included):
     start = datetime.combine(datetime.now(KST).date(), time.min, KST)
+    medication = seed.demo_id("7201")  # GR-01 투약 요청
     with seeded_db.begin() as connection:
         connection.execute(text("UPDATE requests SET created_at=:at WHERE id=:id"),
-                           {"id": seed.REQUEST_COUGH, "at": (start + timedelta(seconds=seconds)).astimezone(UTC)})
+                           {"id": medication, "at": (start + timedelta(seconds=seconds)).astimezone(UTC)})
     draft(db_client, teacher)
     ids = {l["source"]["request_id"] for n in notes(db_client, teacher) for l in n["content"]["items"]}
-    assert (str(seed.REQUEST_COUGH) in ids) is included
+    assert (str(medication) in ids) is included
 
 
-@pytest.mark.parametrize("mismatch", ["classroom", "child", "guardian", "consultation", "complaint"])
+@pytest.mark.parametrize("mismatch", ["classroom", "child", "guardian", "inquiry", "consultation", "complaint"])
 def test_unrelated_requests_never_enter_writer(db_client, teacher, seeded_db, mismatch):
+    """그대로면 누락 확인으로 남는 귀가 요청을 바꿔, 문의·상담·민원·범위 밖은 줄도 확인도 없음을 봐요."""
     sql, value = {"classroom": ("classroom_id", seed.CLASS_SUN), "child": ("child_id", seed.CHILD_OTHER),
-                  "guardian": ("requester_id", seed.TEACHER), "consultation": ("type", "consultation"),
-                  "complaint": ("type", "complaint")}[mismatch]
+                  "guardian": ("requester_id", seed.TEACHER)}.get(mismatch, ("type", mismatch))
     with seeded_db.begin() as connection:
         connection.execute(text(f"UPDATE requests SET {sql}=:value WHERE id=:id"),
-                           {"id": seed.REQUEST_COUGH, "value": value})
+                           {"id": seed.REQUEST_PICKUP, "value": value})
     draft(db_client, teacher)
-    assert all(l["source"]["request_id"] != str(seed.REQUEST_COUGH)
-               for n in notes(db_client, teacher) for l in n["content"]["items"])
+    listed = notes(db_client, teacher)
+    assert all(l["source"]["request_id"] != str(seed.REQUEST_PICKUP) for n in listed for l in n["content"]["items"])
+    assert all(c.get("request_id") != str(seed.REQUEST_PICKUP) for n in listed for c in n["open_checks"])
 
 
 @pytest.mark.parametrize("excluded", ["missing", "staff", "future", "expired", "other_class", "failed"])

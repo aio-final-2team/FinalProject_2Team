@@ -36,7 +36,7 @@ def test_seed_requests_are_readable_and_scoped(client, teacher, parent, parent_o
 def test_child_requests_input_and_demo_omission(client, teacher):
     child = store.state().children[seed.CHILD]
     requests = mock_notes.requests_for_child(child, store.now().date())
-    assert {"request_id": seed.REQUEST_COUGH, "type": "inquiry", "text": "기침해요"} in requests
+    assert seed.REQUEST_COUGH not in {req["request_id"] for req in requests}  # 기침 문의는 받은함에서만 다뤄요
     assert all(set(req) == {"request_id", "type", "text"} for req in requests)
     assert draft(client, teacher).status_code == 202
     notes = note_list(client, teacher).json()["items"]
@@ -45,8 +45,6 @@ def test_child_requests_input_and_demo_omission(client, teacher):
         missed = [check for check in note["open_checks"] if check["kind"] == "request_missed"]
         if note["child_id"] == str(seed.CHILD):
             assert {line["source"]["request_id"] for line in lines} == {str(req["request_id"]) for req in requests}
-            cough = next(line for line in lines if line["source"]["request_id"] == str(seed.REQUEST_COUGH))
-            assert (cough["key"], cough["value"]) == ("inquiry", "기침해요")
             assert missed == []
         elif note["child_id"] == str(seed.demo_id("503")):
             assert lines == [] and note["status"] == "needs_check"
@@ -61,7 +59,7 @@ def test_child_requests_input_and_demo_omission(client, teacher):
             assert missed == []
 
 
-@pytest.mark.parametrize("request_type,key", [("inquiry", "inquiry"), ("medication", "medication"), ("pickup", "pickup")])
+@pytest.mark.parametrize("request_type,key", [("medication", "medication"), ("pickup", "pickup")])
 def test_non_demo_requests_are_included_verbatim(client, teacher, request_type, key):
     req = store.Request(uuid4(), seed.ORG, seed.CLASS_STAR, seed.demo_id("503"), seed.PARENT_OTHER,
                         "new-note-request", request_type, "  보호자 원문\n그대로  ")
@@ -73,9 +71,10 @@ def test_non_demo_requests_are_included_verbatim(client, teacher, request_type, 
     assert all(check["request_id"] != str(req.id) for check in note["open_checks"])
 
 
-@pytest.mark.parametrize("mismatch", ["org", "classroom", "child", "guardian", "date", "consultation", "complaint"])
+@pytest.mark.parametrize("mismatch", ["org", "classroom", "child", "guardian", "date", "inquiry", "consultation", "complaint"])
 def test_outside_or_unrelated_requests_do_not_enter_notes(client, teacher, mismatch):
-    req = store.state().requests[seed.REQUEST_COUGH]
+    """문의·상담·민원과 범위 밖 요청은 입력에도 없고 줄·'요청이 빠졌어요' 확인도 만들지 않아요."""
+    req = store.state().requests[seed.REQUEST_PICKUP]  # 그대로면 누락 확인으로 남는 귀가 요청
     if mismatch == "org":
         req.org_id = uuid4()
     elif mismatch == "classroom":
@@ -88,6 +87,8 @@ def test_outside_or_unrelated_requests_do_not_enter_notes(client, teacher, misma
         req.created_at -= timedelta(days=1)
     else:
         req.type = mismatch
+    assert all(r["request_id"] != req.id for child in store.state().children.values()
+               for r in mock_notes.requests_for_child(child, store.now().date()))
     assert draft(client, teacher).status_code == 202
     for note in note_list(client, teacher).json()["items"]:
         assert all(line["source"]["request_id"] != str(req.id) for line in note["content"]["items"])
@@ -96,7 +97,7 @@ def test_outside_or_unrelated_requests_do_not_enter_notes(client, teacher, misma
 
 @pytest.mark.parametrize("seconds,included", [(-1, False), (0, True), (86399, True), (86400, False)])
 def test_request_date_uses_kst_boundaries(client, teacher, seconds, included):
-    req = store.state().requests[seed.REQUEST_COUGH]
+    req = store.state().requests[seed.demo_id("7201")]  # GR-01 투약 요청
     req.created_at = (datetime.combine(store.now().date(), time.min, KST) + timedelta(seconds=seconds)).astimezone(UTC)
     assert draft(client, teacher).status_code == 202
     ids = {line["source"]["request_id"] for note in note_list(client, teacher).json()["items"]
@@ -128,10 +129,10 @@ def test_request_missed_blocks_until_teacher_resolves_then_sends(client, teacher
     assert resolved.status_code == 200, resolved.text
     assert resolved.json()["note"]["status"] == "ready" and resolved.json()["note"]["open_checks"] == []
     assert client.post(BASE + "/daily-notes/send", headers=teacher, json=batch).json()["sent_count"] == 20
-    for headers, child_id, request_id in ((parent, seed.CHILD, seed.REQUEST_COUGH),
-                                         (parent_other, seed.demo_id("503"), seed.REQUEST_PICKUP)):
+    for headers, child_id, request_id, included in ((parent, seed.CHILD, seed.REQUEST_COUGH, False),
+                                                   (parent_other, seed.demo_id("503"), seed.REQUEST_PICKUP, True)):
         visible = client.get(BASE + "/daily-notes", headers=headers, params={"date": batch["note_date"]}).json()
         assert visible["total"] == 1 and visible["items"][0]["child_id"] == str(child_id)
         assert visible["items"][0]["open_checks"] == []
-        assert request_id in {UUID(line["source"]["request_id"]) for line in visible["items"][0]["content"]["items"]
-                              if line["source"]["type"] == "request"}
+        assert (request_id in {UUID(line["source"]["request_id"]) for line in visible["items"][0]["content"]["items"]
+                               if line["source"]["type"] == "request"}) is included

@@ -206,7 +206,7 @@ def test_note_correction_concurrent_same_version_accepts_only_one(client, teache
                 if n["kind"] == "note_corrected"]) == 1
 
 
-@pytest.mark.parametrize("request_type", ["medication", "pickup", "inquiry"])
+@pytest.mark.parametrize("request_type", ["medication", "pickup"])
 @pytest.mark.parametrize("status", ["draft", "needs_check", "ready", "sent"])
 def test_late_request_reopens_unsent_note_and_notifies_batch_owner_once(
         client, teacher, parent, note_flow_backend, request_type, status):
@@ -265,7 +265,7 @@ def test_late_request_reopens_unsent_note_and_notifies_batch_owner_once(
         assert batch_card(client, teacher, done=True)["status"] == "done"
 
 
-@pytest.mark.parametrize("excluded", ["past_date", "other_class", "consultation", "complaint"])
+@pytest.mark.parametrize("excluded", ["past_date", "other_class", "inquiry", "consultation", "complaint"])
 def test_late_request_does_not_change_other_date_class_or_unrelated_type(
         client, teacher, parent, parent_other, note_flow_backend, excluded):
     day = store.now().date() - timedelta(days=1) if excluded == "past_date" else store.now().date()
@@ -273,7 +273,7 @@ def test_late_request_does_not_change_other_date_class_or_unrelated_type(
     params = {"date": day.isoformat(), "classroom_id": str(seed.CLASS_STAR)}
     before = client.get(BASE + "/daily-notes", headers=teacher, params=params).json()
     payload = {"client_request_id": str(uuid4()), "body": "[TEST] 다른 범위 요청",
-               "type": excluded if excluded in ("consultation", "complaint") else "inquiry",
+               "type": excluded if excluded in ("inquiry", "consultation", "complaint") else "medication",
                "child_id": str(seed.CHILD_OTHER if excluded == "other_class" else seed.CHILD)}
     result = client.post(BASE + "/requests", headers=parent_other if excluded == "other_class" else parent, json=payload)
     assert result.status_code == 202, result.text
@@ -397,7 +397,7 @@ def test_return_limit_check_blocks_confirmation_and_send_until_all_resolved(
     assert sent.status_code == 200 and sent.json()["sent_count"] == 20
 
 
-def test_inquiry_and_day_survive_draft_edit_confirm_and_send(client, teacher, parent):
+def test_day_survives_draft_edit_confirm_and_send_without_inquiry_line(client, teacher, parent):
     drafted = draft(client, teacher)
     assert drafted.status_code == 202
     input_id = drafted.json()["input_id"]
@@ -406,10 +406,8 @@ def test_inquiry_and_day_survive_draft_edit_confirm_and_send(client, teacher, pa
     note = next(n for n in listed if n["child_id"] == str(seed.CHILD))
     lines = {line["key"]: line for line in note["content"]["items"]}
     assert lines["day"]["source"]["type"] == "teacher_input"
-    assert lines["inquiry"]["value"] == "기침해요"
-    assert lines["inquiry"]["source"]["request_id"] == str(seed.REQUEST_COUGH)
-    assert lines["inquiry"]["source"]["type"] == "request"
-    lines["inquiry"]["value"] = "[TEST] 보호자 문의를 확인했어요"
+    assert "inquiry" not in lines  # 하늘의 기침 문의는 받은함에서만 다뤄요
+    lines["day"]["value"] = "[TEST] 블록 놀이를 했어요"
     response = client.patch(f"{BASE}/daily-notes/{note['id']}", headers=teacher,
                             json={"content": note["content"]})
     assert response.status_code == 200, response.text
@@ -461,13 +459,14 @@ def test_draft_preserves_inputs_requests_sources_and_duplicate(client, teacher, 
         if note["child_id"] == str(seed.CHILD):
             assert len(child_lines) == 1 and child_lines[0]["value"] == memo
             assert child_lines[0]["source"]["type"] == "teacher_input"
-            assert ("기침해요", str(seed.REQUEST_COUGH)) in [(l["value"], l["source"]["request_id"]) for l in request_lines]
         else:
             assert child_lines == []
-            expected = {str(r["id"]) for r in seed.DEMO_NOTE_REQUESTS
-                        if str(r["child_id"]) == note["child_id"] and r["id"] != seed.REQUEST_PICKUP
-                        and r.get("created_at", store.now()).date() == store.now().date()}
-            assert {line["source"]["request_id"] for line in request_lines} == expected
+        # 투약·귀가만 줄이 돼요. 하늘의 '기침해요' 같은 문의는 빠져요.
+        expected = {str(r["id"]) for r in seed.DEMO_NOTE_REQUESTS
+                    if str(r["child_id"]) == note["child_id"] and r["id"] != seed.REQUEST_PICKUP
+                    and r["type"] in ("medication", "pickup")
+                    and r.get("created_at", store.now()).date() == store.now().date()}
+        assert {line["source"]["request_id"] for line in request_lines} == expected
         if note["child_id"] == str(seed.demo_id("503")):
             assert len(missed) == 1 and missed[0]["request_id"] == str(seed.REQUEST_PICKUP)
         else:
@@ -701,13 +700,12 @@ def test_patch_validates_document_and_request_sources_atomically(client, teacher
         assert next(n for n in note_list(client, teacher).json()["items"] if n["id"] == note["id"]) == note
 
 
-@pytest.mark.parametrize("day,numbers", [
-    (16, [6, 14]), (17, [3, 7, 15, 18]), (18, [1, 4, 8, 12, 13, 17]),
-    (19, [5, 9, 11, 16, 20]), (20, [2, 10, 19]),
+@pytest.mark.parametrize("day,numbers", [  # GR-13~20 문의는 어느 날에도 들어가지 않아요.
+    (16, [6]), (17, [3, 7]), (18, [1, 4, 8, 12]), (19, [5, 9, 11]), (20, [2, 10]),
 ])
 def test_guardian_fixture_requests_reach_only_their_day_and_child(
         client, teacher, note_backend, monkeypatch, day, numbers):
-    """GR-11은 19일만, 같은 날 같은 아이의 GR-12·13은 둘 다 입구와 초안에 들어가요."""
+    """GR-11은 19일만, 같은 날 같은 아이의 GR-12(귀가)는 들어가고 GR-13(문의)은 빠져요."""
     captured = {}
     if note_backend == "db":
         from app.modules.daily_notes import stub_writer

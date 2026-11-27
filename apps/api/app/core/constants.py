@@ -55,7 +55,8 @@ OUT_OF_SCOPE_MESSAGES = {
 
 
 CARE_REQUEST_TYPES = ("medication", "pickup")
-NOTE_REQUEST_TYPES = (*CARE_REQUEST_TYPES, "inquiry")
+# 알림장 초안 재료는 투약·귀가만이에요. 문의·상담·민원은 답이 있어야 끝나서 받은함에서만 다뤄요.
+NOTE_REQUEST_TYPES = CARE_REQUEST_TYPES
 LATE_NOTE_REQUEST_NOTICE = "초안 뒤에 보호자 요청이 왔어요. 아이 알림장을 확인해 주세요."
 MEDICATION_FIELDS = ("medication_name", "medication_dose", "medication_time")
 UNREGISTERED_PICKUP_CHECK = "미등록 인계자 확인"
