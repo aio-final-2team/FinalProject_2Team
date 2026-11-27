@@ -198,8 +198,9 @@ function Compose({ onStarted }: { onStarted: (id: string) => void }) {
       </Label>
       <div className="flex flex-wrap gap-1.5">
         <span className="rounded-sm bg-ok-tint px-2 py-1 text-caption font-semibold text-ok">오늘 식단표</span>
-        <span className="rounded-sm bg-lav-tint px-2 py-1 text-caption font-semibold text-lav">오늘 접수한 보호자 요청</span>
+        <span className="rounded-sm bg-lav-tint px-2 py-1 text-caption font-semibold text-lav">오늘 접수한 투약·귀가 요청</span>
       </div>
+      <p className="mt-2 px-1 text-footnote text-ink2">식단표는 모든 가정의 식사 줄에 들어가요. 투약·귀가 요청은 그 아이 알림장의 투약·귀가 줄에 들어가고, 보내기 전에 선생님이 확인해요.</p>
 
       <Dock>
         <PrimaryButton onClick={submit} loading={create.isPending}>
