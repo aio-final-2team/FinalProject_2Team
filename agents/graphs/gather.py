@@ -4,6 +4,7 @@ toolbox는 specs()(도구 이름·설명·인자)와 call(name, args)(근거 조
 인자 검사는 toolbox가 맡고, 잘못된 인자면 ValueError를 올린다. 여기서는 부르는 횟수 상한과 중복·주입 거르기만 한다.
 found 요약에는 조각마다 제목과 앞부분(head)을 줘서, 모은 자료로 답할 수 있는지 AI가 스스로 보고 끝내게 한다.
 같은 (도구, 인자) 호출은 다시 실행하지 않고 이미 불렀다고만 알린다(판단이 아니라 중복 제거).
+후보 상한(MAX_CANDIDATES)은 호출마다 번갈아 채운다. 검색어가 다른 점수끼리 비교해 AI가 고른 호출을 버리지 않는다.
 모델이나 도구가 실패하면 None을 돌려주고, 부른 쪽은 지금의 고정 검색으로 돌아간다.
 """
 
@@ -32,13 +33,29 @@ def _items(chunks):
             for chunk in chunks if not suspicious_chunk(chunk["content"])]
 
 
+def _pick(results):
+    """호출마다 받은 조각을 1등부터 한 개씩 번갈아 담아요. 점수는 같은 호출(같은 검색어) 안에서만 비교해요.
+    검색어가 다르면 점수 기준도 달라서, 한 줄로 세우면 넓게 찾은 호출이 자리를 다 차지하고
+    AI가 다음 차례에 좁혀 찾은 근거(예: "토요일 휴원")가 잘려요. 개인 근거는 지금처럼 앞에 둬요."""
+    lists = [sorted((c for c in chunks if not suspicious_chunk(c["content"])), key=lambda c: c["score"], reverse=True)
+             for chunks in results]
+    picked, seen = [], set()
+    for rank in range(max(map(len, lists), default=0)):
+        for chunks in lists:
+            if rank < len(chunks) and (key := _evidence_key(chunks[rank])) not in seen:
+                seen.add(key)
+                picked.append(chunks[rank])
+    personal = [c for c in picked if c.get("source") in PERSONAL]
+    return (personal + [c for c in picked if c.get("source") not in PERSONAL])[:MAX_CANDIDATES]
+
+
 def gather(question, toolbox, model=None, *, today=None, trace=None, who=None) -> list[dict] | None:
     trace = trace if trace is not None else []
     model = model if model is not None else OpenAIModel("GATHER")
     prompt = _common(today, who) + "\n" + _prompt("gather.md", "# 자료 찾기")
     specs = toolbox.specs()
     names = {spec["name"] for spec in specs}
-    found, summary, seen, called = [], [], set(), set()
+    results, summary, called = [], [], set()
     for round_no in range(1, MAX_ROUNDS + 1):
         payload = {"question": mask_sensitive(question), "today": day_label(today), "tools": specs, "found": summary,
                    "round": round_no, "untrusted_data_fields": ["question", "found"]}
@@ -75,13 +92,8 @@ def gather(question, toolbox, model=None, *, today=None, trace=None, who=None) -
                 trace.append("gather:failed")
                 return None
             trace.append(f"gather:{name}")
-            for chunk in chunks:
-                key = _evidence_key(chunk)
-                if key not in seen:
-                    seen.add(key)
-                    found.append(chunk)
+            results.append(chunks)
             summary.append({"tool": name, "args": args, "count": len(chunks), "items": _items(chunks)})
         if not calls or (isinstance(answer, dict) and answer.get("done") is True):
             break
-    return sorted((item for item in found if not suspicious_chunk(item["content"])),
-                  key=lambda item: (item.get("source") in PERSONAL, item["score"]), reverse=True)[:MAX_CANDIDATES]
+    return _pick(results)
