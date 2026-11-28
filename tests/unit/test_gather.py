@@ -100,6 +100,26 @@ def test_round_and_call_limits():
     assert [c["chunk_id"] for c in gather("[TEST]", wide, Model(many))] == list(range(19, 19 - MAX_CANDIDATES, -1))
 
 
+def test_narrow_search_in_a_later_round_is_not_crowded_out_by_wide_ones():
+    # 11/27 서버 QA: "내일 준비물 있나요?"(내일=토요일). 1차례 넓은 "준비물" 검색 두 번이 점수 높은 조각 16개를 채워서,
+    # 2차례에 AI가 좁혀 찾은 휴원 안내(점수 0.47)가 후보 12개에서 잘리고 초안은 "근거 없음"이 됐어요.
+    def documents(args):
+        if args["query"] == "토요일 휴원":
+            return [{**DOC, "chunk_id": 900, "document_title": "휴원일·쉬는 날 안내", "score": 0.47,
+                     "content": "토요일·일요일과 공휴일은 휴원해요."}]
+        base = 100 if args["doc_type"] == "schedule" else 200
+        return [{**DOC, "chunk_id": base + n, "score": 0.75 - n / 100} for n in range(8)]
+
+    model = Model(calls(("documents", {"doc_type": "schedule", "query": "2026-11-28 준비물"}),
+                        ("documents", {"doc_type": "notice", "query": "2026-11-28 준비물"})),
+                  calls(("documents", {"doc_type": "policy", "query": "토요일 휴원"})), calls(done=True))
+    found = gather("[TEST] 내일 준비물 있나요?", Box(documents=documents), model)
+    ids = [c["chunk_id"] for c in found]
+    assert len(found) == MAX_CANDIDATES and 900 in ids
+    # 호출마다 1등부터 번갈아 담아요. 같은 호출 안에서는 점수순이에요.
+    assert ids[:3] == [100, 200, 900] and ids[3:5] == [101, 201]
+
+
 @pytest.mark.parametrize("reply", [ModelError("[TEST]"), ["not", "a", "dict"], {"calls": "documents"}])
 def test_model_error_or_bad_shape_returns_none(reply):
     trace = []
